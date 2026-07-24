@@ -1,6 +1,10 @@
 # Decision Log
 
-These decisions need to be rolled into the AGENTS.md
+These decisions, gleaned from building `demos/url-shortener`, have been rolled
+into `AGENTS.md` (Resource Ownership, Public Access, Source Organization,
+Testing And Verification, and Observability And Security). Keep this log as
+the historical rationale; update `AGENTS.md` first when a future demo reveals
+the guidance below needs to change again.
 
 ## 1. wrangler.local.jsonc vs. wrangler.jsonc.tpl
 
@@ -25,3 +29,7 @@ We organize source files for testability.  Do NOT put everything in one file.
 ## 5. Logging
 
 Just use cloudflareLogger() - don't try to be fancy with log levels or anything like that.
+
+## NEW DECISIONS
+
+New decisions will be located below here before they are incorporated, and moved above this heading when they have been incorporated.
