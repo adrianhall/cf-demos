@@ -1,20 +1,19 @@
-# Demo #1: The "url shortener"
+# Demo 1: URL Shortener
 
-Domain: "link.cfapps.uk"
+Directory: `demos/url-shortener`
 
-Services used:
+Domain: `link.cfapps.uk`
 
-- Workers
-- Workers KV
+Cloudflare products: Workers and Workers KV.
 
-This demo is about a URL shortener (similar to bit.ly).  It consists of two parts:
+## Behavior
 
-1. An admin page for creating, editing, and removing a link
-2. A link redirector.
+- Provide an admin page for creating, editing, and deleting short links.
+- Redirect `https://link.cfapps.uk/l/<code>` to the configured destination.
+- Write an informational structured log whenever a short link is used.
 
-Demo flow:
+## Demo Flow
 
-- User adds a link to the customers website on the admin page.
-- The link is available as `https://link.cf.apps.uk/l/<code>`
-- Go to the link and see it redirect.
-- Go to workers logs and see the info message showing the link was used.
+1. Create a short link to a customer website in the admin page.
+2. Open the generated short URL and observe the redirect.
+3. Open Workers Logs and locate the informational usage log.
