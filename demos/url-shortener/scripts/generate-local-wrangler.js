@@ -25,6 +25,9 @@ const outputPath = resolve(rootDir, "wrangler.jsonc");
  * from before that file was replaced by this generated fallback.
  */
 const LOCAL_PLACEHOLDER_VALUES = {
+  // Matches `.env.example`'s `ADMIN_EMAIL` default and the dev-JWT email every test and the
+  // local Access login flow use, so a clean local checkout resolves as the demo administrator.
+  admin_email: "admin@example.com",
   cloudflare_team_domain: "local.cloudflareaccess.com",
   environment: "development",
   links_kv_namespace_id: "00000000000000000000000000000000",

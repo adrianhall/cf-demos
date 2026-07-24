@@ -2,8 +2,10 @@
 import { throwIfNull } from "@adrianhall/cloudflare-toolkit/guards";
 import { computed, onMounted, ref } from "vue";
 import { useLinksStore, type ShortLink } from "../stores/links";
+import { useSessionStore } from "../stores/session";
 
 const links = useLinksStore();
+const session = useSessionStore();
 const destination = ref("");
 const editing = ref<ShortLink | null>(null);
 const editDialog = ref(false);
@@ -88,6 +90,14 @@ async function saveEdit(): Promise<void> {
 }
 
 onMounted(async () => {
+  await session.check();
+  // `/api/me` (and therefore `session.authorized`) is this SPA's only signal that the
+  // Cloudflare Access identity serving `/admin` is actually the configured administrator —
+  // `/admin` itself reaches the browser via the ASSETS binding, not this Worker (see
+  // wrangler.jsonc.tpl), so skip loading (and never render) the management UI otherwise.
+  if (!session.authorized) {
+    return;
+  }
   try {
     await links.load();
   } catch (error) {
@@ -99,72 +109,102 @@ onMounted(async () => {
 
 <template>
   <v-container class="py-6" max-width="1040">
-    <header class="mb-6">
-      <p class="text-overline text-orange-accent-4">Cloudflare Workers KV</p>
-      <h1 class="text-h3 font-weight-bold">Link Forge</h1>
-      <p class="text-body-1 mt-2">Create redirects that are managed at the edge and observable in Workers Logs.</p>
+    <header class="mb-6 d-flex align-start justify-space-between ga-4">
+      <div>
+        <p class="text-overline text-orange-accent-4">Cloudflare Workers KV</p>
+        <h1 class="text-h3 font-weight-bold">Link Forge</h1>
+        <p class="text-body-1 mt-2">Create redirects that are managed at the edge and observable in Workers Logs.</p>
+      </div>
+      <!--
+        Always rendered, including while checking and while not allowed — signing in as the
+        wrong Cloudflare Access identity otherwise leaves no way back to the login form short of
+        clearing cookies by hand. `/cdn-cgi/access/logout` is Cloudflare Access's own logout
+        endpoint in production and is emulated identically by `cloudflareAccessPlugin` locally.
+      -->
+      <v-btn href="/cdn-cgi/access/logout" size="small" variant="outlined">Log out</v-btn>
     </header>
 
-    <v-alert v-if="message" class="mb-5" closable type="info" @click:close="message = ''">{{ message }}</v-alert>
+    <v-alert
+      v-if="session.checking || session.authorized === null"
+      data-testid="session-checking"
+      type="info"
+      variant="tonal"
+    >
+      Checking your Cloudflare Access identity…
+    </v-alert>
 
-    <v-card class="mb-6" elevation="3" title="Create a short link">
-      <v-card-text>
-        <form class="d-flex flex-column flex-sm-row align-start ga-3" @submit.prevent="createLink">
-          <v-text-field
-            v-model="destination"
-            autofocus
-            class="flex-grow-1"
-            hide-details="auto"
-            label="Destination URL"
-            placeholder="https://customer.example.com/campaign"
-            required
-            type="url"
-          />
-          <v-btn color="orange-darken-2" :loading="pending" type="submit">Create short link</v-btn>
-        </form>
-      </v-card-text>
-    </v-card>
+    <v-alert
+      v-else-if="!session.authorized"
+      data-testid="not-allowed"
+      type="error"
+      variant="tonal"
+    >
+      Not allowed. Your Cloudflare Access identity is not authorized to manage this demo's short
+      links.
+    </v-alert>
 
-    <section aria-labelledby="links-heading">
-      <div class="d-flex align-center justify-space-between mb-3">
-        <h2 id="links-heading" class="text-h5">Managed links</h2>
-        <v-progress-circular v-if="links.loading" aria-label="Loading links" indeterminate size="24" />
-      </div>
-      <v-card v-if="!links.loading && links.links.length === 0" variant="outlined">
-        <v-card-text>No links yet. Create one above to begin the demonstration.</v-card-text>
-      </v-card>
-      <v-list v-else aria-label="Managed short links" lines="three">
-        <v-list-item v-for="link in links.links" :key="link.code" class="px-0 py-3">
-          <template #title>
-            <a :href="`/l/${link.code}`" rel="noreferrer" target="_blank">{{ publicLink(link.code) }}</a>
-          </template>
-          <template #subtitle>
-            <span class="d-block text-truncate">{{ link.destination }}</span>
-            <span class="text-caption">Updated {{ new Date(link.updatedAt).toLocaleString() }}</span>
-          </template>
-          <template #append>
-            <div class="d-flex ga-1">
-              <v-btn :aria-label="`Copy ${link.code}`" size="small" variant="text" @click="copyLink(link.code)">Copy</v-btn>
-              <v-btn :aria-label="`Edit ${link.code}`" size="small" variant="text" @click="openEdit(link)">Edit</v-btn>
-              <v-btn :aria-label="`Delete ${link.code}`" color="error" size="small" variant="text" @click="deleteLink(link.code)">Delete</v-btn>
-            </div>
-          </template>
-          <v-chip v-if="copiedCode === link.code" class="mt-2" size="small">Copied</v-chip>
-        </v-list-item>
-      </v-list>
-    </section>
+    <template v-else>
+      <v-alert v-if="message" class="mb-5" closable type="info" @click:close="message = ''">{{ message }}</v-alert>
 
-    <v-dialog v-model="editDialog" max-width="640">
-      <v-card title="Edit destination">
+      <v-card class="mb-6" elevation="3" title="Create a short link">
         <v-card-text>
-          <v-text-field v-model="editDestination" label="Destination URL" required type="url" />
+          <form class="d-flex flex-column flex-sm-row align-start ga-3" @submit.prevent="createLink">
+            <v-text-field
+              v-model="destination"
+              autofocus
+              class="flex-grow-1"
+              hide-details="auto"
+              label="Destination URL"
+              placeholder="https://customer.example.com/campaign"
+              required
+              type="url"
+            />
+            <v-btn color="orange-darken-2" :loading="pending" type="submit">Create short link</v-btn>
+          </form>
         </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn @click="editDialog = false">Cancel</v-btn>
-          <v-btn color="orange-darken-2" :loading="pending" @click="saveEdit">Save</v-btn>
-        </v-card-actions>
       </v-card>
-    </v-dialog>
+
+      <section aria-labelledby="links-heading">
+        <div class="d-flex align-center justify-space-between mb-3">
+          <h2 id="links-heading" class="text-h5">Managed links</h2>
+          <v-progress-circular v-if="links.loading" aria-label="Loading links" indeterminate size="24" />
+        </div>
+        <v-card v-if="!links.loading && links.links.length === 0" variant="outlined">
+          <v-card-text>No links yet. Create one above to begin the demonstration.</v-card-text>
+        </v-card>
+        <v-list v-else aria-label="Managed short links" lines="three">
+          <v-list-item v-for="link in links.links" :key="link.code" class="px-0 py-3">
+            <template #title>
+              <a :href="`/l/${link.code}`" rel="noreferrer" target="_blank">{{ publicLink(link.code) }}</a>
+            </template>
+            <template #subtitle>
+              <span class="d-block text-truncate">{{ link.destination }}</span>
+              <span class="text-caption">Updated {{ new Date(link.updatedAt).toLocaleString() }}</span>
+            </template>
+            <template #append>
+              <div class="d-flex ga-1">
+                <v-btn :aria-label="`Copy ${link.code}`" size="small" variant="text" @click="copyLink(link.code)">Copy</v-btn>
+                <v-btn :aria-label="`Edit ${link.code}`" size="small" variant="text" @click="openEdit(link)">Edit</v-btn>
+                <v-btn :aria-label="`Delete ${link.code}`" color="error" size="small" variant="text" @click="deleteLink(link.code)">Delete</v-btn>
+              </div>
+            </template>
+            <v-chip v-if="copiedCode === link.code" class="mt-2" size="small">Copied</v-chip>
+          </v-list-item>
+        </v-list>
+      </section>
+
+      <v-dialog v-model="editDialog" max-width="640">
+        <v-card title="Edit destination">
+          <v-card-text>
+            <v-text-field v-model="editDestination" label="Destination URL" required type="url" />
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer />
+            <v-btn @click="editDialog = false">Cancel</v-btn>
+            <v-btn color="orange-darken-2" :loading="pending" @click="saveEdit">Save</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+    </template>
   </v-container>
 </template>

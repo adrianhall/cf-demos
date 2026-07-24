@@ -28,7 +28,7 @@
     "generate:types": "generate-wrangler-types",
     "generate:wrangler": "generate-wrangler -f --terraform infra",
     "generate:wrangler:local": "node scripts/generate-local-wrangler.js",
-    "prestart": "run-s generate:wrangler:local generate:types",
+    "prestart": "run-s build",
     "start": "vite dev",
     "teardown": "terraform -chdir=infra destroy",
     "postteardown": "shx rm wrangler.jsonc worker-configuration.d.ts",

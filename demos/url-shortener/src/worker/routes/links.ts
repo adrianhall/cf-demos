@@ -4,13 +4,17 @@ import { readJsonBody } from "../lib/read-json-body";
 import { LinkRepository } from "../links/repository";
 import { validateCode, validateLinkInput } from "../links/validation";
 import { requestBodyLimit } from "../middleware/body-limit";
+import { requireAdmin } from "../middleware/require-admin";
 
 /**
- * Administrative short-link API, mounted at `/api/links` by `../index.ts`. Every route
- * here is behind Cloudflare Access in production (see `middleware/access.ts`).
+ * Administrative short-link API, mounted at `/api/links` by `../index.ts`. Every route here is
+ * behind Cloudflare Access in production (see `middleware/access.ts`) and additionally requires
+ * the verified identity to match `ADMIN_EMAIL` (`middleware/require-admin.ts`), rather than
+ * merely any valid identity from the same Cloudflare Access team.
  */
 export const linksRouter = new Hono<AppBindings>();
 
+linksRouter.use(requireAdmin);
 linksRouter.use(requestBodyLimit);
 
 /** List every short link, newest update first. */

@@ -22,3 +22,6 @@ Since you can't connect the worker to a domain name until you have a worker depl
 
 We organize source files for testability.  Do NOT put everything in one file.
 
+## 5. Logging
+
+Just use cloudflareLogger() - don't try to be fancy with log levels or anything like that.

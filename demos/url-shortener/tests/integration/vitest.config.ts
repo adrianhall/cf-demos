@@ -11,6 +11,11 @@ export default defineProject(async () => {
         },
         miniflare: {
           bindings: {
+            // Overridden independently of whatever `ADMIN_EMAIL` happens to be in the
+            // currently generated `wrangler.jsonc` (real Terraform output or local
+            // placeholder), matching the "admin@example.com" identity `adminRequest`
+            // (worker.test.ts) signs dev JWTs for.
+            ADMIN_EMAIL: "admin@example.com",
             ENVIRONMENT: "test",
           },
         },

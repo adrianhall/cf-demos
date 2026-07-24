@@ -1,3 +1,8 @@
+output "admin_email" {
+  description = "Administrator email the Worker's /api/me route checks the verified Cloudflare Access identity against, as defense-in-depth against cross-application Access token replay."
+  value       = local.admin_email
+}
+
 output "cloudflare_team_domain" {
   description = "Cloudflare Access team domain for Worker JWT validation."
   value       = local.cloudflare_team_domain

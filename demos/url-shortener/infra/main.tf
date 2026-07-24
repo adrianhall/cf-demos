@@ -158,6 +158,10 @@ resource "cloudflare_zero_trust_access_application" "admin" {
     {
       type = "public"
       uri  = "${local.hostname}/api/links*"
+    },
+    {
+      type = "public"
+      uri  = "${local.hostname}/api/me*"
     }
   ]
 

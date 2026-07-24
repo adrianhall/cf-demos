@@ -21,6 +21,7 @@ import {
 } from "vuetify/components";
 import { Ripple } from "vuetify/directives";
 import { type ShortLink, useLinksStore } from "../stores/links";
+import { useSessionStore } from "../stores/session";
 import AdminView from "./AdminView.vue";
 
 const vuetify = createVuetify({
@@ -45,30 +46,55 @@ const vuetify = createVuetify({
 /** Store instance whose actions are replaced with Vitest spies by testing Pinia. */
 type TestingLinksStore = ReturnType<typeof useLinksStore>;
 
+/** Store instance whose actions are replaced with Vitest spies by testing Pinia. */
+type TestingSessionStore = ReturnType<typeof useSessionStore>;
+
+/** Initial `session` store state for one mounted test, defaulting to an authorized identity. */
+interface SessionState {
+  authorized: boolean | null;
+  checking: boolean;
+  email: string;
+}
+
 /** Values returned from mounting the administrator view for one isolated test. */
 interface MountedAdminView {
   /** Testing Pinia store used by the mounted component. */
   store: TestingLinksStore;
+  /** Testing Pinia session store used by the mounted component. */
+  session: TestingSessionStore;
   /** Vue Test Utils wrapper for the mounted component. */
   wrapper: ReturnType<typeof mount>;
 }
 
-/** Mount the administrator view with mocked store actions and optional initial state. */
+/**
+ * Mount the administrator view with mocked store actions and optional initial state.
+ *
+ * The `session` store defaults to an already-authorized identity — matching a real
+ * `session.check()` that already resolved successfully — so tests that only care about link
+ * CRUD behavior don't need to know about the authorization check at all.
+ */
 function mountAdminView(
   links: ShortLink[] = [],
   loading = false,
   prepareStore?: (store: TestingLinksStore) => void,
+  sessionState: SessionState = {
+    authorized: true,
+    checking: false,
+    email: "admin@example.com",
+  },
 ): MountedAdminView {
   const pinia = createTestingPinia({
     createSpy: vi.fn,
-    initialState: { links: { links, loading } },
+    initialState: { links: { links, loading }, session: sessionState },
     stubActions: true,
   });
   setActivePinia(pinia);
   const store = useLinksStore(pinia);
+  const session = useSessionStore(pinia);
   prepareStore?.(store);
 
   return {
+    session,
     store,
     wrapper: mount(AdminView, {
       attachTo: document.body,
@@ -102,11 +128,68 @@ afterEach(() => {
 });
 
 describe("AdminView", () => {
-  it("loads links on mount and renders the empty state", () => {
-    const { store, wrapper } = mountAdminView();
+  it("checks the Access identity and loads links on mount for an authorized identity", async () => {
+    const { session, store, wrapper } = mountAdminView();
+    await flushPromises();
 
+    expect(session.check).toHaveBeenCalledOnce();
     expect(store.load).toHaveBeenCalledOnce();
     expect(wrapper.text()).toContain("No links yet");
+  });
+
+  it.each([
+    ["checking", { authorized: null, checking: false, email: "" }],
+    ["not-allowed", { authorized: false, checking: false, email: "" }],
+    [
+      "authorized",
+      { authorized: true, checking: false, email: "admin@example.com" },
+    ],
+  ] as const)(
+    "always renders a Cloudflare Access logout link in the %s state",
+    (_state, sessionState) => {
+      const { wrapper } = mountAdminView(
+        undefined,
+        undefined,
+        undefined,
+        sessionState,
+      );
+
+      expect(wrapper.get('a[href="/cdn-cgi/access/logout"]').text()).toBe(
+        "Log out",
+      );
+    },
+  );
+
+  it("shows a checking state before the identity check resolves", () => {
+    const { store, wrapper } = mountAdminView(undefined, undefined, undefined, {
+      authorized: null,
+      checking: false,
+      email: "",
+    });
+
+    expect(wrapper.get('[data-testid="session-checking"]').text()).toContain(
+      "Checking your Cloudflare Access identity",
+    );
+    expect(wrapper.find('[data-testid="not-allowed"]').exists()).toBe(false);
+    expect(wrapper.find("form").exists()).toBe(false);
+    expect(store.load).not.toHaveBeenCalled();
+  });
+
+  it("shows a not-allowed banner instead of the management UI for an unauthorized identity", () => {
+    const { store, wrapper } = mountAdminView(undefined, undefined, undefined, {
+      authorized: false,
+      checking: false,
+      email: "",
+    });
+
+    expect(wrapper.get('[data-testid="not-allowed"]').text()).toContain(
+      "Not allowed",
+    );
+    expect(wrapper.find('[data-testid="session-checking"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find("form").exists()).toBe(false);
+    expect(store.load).not.toHaveBeenCalled();
   });
 
   it("renders the loading state", () => {
