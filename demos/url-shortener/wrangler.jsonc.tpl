@@ -4,6 +4,12 @@
   "main": "./src/worker/index.ts",
   "compatibility_date": "2026-07-24",
   "compatibility_flags": ["nodejs_compat"],
+  // This demo is only reachable through its Access-protected custom domain. Disabling the
+  // workers.dev subdomain and per-version Preview URLs prevents an unauthenticated, unprotected
+  // bypass of Cloudflare Access (Access applications match on the custom hostname, not on
+  // workers.dev), and silences the `wrangler deploy` warnings for both settings.
+  "workers_dev": false,
+  "preview_urls": false,
   "vars": {
     "CLOUDFLARE_TEAM_DOMAIN": "{{cloudflare_team_domain}}",
     "ENVIRONMENT": "{{environment}}",
