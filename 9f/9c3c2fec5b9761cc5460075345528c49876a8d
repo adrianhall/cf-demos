@@ -1,0 +1,23 @@
+demos/url-shortener/BUGS.md
+  s_84a4d4fb085c3e::t_ba579bb4eb0f9b 25-29,35-44
+demos/url-shortener/infra/main.tf
+  s_84a4d4fb085c3e::t_78bbf55bdc2948 54-98,104-105
+demos/url-shortener/wrangler.jsonc.tpl
+  s_84a4d4fb085c3e::t_3a3a02ca3534cf 7-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9f9c3c2fec5b9761cc5460075345528c49876a8d",
+  "prompts": {},
+  "sessions": {
+    "s_84a4d4fb085c3e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_06b47fa78ffe535wM2GUxgGLoj",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
