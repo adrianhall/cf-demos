@@ -1,0 +1,40 @@
+AGENTS.md
+  s_84a4d4fb085c3e::t_cd1d41875d5769 28-35
+  s_84a4d4fb085c3e::t_73af29e52e09c9 466-474
+  s_84a4d4fb085c3e::t_6ea237be68a542 231-263,269-279,282-287
+  s_84a4d4fb085c3e::t_bdb710a578830c 317-343
+  s_84a4d4fb085c3e::t_dfaa31a5c6da80 552-553
+  s_84a4d4fb085c3e::t_049514a93c7c18 127-156
+  s_84a4d4fb085c3e::t_76498b936d0638 43-45
+  s_84a4d4fb085c3e::t_c7d9ea9161944f 64-123
+  s_84a4d4fb085c3e::t_0d1843b66a67d6 391-409,411-414
+  s_84a4d4fb085c3e::t_d7dbfab49fa9c1 288
+docs/BACKLOG.md
+  s_72a99fde2bf481::t_8f59b301e7ddd5 1-476
+docs/DECISIONS.md
+  s_84a4d4fb085c3e::t_4a390c2f454505 3-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "69a88dd38eb05f827a1ea777109e846c499d2aa1",
+  "prompts": {},
+  "sessions": {
+    "s_72a99fde2bf481": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_06aea5d28ffesAAjV01iM6pV9L",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_84a4d4fb085c3e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_06b47fa78ffe535wM2GUxgGLoj",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
