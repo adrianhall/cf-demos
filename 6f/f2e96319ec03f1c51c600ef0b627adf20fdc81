@@ -1,0 +1,234 @@
+demos/url-shortener/infra/variables.tf
+  s_c804fdfe872685::t_4d40e75daf3682 1
+  s_c804fdfe872685::t_a7dd45b47453b8 2-8
+  s_c804fdfe872685::t_72e050e0ce0984 9
+demos/url-shortener/src/worker/middleware/access.ts
+  s_a7aa3f61bfb442::t_e55f7ed12dcedd 6
+  s_a7aa3f61bfb442::t_e40331c3f2f57e 5,9
+  s_92c8dc3d299481::t_4793aa9f19dedb 1-4,7-8,10-12
+AGENTS.md
+  s_c804fdfe872685::t_b35fbbed728810 92-96
+  s_c804fdfe872685::t_5bf3a0741e4051 59-73,79-91,97-102
+demos/url-shortener/src/client/App.test.ts
+  s_a7aa3f61bfb442::t_4965148a35e1ee 17
+  s_a7aa3f61bfb442::t_a3c4e2a2a52525 1-16,18-22,26-30
+  s_a7aa3f61bfb442::t_7dc5967fc078c8 23-25
+demos/url-shortener/src/worker/middleware/body-limit.ts
+  s_92c8dc3d299481::t_955b64fcae3695 1-18
+demos/url-shortener/wrangler.jsonc.tpl
+  s_92c8dc3d299481::t_fa36ed4515a841 9
+  s_92c8dc3d299481::t_172be35c0b9ee7 10
+  s_92c8dc3d299481::t_d19dbdae57e4a3 6-8
+  s_92c8dc3d299481::t_03434aa4d63d10 11-13
+demos/url-shortener/vitest.config.ts
+  s_c804fdfe872685::t_47078a02312fb9 9
+  s_a7aa3f61bfb442::t_21903da2b48de8 6,14
+  s_a7aa3f61bfb442::t_12b4e48f7f7f06 3-5
+  s_a7aa3f61bfb442::t_e469f8bf1dbde8 15-17
+demos/url-shortener/src/vue.d.ts
+  s_c804fdfe872685::t_883d2703d29ecd 5-9
+  s_c804fdfe872685::t_a329aecdf359de 1-4,10-11
+demos/url-shortener/src/worker/links/validation.ts
+  s_92c8dc3d299481::t_d678c332a27948 1-77
+demos/url-shortener/src/client/main.ts
+  s_c804fdfe872685::t_4d990ade35b3e2 21
+  s_a7aa3f61bfb442::t_b49f2d59d35d8a 27-72
+  s_c804fdfe872685::t_bf320364ed66c9 18-20
+demos/url-shortener/biome.json
+  s_c804fdfe872685::t_efda7385bc887b 4-13,16,22
+  s_c804fdfe872685::t_a41e507fa1e200 1-3
+  s_c804fdfe872685::t_d9ce6184dbfa1b 14-15
+  s_c804fdfe872685::t_212024b421031a 17-21
+  s_c804fdfe872685::t_a38cd3007ca8a7 23-25
+demos/url-shortener/src/worker/links/repository.ts
+  s_92c8dc3d299481::t_20aa146b498ba9 1-185
+  s_92c8dc3d299481::t_20e721be243e4e 186
+demos/url-shortener/src/worker/lib/read-json-body.test.ts
+  s_92c8dc3d299481::t_5be18c5b9f337d 1-39
+  s_92c8dc3d299481::t_dfa680a42dc4fb 40-42
+demos/url-shortener/src/worker/middleware/logger.test.ts
+  s_92c8dc3d299481::t_d8ec6e888f5c28 1-64
+  s_92c8dc3d299481::t_9beff04347d38c 65-67
+demos/url-shortener/src/worker/vitest.config.ts
+  s_92c8dc3d299481::t_d8c7ceb9403c22 7
+  s_92c8dc3d299481::t_3b74f8a7f86ecb 4-6
+  s_92c8dc3d299481::t_364df7271f1190 8-9
+demos/url-shortener/src/client/vitest.config.ts
+  s_a7aa3f61bfb442::t_21903da2b48de8 1-9,16-17
+  s_a7aa3f61bfb442::t_7d8155d83eef3f 10
+  s_a7aa3f61bfb442::t_8938cef5022aee 11-15
+demos/url-shortener/BUGS.md
+  s_a7aa3f61bfb442::t_9a249087128b69 3-25
+  s_a7aa3f61bfb442::t_d68b8af2e3adad 1-2
+  s_a7aa3f61bfb442::t_8227f2f689fe81 26-28
+demos/url-shortener/README.md
+  s_c804fdfe872685::t_b280fd2f581a60 154
+  s_c804fdfe872685::t_9cd3b567727fc2 55
+  s_c804fdfe872685::t_411b844d4c8028 75,111-114,120-121
+  s_a7aa3f61bfb442::t_9a249087128b69 21,63-66,100
+  s_c804fdfe872685::t_abc109f0adb1f2 14-20
+  s_c804fdfe872685::t_fc1ccff6c99161 144
+  s_92c8dc3d299481::t_a6710e34c3767f 115-119
+  s_92c8dc3d299481::t_7b4cf225897846 151
+  s_a7aa3f61bfb442::t_00c232776da5d3 91-93
+  s_c804fdfe872685::t_dbbf23cc256f9c 11-13
+  s_a7aa3f61bfb442::t_76b48c3665103c 94-99
+  s_c804fdfe872685::t_4abd0b0e59df36 122-124,141-143
+  s_c804fdfe872685::t_e7a398aa123b5f 155-157
+demos/url-shortener/tests/integration/worker.test.ts
+  s_a7aa3f61bfb442::t_9a249087128b69 37-48
+  s_92c8dc3d299481::t_149c0bcdd0a5c7 3
+  s_c804fdfe872685::t_883d2703d29ecd 11-18,53-65,76-82,90-125
+  s_92c8dc3d299481::t_9d88d4b5b842d1 50,67-74
+  s_92c8dc3d299481::t_6f32619f8d1e2e 85-89
+  s_92c8dc3d299481::t_fd7887eecd6bff 1-2
+  s_c804fdfe872685::t_31054a9123eb28 126-128
+demos/url-shortener/src/client/views/AdminView.vue
+  s_a7aa3f61bfb442::t_e40331c3f2f57e 2,72,101-123
+  s_c804fdfe872685::t_883d2703d29ecd 16-59,81-95
+  s_a7aa3f61bfb442::t_f25aa652b4e3c3 1
+  s_a7aa3f61bfb442::t_19024be5ff7ba8 124-126
+demos/url-shortener/DEMO.md
+  s_a7aa3f61bfb442::t_9a249087128b69 24-36
+  s_a7aa3f61bfb442::t_cabe50bcf987bd 21-23
+  s_a7aa3f61bfb442::t_86d02a2a1c748e 37-39
+demos/url-shortener/src/worker/routes/redirects.ts
+  s_92c8dc3d299481::t_07602d374af206 1-21
+demos/url-shortener/scripts/generate-local-wrangler.js
+  s_92c8dc3d299481::t_72f15d736724f2 1-75
+  s_92c8dc3d299481::t_690f49d392f082 76-78
+demos/url-shortener/src/worker/links/repository.test.ts
+  s_92c8dc3d299481::t_f9d433f1279231 2
+  s_92c8dc3d299481::t_11ce752a4ef795 1,3-79,92-112,114-131,136-138,140-274,276-277
+  s_92c8dc3d299481::t_24c067584b15d4 139
+  s_92c8dc3d299481::t_ef09187998b841 80-91
+  s_92c8dc3d299481::t_c7eef4f1190f77 132-135
+  s_92c8dc3d299481::t_693c0e16d99fa0 113
+  s_92c8dc3d299481::t_600ac08574bdbb 275
+  s_92c8dc3d299481::t_b46adbc3363b89 278-280
+demos/url-shortener/src/client/stores/links.test.ts
+  s_a7aa3f61bfb442::t_511a699b46e30a 1-67,71-115,120-121,132-149
+  s_a7aa3f61bfb442::t_f088a86e8c85f8 68-70,116-119,122-131
+demos/url-shortener/src/worker/links/types.ts
+  s_92c8dc3d299481::t_f0ff44adc7d833 1-27
+demos/url-shortener/src/worker/bindings.ts
+  s_92c8dc3d299481::t_aa60c53c9ae6e7 1-20
+demos/url-shortener/src/worker/links/validation.test.ts
+  s_92c8dc3d299481::t_9232e9b76a043b 1-128
+  s_92c8dc3d299481::t_20265029db2d03 129-131
+demos/url-shortener/src/access-policies.ts
+  s_a7aa3f61bfb442::t_e40331c3f2f57e 3-8
+  s_a7aa3f61bfb442::t_37fac5fc15ee21 1-2
+  s_a7aa3f61bfb442::t_f946ffe403a617 9
+demos/url-shortener/src/client/main.test.ts
+  s_a7aa3f61bfb442::t_511a699b46e30a 1-80
+demos/url-shortener/src/worker/lib/read-json-body.ts
+  s_92c8dc3d299481::t_79cc276cd9fb81 1-17
+demos/url-shortener/src/client/stores/links.ts
+  s_c804fdfe872685::t_883d2703d29ecd 27-102
+  s_c804fdfe872685::t_e04aa96cd4838f 1-26,103
+demos/url-shortener/src/client/test/setup.ts
+  s_a7aa3f61bfb442::t_7d8155d83eef3f 1-13
+demos/url-shortener/infra/outputs.tf
+  s_c804fdfe872685::t_f631ae2d914039 3
+  s_92c8dc3d299481::t_ee174592df613b 4,6-10,14,19,24
+  s_c804fdfe872685::t_925f507bc3ffae 1-2
+  s_92c8dc3d299481::t_16e78b78cd70c3 5
+  s_92c8dc3d299481::t_3e909ce8b2aa86 11-13
+  s_92c8dc3d299481::t_729a30f1252f12 15-18
+  s_92c8dc3d299481::t_9c6f9f884dc702 20-23
+demos/url-shortener/tsconfig.json
+  s_c804fdfe872685::t_883d2703d29ecd 18-26
+  s_c804fdfe872685::t_e43b1f96be55a9 15-17
+  s_c804fdfe872685::t_db9af8d7b79e07 27
+demos/url-shortener/infra/main.tf
+  s_c804fdfe872685::t_5708e7106dcaa1 25-30
+  s_c804fdfe872685::t_f7a1cc71afc4fb 50-58
+  s_c804fdfe872685::t_c72920576d4fcf 9-22,47,59,86,121
+  s_a7aa3f61bfb442::t_e55f7ed12dcedd 8,40,45,61,63-71,73-83,103-115
+  s_c804fdfe872685::t_efdc2d220fe8be 62,72
+  s_c804fdfe872685::t_2d8eb79898172b 89-102
+  s_a7aa3f61bfb442::t_54676bcb486157 5-7
+  s_c804fdfe872685::t_6ac9edbddd4516 23-24
+  s_a7aa3f61bfb442::t_5fd854c107407e 41-44
+  s_c804fdfe872685::t_d4f75e179662a5 48-49
+  s_c804fdfe872685::t_0f74026231288e 87-88
+demos/url-shortener/src/worker/routes/links.ts
+  s_92c8dc3d299481::t_947e81afc65b1a 1-50
+demos/url-shortener/src/worker/index.ts
+  s_92c8dc3d299481::t_f064e6935e39b6 6-18
+  s_92c8dc3d299481::t_f6abb68fb92b08 3-5
+  s_92c8dc3d299481::t_99d27b3764ccf2 19-21
+demos/url-shortener/vite.config.ts
+  s_c804fdfe872685::t_883d2703d29ecd 8-12
+  s_c804fdfe872685::t_c1a79698995cc7 1-7,13
+demos/url-shortener/src/client/views/AdminView.test.ts
+  s_a7aa3f61bfb442::t_4965148a35e1ee 130-132,173-175,200-202,216-218,229-231,246-248,261-263
+  s_a7aa3f61bfb442::t_7d8155d83eef3f 68,77-78,81-85,100-103,112-114,118,120-121,127,271,279
+  s_a7aa3f61bfb442::t_0e20a282888341 4,79-80,135-138,140,144,157-168,238-241,244,251,282-284,301-330
+  s_a7aa3f61bfb442::t_a3c4e2a2a52525 1-3,5-67,69-76,86-99,104-111,119,122-126,128-129,133-134,139,141-143,145-156,172,176-199,203-215,219-228,232-237,242-243,245,249-250,252-260,264-270,272-278,280-281,331-332
+  s_a7aa3f61bfb442::t_7dc5967fc078c8 115-117
+  s_a7aa3f61bfb442::t_f088a86e8c85f8 169-171,285-300
+demos/url-shortener/src/worker/middleware/body-limit.test.ts
+  s_92c8dc3d299481::t_295dd4102fcee3 1-53,58-67
+  s_92c8dc3d299481::t_d7f21b43e0ee90 54-57
+  s_92c8dc3d299481::t_5f2d9fa48f5a49 68-69
+demos/url-shortener/src/worker/middleware/access.test.ts
+  s_a7aa3f61bfb442::t_511a699b46e30a 1-31
+demos/url-shortener/package.json
+  s_a7aa3f61bfb442::t_ef6b3ce749ada8 57-61
+  s_c804fdfe872685::t_395139a732de5b 71-72
+  s_c804fdfe872685::t_0eed78967abd59 54
+  s_c804fdfe872685::t_2f9c8bb5710935 9,41,51,68-70
+  s_a7aa3f61bfb442::t_ac5c817c5f279a 35-40
+  s_a7aa3f61bfb442::t_e55f7ed12dcedd 19-20,24
+  s_c804fdfe872685::t_a3044572f67bb4 62
+  s_c804fdfe872685::t_d52d8f2a5f9859 6-8
+  s_a7aa3f61bfb442::t_db41d5cc2909ad 21-23
+  s_a7aa3f61bfb442::t_c60d03111417a4 25-27,32-34
+  s_c804fdfe872685::t_176e46da9515fa 42-44,48-50
+  s_c804fdfe872685::t_6ebfb3a98143b0 52-53
+  s_c804fdfe872685::t_bee1b8ce50fca3 63-67
+  s_c804fdfe872685::t_bc03ba94b8556a 73-74
+demos/url-shortener/src/worker/middleware/logger.ts
+  s_92c8dc3d299481::t_cf304dc3b079e2 58-69,71-81
+  s_92c8dc3d299481::t_b70f6335dc5807 1-3,5
+  s_92c8dc3d299481::t_c7f925a6f9433a 6-33,36-43,47-49,51-57,70
+  s_92c8dc3d299481::t_f66944442873a3 44-46,50
+  s_92c8dc3d299481::t_b8bb46eecda012 4
+  s_92c8dc3d299481::t_2879692e32b839 34-35
+demos/url-shortener/package-lock.json
+  s_a7aa3f61bfb442::t_284f76fb7ff1df 1-6460
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6ff2e96319ec03f1c51c600ef0b627adf20fdc81",
+  "prompts": {},
+  "sessions": {
+    "s_92c8dc3d299481": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_06bb29154ffeYqLTcE4mHUuYwn",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_a7aa3f61bfb442": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_06b5f7698ffeMYXMkgy2b567eD",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_c804fdfe872685": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_06bec308dffevftNH2mN66WMsW",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
