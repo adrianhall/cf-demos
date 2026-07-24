@@ -1,0 +1,64 @@
+demos/url-shortener/src/access-policies.ts
+  s_84a4d4fb085c3e::t_bf0fd073c7e93b 1-11,18-23
+demos/url-shortener/infra/main.tf
+  s_84a4d4fb085c3e::t_83ad6c6631b2e2 161-164
+demos/url-shortener/wrangler.jsonc.tpl
+  s_84a4d4fb085c3e::t_66abfa441f0cbe 10,12,24
+demos/url-shortener/scripts/generate-local-wrangler.js
+  s_84a4d4fb085c3e::t_560b83293d3604 28-30
+demos/url-shortener/src/worker/middleware/require-admin.ts
+  s_84a4d4fb085c3e::t_38885a3a02f0e6 25-27
+  s_84a4d4fb085c3e::t_184aa54c5cdaba 1-24,28-40
+demos/url-shortener/src/worker/index.ts
+  s_84a4d4fb085c3e::t_d2beffa49893b4 10,15,19
+demos/url-shortener/src/client/views/AdminView.vue
+  s_84a4d4fb085c3e::t_ebc61e286b2618 112-124
+  s_84a4d4fb085c3e::t_8c0b9be97d38bd 127-134,136-144,146-147,149,151-163,166-208
+  s_84a4d4fb085c3e::t_d9b7aa39424152 93-100
+  s_84a4d4fb085c3e::t_daac5505145c15 5,8
+demos/url-shortener/src/worker/middleware/access.test.ts
+  s_84a4d4fb085c3e::t_64dfa61460e4ba 10-15,17-20,24-32
+demos/url-shortener/src/worker/routes/me.ts
+  s_84a4d4fb085c3e::t_123f0eec7d3c88 1-20,23-24
+  s_84a4d4fb085c3e::t_f8193609ed415e 21-22
+demos/url-shortener/src/client/stores/session.ts
+  s_84a4d4fb085c3e::t_63e9b9cd9cbaf7 1-43
+demos/url-shortener/infra/outputs.tf
+  s_84a4d4fb085c3e::t_bddf5d7e756e52 1-5
+demos/url-shortener/tests/integration/worker.test.ts
+  s_84a4d4fb085c3e::t_359f32940c4303 10-12,16,23-31
+  s_84a4d4fb085c3e::t_ca1387444817b5 49-53,66-83
+  s_84a4d4fb085c3e::t_6f0706accf54e0 32-33
+  s_84a4d4fb085c3e::t_d224429a2de427 84
+demos/url-shortener/vite.config.ts
+  s_84a4d4fb085c3e::t_d521e4652bb622 9-17
+demos/url-shortener/src/client/stores/session.test.ts
+  s_84a4d4fb085c3e::t_98af607ae8e925 1-74
+demos/url-shortener/src/client/views/AdminView.test.ts
+  s_84a4d4fb085c3e::t_3963c4ad046724 49-58,63-64,69-75,80-84,88,93,97
+  s_84a4d4fb085c3e::t_e5a865ece195ba 140-162
+  s_84a4d4fb085c3e::t_673a506abb5cae 132,135,163-193
+  s_84a4d4fb085c3e::t_58b15ffbd841ec 24
+  s_84a4d4fb085c3e::t_c7b853769d7104 131,133
+  s_84a4d4fb085c3e::t_63ea8f7614d8f1 194
+demos/url-shortener/tests/integration/vitest.config.ts
+  s_84a4d4fb085c3e::t_acc06c0426b2b4 14-18
+demos/url-shortener/src/worker/routes/links.ts
+  s_84a4d4fb085c3e::t_e338764286dfab 7,10-13,17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a42af7bdaaa9cb522c4c0100a7fc47c7583ad03d",
+  "prompts": {},
+  "sessions": {
+    "s_84a4d4fb085c3e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_06b47fa78ffe535wM2GUxgGLoj",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
