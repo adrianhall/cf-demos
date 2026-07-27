@@ -1,0 +1,62 @@
+demos/todo-app/src/worker/routes/me.ts
+  s_2227ea5d0b666a::t_7c5fce267a20cd 1-8,12
+  s_2227ea5d0b666a::t_c5ddee2116f292 9-11
+demos/todo-app/src/client/stores/session.ts
+  s_2227ea5d0b666a::t_7c5fce267a20cd 1-54
+demos/todo-app/src/worker/routes/todos.ts
+  s_2227ea5d0b666a::t_150ef929c1ba1d 54-61
+demos/todo-app/package.json
+  s_2227ea5d0b666a::t_b0931d43214bc6 33
+  s_2227ea5d0b666a::t_d623a7f92536ea 35
+demos/todo-app/src/client/App.test.ts
+  s_2227ea5d0b666a::t_60abc1d2696812 3,10
+  s_2227ea5d0b666a::t_5c3613cc3ff8de 16
+  s_2227ea5d0b666a::t_8699708a8cf75e 2
+demos/todo-app/src/client/components/TodoForm.vue
+  s_2227ea5d0b666a::t_7c5fce267a20cd 1-58
+demos/todo-app/src/client/App.vue
+  s_2227ea5d0b666a::t_5c3613cc3ff8de 18-20,28-29,46
+  s_2227ea5d0b666a::t_7c5fce267a20cd 1-10,14-17,21,30-45,47-58
+demos/todo-app/src/client/stores/todos.ts
+  s_2227ea5d0b666a::t_150ef929c1ba1d 102-110,112,115
+  s_2227ea5d0b666a::t_7c5fce267a20cd 1-25,29-39,43-55,58-101,123
+  s_2227ea5d0b666a::t_c5ddee2116f292 26-28,56-57,111,113-114,116-122
+  s_2227ea5d0b666a::t_7f5872180bf49e 40-42
+demos/todo-app/tests/integration/worker.test.ts
+  s_2227ea5d0b666a::t_150ef929c1ba1d 128-168
+demos/todo-app/src/worker/index.ts
+  s_2227ea5d0b666a::t_7c5fce267a20cd 9,19
+demos/todo-app/src/client/main.ts
+  s_2227ea5d0b666a::t_5c3613cc3ff8de 51-69
+  s_2227ea5d0b666a::t_7c5fce267a20cd 6-18,39-50,70
+demos/todo-app/src/client/views/HomeView.vue
+  s_2227ea5d0b666a::t_150ef929c1ba1d 47-57,82-85,127,130,132-133
+  s_2227ea5d0b666a::t_5c3613cc3ff8de 113,129
+  s_2227ea5d0b666a::t_7c5fce267a20cd 2-46,58-64,68-81,86-89,92-112,114-126,128,131,134-140
+AGENTS.md
+  s_2227ea5d0b666a::t_d22a939421b3b2 353-354
+demos/todo-app/src/worker/todos/repository.ts
+  s_2227ea5d0b666a::t_150ef929c1ba1d 117-128
+  s_2227ea5d0b666a::t_d58aca7109563d 116
+demos/todo-app/src/client/components/TodoList.vue
+  s_2227ea5d0b666a::t_c1be69cf0da4e9 78
+  s_2227ea5d0b666a::t_7c5fce267a20cd 1-30,32,37-38,40-45,47-48,54-63,85-101
+  s_2227ea5d0b666a::t_5c3613cc3ff8de 31,33-36,39,46,49-53,64-74,79-84
+  s_2227ea5d0b666a::t_8ec2a46b495e33 75-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "92ab23877c8403680dc482fed975e0ef5abc9a0b",
+  "prompts": {},
+  "sessions": {
+    "s_2227ea5d0b666a": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05d2c4f71ffevN7OewLvucaf5W",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
