@@ -1,0 +1,89 @@
+demos/chat/wrangler.jsonc.tpl
+  s_c02f2970b0785d::t_5fa62d12c72253 1-41
+demos/chat/scripts/generate-local-wrangler.js
+  s_c02f2970b0785d::t_1c9cdb2639758a 1-79
+demos/chat/vite.config.ts
+  s_c02f2970b0785d::t_c75decdb400a20 1-22
+demos/chat/index.html
+  s_c02f2970b0785d::t_d60de054430c69 1-16
+demos/chat/vitest.config.ts
+  s_c02f2970b0785d::t_b41eb10bd9bac8 1-18
+demos/chat/src/client/views/HomeView.vue
+  s_c02f2970b0785d::t_03e46b8764a841 1-11
+demos/chat/tsconfig.json
+  s_c02f2970b0785d::t_39ba0a0f3268bb 1-26
+demos/chat/src/vue.d.ts
+  s_c02f2970b0785d::t_ae5092e68315ba 1-11
+demos/chat/src/client/main.ts
+  s_c02f2970b0785d::t_2a6cd377839e42 1-33
+demos/chat/infra/.gitignore
+  s_c02f2970b0785d::t_fec670b0277de5 1-7
+demos/chat/src/access-policies.ts
+  s_c02f2970b0785d::t_0fe18eec4d728e 1-24
+demos/chat/.env.example
+  s_c02f2970b0785d::t_05a520d638df7e 1-16
+demos/chat/src/client/main.test.ts
+  s_c02f2970b0785d::t_43aaa875d2a3fb 1-61
+demos/chat/tests/integration/worker.test.ts
+  s_c02f2970b0785d::t_f76704a3e39d09 1-36
+demos/chat/package.json
+  s_c02f2970b0785d::t_4a5db3507466a7 1-78
+demos/chat/src/client/vitest.config.ts
+  s_c02f2970b0785d::t_90abbf5dd7e98d 1-17
+demos/chat/.dev.vars
+  s_c02f2970b0785d::t_89df11c2c38930 1-2
+demos/chat/.gitignore
+  s_c02f2970b0785d::t_52b9b077aa1215 1-12
+demos/chat/tests/integration/vitest.config.ts
+  s_c02f2970b0785d::t_598f2f6968400d 1-24
+demos/chat/infra/outputs.tf
+  s_c02f2970b0785d::t_afb46fccd4a7d7 1-29
+demos/chat/src/client/App.test.ts
+  s_c02f2970b0785d::t_ad9585f955a41e 1-24
+demos/chat/src/worker/chat-room/chat-room.ts
+  s_c02f2970b0785d::t_d75353e1d029b0 1-16
+demos/chat/README.md
+  s_c02f2970b0785d::t_aca22c2c566985 1-165
+demos/chat/src/client/test/setup.ts
+  s_c02f2970b0785d::t_4344771eb1f9b4 1-13
+demos/chat/infra/variables.tf
+  s_c02f2970b0785d::t_471d3d85aa6480 1-8
+demos/chat/infra/main.tf
+  s_c02f2970b0785d::t_48f77215d99fee 1-148
+demos/chat/src/worker/middleware/access.test.ts
+  s_c02f2970b0785d::t_cee428a9bc544c 1-34
+demos/chat/src/client/App.vue
+  s_c02f2970b0785d::t_f52040a644139a 1-16
+demos/chat/DEMO.md
+  s_c02f2970b0785d::t_1efd4888c579c3 1-55
+demos/chat/src/client/views/HomeView.test.ts
+  s_c02f2970b0785d::t_7d625a21e25d70 1-20
+demos/chat/biome.json
+  s_c02f2970b0785d::t_83e0714366289f 1-36
+demos/chat/src/worker/middleware/access.ts
+  s_c02f2970b0785d::t_f1c172f5c80c86 1-14
+demos/chat/src/worker/index.ts
+  s_c02f2970b0785d::t_f1a0d078d4a3e3 1-28
+demos/chat/src/worker/bindings.ts
+  s_c02f2970b0785d::t_f75d490af850c1 1-20
+demos/chat/src/worker/vitest.config.ts
+  s_c02f2970b0785d::t_b5ebd1e34b63f0 1-9
+demos/chat/package-lock.json
+  s_c02f2970b0785d::t_c9ae00ae661175 1-6694
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8e2a44a6eaa69ecae9347fb5036682c079f45e2b",
+  "prompts": {},
+  "sessions": {
+    "s_c02f2970b0785d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05ba47e1bffe2nZljemguajUFG",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
