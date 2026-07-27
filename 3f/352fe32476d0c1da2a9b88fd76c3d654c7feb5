@@ -1,0 +1,31 @@
+docs/04-ENTERPRISE-CHAT.md
+  s_0d1052fb4342e6::t_dd30c721a7988c 202-208
+  s_0d1052fb4342e6::t_b599e19a6ccef1 396-405
+  s_0d1052fb4342e6::t_1e2d624c15d9cb 12-20,23
+  s_0d1052fb4342e6::t_e9d47960ddcf42 153-161,172-177
+  s_0d1052fb4342e6::t_e0c67d938b5562 293,300,303-305
+  s_0d1052fb4342e6::t_12a984a543aa2c 314-318,321-331,333-335,337-342
+  s_0d1052fb4342e6::t_40e31c451a1be8 346,349-353
+  s_0d1052fb4342e6::t_52ce79a7762f5c 1-11,21-22,24-39,45-60,62-66,72-74,82-113,115-152,162-171,178-201,209-292,294-299,301-302,306-313,319-320,332,336,343-345,347-348,354-362,374-395,406-434,438-467
+  s_0d1052fb4342e6::t_ca1dacd465dc91 61,67-71,75-81
+  s_0d1052fb4342e6::t_e8abb4b450a6eb 363-373
+  s_0d1052fb4342e6::t_7e973f53fa0525 435-437
+  s_0d1052fb4342e6::t_a3007e821f93cc 40-44
+  s_0d1052fb4342e6::t_7853cd5865b499 114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3f352fe32476d0c1da2a9b88fd76c3d654c7feb5",
+  "prompts": {},
+  "sessions": {
+    "s_0d1052fb4342e6": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05bee392bffemfmIA60SlarXst",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
