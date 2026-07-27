@@ -1,0 +1,52 @@
+demos/todo-app/vite.config.ts
+  s_257568dfed1031::t_71077611cbe0bd 1,5,8-18
+demos/todo-app/src/worker/middleware/access.test.ts
+  s_257568dfed1031::t_a312d33231c57c 1-29
+demos/todo-app/tests/integration/worker.test.ts
+  s_257568dfed1031::t_f316efc0a42ee5 2
+  s_257568dfed1031::t_a312d33231c57c 6-7,9-10,13,17-29
+demos/todo-app/src/worker/middleware/access.ts
+  s_257568dfed1031::t_71077611cbe0bd 1-12
+demos/todo-app/DEMO.md
+  s_257568dfed1031::t_1389ac2efe3620 10-12
+  s_257568dfed1031::t_d6138025d03b9b 3-5,7-9,13-18
+demos/todo-app/src/access-policies.ts
+  s_257568dfed1031::t_71077611cbe0bd 1-17
+demos/todo-app/src/worker/index.ts
+  s_257568dfed1031::t_71077611cbe0bd 8,13-14,18
+demos/todo-app/.env.example
+  s_257568dfed1031::t_d6138025d03b9b 9
+demos/todo-app/README.md
+  s_257568dfed1031::t_d6138025d03b9b 7-9,14,16,20-24,87-90,103-104
+  s_257568dfed1031::t_1389ac2efe3620 15,142-144
+demos/todo-app/src/worker/bindings.ts
+  s_257568dfed1031::t_71077611cbe0bd 1,4-5,7
+demos/todo-app/infra/main.tf
+  s_257568dfed1031::t_1389ac2efe3620 114,118
+  s_257568dfed1031::t_71077611cbe0bd 111-113,115-117,119-124,129-139
+  s_257568dfed1031::t_f316efc0a42ee5 125-128
+demos/todo-app/src/client/App.vue
+  s_257568dfed1031::t_71077611cbe0bd 3,9-16
+demos/todo-app/package.json
+  s_257568dfed1031::t_7461633fd86716 37
+  s_257568dfed1031::t_9871865e80cd8c 41
+demos/todo-app/src/client/App.test.ts
+  s_257568dfed1031::t_a312d33231c57c 1-9,13-24
+  s_257568dfed1031::t_f316efc0a42ee5 10-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fc256f374abab92b7d609001d566ca5a00e14136",
+  "prompts": {},
+  "sessions": {
+    "s_257568dfed1031": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05d4e08e9ffeMC8wfnSFOODnvr",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
