@@ -1,0 +1,75 @@
+demos/todo-app/src/worker/index.ts
+  s_79df9c60adb91b::t_df1d8fb461f67a 1-22
+demos/todo-app/src/vue.d.ts
+  s_79df9c60adb91b::t_485c19f447dad0 1-11
+demos/todo-app/src/worker/vitest.config.ts
+  s_79df9c60adb91b::t_3be2c9c239a393 1-9
+demos/todo-app/.env.example
+  s_79df9c60adb91b::t_e39828a5d5625c 1-10
+demos/todo-app/package.json
+  s_79df9c60adb91b::t_48ad57c0a4e887 1-75
+demos/todo-app/infra/main.tf
+  s_79df9c60adb91b::t_68826fe4777d50 1-110
+demos/todo-app/infra/variables.tf
+  s_79df9c60adb91b::t_7acd7557efc2dd 1-7
+demos/todo-app/.gitignore
+  s_79df9c60adb91b::t_119df95b1a1d6e 1-12
+demos/todo-app/index.html
+  s_79df9c60adb91b::t_c265a829b84f4a 1-16
+demos/todo-app/biome.json
+  s_79df9c60adb91b::t_e28ec80bc3e348 1-36
+demos/todo-app/vitest.config.ts
+  s_79df9c60adb91b::t_37e0abb1e4425e 1-18
+demos/todo-app/infra/outputs.tf
+  s_79df9c60adb91b::t_6b57b8ce7e3faa 1-24
+demos/todo-app/scripts/generate-local-wrangler.js
+  s_79df9c60adb91b::t_ef5067e29c641f 1-78
+demos/todo-app/src/worker/bindings.ts
+  s_79df9c60adb91b::t_09b6fe2186d5f3 1-20
+demos/todo-app/tsconfig.json
+  s_79df9c60adb91b::t_dffd510d3a4bc9 1-26
+demos/todo-app/src/client/App.vue
+  s_79df9c60adb91b::t_078e3bf729a1a3 1-7
+demos/todo-app/src/client/test/setup.ts
+  s_79df9c60adb91b::t_f3da172928c49a 1-13
+demos/todo-app/tests/integration/vitest.config.ts
+  s_79df9c60adb91b::t_73a26753defaaa 1-24
+demos/todo-app/DEMO.md
+  s_79df9c60adb91b::t_1c2127b25a37b1 1-27
+demos/todo-app/README.md
+  s_79df9c60adb91b::t_76bf7c8a747b98 1-136
+demos/todo-app/.dev.vars
+  s_79df9c60adb91b::t_e41bdd0ded2a87 1
+demos/todo-app/src/client/vitest.config.ts
+  s_79df9c60adb91b::t_6de9b44da6e4b9 1-17
+demos/todo-app/src/client/main.ts
+  s_79df9c60adb91b::t_adcfe50b1992db 1-33
+demos/todo-app/vite.config.ts
+  s_79df9c60adb91b::t_4f4506f7194f62 1-10
+demos/todo-app/infra/.gitignore
+  s_79df9c60adb91b::t_6d4ca1338c66da 1-7
+demos/todo-app/src/client/views/HomeView.vue
+  s_79df9c60adb91b::t_1b2ecfe49d112d 1-11
+demos/todo-app/tests/integration/worker.test.ts
+  s_79df9c60adb91b::t_89fc737f918eac 1-22
+demos/todo-app/wrangler.jsonc.tpl
+  s_79df9c60adb91b::t_d9565895ff05a0 1-26
+demos/todo-app/package-lock.json
+  s_79df9c60adb91b::t_b4d9184782873b 1-6336
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "33ab775d2dde4e333417398c2a731de33c930ed5",
+  "prompts": {},
+  "sessions": {
+    "s_79df9c60adb91b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05d65b0c5ffeiAWolkfbpmoMaT",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
