@@ -350,6 +350,8 @@ Demos with a browser UI use:
   `cloudflareAccess()`, also configure the toolkit's development-only Access Vite
   plugin as specified under Public Access.
 - Vuetify with the shared Cloudflare-inspired design language.
+- Use Feather Icons where an interface requires an icon. Do not rely on an
+  unconfigured component-library icon set or hand-drawn SVG icons.
 - Pinia for shared client state.
 - Vue Router for navigation.
 

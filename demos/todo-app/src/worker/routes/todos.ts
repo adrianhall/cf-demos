@@ -51,6 +51,14 @@ todosRouter.patch("/:id", async (context) => {
   });
 });
 
+/** Delete all completed TODOs belonging to the verified Access identity. */
+todosRouter.delete("/completed", async (context) => {
+  const userId = context.get("Cloudflare_Access_Identity").email;
+  const repository = new TodoRepository(context.env.DB);
+  await repository.deleteCompleted(userId);
+  return new Response(null, { status: 204 });
+});
+
 /** Delete a TODO owned by the verified Access identity. */
 todosRouter.delete("/:id", async (context) => {
   const userId = context.get("Cloudflare_Access_Identity").email;

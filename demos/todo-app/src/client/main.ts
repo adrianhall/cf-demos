@@ -3,7 +3,19 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import { createRouter, createWebHistory } from "vue-router";
 import { createVuetify } from "vuetify";
-import { VApp, VContainer, VMain } from "vuetify/components";
+import {
+  VApp,
+  VBtn,
+  VCard,
+  VCardText,
+  VContainer,
+  VList,
+  VListItem,
+  VListItemTitle,
+  VMain,
+  VProgressCircular,
+  VTextField,
+} from "vuetify/components";
 import App from "./App.vue";
 import HomeView from "./views/HomeView.vue";
 
@@ -24,7 +36,38 @@ export function startClient(): void {
   app.use(router);
   app.use(
     createVuetify({
-      components: { VApp, VContainer, VMain },
+      components: {
+        VApp,
+        VBtn,
+        VCard,
+        VCardText,
+        VContainer,
+        VList,
+        VListItem,
+        VListItemTitle,
+        VMain,
+        VProgressCircular,
+        VTextField,
+      },
+      theme: {
+        defaultTheme: "todoDark",
+        themes: {
+          todoDark: {
+            colors: {
+              background: "#0b1020",
+              error: "#ff7979",
+              "on-surface": "#f6f3ff",
+              "on-surface-variant": "#d0c8dc",
+              outline: "#a59caf",
+              "outline-variant": "#4b4554",
+              primary: "#8ab4ff",
+              surface: "#171d2e",
+              "surface-variant": "#252d42",
+            },
+            dark: true,
+          },
+        },
+      },
     }),
   );
   app.mount("#app");

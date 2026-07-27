@@ -114,6 +114,19 @@ export class TodoRepository {
   }
 
   /**
+   * Delete every completed TODO owned by one verified user.
+   *
+   * @param userId Verified Cloudflare Access email.
+   * @returns Promise resolved after all matching TODOs are deleted.
+   */
+  async deleteCompleted(userId: string): Promise<void> {
+    await this.database
+      .prepare("DELETE FROM todos WHERE user_id = ? AND completed = 1")
+      .bind(userId)
+      .run();
+  }
+
+  /**
    * Read one TODO while enforcing its owner boundary.
    *
    * @param userId Verified Cloudflare Access email.

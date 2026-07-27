@@ -125,4 +125,45 @@ describe("Tasks Worker", () => {
       );
     }
   });
+
+  it("clears only the current user's completed TODOs", async () => {
+    const create = async (email: string, title: string): Promise<string> => {
+      const response = await exports.default.fetch(
+        await apiRequest(email, "/api/todos", {
+          body: JSON.stringify({ title }),
+          method: "POST",
+        }),
+      );
+      return (await todoFrom(response)).id;
+    };
+    const userId = "clear@example.com";
+    const completedId = await create(userId, "Completed task");
+    await create(userId, "Active task");
+    await create("other-clear@example.com", "Other user's task");
+
+    await exports.default.fetch(
+      await apiRequest(userId, `/api/todos/${completedId}`, {
+        body: JSON.stringify({ completed: true }),
+        method: "PATCH",
+      }),
+    );
+    const clearResponse = await exports.default.fetch(
+      await apiRequest(userId, "/api/todos/completed", { method: "DELETE" }),
+    );
+    expect(clearResponse.status).toBe(204);
+
+    const userTodos = await exports.default.fetch(
+      await apiRequest(userId, "/api/todos"),
+    );
+    expect(await userTodos.json()).toMatchObject({
+      todos: [expect.objectContaining({ title: "Active task" })],
+    });
+
+    const otherTodos = await exports.default.fetch(
+      await apiRequest("other-clear@example.com", "/api/todos"),
+    );
+    expect(await otherTodos.json()).toMatchObject({
+      todos: [expect.objectContaining({ title: "Other user's task" })],
+    });
+  });
 });
