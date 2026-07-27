@@ -34,9 +34,11 @@
     "start": "vite dev",
     "teardown": "terraform -chdir=infra destroy",
     "postteardown": "shx rm wrangler.jsonc worker-configuration.d.ts",
+    "pretest": "npm run generate:wrangler:local",
     "test": "NODE_OPTIONS=--no-experimental-webstorage vitest run",
     "test:client": "NODE_OPTIONS=--no-experimental-webstorage vitest run --project client",
     "test:coverage": "NODE_OPTIONS=--no-experimental-webstorage vitest run --coverage",
+    "pretest:integration": "npm run generate:wrangler:local",
     "test:integration": "NODE_OPTIONS=--no-experimental-webstorage vitest run --project integration",
     "test:unit": "NODE_OPTIONS=--no-experimental-webstorage vitest run --project worker --project client",
     "test:worker": "NODE_OPTIONS=--no-experimental-webstorage vitest run --project worker"

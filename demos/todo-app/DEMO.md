@@ -1,10 +1,21 @@
 # Demo: Personalized TODO App
 
-> **Status:** Phase 1 of `docs/02-TODO-APP.md` only. There is nothing to present yet —
-> the Worker has no routes, there is no UI, and Cloudflare Access is not wired in. This
-> file will be filled in with the full presenter flow once Phases 2–5 land.
+> **Status:** Phases 1 and 2 of `docs/02-TODO-APP.md` are complete. The hostname and `/api/*`
+> are now Access-protected. The full TODO workflow, D1 schema, and presenter flow arrive in
+> Phases 3–5.
 
-## What will be demonstrated (once complete)
+## Access Demonstration
+
+After deployment, open `https://tasks.cfapps.uk`. Cloudflare Access requires a sign-in through
+any enabled identity provider before serving the SPA shell. API requests are independently
+validated by the Worker, which makes the verified Access identity available to later TODO routes
+without accepting client-supplied user identifiers.
+
+For local development, `npm start` presents a local Access login page with the selectable
+identities `alice@example.com` and `bob@example.com`. Use the visible **Sign out** link to clear
+the local or production Access session.
+
+## What Will Be Demonstrated (Once Complete)
 
 - **Cloudflare Access** gating an entire hostname and providing each request's verified
   user identity to the Worker, with no separate login system.

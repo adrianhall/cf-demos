@@ -4,26 +4,26 @@ An independently deployable Cloudflare Workers, Cloudflare Access, and D1 demo: 
 per-user TODO list where each authenticated Access identity only ever sees their own
 tasks.
 
-> **Status:** Phase 1 of `docs/02-TODO-APP.md` only — infrastructure scaffold and shared
-> tooling. Cloudflare Access enforcement, the `/api/todos` API, the D1 schema, and the
-> TodoMVC-style UI are not implemented yet. This document will be expanded as later
-> phases land; do not expect a working demo experience from the instructions below yet.
+> **Status:** Phases 1 and 2 of `docs/02-TODO-APP.md` are complete. Cloudflare Access gates
+> the hostname and API, while the D1-backed `/api/todos` workflow and TodoMVC-style UI arrive
+> in later phases.
 
 ## Architecture (current)
 
 ```text
-Terraform: Worker + custom domain (tasks.cfapps.uk) + D1 database
+Terraform: Worker + custom domain (tasks.cfapps.uk) + D1 database + Access application
+Access:    any enabled identity provider at the hostname edge
+Worker:    validates Access JWTs for /api/*
 Wrangler:  Worker code deployment, D1 migrations, static assets
 ```
 
-Terraform owns the Worker service, the D1 database, the custom domain, and Worker
-observability settings (Workers Logs + traces with explicit sampling). Wrangler owns
-Worker code versions, D1 schema migrations, and static asset deployment.
+Terraform owns the Worker service, D1 database, custom domain, Access application and policy,
+and Worker observability settings (Workers Logs + traces with explicit sampling). Wrangler owns
+Worker code versions, D1 schema migrations, and static asset deployment. Access protects every
+page at the edge and `cloudflareAccess()` independently validates `/api/*` JWTs before routes
+can use the verified identity email.
 
 Later phases add:
-
-- A Cloudflare Access self-hosted application requiring authentication for the whole
-  hostname (Phase 2).
 - The `todos` D1 schema and an authenticated `/api/todos` CRUD API scoped to the
   verified Access identity (Phase 3).
 - A TodoMVC-style Vue 3 + Vuetify interface (Phase 4).
@@ -84,6 +84,10 @@ npm start
 `prestart` generates a local `wrangler.jsonc` (fixed placeholder values, no Terraform
 required) and builds worker binding types before `vite dev` starts. D1 runs against
 Miniflare's local SQLite simulation — no real Cloudflare D1 database is touched locally.
+The development-only Access plugin redirects protected paths to its local login page; choose
+either `alice@example.com` or `bob@example.com`. The always-visible **Sign out** control uses
+`/cdn-cgi/access/logout`, which the plugin emulates locally and Cloudflare Access serves in
+production.
 
 ## Testing
 
@@ -96,7 +100,8 @@ npm run test:coverage
 
 Integration tests run the real Worker in `workerd` via
 `@cloudflare/vitest-pool-workers`, against the same generated `wrangler.jsonc` used for
-local development.
+local development. They cover unauthenticated API rejection and a verified development token;
+the full TODO workflow follows in Phase 3.
 
 ## Deployment
 
@@ -134,3 +139,6 @@ will be visible in the Cloudflare dashboard under **Workers & Pages → tasks �
 - **`wrangler.jsonc` already exists and looks wrong**: delete it and re-run the relevant
   generation step (`npm run generate:wrangler:local` for local development, or
   `npm run generate:wrangler` after a real `terraform apply`).
+- **Access sign-in is denied**: confirm the target Zero Trust organization has an enabled login
+  method. The deployed application accepts any available identity provider; lock it down with a
+  more specific Access policy if required.
