@@ -1,0 +1,50 @@
+demos/media-drop/src/worker/media/repository.ts
+  s_1c668dcd4834aa::t_85b64cb66e5703 1-34,36-93,106-121,128-145
+  s_1c668dcd4834aa::t_dbdd309c920ad0 35
+  s_1c668dcd4834aa::t_e77da4c4f4ddec 94-105,122-127
+demos/media-drop/src/worker/media/validation.ts
+  s_1c668dcd4834aa::t_85b64cb66e5703 1-40,46-50,56-63,65-67,71-73,78-79,81-95
+  s_1c668dcd4834aa::t_e77da4c4f4ddec 41-45,51-55,68-70,74-77
+  s_1c668dcd4834aa::t_79e5d0d6c1067e 64,80
+demos/media-drop/src/worker/index.ts
+  s_1c668dcd4834aa::t_dbdd309c920ad0 9-10,16-17
+demos/media-drop/src/worker/media/types.ts
+  s_1c668dcd4834aa::t_85b64cb66e5703 1-38,41
+  s_1c668dcd4834aa::t_79e5d0d6c1067e 39-40
+demos/media-drop/package.json
+  s_1c668dcd4834aa::t_dbdd309c920ad0 23-24
+demos/media-drop/src/worker/media/storage.ts
+  s_1c668dcd4834aa::t_3a889ce3f4042f 115-116,137-145,150-153
+  s_1c668dcd4834aa::t_85b64cb66e5703 6-26,35-62,66-71,75-114,117-119,121,128-130,156-164,169-179,184-185
+  s_1c668dcd4834aa::t_d77b5016bdf666 120,154-155
+  s_1c668dcd4834aa::t_e77da4c4f4ddec 1-5,27-34,63-65,72-74,122-127,131-136,146-149,165-168,180-183
+demos/media-drop/src/worker/media/validation.test.ts
+  s_1c668dcd4834aa::t_27e8b27903f7f6 1-4,6-26,28-39,46-58
+  s_1c668dcd4834aa::t_df9868908dba22 5,27,40-45
+demos/media-drop/src/worker/routes/library.ts
+  s_1c668dcd4834aa::t_e77da4c4f4ddec 19-21,28-36
+  s_1c668dcd4834aa::t_dbdd309c920ad0 1-18,22-27,37-49
+demos/media-drop/migrations/0001_create_media.sql
+  s_1c668dcd4834aa::t_85b64cb66e5703 1-15
+demos/media-drop/src/worker/media/storage.test.ts
+  s_1c668dcd4834aa::t_27e8b27903f7f6 1-13
+demos/media-drop/src/worker/routes/studio.ts
+  s_1c668dcd4834aa::t_dbdd309c920ad0 1-3,10-17,21-33,44-61,66-74,81-111,116-138
+  s_1c668dcd4834aa::t_e77da4c4f4ddec 4-9,18-20,34-43,62-65,75-80,112-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "aa876f38a4a3025a01c5e08156bd2e41e56987bf",
+  "prompts": {},
+  "sessions": {
+    "s_1c668dcd4834aa": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05c65de02ffeovjMYp5XtiknVs",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
