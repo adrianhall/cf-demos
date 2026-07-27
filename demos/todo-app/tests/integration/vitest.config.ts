@@ -1,8 +1,15 @@
 import path from "node:path";
-import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
+import {
+  cloudflareTest,
+  readD1Migrations,
+} from "@cloudflare/vitest-pool-workers";
 import { defineProject } from "vitest/config";
 
 export default defineProject(async () => {
+  const migrations = await readD1Migrations(
+    path.resolve(import.meta.dirname, "../../migrations"),
+  );
+
   return {
     plugins: [
       cloudflareTest({
@@ -12,6 +19,7 @@ export default defineProject(async () => {
         miniflare: {
           bindings: {
             ENVIRONMENT: "test",
+            TEST_MIGRATIONS: migrations,
           },
         },
       }),

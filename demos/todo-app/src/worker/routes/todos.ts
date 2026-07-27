@@ -1,0 +1,60 @@
+import { badRequest } from "@adrianhall/cloudflare-toolkit/errors";
+import { Hono } from "hono";
+import type { AppBindings } from "../bindings";
+import { TodoRepository } from "../todos/repository";
+import {
+  validateCreateTodoInput,
+  validateTodoId,
+  validateUpdateTodoInput,
+} from "../todos/validation";
+
+/** Authenticated per-user TODO API mounted at `/api/todos`. */
+export const todosRouter = new Hono<AppBindings>();
+
+/** Parse JSON request content and map malformed bodies to RFC 9457 bad requests. */
+async function readJson(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    throw badRequest({ detail: "Request body must contain valid JSON." });
+  }
+}
+
+/** List only the TODOs belonging to the verified Access identity. */
+todosRouter.get("/", async (context) => {
+  const userId = context.get("Cloudflare_Access_Identity").email;
+  const repository = new TodoRepository(context.env.DB);
+  return context.json({ todos: await repository.list(userId) });
+});
+
+/** Create a TODO for the verified Access identity. */
+todosRouter.post("/", async (context) => {
+  const userId = context.get("Cloudflare_Access_Identity").email;
+  const input = validateCreateTodoInput(await readJson(context.req.raw));
+  const repository = new TodoRepository(context.env.DB);
+  const todo = await repository.create(userId, input);
+  context.get("LOGGER").info("todo_created", { todoId: todo.id });
+  return context.json({ todo }, 201);
+});
+
+/** Rename and/or toggle a TODO owned by the verified Access identity. */
+todosRouter.patch("/:id", async (context) => {
+  const userId = context.get("Cloudflare_Access_Identity").email;
+  const input = validateUpdateTodoInput(await readJson(context.req.raw));
+  const repository = new TodoRepository(context.env.DB);
+  return context.json({
+    todo: await repository.update(
+      userId,
+      validateTodoId(context.req.param("id")),
+      input,
+    ),
+  });
+});
+
+/** Delete a TODO owned by the verified Access identity. */
+todosRouter.delete("/:id", async (context) => {
+  const userId = context.get("Cloudflare_Access_Identity").email;
+  const repository = new TodoRepository(context.env.DB);
+  await repository.delete(userId, validateTodoId(context.req.param("id")));
+  return new Response(null, { status: 204 });
+});
