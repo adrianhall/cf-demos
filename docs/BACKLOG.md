@@ -72,6 +72,8 @@ Primary flow:
 
 Directory: `demos/media-drop`
 
+Status: Implemented.
+
 Introduces: R2.
 
 Builds on:
