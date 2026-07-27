@@ -76,6 +76,10 @@ Introduces: R2.
 
 Builds on: Worker APIs, Access, and relational metadata.
 
+Prior art:
+
+- [YouTube](https://www.youtube.com/)
+
 Demonstrates:
 
 - Uploading large objects without treating them as database records.
