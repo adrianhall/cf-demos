@@ -105,7 +105,36 @@ Keep out:
 
 ## State And Asynchronous Processing Track
 
-### 4. Watch Together
+### 4. Enterprise Chat
+
+Directory: `demos/chat`
+
+Introduces: Durable Objects and WebSockets.
+
+Builds on: Workers, Static Assets, D1, KV(?)
+
+Prior art:
+
+- Slack, Discord, IRC, etc.
+
+Demonstrates:
+
+- Modeling one Durable Object per chat room
+- Chat routing (just like Slack)
+- Broadcasting over a chat room
+- Recovering authoriative room state after clients reconnect.
+
+Primary flow:
+
+1. User A logs in; User B logs in (use two different windows).
+2. Each one subscribes to the same channel (use `slack` as the semantic - use CF colors).
+3. Chats from any user appear in all chat windows for the same channel.
+
+Keep out:
+
+- personal chats, uploads, trasncoding, translation.
+
+### 5. Watch Together
 
 Directory: `demos/watch-together`
 
@@ -130,7 +159,7 @@ Keep out:
 
 - Chat, AI recommendations, transcoding, and durable job orchestration.
 
-### 5. Upload Indexer
+### 6. Upload Indexer
 
 Directory: `demos/upload-indexer`
 
@@ -156,7 +185,7 @@ Keep out:
 - Containers and multi-step Workflows. The consumer performs a small amount of
   Worker-compatible metadata extraction only.
 
-### 6. Video Transcoder
+### 7. Video Transcoder
 
 Directory: `demos/video-transcoder`
 
@@ -181,7 +210,7 @@ Keep out:
 
 - Multiple renditions, approvals, transcription, and AI-generated metadata.
 
-### 7. Video Publishing Pipeline
+### 8. Video Publishing Pipeline
 
 Directory: `demos/video-publishing-workflow`
 
@@ -209,7 +238,7 @@ Keep out:
 
 ## AI Track
 
-### 8. AI Model Playground
+### 9. AI Model Playground
 
 Directory: `demos/ai-model-playground`
 
@@ -234,7 +263,7 @@ Keep out:
 
 - Persistent conversations, tools, RAG, agents, and external providers.
 
-### 9. Multi-Provider AI Chat
+### 10. Multi-Provider AI Chat
 
 Directory: `demos/ai-gateway-chat`
 
@@ -260,7 +289,7 @@ Keep out:
 
 - Tools, long-term memory, retrieval, and autonomous behavior.
 
-### 10. Transcript Studio
+### 11. Transcript Studio
 
 Directory: `demos/transcript-studio`
 
@@ -285,7 +314,7 @@ Keep out:
 
 - Semantic search, summarization, chat, and synthetic speech.
 
-### 11. Ask Your Media
+### 12. Ask Your Media
 
 Directory: `demos/media-search`
 
@@ -311,7 +340,7 @@ Keep out:
 
 - Agent tools, autonomous actions, and multiple model providers.
 
-### 12. Persistent Assistant
+### 13. Persistent Assistant
 
 Directory: `demos/persistent-assistant`
 
@@ -337,7 +366,7 @@ Keep out:
 
 - External tools, MCP servers, broad skills catalogs, and autonomous loops.
 
-### 13. Operations Agent
+### 14. Operations Agent
 
 Directory: `demos/operations-agent`
 
@@ -368,7 +397,7 @@ Keep out:
 - Arbitrary code execution, unrestricted web browsing, and a large catalog of
   unrelated skills.
 
-### 14. Audio And Text Conversation Bridge
+### 15. Audio And Text Conversation Bridge
 
 Directory: `demos/conversation-bridge`
 

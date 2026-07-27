@@ -20,6 +20,8 @@
     "deploy:infra": "run-s deploy:infra:init deploy:infra:apply",
     "deploy:infra:init": "terraform -chdir=infra init",
     "deploy:infra:apply": "terraform -chdir=infra apply -auto-approve",
+    "db:migrate:local": "CI=1 wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "CI=1 wrangler d1 migrations apply DB --remote",
     "predeploy:worker": "run-s generate:wrangler generate:types",
     "deploy:worker": "vite build && wrangler deploy",
     "format": "run-s format:*",
