@@ -1,0 +1,122 @@
+demos/media-drop/src/client/components/MediaPreview.test.ts
+  s_9e2f769b0166f4::t_5ada52ec9c07e6 1-43
+demos/media-drop/src/client/vitest.config.ts
+  s_9e2f769b0166f4::t_50caa9d09df587 10-14
+  s_9e2f769b0166f4::t_c693c9bab528a5 15
+demos/media-drop/DEMO.md
+  s_9e2f769b0166f4::t_16d809b1d8b8be 3,5,7-11,13,15-29,33-44
+demos/media-drop/tests/integration/vitest.config.ts
+  s_9e2f769b0166f4::t_653376afe70a7b 2-5,8-31
+demos/media-drop/src/client/media.test.ts
+  s_9e2f769b0166f4::t_5ada52ec9c07e6 1-9
+demos/media-drop/src/client/stores/library.test.ts
+  s_9e2f769b0166f4::t_0a85ba6ccdd112 1-25,29-42,48-84
+  s_9e2f769b0166f4::t_68c2639b868fc3 26-28,43-47
+demos/media-drop/src/worker/media/upload.ts
+  s_9e2f769b0166f4::t_97996ecfa32882 1
+  s_9e2f769b0166f4::t_744f6644720185 2-25
+demos/media-drop/src/worker/media/storage.test.ts
+  s_9e2f769b0166f4::t_319a3570f0e4e4 2-7
+  s_9e2f769b0166f4::t_bc0ec582718898 42-47,54-60,63-69,73-79,83-85
+  s_9e2f769b0166f4::t_424f2450c9c66c 1,108-135,142-145,147
+  s_9e2f769b0166f4::t_79dfc79c4866ab 86-107,146
+  s_9e2f769b0166f4::t_e677715d2a34a4 136-141
+  s_9e2f769b0166f4::t_68c2639b868fc3 48-53,61-62,70-72,80-82
+demos/media-drop/tests/integration/media.test.ts
+  s_9e2f769b0166f4::t_9cabdfa5d229d6 1-41,47-69,73-77,93-103,107-117,151-188,200-207,211-212,241-251,255-257
+  s_9e2f769b0166f4::t_68c2639b868fc3 89-91
+  s_9e2f769b0166f4::t_46067b47ffaa4b 122-125,129-132
+  s_9e2f769b0166f4::t_79dfc79c4866ab 189-199,218-223,225
+  s_9e2f769b0166f4::t_9d51be0ce70d6e 78-88,92,120-121,133-148,150,224,226-238,240
+  s_9e2f769b0166f4::t_49d2d28f9a92bf 42-46,70-72,104-106,208-210,213-214,239,252-254
+  s_9e2f769b0166f4::t_b0d2df0c7d4bde 126-128
+  s_9e2f769b0166f4::t_3857b26e68fb94 118-119,149,215-217
+demos/media-drop/src/client/components/MediaCard.test.ts
+  s_9e2f769b0166f4::t_49d2d28f9a92bf 23-26,36-40
+  s_9e2f769b0166f4::t_ba2f375cb143d7 29
+  s_9e2f769b0166f4::t_74cc87eb5d0333 1-22,27-28,30-35,41-48,68
+  s_9e2f769b0166f4::t_17944de061e077 49-56,58-62,64-67
+  s_9e2f769b0166f4::t_fbeebae89ce09a 57,63
+demos/media-drop/tsconfig.json
+  s_9e2f769b0166f4::t_0cccfa218b4985 15
+demos/media-drop/README.md
+  s_9e2f769b0166f4::t_16d809b1d8b8be 3,7-12,16-22,26-49,53-55,57,59,61-67,69,73-85
+demos/media-drop/src/client/viewer.test.ts
+  s_9e2f769b0166f4::t_5ada52ec9c07e6 1-16,20-21,26-28
+  s_9e2f769b0166f4::t_36b5f9cf262f91 17-19,22-25
+demos/media-drop/src/worker/media/upload.test.ts
+  s_9e2f769b0166f4::t_744f6644720185 1-45
+demos/media-drop/src/worker/vitest.config.ts
+  s_9e2f769b0166f4::t_653376afe70a7b 6
+demos/media-drop/src/worker/routes/studio.ts
+  s_9e2f769b0166f4::t_744f6644720185 11,111-115
+demos/media-drop/vitest.config.ts
+  s_9e2f769b0166f4::t_5ada52ec9c07e6 9
+  s_9e2f769b0166f4::t_25d6033ee5c2c4 6-7
+demos/media-drop/src/client/views/LibraryView.test.ts
+  s_9e2f769b0166f4::t_0cccfa218b4985 3,31
+  s_9e2f769b0166f4::t_d32627013ff1ee 14-17,79-83
+  s_9e2f769b0166f4::t_74cc87eb5d0333 1-2,4-7,9-13,18,23-30,32-58,94
+  s_9e2f769b0166f4::t_ab808c5d12f12c 59-78,84-86,88-93
+  s_9e2f769b0166f4::t_e43b4e604b7b60 87
+  s_9e2f769b0166f4::t_eb60c160837675 8
+  s_9e2f769b0166f4::t_49d2d28f9a92bf 19-22
+demos/media-drop/src/client/stores/studio.test.ts
+  s_9e2f769b0166f4::t_97996ecfa32882 23-26,30,32,103-120,135-148,152-160
+  s_9e2f769b0166f4::t_ea261d6a6bc350 56-60
+  s_9e2f769b0166f4::t_a0c5d5fe169338 149-151
+  s_9e2f769b0166f4::t_424f2450c9c66c 192-215
+  s_9e2f769b0166f4::t_70acee91b7d78f 1-20,27-29,31,33-50,61-102,121-134,161-164,173-191,216
+  s_9e2f769b0166f4::t_50caa9d09df587 21-22,51-55,165-172
+demos/media-drop/src/client/utils/defensive-guards.ts
+  s_9e2f769b0166f4::t_b61904db830b67 8-9
+  s_9e2f769b0166f4::t_f96b58541bb39c 1-7
+demos/media-drop/src/client/utils/defensive-guards.test.ts
+  s_9e2f769b0166f4::t_eb60c160837675 1-19
+demos/media-drop/scripts/empty-r2-bucket.js
+  s_9e2f769b0166f4::t_00ae94bd98fc4e 12-17,19-25,48-54
+  s_9e2f769b0166f4::t_49d2d28f9a92bf 26
+  s_9e2f769b0166f4::t_653376afe70a7b 27-36,38-40,42-45,55-58,60-67,69-70,73-75
+demos/media-drop/package.json
+  s_9e2f769b0166f4::t_653376afe70a7b 26-29,46
+  s_9e2f769b0166f4::t_4f6782e92faa2b 66
+demos/media-drop/src/client/components/UploadForm.test.ts
+  s_9e2f769b0166f4::t_9cabdfa5d229d6 1-6,23-26,31-32,39-46,60-64,120
+  s_9e2f769b0166f4::t_9a3b01f66c3bcd 71-75
+  s_9e2f769b0166f4::t_0cccfa218b4985 7-12,16-18,22,54
+  s_9e2f769b0166f4::t_17944de061e077 65-70,76-111,113-116,118-119
+  s_9e2f769b0166f4::t_49d2d28f9a92bf 14-15,20-21,27-30,47-50
+  s_9e2f769b0166f4::t_53d98f0074233d 13,19,33-38,51-53,55-59
+  s_9e2f769b0166f4::t_fbeebae89ce09a 112
+  s_9e2f769b0166f4::t_939168f9ea3298 117
+demos/media-drop/src/client/main.test.ts
+  s_9e2f769b0166f4::t_70acee91b7d78f 1-14
+demos/media-drop/src/worker/media/validation.test.ts
+  s_9e2f769b0166f4::t_79dfc79c4866ab 68-69
+  s_9e2f769b0166f4::t_bc0ec582718898 50-53,57-63,67,73-74
+  s_9e2f769b0166f4::t_b0d2df0c7d4bde 70-72
+  s_9e2f769b0166f4::t_68c2639b868fc3 54-56,64-66
+demos/media-drop/scripts/empty-r2-bucket.test.ts
+  s_9e2f769b0166f4::t_49d2d28f9a92bf 8-12,31-34,37-41
+  s_9e2f769b0166f4::t_653376afe70a7b 1-7,13-30,35-36,42-44
+demos/media-drop/src/client/test/setup.ts
+  s_9e2f769b0166f4::t_c693c9bab528a5 1-13
+demos/media-drop/package-lock.json
+  s_9e2f769b0166f4::t_1a816fe3eca974 26,2058-2073
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ad4b140f1e9ca5aaeeef935f5b5b58bc610f69ec",
+  "prompts": {},
+  "sessions": {
+    "s_9e2f769b0166f4": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05c0e509cffeVCNUM1Ic3muRnf",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
