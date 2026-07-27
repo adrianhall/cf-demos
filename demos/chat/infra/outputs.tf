@@ -1,0 +1,29 @@
+output "cloudflare_team_domain" {
+  description = "Cloudflare Access team domain for Worker JWT validation."
+  value       = local.cloudflare_team_domain
+}
+
+output "d1_database_id" {
+  description = "D1 database identifier bound to the Worker as DB in wrangler.jsonc, holding only the channel directory."
+  value       = cloudflare_d1_database.demo.id
+}
+
+output "d1_database_name" {
+  description = "D1 database name bound to the Worker as DB in wrangler.jsonc."
+  value       = cloudflare_d1_database.demo.name
+}
+
+output "environment" {
+  description = "Worker ENVIRONMENT variable value for this deployment, resolved automatically by cloudflareLogger()."
+  value       = "production"
+}
+
+output "hostname" {
+  description = "Public custom hostname for the chat workspace."
+  value       = local.hostname
+}
+
+output "worker_name" {
+  description = "Worker service name."
+  value       = cloudflare_worker.demo.name
+}
