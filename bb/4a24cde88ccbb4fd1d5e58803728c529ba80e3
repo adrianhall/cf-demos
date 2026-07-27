@@ -1,0 +1,19 @@
+demos/media-drop/infra/main.tf
+  s_9e2f769b0166f4::t_17181f49de9b91 51,60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bb4a24cde88ccbb4fd1d5e58803728c529ba80e3",
+  "prompts": {},
+  "sessions": {
+    "s_9e2f769b0166f4": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05c0e509cffeVCNUM1Ic3muRnf",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
