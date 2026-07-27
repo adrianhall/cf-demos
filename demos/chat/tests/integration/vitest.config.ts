@@ -19,6 +19,11 @@ export default defineProject(() => {
     test: {
       name: "integration",
       include: ["**/*.test.ts"],
+      // Integration test files share one real workerd runtime and its Durable Object storage.
+      // Running files concurrently intermittently starves hibernatable WebSocket delivery in
+      // this pool (see docs/DECISIONS.md); Cloudflare's own migration guide recommends
+      // serializing file execution for suites that share a runtime instance this way.
+      fileParallelism: false,
     },
   };
 });
