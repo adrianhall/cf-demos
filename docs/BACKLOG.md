@@ -49,7 +49,7 @@ Primary flow:
 
 Directory: `demos/todo-app`
 
-Status: Planned.
+Status: Implemented.
 
 Introduces: D1 and authenticated Cloudflare Access identity.
 
@@ -74,7 +74,12 @@ Directory: `demos/media-drop`
 
 Introduces: R2.
 
-Builds on: Worker APIs, Access, and relational metadata.
+Builds on:
+
+- Workers APIs (Hono) and Static Assets
+- D1 for metadata storage
+- R2 for object storage
+- Access - provide "optional" authentication for home page and authenticated required section
 
 Prior art:
 
@@ -89,9 +94,10 @@ Demonstrates:
 
 Primary flow:
 
-1. Upload an image, audio file, or short video.
-2. View its metadata and download it again.
-3. Delete it and verify that both the object and metadata are removed.
+1. Log in as authenticated user; upload an image, audio file, or short video (unpublished).
+2. Also as authenticated user; publish a video.
+3. As unauthenticated user, view its metadata and download it again.
+4. As authenticated user, delete a video and verify both the object and metadata are removed.
 
 Keep out:
 
