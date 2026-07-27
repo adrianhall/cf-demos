@@ -1,0 +1,88 @@
+demos/todo-app/README.md
+  s_b01d97ccd365c9::t_37dd15bb04bc97 3,5,8-9,13,15,17-19,26,32,41,43-44,49,58-62,64-73,76-77,79-82,85-87,93-94,98,100,102-104,117-122,124-132
+  s_b01d97ccd365c9::t_1f0d4f7153608e 10,105-106,110-113,123
+AGENTS.md
+  s_b01d97ccd365c9::t_9854958345932c 157-163
+demos/todo-app/src/client/stores/todos.test.ts
+  s_b01d97ccd365c9::t_2f21ef0f388dac 32-36,67-69,130-132
+  s_b01d97ccd365c9::t_71dd019afff3de 150-153
+  s_b01d97ccd365c9::t_af458f8d7a230c 52-54
+  s_b01d97ccd365c9::t_cfeb74fd28314c 1-31,37-51,55-63,78-115,137,162
+  s_b01d97ccd365c9::t_59f4183610e63f 64-66,70-77,116-129,133-136
+  s_b01d97ccd365c9::t_961dd28c542f63 138-149,154-161
+demos/todo-app/src/worker/todos/repository.ts
+  s_b01d97ccd365c9::t_0b1c4987e6bbf4 29-30
+demos/todo-app/src/client/components/TodoForm.test.ts
+  s_b01d97ccd365c9::t_cfeb74fd28314c 1-41
+demos/todo-app/src/worker/todos/validation.test.ts
+  s_b01d97ccd365c9::t_6920159c4e5ba5 51-52,60
+  s_b01d97ccd365c9::t_af458f8d7a230c 53-59
+demos/todo-app/infra/outputs.tf
+  s_b01d97ccd365c9::t_9854958345932c 7
+demos/todo-app/src/client/views/HomeView.vue
+  s_b01d97ccd365c9::t_96b928e6acc893 3,5
+demos/todo-app/src/client/stores/session.test.ts
+  s_b01d97ccd365c9::t_cfeb74fd28314c 1-16,22-34,40-48,74
+  s_b01d97ccd365c9::t_961dd28c542f63 63-69,73
+  s_b01d97ccd365c9::t_71dd019afff3de 70-72
+  s_b01d97ccd365c9::t_59f4183610e63f 49-52,56-62
+  s_b01d97ccd365c9::t_2f21ef0f388dac 17-21,35-39,53-55
+demos/todo-app/src/client/main.test.ts
+  s_b01d97ccd365c9::t_c1f2991d531114 18-21
+  s_b01d97ccd365c9::t_59f4183610e63f 1-17,26-69
+  s_b01d97ccd365c9::t_99c3b276be03ae 22-25
+demos/todo-app/src/client/components/TodoList.test.ts
+  s_b01d97ccd365c9::t_af458f8d7a230c 25-28,44-46
+  s_b01d97ccd365c9::t_cfeb74fd28314c 1-24,29-43,47-59
+demos/todo-app/src/client/App.test.ts
+  s_b01d97ccd365c9::t_961dd28c542f63 48-68
+  s_b01d97ccd365c9::t_6920159c4e5ba5 27-47
+demos/todo-app/DEMO.md
+  s_b01d97ccd365c9::t_1f0d4f7153608e 25-27,43,47
+  s_b01d97ccd365c9::t_37dd15bb04bc97 1,3,5,7,9-12,14,16-19,21,23-24,28,30-42,44-46,48-58
+demos/todo-app/src/worker/todos/repository.test.ts
+  s_b01d97ccd365c9::t_20d9f1a1c395b6 16,32-34
+  s_b01d97ccd365c9::t_28a75250f58a88 18-30
+  s_b01d97ccd365c9::t_09910849112a12 11,13-14
+  s_b01d97ccd365c9::t_a205d8ca902f3b 39-51
+  s_b01d97ccd365c9::t_635332d5fb06fe 1-10,15,53-54,58-60,62-103
+  s_b01d97ccd365c9::t_0b1c4987e6bbf4 12,17,31,35-37,52,57,61
+  s_b01d97ccd365c9::t_6865ba568123a9 55-56
+  s_b01d97ccd365c9::t_f05f2e02bb4de4 38
+demos/todo-app/src/worker/routes/todos.ts
+  s_b01d97ccd365c9::t_1f0d4f7153608e 45-57,65,73-75
+demos/todo-app/package.json
+  s_b01d97ccd365c9::t_9854958345932c 26,34
+demos/todo-app/src/client/views/HomeView.test.ts
+  s_b01d97ccd365c9::t_51b3e23a942479 1-9,11-29,32-35,37-78,164
+  s_b01d97ccd365c9::t_370936d1a1456b 10
+  s_b01d97ccd365c9::t_2f21ef0f388dac 83-85,87-89
+  s_b01d97ccd365c9::t_c1f2991d531114 114-116
+  s_b01d97ccd365c9::t_71dd019afff3de 113,133-135,141
+  s_b01d97ccd365c9::t_af458f8d7a230c 30-31,36
+  s_b01d97ccd365c9::t_59f4183610e63f 79-82,86,90-112,117-125
+  s_b01d97ccd365c9::t_961dd28c542f63 126-132,136-140,142-163
+demos/todo-app/tests/integration/worker.test.ts
+  s_b01d97ccd365c9::t_635332d5fb06fe 45-52,54
+  s_b01d97ccd365c9::t_af458f8d7a230c 74-89,141-148,156-163
+  s_b01d97ccd365c9::t_6920159c4e5ba5 62-73,90,131-140,149-155,164-169
+  s_b01d97ccd365c9::t_4cd82552a88785 170
+demos/todo-app/infra/main.tf
+  s_b01d97ccd365c9::t_da4ec14b64ef13 125-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b6caabb991a1d1d8bda747cf639625c09f9eaf4a",
+  "prompts": {},
+  "sessions": {
+    "s_b01d97ccd365c9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05d1e4570ffeMkyxiv4JpgwFKO",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
