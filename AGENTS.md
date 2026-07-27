@@ -154,7 +154,13 @@ Terraform and Wrangler have separate responsibilities:
   Worker `ENVIRONMENT` value distinct from production) in a committed
   `.dev.vars` — commit it only when it holds no secrets, and say so in a
   comment at the top of the file.
-- Run product migrations, including D1 migrations, through Wrangler when needed.
+- Run product migrations, including D1 migrations, through Wrangler when needed. D1 migration
+  scripts MUST set `CI=1` to suppress Wrangler's interactive confirmation, target the configured
+  database binding name rather than a Terraform output or database name, and always state the
+  target location explicitly. Use separate atomic scripts named `db:migrate:remote` and
+  `db:migrate:local`, for example `CI=1 wrangler d1 migrations apply DB --remote` for deployment
+  and `CI=1 wrangler d1 migrations apply DB --local` for local development. Never omit either
+  `--remote` or `--local`.
 - The generated `wrangler.jsonc` MUST NOT duplicate ownership of settings
   managed by Terraform.
 - `npm run deploy` and `npm run teardown` MUST orchestrate the entire lifecycle.

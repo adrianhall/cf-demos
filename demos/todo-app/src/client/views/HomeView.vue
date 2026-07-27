@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, shallowRef } from "vue";
+// biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import TodoForm from "../components/TodoForm.vue";
+// biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import TodoList from "../components/TodoList.vue";
 import { useTodosStore, type Todo } from "../stores/todos";
 

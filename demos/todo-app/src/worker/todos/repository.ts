@@ -26,8 +26,8 @@ function toTodo(row: TodoRow): Todo {
  * verified Access email in its predicate so an identifier cannot cross user boundaries.
  */
 export class TodoRepository {
-  /** @param database D1 database bound to this Worker (`env.DB`). */
-  constructor(private readonly database: D1Database) {}
+  /** @param database D1 database capability used to prepare the repository's statements. */
+  constructor(private readonly database: Pick<D1Database, "prepare">) {}
 
   /**
    * List one user's TODOs, newest first.

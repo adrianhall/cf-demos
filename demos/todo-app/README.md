@@ -1,144 +1,132 @@
 # Tasks (Personalized TODO App)
 
-An independently deployable Cloudflare Workers, Cloudflare Access, and D1 demo: a
-per-user TODO list where each authenticated Access identity only ever sees their own
-tasks.
+An independently deployable Cloudflare Workers, Cloudflare Access, and D1 demo. Each authenticated Access identity can manage only its own TODOs.
 
-> **Status:** Phases 1 and 2 of `docs/02-TODO-APP.md` are complete. Cloudflare Access gates
-> the hostname and API, while the D1-backed `/api/todos` workflow and TodoMVC-style UI arrive
-> in later phases.
-
-## Architecture (current)
+## Architecture
 
 ```text
-Terraform: Worker + custom domain (tasks.cfapps.uk) + D1 database + Access application
-Access:    any enabled identity provider at the hostname edge
-Worker:    validates Access JWTs for /api/*
-Wrangler:  Worker code deployment, D1 migrations, static assets
+Browser -> Cloudflare Access -> Worker static assets and /api/* routes -> D1
+                                      |
+                                      +-> Workers Logs: TODO mutation events
 ```
 
-Terraform owns the Worker service, D1 database, custom domain, Access application and policy,
-and Worker observability settings (Workers Logs + traces with explicit sampling). Wrangler owns
-Worker code versions, D1 schema migrations, and static asset deployment. Access protects every
-page at the edge and `cloudflareAccess()` independently validates `/api/*` JWTs before routes
-can use the verified identity email.
+Terraform owns the Worker service, D1 database, custom domain, Access application and policy, and observability settings. Wrangler owns Worker code versions, D1 schema migrations, and static assets. Access protects pages at the edge and `cloudflareAccess()` independently validates `/api/*` JWTs. Every D1 query scopes data to the verified email as `user_id`, so users cannot read or mutate each other's TODOs.
 
-Later phases add:
-- The `todos` D1 schema and an authenticated `/api/todos` CRUD API scoped to the
-  verified Access identity (Phase 3).
-- A TodoMVC-style Vue 3 + Vuetify interface (Phase 4).
-- Full test coverage and final documentation (Phase 5).
+The demo uses one generated, gitignored `wrangler.jsonc`:
 
-This demo uses one Wrangler configuration file, generated in two different ways:
-
-- `wrangler.jsonc.tpl`: committed template with `{{placeholder}}` markers.
-- `wrangler.jsonc`: gitignored, generated either from hardcoded local values
-  (`scripts/generate-local-wrangler.js`, used by `dev`/`build`/`check:types`) or from live
-  Terraform outputs (`generate-wrangler`, used by `npm run deploy`). Only one of these ever
-  runs against a given checkout at a time — the local script is a no-op once a real
-  `wrangler.jsonc` exists.
+- `wrangler.jsonc.tpl` is the committed template with Terraform placeholders.
+- `scripts/generate-local-wrangler.js` fills local values when no config exists.
+- `generate-wrangler -f --terraform infra` replaces it with Terraform outputs during deployment.
 
 ## Prerequisites
 
 - Node.js 24 or newer and npm 11 or newer.
 - Terraform 1.10 or newer.
 - A Cloudflare zone for `cfapps.uk` with no conflicting `tasks.cfapps.uk` CNAME.
+- A Cloudflare Access organization with an enabled identity provider.
 - An API token scoped to the target account and zone with:
   - Account: Workers Scripts - Edit
   - Account: Access: Apps and Policies - Edit
   - Account: D1 - Edit
 
-Use a remote, encrypted Terraform state backend for shared or production operation. The
-local state files are ignored and must not be committed.
+Use encrypted remote Terraform state for shared or production operation. Do not commit local state.
 
 ## Configuration
-
-Create the operator environment file:
 
 ```sh
 cd demos/todo-app
 cp .env.example .env
 ```
 
-Set every value in `.env`:
+Set these `.env` values:
 
-- `CLOUDFLARE_API_TOKEN`: API token with the required permissions.
-- `CLOUDFLARE_ACCOUNT_ID`: account that owns the Worker, D1 database, and Access
-  applications.
+- `CLOUDFLARE_API_TOKEN`: token with the listed permissions.
+- `CLOUDFLARE_ACCOUNT_ID`: account owning the Worker, D1 database, and Access application.
 - `CLOUDFLARE_ZONE_ID`: zone ID for `cfapps.uk`.
 - `DEMO_DOMAIN`: `cfapps.uk`.
 - `DEMO_NAME`: `tasks`, producing `tasks.cfapps.uk`.
 
-Do not commit `.env`, Terraform state, the generated `wrangler.jsonc`, or generated
-binding types (`worker-configuration.d.ts`).
+Do not commit `.env`, Terraform state, generated `wrangler.jsonc`, or generated `worker-configuration.d.ts`.
 
 ## Local Development
-
-Install dependencies and start the local Worker/Vite server:
 
 ```sh
 npm install
 npm start
 ```
 
-`prestart` generates a local `wrangler.jsonc` (fixed placeholder values, no Terraform
-required) and builds worker binding types before `vite dev` starts. D1 runs against
-Miniflare's local SQLite simulation — no real Cloudflare D1 database is touched locally.
-The development-only Access plugin redirects protected paths to its local login page; choose
-either `alice@example.com` or `bob@example.com`. The always-visible **Sign out** control uses
-`/cdn-cgi/access/logout`, which the plugin emulates locally and Cloudflare Access serves in
-production.
+The start hook generates local Wrangler bindings, applies the D1 migration to Miniflare's local SQLite database, and starts Vite. The development-only Access plugin offers `alice@example.com` and `bob@example.com`; the always-visible **Sign out** control clears either the local or production Access session. Local data is stored in `.wrangler/` and never touches the deployed D1 database.
 
-## Testing
+## API
+
+Every endpoint requires a valid Cloudflare Access identity. Errors use RFC 9457 `application/problem+json` responses.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| `GET` | `/api/me` | Return the verified identity email. |
+| `GET` | `/api/todos` | List the current user's TODOs. |
+| `POST` | `/api/todos` | Create from `{ "title": "..." }`. |
+| `PATCH` | `/api/todos/:id` | Rename and/or complete the current user's TODO. |
+| `DELETE` | `/api/todos/:id` | Delete the current user's TODO. |
+| `DELETE` | `/api/todos/completed` | Delete the current user's completed TODOs. |
+
+## Testing And Validation
 
 ```sh
-npm test              # all Vitest projects (client, worker, integration)
-npm run test:unit     # client + worker projects only
-npm run test:integration
+npm run check
+npm test
 npm run test:coverage
+npm run build
+terraform -chdir=infra fmt -check
+terraform -chdir=infra init
+terraform -chdir=infra validate
 ```
 
-Integration tests run the real Worker in `workerd` via
-`@cloudflare/vitest-pool-workers`, against the same generated `wrangler.jsonc` used for
-local development. They cover unauthenticated API rejection and a verified development token;
-the full TODO workflow follows in Phase 3.
+The `worker` project covers validation, Access path policy, and repository ownership predicates. The `client` project uses jsdom, Vue Test Utils, and Pinia test utilities. The `integration` project runs the real Worker in `workerd` with Miniflare D1. It verifies unauthenticated rejection for every API route, per-user isolation, and the create, complete, list, and delete workflow.
+
+`npm run test:coverage` uses `@vitest/coverage-istanbul` and writes HTML and LCOV reports to gitignored `coverage/`. It reports coverage without an enforced threshold.
 
 ## Deployment
 
 ```sh
 cd demos/todo-app
-cp .env.example .env   # fill in real values
+cp .env.example .env
+# Fill in real values, then:
 npm run deploy
 ```
 
-`npm run deploy` provisions infrastructure with Terraform, generates `wrangler.jsonc`
-and binding types from the live Terraform outputs, applies D1 migrations to the remote
-database, builds the client, and deploys the Worker.
+`npm run deploy` runs Terraform initialization and apply, regenerates Wrangler configuration and bindings from Terraform outputs, applies remote D1 migrations, builds the application, and deploys the Worker.
+
+Verify deployment:
+
+1. Visit `https://tasks.cfapps.uk` and authenticate through Access.
+2. Create a task, mark it complete, then delete it.
+3. Sign out, sign in as another identity, and confirm the first task is not visible.
+4. In **Workers & Pages → tasks → Logs**, filter for a TODO mutation event such as
+   `todo_created` or `todo_completed`.
+
+## Observability
+
+Terraform enables persisted Workers Logs at 100% sampling and traces at 10% sampling. Successful
+mutations emit informational `todo_created`, `todo_completed`, `todo_uncompleted`,
+`todo_removed`, or `completed_todos_removed` events. Per-item events contain only the task UUID;
+all events deliberately exclude task text, identity data, tokens, and authorization headers.
+
+## Troubleshooting
+
+| Symptom | Resolution |
+| --- | --- |
+| Custom domain attach fails with `100124` | Re-run `npm run deploy`; Terraform's inert bootstrap deployment satisfies the required Worker deployment ordering. |
+| Access sign-in is denied | Confirm an identity provider is enabled in the target Zero Trust organization. |
+| `/api/*` returns `401` | Sign in through Access at `https://tasks.cfapps.uk`; API routes require the signed Access session. |
+| D1 migration fails | Ensure Terraform apply completed, then re-run `npm run deploy` to apply `migrations/0001_create_todos.sql`. |
+| Logs are missing | Confirm the deployed Worker is `tasks` and filter Workers Logs for a TODO mutation event. |
 
 ## Teardown
 
 ```sh
+cd demos/todo-app
 npm run teardown
 ```
 
-`terraform destroy` removes the Worker, the custom domain, and the D1 database — no
-named or billable resources are left behind. `postteardown` removes the generated
-`wrangler.jsonc` and `worker-configuration.d.ts`.
-
-## Observability
-
-Workers Logs (100% sampling) and traces (10% sampling) are enabled via Terraform on the
-`cloudflare_worker` resource. Once the Worker has routes (Phase 3), structured log events
-will be visible in the Cloudflare dashboard under **Workers & Pages → tasks → Logs**.
-
-## Troubleshooting
-
-- **`terraform apply` fails with error `100124`** attaching the custom domain: this is
-  expected on a truly fresh Worker before the bootstrap deployment exists; re-running
-  `npm run deploy:infra:apply` after the bootstrap resources are created resolves it.
-- **`wrangler.jsonc` already exists and looks wrong**: delete it and re-run the relevant
-  generation step (`npm run generate:wrangler:local` for local development, or
-  `npm run generate:wrangler` after a real `terraform apply`).
-- **Access sign-in is denied**: confirm the target Zero Trust organization has an enabled login
-  method. The deployed application accepts any available identity provider; lock it down with a
-  more specific Access policy if required.
+Terraform removes the Access application and policy, Worker, custom domain, and D1 database. The teardown hook removes generated Wrangler configuration and binding types, leaving no named or billable demo resources behind.

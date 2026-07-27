@@ -4,7 +4,7 @@ output "d1_database_id" {
 }
 
 output "d1_database_name" {
-  description = "D1 database name, also the positional argument `wrangler d1 migrations apply` expects."
+  description = "D1 database name bound to the Worker as DB in wrangler.jsonc."
   value       = cloudflare_d1_database.demo.name
 }
 

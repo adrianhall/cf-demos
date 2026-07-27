@@ -48,6 +48,16 @@ describe("validateCreateTodoInput", () => {
       });
     },
   );
+
+  it("rejects extra create fields", () => {
+    expectProblem(
+      () => validateCreateTodoInput({ completed: false, title: "Task" }),
+      {
+        detail: "Only title may be supplied.",
+        status: 422,
+      },
+    );
+  });
 });
 
 describe("validateUpdateTodoInput", () => {

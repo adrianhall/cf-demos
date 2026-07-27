@@ -122,10 +122,10 @@ resource "cloudflare_zero_trust_access_policy" "authenticated_users" {
 # Access enforces this application at the edge, including SPA page routes that are served
 # directly by the ASSETS binding and never reach the Worker.
 resource "cloudflare_zero_trust_access_application" "demo" {
-  account_id   = local.cloudflare_account_id
-  name         = local.demo_name
-  domain       = local.hostname
-  type         = "self_hosted"
+  account_id = local.cloudflare_account_id
+  name       = local.demo_name
+  domain     = local.hostname
+  type       = "self_hosted"
 
   destinations = [{
     type = "public"

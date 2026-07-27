@@ -42,13 +42,19 @@ todosRouter.patch("/:id", async (context) => {
   const userId = context.get("Cloudflare_Access_Identity").email;
   const input = validateUpdateTodoInput(await readJson(context.req.raw));
   const repository = new TodoRepository(context.env.DB);
-  return context.json({
-    todo: await repository.update(
-      userId,
-      validateTodoId(context.req.param("id")),
-      input,
-    ),
-  });
+  const todo = await repository.update(
+    userId,
+    validateTodoId(context.req.param("id")),
+    input,
+  );
+  if (input.completed !== undefined) {
+    context
+      .get("LOGGER")
+      .info(todo.completed ? "todo_completed" : "todo_uncompleted", {
+        todoId: todo.id,
+      });
+  }
+  return context.json({ todo });
 });
 
 /** Delete all completed TODOs belonging to the verified Access identity. */
@@ -56,6 +62,7 @@ todosRouter.delete("/completed", async (context) => {
   const userId = context.get("Cloudflare_Access_Identity").email;
   const repository = new TodoRepository(context.env.DB);
   await repository.deleteCompleted(userId);
+  context.get("LOGGER").info("completed_todos_removed");
   return new Response(null, { status: 204 });
 });
 
@@ -63,6 +70,8 @@ todosRouter.delete("/completed", async (context) => {
 todosRouter.delete("/:id", async (context) => {
   const userId = context.get("Cloudflare_Access_Identity").email;
   const repository = new TodoRepository(context.env.DB);
-  await repository.delete(userId, validateTodoId(context.req.param("id")));
+  const todoId = validateTodoId(context.req.param("id"));
+  await repository.delete(userId, todoId);
+  context.get("LOGGER").info("todo_removed", { todoId });
   return new Response(null, { status: 204 });
 });

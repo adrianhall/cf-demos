@@ -24,4 +24,46 @@ describe("App", () => {
     );
     expect(wrapper.get('[data-testid="router-view"]').text()).toBe("Tasks");
   });
+
+  it("renders the verified email after the session store loads it", () => {
+    const wrapper = mount(App, {
+      global: {
+        plugins: [
+          createTestingPinia({
+            createSpy: vi.fn,
+            initialState: { session: { email: "alice@example.com" } },
+          }),
+        ],
+        stubs: {
+          RouterView: true,
+          VApp: { template: "<div><slot /></div>" },
+          VBtn: { template: '<a v-bind="$attrs"><slot /></a>' },
+          VMain: { template: "<main><slot /></main>" },
+        },
+      },
+    });
+
+    expect(wrapper.text()).toContain("alice@example.com");
+  });
+
+  it("shows identity verification while the session is loading", () => {
+    const wrapper = mount(App, {
+      global: {
+        plugins: [
+          createTestingPinia({
+            createSpy: vi.fn,
+            initialState: { session: { loading: true } },
+          }),
+        ],
+        stubs: {
+          RouterView: true,
+          VApp: { template: "<div><slot /></div>" },
+          VBtn: { template: '<a v-bind="$attrs"><slot /></a>' },
+          VMain: { template: "<main><slot /></main>" },
+        },
+      },
+    });
+
+    expect(wrapper.text()).toContain("Verifying identity…");
+  });
 });
