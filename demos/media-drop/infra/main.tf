@@ -48,7 +48,7 @@ resource "cloudflare_worker" "demo" {
 
 resource "cloudflare_d1_database" "media" {
   account_id = local.cloudflare_account_id
-  name       = "${local.demo_name}-media"
+  name       = "${local.demo_name}-db"
 
   read_replication = {
     mode = "disabled"
@@ -57,7 +57,7 @@ resource "cloudflare_d1_database" "media" {
 
 resource "cloudflare_r2_bucket" "media" {
   account_id = local.cloudflare_account_id
-  name       = "${local.demo_name}-media"
+  name       = "${local.demo_name}-store"
 }
 
 # A custom domain requires a Worker deployment. Wrangler owns all real deployments, so this
