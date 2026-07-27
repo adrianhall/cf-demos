@@ -7,5 +7,11 @@ export default defineProject({
     environment: "jsdom",
     include: ["**/*.test.ts"],
     name: "client",
+    server: {
+      deps: {
+        inline: [/vuetify/],
+      },
+    },
+    setupFiles: ["./test/setup.ts"],
   },
 });

@@ -8,6 +8,7 @@ import {
   putMedia,
 } from "../media/storage";
 import type { MediaItem } from "../media/types";
+import { persistDraftMetadata } from "../media/upload";
 import { validateMediaId, validateUploadRequest } from "../media/validation";
 
 /** Access-protected, owner-scoped media API mounted at `/api/studio`. */
@@ -107,12 +108,11 @@ studioRouter.post("/media", async (context) => {
     updatedAt: timestamp,
     publishedAt: null,
   };
-  try {
-    await new MediaRepository(context.env.DB).createDraft(item);
-  } catch (error) {
-    await deleteMedia(context.env.MEDIA, r2Key);
-    throw error;
-  }
+  await persistDraftMetadata(
+    new MediaRepository(context.env.DB),
+    context.env.MEDIA,
+    item,
+  );
   context.get("LOGGER").info("media_uploaded", {
     mediaId: item.id,
     contentType: item.contentType,

@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import type { MediaItem } from "../media";
 import { publicViewerUrl } from "../viewer";
+import { getErrorMessage } from "../utils/defensive-guards";
 
 /** Extract a useful API error message without assuming an RFC 9457 response. */
 async function responseMessage(response: Response): Promise<string> {
@@ -33,10 +34,7 @@ export const useLibraryStore = defineStore("library", {
         const body = (await response.json()) as { media: MediaItem[] };
         this.media = body.media;
       } catch (error) {
-        this.error =
-          error instanceof Error
-            ? error.message
-            : "Could not load the library.";
+        this.error = getErrorMessage(error, "Could not load the library.");
       } finally {
         this.loading = false;
       }
@@ -55,10 +53,7 @@ export const useLibraryStore = defineStore("library", {
         const body = (await response.json()) as { media: MediaItem };
         return body.media;
       } catch (error) {
-        this.error =
-          error instanceof Error
-            ? error.message
-            : "Could not load this media item.";
+        this.error = getErrorMessage(error, "Could not load this media item.");
         return null;
       } finally {
         this.loading = false;

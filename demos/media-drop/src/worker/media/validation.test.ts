@@ -47,6 +47,31 @@ describe("validateUploadRequest", () => {
     ).toThrow();
     expect(() => validateUploadRequest(uploadRequest())).toThrow();
   });
+
+  it("rejects missing bodies, invalid titles, and malformed lengths", () => {
+    expect(() =>
+      validateUploadRequest(
+        new Request("https://media.example/api/studio/media", {
+          method: "POST",
+        }),
+      ),
+    ).toThrow();
+    expect(() =>
+      validateUploadRequest(uploadRequest({ "X-Media-Title": "   " })),
+    ).toThrow();
+    expect(() =>
+      validateUploadRequest(
+        uploadRequest({
+          "Content-Length": "1.5",
+        }),
+      ),
+    ).toThrow();
+    expect(() =>
+      validateUploadRequest(
+        uploadRequest({ "X-Media-Title": "x".repeat(281) }),
+      ),
+    ).toThrow();
+  });
 });
 
 describe("validateMediaId", () => {

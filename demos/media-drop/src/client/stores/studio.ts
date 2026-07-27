@@ -1,5 +1,7 @@
 import { defineStore } from "pinia";
 import type { MediaItem } from "../media";
+import { getErrorMessage } from "../utils/defensive-guards";
+import { valueOrDefault } from "@adrianhall/cloudflare-toolkit";
 
 /** Progress callback invoked while an XMLHttpRequest upload transfers file bytes. */
 export type UploadProgressHandler = (progress: number) => void;
@@ -45,8 +47,7 @@ export const useStudioStore = defineStore("studio", {
         this.email = identity.email;
         this.media = body.media;
       } catch (error) {
-        this.error =
-          error instanceof Error ? error.message : "Could not load the studio.";
+        this.error = getErrorMessage(error, "Could not load the studio.");
       } finally {
         this.loading = false;
       }
@@ -83,7 +84,7 @@ export const useStudioStore = defineStore("studio", {
           }
           if (request.status !== 201 || body.media === undefined) {
             reject(
-              new Error(body.detail ?? `Upload failed (${request.status}).`),
+              new Error(valueOrDefault(body.detail, `Upload failed (${request.status}).`)),
             );
             return;
           }
