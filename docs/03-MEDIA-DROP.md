@@ -292,8 +292,14 @@ needed; the owner-scoping is the isolation boundary.
     remote migrate, `vite build`, `wrangler deploy`) and `npm run teardown`,
     composed from small `package.json` scripts chained with `run-s`. Because R2
     rejects destroying a non-empty bucket, `teardown` MUST run a `preteardown`
-    step that empties the `MEDIA` bucket (using `@adrianhall/cloudflare-scripts`'
-    R2-emptying helper) before `terraform destroy`, and a `postteardown` step
+    step that invokes `scripts/empty-r2-bucket.js` with the Terraform-derived
+    `MEDIA` bucket name before `terraform destroy`. The script uses the demo's
+    ordinary `CLOUDFLARE_API_TOKEN` to call the dashboard-observed
+    `DELETE /client/v4/accounts/{account_id}/r2/buckets/{bucket_name}/objects?prefix=`
+    API; do not provision an S3 token or use `@adrianhall/cloudflare-scripts`'
+    R2-emptying helper for this demo. The endpoint is undocumented, so keep the
+    rationale and copy guidance in `docs/DECISIONS.md` and `AGENTS.md` current. Add a
+    `postteardown` step
     that removes the generated `wrangler.jsonc` and `worker-configuration.d.ts`.
     A successful teardown leaves no named or billable resources — no Worker, D1
     database, R2 bucket, or Access applications.

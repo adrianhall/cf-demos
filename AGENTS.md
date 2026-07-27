@@ -316,9 +316,15 @@ Use `@adrianhall/cloudflare-scripts` where applicable for:
 
 - Generating `wrangler.jsonc` from Terraform outputs.
 - Generating Wrangler binding types.
-- Emptying R2 buckets before destruction.
 - Removing Container applications and images before destruction.
 - Deployment and teardown orchestration.
+
+For R2 teardown, copy `demos/media-drop/scripts/empty-r2-bucket.js` and run it as a
+`preteardown` step in preference to `@adrianhall/cloudflare-scripts`' `empty-r2-bucket`
+command. The script uses the demo's ordinary Cloudflare API token with `Workers R2 Storage -
+Edit` to call the dashboard-observed empty-bucket API; it does not need a Terraform-created
+S3 token. This endpoint is not documented as a public API contract, so see `docs/DECISIONS.md`
+and revalidate it before relying on it in another demo.
 
 ## Source Organization
 
