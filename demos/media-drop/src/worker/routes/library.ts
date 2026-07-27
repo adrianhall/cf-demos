@@ -3,6 +3,7 @@ import type { AppBindings } from "../bindings";
 import { toPublicMediaItem, MediaRepository } from "../media/repository";
 import { getMedia } from "../media/storage";
 import { validateMediaId } from "../media/validation";
+import { anonymousViewer } from "../media/viewer";
 
 /** Public, read-only published-media API mounted at `/api/library`. */
 export const libraryRouter = new Hono<AppBindings>();
@@ -19,7 +20,23 @@ libraryRouter.get("/:id", async (context) => {
   const item = await repository.getPublished(
     validateMediaId(context.req.param("id")),
   );
+  context.get("LOGGER").info("media_viewed_info", {
+    mediaId: item.id,
+    user: anonymousViewer(context.req.raw),
+  });
   return context.json({ media: toPublicMediaItem(item) });
+});
+
+/** Record an actual public audio or video play after confirming the item is published. */
+libraryRouter.post("/:id/play", async (context) => {
+  const item = await new MediaRepository(context.env.DB).getPublished(
+    validateMediaId(context.req.param("id")),
+  );
+  context.get("LOGGER").info("media_played", {
+    mediaId: item.id,
+    user: anonymousViewer(context.req.raw),
+  });
+  return new Response(null, { status: 204 });
 });
 
 /** Stream a published object, honoring R2's byte-range and conditional request handling. */
@@ -34,13 +51,17 @@ libraryRouter.get("/:id/content", async (context) => {
     context.req.raw,
     item.title,
   );
-  if (storedMedia.preconditionFailed) {
-    return new Response(null, { status: 412, headers: storedMedia.headers });
+  if (storedMedia.conditionalStatus !== null) {
+    return new Response(null, {
+      status: storedMedia.conditionalStatus,
+      headers: storedMedia.headers,
+    });
   }
   context.get("LOGGER").info("media_downloaded", {
     mediaId: item.id,
     contentType: item.contentType,
     sizeBytes: item.sizeBytes,
+    user: anonymousViewer(context.req.raw),
   });
   return new Response(storedMedia.body, {
     status: storedMedia.partial ? 206 : 200,

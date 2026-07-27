@@ -31,7 +31,8 @@
     "generate:wrangler": "generate-wrangler -f --terraform infra",
     "generate:wrangler:local": "node scripts/generate-local-wrangler.js",
     "prestart": "run-s generate:wrangler:local generate:types",
-    "start": "vite dev",
+    "start": "run-s db:migrate:local start:vite",
+    "start:vite": "vite dev",
     "preteardown": "npm run preteardown:r2",
     "preteardown:r2": "node scripts/empty-r2-bucket.js \"$(terraform -chdir=infra output -raw r2_bucket_name)\"",
     "teardown": "terraform -chdir=infra destroy -auto-approve",
@@ -49,6 +50,7 @@
     "hono": "4.12.32",
     "pinia": "4.0.2",
     "vue": "3.5.40",
+    "vue-feather": "^2.0.0",
     "vue-router": "5.2.0",
     "vuetify": "4.1.6"
   },

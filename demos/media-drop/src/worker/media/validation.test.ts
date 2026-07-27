@@ -45,6 +45,7 @@ describe("validateUploadRequest", () => {
         uploadRequest({ "Content-Length": String(MAX_MEDIA_SIZE_BYTES + 1) }),
       ),
     ).toThrow();
+    expect(() => validateUploadRequest(uploadRequest())).toThrow();
   });
 });
 

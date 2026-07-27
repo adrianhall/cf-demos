@@ -7,7 +7,7 @@ import {
 import type { UploadInput } from "./types";
 
 /** Largest object accepted by this short-media demonstration. */
-export const MAX_MEDIA_SIZE_BYTES = 50 * 1024 * 1024;
+export const MAX_MEDIA_SIZE_BYTES = 100 * 1024 * 1024;
 
 const MAX_TITLE_LENGTH = 280;
 const mediaIdPattern =
@@ -61,7 +61,9 @@ export function validateUploadRequest(request: Request): UploadInput {
 
   const contentLengthHeader = request.headers.get("Content-Length");
   if (contentLengthHeader === null) {
-    return { title, contentType, contentLength: null, body: request.body };
+    throw unprocessableContent({
+      detail: "Content-Length is required for media uploads.",
+    });
   }
 
   if (!/^\d+$/u.test(contentLengthHeader)) {
@@ -75,7 +77,7 @@ export function validateUploadRequest(request: Request): UploadInput {
     !Number.isSafeInteger(contentLength) ||
     contentLength > MAX_MEDIA_SIZE_BYTES
   ) {
-    throw contentTooLarge({ detail: "Media must not exceed 50 MiB." });
+    throw contentTooLarge({ detail: "Media must not exceed 100 MiB." });
   }
   return { title, contentType, contentLength, body: request.body };
 }

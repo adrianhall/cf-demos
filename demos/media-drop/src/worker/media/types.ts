@@ -34,8 +34,8 @@ export interface UploadInput {
   title: string;
   /** Allowed media MIME type. */
   contentType: string;
-  /** Declared byte length when supplied by the client. */
-  contentLength: number | null;
+  /** Declared byte length used to preserve streaming into R2. */
+  contentLength: number;
   /** Unbuffered request stream passed directly to R2. */
   body: ReadableStream;
 }

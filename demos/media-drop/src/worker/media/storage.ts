@@ -1,9 +1,7 @@
 import {
-  contentTooLarge,
   internalServerError,
   notFound,
 } from "@adrianhall/cloudflare-toolkit/errors";
-import { MAX_MEDIA_SIZE_BYTES } from "./validation";
 
 /** Result of an R2 read, retaining the headers needed for a streamed HTTP response. */
 export interface StoredMedia {
@@ -13,8 +11,8 @@ export interface StoredMedia {
   headers: Headers;
   /** Whether the request selected a byte range. */
   partial: boolean;
-  /** Whether R2 rejected a conditional request. */
-  preconditionFailed: boolean;
+  /** Conditional response status when R2 omitted the object body, otherwise `null`. */
+  conditionalStatus: 304 | 412 | null;
 }
 
 /**
@@ -39,39 +37,29 @@ export async function createMediaKey(
 }
 
 /**
- * Stream an upload to R2 while enforcing a byte cap even without Content-Length.
+ * Stream a validated upload to R2 while retaining a fixed stream length for the R2 binding.
  *
  * @param bucket R2 bucket binding.
  * @param key Destination object key.
  * @param body Request stream.
  * @param contentType Validated MIME type to persist as R2 HTTP metadata.
+ * @param contentLength Validated byte length used to retain stream length for R2.
  * @returns Exact byte size returned by R2 after storage.
- * @throws {ProblemDetailsError} When the stream exceeds the configured limit.
+ * @throws {ProblemDetailsError} When R2 cannot store the stream.
  */
 export async function putMedia(
   bucket: R2Bucket,
   key: string,
   body: ReadableStream,
   contentType: string,
+  contentLength: number,
 ): Promise<number> {
-  let byteCount = 0;
-  const cappedStream = body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        byteCount += chunk.byteLength;
-        if (byteCount > MAX_MEDIA_SIZE_BYTES) {
-          controller.error(
-            contentTooLarge({ detail: "Media must not exceed 50 MiB." }),
-          );
-          return;
-        }
-        controller.enqueue(chunk);
-      },
-    }),
-  );
-  const object = await bucket.put(key, cappedStream, {
+  const stream = new FixedLengthStream(contentLength);
+  const write = body.pipeTo(stream.writable);
+  const store = bucket.put(key, stream.readable, {
     httpMetadata: { contentType },
   });
+  const [object] = await Promise.all([store, write]);
   if (object === null) {
     throw internalServerError({ detail: "Media could not be stored." });
   }
@@ -109,11 +97,23 @@ export async function getMedia(
   headers.set("Content-Disposition", contentDisposition(title, request));
 
   if (!("body" in object)) {
-    return { body: null, headers, partial: false, preconditionFailed: true };
+    return {
+      body: null,
+      headers,
+      partial: false,
+      conditionalStatus: conditionalStatus(request),
+    };
   }
 
-  if (object.range !== undefined) {
-    const { offset, length } = resolvedRange(object.range, object.size);
+  const rangeHeader = request.headers.get("Range");
+  if (rangeHeader !== null) {
+    const range = resolveRequestedRange(rangeHeader, object.size);
+    if (range === null) {
+      throw internalServerError({
+        detail: "Media range could not be resolved.",
+      });
+    }
+    const { offset, length } = range;
     headers.set("Content-Length", String(length));
     headers.set(
       "Content-Range",
@@ -123,7 +123,7 @@ export async function getMedia(
       body: object.body,
       headers,
       partial: true,
-      preconditionFailed: false,
+      conditionalStatus: null,
     };
   }
 
@@ -132,27 +132,54 @@ export async function getMedia(
     body: object.body,
     headers,
     partial: false,
-    preconditionFailed: false,
+    conditionalStatus: null,
   };
 }
 
 /**
- * Resolve R2's requested range shape into the concrete offset and length required by HTTP.
+ * Map failed R2 conditions to the HTTP response status expected by a browser.
  *
- * @param range R2 range returned for the object read.
- * @param size Full object size in bytes.
- * @returns Concrete byte offset and returned length.
+ * @param request Original request whose conditional headers were passed to R2.
+ * @returns `304` for cache revalidation and `412` for every other failed precondition.
  */
-function resolvedRange(
-  range: R2Range,
+function conditionalStatus(request: Request): 304 | 412 {
+  return request.headers.has("If-None-Match") ||
+    request.headers.has("If-Modified-Since")
+    ? 304
+    : 412;
+}
+
+/**
+ * Resolve one HTTP byte-range header into the concrete offset and length returned by R2.
+ *
+ * @param header Browser `Range` request header.
+ * @param size Full object size in bytes.
+ * @returns Concrete byte offset and returned length, or `null` for an invalid range.
+ */
+export function resolveRequestedRange(
+  header: string | null,
   size: number,
-): { offset: number; length: number } {
-  if ("suffix" in range) {
-    const length = Math.min(range.suffix, size);
-    return { offset: size - length, length };
+): { offset: number; length: number } | null {
+  const match = /^bytes=(\d*)-(\d*)$/u.exec(header ?? "");
+  if (match === null || (match[1] === "" && match[2] === "")) {
+    return null;
   }
-  const offset = range.offset ?? 0;
-  return { offset, length: range.length ?? size - offset };
+  const [, start, end] = match;
+  if (start === "") {
+    const length = Math.min(Number(end), size);
+    return length > 0 ? { offset: size - length, length } : null;
+  }
+
+  const offset = Number(start);
+  const finalByte = end === "" ? size - 1 : Math.min(Number(end), size - 1);
+  if (
+    !Number.isSafeInteger(offset) ||
+    !Number.isSafeInteger(finalByte) ||
+    offset > finalByte
+  ) {
+    return null;
+  }
+  return { offset, length: finalByte - offset + 1 };
 }
 
 /**
