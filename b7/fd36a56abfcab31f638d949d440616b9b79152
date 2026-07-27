@@ -1,0 +1,27 @@
+docs/03-MEDIA-DROP.md
+  s_2f6a83590b1088::t_e2c690fa6ceb9c 234-237
+  s_2f6a83590b1088::t_aa785f22761809 320-332
+  s_2f6a83590b1088::t_6d53f7f62073b6 1-33,38-39,42,44-45,47-83,90-169,179-233,238-319
+  s_2f6a83590b1088::t_e4a6ebc2cf17de 84-89
+  s_2f6a83590b1088::t_2d1a37e8722e51 170-178
+  s_2f6a83590b1088::t_4d2e2110decc1a 34-37
+  s_2f6a83590b1088::t_fe39379c8abd01 40-41
+  s_2f6a83590b1088::t_e8b2f733102274 43
+  s_2f6a83590b1088::t_62c3baa33978ac 46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b7fd36a56abfcab31f638d949d440616b9b79152",
+  "prompts": {},
+  "sessions": {
+    "s_2f6a83590b1088": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05cf895c6fferJENxrb5vZyXzj",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
