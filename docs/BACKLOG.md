@@ -22,13 +22,11 @@ sequence and shared domain story, not a runtime dependency on another demo.
 - Keep infrastructure and user interfaces focused on the primary lesson.
 - Reserve broad, multi-product architectures for the capstone solutions.
 
-## Foundation Track
+## Completed / Implemented
 
 ### 1. URL Shortener
 
 Directory: `demos/url-shortener`
-
-Status: Implemented.
 
 Introduces: Workers and Workers KV.
 
@@ -48,8 +46,6 @@ Primary flow:
 ### 2. Personalized TODO App
 
 Directory: `demos/todo-app`
-
-Status: Implemented.
 
 Introduces: D1 and authenticated Cloudflare Access identity.
 
@@ -71,8 +67,6 @@ Primary flow:
 ### 3. Media Drop
 
 Directory: `demos/media-drop`
-
-Status: Implemented.
 
 Introduces: R2.
 
@@ -107,8 +101,6 @@ Keep out:
 
 ## State And Asynchronous Processing Track
 
-### 4. Enterprise Chat
-
 Directory: `demos/chat`
 
 Status: Implemented
@@ -138,7 +130,64 @@ Keep out:
 
 - personal chats, uploads, trasncoding, translation.
 
-### 5. Watch Together
+## Pending Apps
+
+### 5. AI Model Playground
+
+Directory: `demos/ai-model-playground`
+
+Demo location: `ai-chat`
+
+Introduces: Workers AI.
+
+Builds on: Streaming Worker responses.
+
+Demonstrates:
+
+- Running model inference through a Worker binding.
+- Streaming generated text to a browser.
+- Comparing a small, deliberate selection of models and parameters.
+- Logging latency and token usage without logging conversation content.
+
+Primary flow:
+
+1. Select a model and submit a prompt.
+2. Observe the response stream incrementally.
+3. Compare response time and output with a second model.
+
+Keep out:
+
+- Persistent conversations, tools, RAG, agents, and external providers.
+
+### 6. Multi-Provider AI Chat
+
+Directory: `demos/ai-gateway-chat`
+
+Demo location: `ai-chat`
+
+Introduces: AI Gateway and Secrets Store.
+
+Builds on: Basic text generation and streaming (demo 5).
+
+Demonstrates:
+
+- Routing model requests through one governed control point.
+- Keeping external provider credentials out of source and configuration files.
+- Comparing provider behavior using AI Gateway observability.
+- Gateway caching, rate controls, or provider fallback where supported by the selected providers.
+- Dynamic routes where supported by the selected providers.
+
+Primary flow:
+
+1. Send equivalent prompts to two configured providers.
+2. Inspect requests, latency, and usage in AI Gateway.
+3. Demonstrate one gateway policy such as caching or fallback.
+
+Keep out:
+
+- Tools, long-term memory, retrieval, and autonomous behavior.
+
+### 7. Watch Together
 
 Directory: `demos/watch-together`
 
@@ -163,7 +212,7 @@ Keep out:
 
 - Chat, AI recommendations, transcoding, and durable job orchestration.
 
-### 6. Upload Indexer
+### 8. Upload Indexer
 
 Directory: `demos/upload-indexer`
 
@@ -189,7 +238,7 @@ Keep out:
 - Containers and multi-step Workflows. The consumer performs a small amount of
   Worker-compatible metadata extraction only.
 
-### 7. Video Transcoder
+### 9. Video Transcoder
 
 Directory: `demos/video-transcoder`
 
@@ -214,7 +263,7 @@ Keep out:
 
 - Multiple renditions, approvals, transcription, and AI-generated metadata.
 
-### 8. Video Publishing Pipeline
+### 10. Video Publishing Pipeline
 
 Directory: `demos/video-publishing-workflow`
 
@@ -239,59 +288,6 @@ Primary flow:
 Keep out:
 
 - AI transcription and generated content. This demo is about orchestration.
-
-## AI Track
-
-### 9. AI Model Playground
-
-Directory: `demos/ai-model-playground`
-
-Introduces: Workers AI.
-
-Builds on: Streaming Worker responses.
-
-Demonstrates:
-
-- Running model inference through a Worker binding.
-- Streaming generated text to a browser.
-- Comparing a small, deliberate selection of models and parameters.
-- Logging latency and token usage without logging conversation content.
-
-Primary flow:
-
-1. Select a model and submit a prompt.
-2. Observe the response stream incrementally.
-3. Compare response time and output with a second model.
-
-Keep out:
-
-- Persistent conversations, tools, RAG, agents, and external providers.
-
-### 10. Multi-Provider AI Chat
-
-Directory: `demos/ai-gateway-chat`
-
-Introduces: AI Gateway and Secrets Store.
-
-Builds on: Basic text generation and streaming.
-
-Demonstrates:
-
-- Routing model requests through one governed control point.
-- Keeping external provider credentials out of source and configuration files.
-- Comparing provider behavior using AI Gateway observability.
-- Demonstrating gateway caching, rate controls, or provider fallback where
-  supported by the selected providers.
-
-Primary flow:
-
-1. Send equivalent prompts to two configured providers.
-2. Inspect requests, latency, and usage in AI Gateway.
-3. Demonstrate one gateway policy such as caching or fallback.
-
-Keep out:
-
-- Tools, long-term memory, retrieval, and autonomous behavior.
 
 ### 11. Transcript Studio
 
