@@ -111,6 +111,8 @@ Keep out:
 
 Directory: `demos/chat`
 
+Status: Implemented
+
 Introduces: Durable Objects and WebSockets.
 
 Builds on: Workers, Static Assets, D1, KV(?)
