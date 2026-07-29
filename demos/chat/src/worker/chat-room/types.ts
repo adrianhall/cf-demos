@@ -1,14 +1,10 @@
-/** A persisted chat message sent from a verified socket attachment. */
-export interface ChatMessage {
-  /** Monotonic SQLite identifier assigned before broadcasting. */
-  id: number;
-  /** Verified Access email pinned to the sending socket. */
-  author: string;
-  /** Validated message body. */
-  body: string;
-  /** ISO 8601 server timestamp recorded with the message. */
-  createdAt: string;
-}
+// `ChatMessage` and `SendMessageInput` (aliased here as `ClientFrame`) are shared with the
+// browser's room store via `src/chat-protocol.ts`, so the wire shapes on both ends of the
+// WebSocket can never silently drift apart.
+export type {
+  ChatMessage,
+  ClientFrame as SendMessageInput,
+} from "../../chat-protocol";
 
 /** Socket attachment trusted only after the Worker sets the internal identity header. */
 export interface ChatSocketAttachment {
@@ -16,10 +12,4 @@ export interface ChatSocketAttachment {
   email: string;
   /** Validated channel name supplied by the Worker for structured event logging. */
   channel: string;
-}
-
-/** Client message format accepted over a room WebSocket. */
-export interface SendMessageInput {
-  /** Candidate message content. */
-  body: string;
 }

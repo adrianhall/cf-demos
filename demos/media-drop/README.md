@@ -44,7 +44,7 @@ npm run check
 terraform -chdir=infra fmt -check
 ```
 
-The Worker tests cover validation, R2 key/range logic, Access policy ordering, and the R2 teardown helper. Client tests cover upload validation, the public library grid, and Studio media actions. Integration tests run the Worker with Miniflare D1 and R2, apply the real migrations, and cover draft privacy, Access enforcement, owner isolation, publishing, streaming, and deletion of both the R2 object and D1 row.
+The Worker tests cover validation, R2 key/range logic, and Access policy ordering. Client tests cover upload validation, the public library grid, and Studio media actions. Integration tests run the Worker with Miniflare D1 and R2, apply the real migrations, and cover draft privacy, Access enforcement, owner isolation, publishing, streaming, and deletion of both the R2 object and D1 row.
 
 `npm run check` runs formatting, linting, type checking, and Terraform validation. Terraform validation requires `terraform -chdir=infra init` first.
 
@@ -82,4 +82,4 @@ Terraform enables Workers Logs and automatic tracing with explicit sampling. Wor
 npm run teardown
 ```
 
-`preteardown` calls `scripts/empty-r2-bucket.js` with the Terraform-derived bucket name. It uses the ordinary deployment token from `.env` to call the dashboard-observed empty-bucket endpoint, because Cloudflare refuses to delete non-empty buckets. The endpoint is undocumented; its rationale and copy guidance live in `docs/DECISIONS.md`. Terraform then destroys the Worker, D1 database, R2 bucket, domain, and Access resources. `postteardown` removes generated Wrangler configuration and binding types.
+`preteardown` runs `empty-r2-bucket -t infra --env-file .env --yes` (`@adrianhall/cloudflare-toolkit`), which reads the account ID and bucket name from `terraform output -json` and calls the dashboard-observed empty-bucket endpoint with the ordinary deployment token from `.env`, because Cloudflare refuses to delete non-empty buckets. The endpoint is undocumented; its rationale and copy guidance live in `docs/DECISIONS.md`. Terraform then destroys the Worker, D1 database, R2 bucket, domain, and Access resources. `postteardown` removes generated Wrangler configuration and binding types.

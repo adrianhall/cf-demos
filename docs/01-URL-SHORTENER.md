@@ -27,10 +27,10 @@ Cloudflare products: Workers and Workers KV.
 3. Create a hostname-wide public Access bypass application plus a more-specific
    Access allow application for `/admin*` and `/api/links*`, limited to the
    configured administrator email address.
-4. Generate `wrangler.jsonc` from Terraform outputs using the pinned
-   `@adrianhall/cloudflare-scripts` release. Commit a template with local
-   placeholder bindings so a clean checkout can build and test without cloud
-   resources.
+4. Generate `wrangler.jsonc` from Terraform outputs using
+   `@adrianhall/cloudflare-toolkit`'s pinned npm release. Commit a template
+   with local placeholder bindings (`infra/local-outputs.json`) so a clean
+   checkout can build and test without cloud resources.
 5. Store each link as JSON under a `link:<code>` KV key. Generate immutable,
    URL-safe codes with Web Crypto; allow administrators to edit only the
    destination URL.

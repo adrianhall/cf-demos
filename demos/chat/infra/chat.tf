@@ -1,34 +1,13 @@
-terraform {
-  required_version = ">= 1.10.0"
-
-  required_providers {
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "~> 5.22.0"
-    }
-    dotenv = {
-      source  = "jrhouston/dotenv"
-      version = "~> 1.0"
-    }
-  }
-}
-
-data "dotenv" "config" {
-  filename = "${path.module}/../.env"
-}
-
-provider "cloudflare" {
-  api_token = data.dotenv.config.env["CLOUDFLARE_API_TOKEN"]
-}
-
-locals {
-  hostname    = "${local.demo_name}.${local.demo_domain}"
-  worker_name = local.demo_name
-}
-
 resource "cloudflare_worker" "demo" {
   account_id = local.cloudflare_account_id
   name       = local.worker_name
+
+  # Matches this demo's wrangler.jsonc.tpl `workers_dev`/`preview_urls` settings exactly, so
+  # Terraform and Wrangler agree on the subdomain and neither tool fights the other on plan.
+  subdomain = {
+    enabled          = false
+    previews_enabled = false
+  }
 
   observability = {
     enabled = true
@@ -44,6 +23,11 @@ resource "cloudflare_worker" "demo" {
       persist            = true
     }
   }
+
+  # Terraform destroys resources in reverse dependency order. This edge forces the Worker (and
+  # its wrangler-managed D1 binding) to be destroyed before the database itself, since nothing
+  # in either resource's own arguments references the other.
+  depends_on = [cloudflare_d1_database.demo]
 }
 
 resource "cloudflare_d1_database" "demo" {
@@ -112,37 +96,4 @@ resource "cloudflare_workers_custom_domain" "demo" {
   zone_id    = local.cloudflare_zone_id
 
   depends_on = [cloudflare_workers_deployment.bootstrap]
-}
-
-# Every participant must have a verified identity, so the whole hostname requires
-# authentication through any configured identity provider — there is no public bypass
-# application, unlike the mixed public/admin demos. See AGENTS.md (Public Access) and
-# docs/04-ENTERPRISE-CHAT.md (Access Model).
-resource "cloudflare_zero_trust_access_policy" "authenticated_users" {
-  account_id = local.cloudflare_account_id
-  name       = "${local.demo_name} any authenticated user"
-  decision   = "allow"
-
-  include = [{
-    everyone = {}
-  }]
-}
-
-# Access enforces this application at the edge, including SPA page routes that are served
-# directly by the ASSETS binding and never reach the Worker.
-resource "cloudflare_zero_trust_access_application" "demo" {
-  account_id = local.cloudflare_account_id
-  name       = local.demo_name
-  domain     = local.hostname
-  type       = "self_hosted"
-
-  destinations = [{
-    type = "public"
-    uri  = local.hostname
-  }]
-
-  policies = [{
-    id         = cloudflare_zero_trust_access_policy.authenticated_users.id
-    precedence = 1
-  }]
 }

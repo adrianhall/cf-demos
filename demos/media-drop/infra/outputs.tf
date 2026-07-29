@@ -1,3 +1,8 @@
+output "account_id" {
+  description = "Cloudflare account identifier, read by the empty-r2-bucket preteardown CLI."
+  value       = local.cloudflare_account_id
+}
+
 output "cloudflare_team_domain" {
   description = "Cloudflare Access team domain used by the Worker to validate studio identities."
   value       = local.cloudflare_team_domain

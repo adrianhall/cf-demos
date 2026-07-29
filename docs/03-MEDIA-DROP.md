@@ -53,7 +53,7 @@ an authenticated studio on the same hostname.
 - `cloudflare`
 - `cloudflare-one`
 - `cloudflare-terraform-best-practices`
-- `cloudflare-scripts`
+- `cloudflare-deploy-scripts`
 - `cloudflare-toolkit`
 - `workers-best-practices`
 - `wrangler`
@@ -146,11 +146,12 @@ needed; the owner-scoping is the isolation boundary.
    Terraform-sourced value (Worker name, D1 database id/name, R2 bucket name,
    `ENVIRONMENT`). Bind D1 as `DB` (with `migrations_dir`), R2 as `MEDIA`, and
    configure `assets` with `not_found_handling: single-page-application` and
-   `run_worker_first: ["/api/*"]`. Add `scripts/generate-local-wrangler.js` that
-   fills hardcoded local values (including a local R2 bucket name) and throws if
-   any `{{marker}}` has no configured local value; wire it into `prebuild`,
-   `prestart`, and `precheck:types` as `run-s generate:wrangler:local
-   generate:types`. Generate binding types from `wrangler.jsonc`; never
+   `run_worker_first: ["/api/*"]`. Add a committed `infra/local-outputs.json`
+   with hardcoded local values (including a local R2 bucket name); running
+   `generate-wrangler -c -l infra/local-outputs.json` fails fast if any
+   `{{marker}}` has no matching key. Wire it into `prebuild`, `prestart`, and
+   `precheck:types` as `run-s generate:wrangler:local generate:types`.
+   Generate binding types from `wrangler.jsonc`; never
    hand-maintain the binding interface. Commit a `.dev.vars` (no secrets) that
    sets a local `ENVIRONMENT`.
 
@@ -288,16 +289,18 @@ needed; the owner-scoping is the isolation boundary.
     Configure `@vitest/coverage-istanbul` and a `test:coverage` script; treat
     uncovered authored source as a gap to close.
 19. Provide single-command `npm run deploy` (Terraform init/apply, generate
-    `wrangler.jsonc` + types with `generate-wrangler -f --terraform infra`, D1
+    `wrangler.jsonc` + types with `generate-wrangler -cf --terraform infra`, D1
     remote migrate, `vite build`, `wrangler deploy`) and `npm run teardown`,
     composed from small `package.json` scripts chained with `run-s`. Because R2
     rejects destroying a non-empty bucket, `teardown` MUST run a `preteardown`
-    step that invokes `scripts/empty-r2-bucket.js` with the Terraform-derived
-    `MEDIA` bucket name before `terraform destroy`. The script uses the demo's
-    ordinary `CLOUDFLARE_API_TOKEN` to call the dashboard-observed
+    step that invokes `@adrianhall/cloudflare-toolkit`'s `empty-r2-bucket` CLI
+    (`empty-r2-bucket -t infra --env-file .env --yes`) before `terraform
+    destroy`. The CLI uses the demo's ordinary `CLOUDFLARE_API_TOKEN` to call
+    the dashboard-observed
     `DELETE /client/v4/accounts/{account_id}/r2/buckets/{bucket_name}/objects?prefix=`
-    API; do not provision an S3 token or use `@adrianhall/cloudflare-scripts`'
-    R2-emptying helper for this demo. The endpoint is undocumented, so keep the
+    API and reads the account ID and bucket name straight from
+    `terraform output -json`; do not provision an S3 token or a hand-written
+    R2-emptying script for this demo. The endpoint is undocumented, so keep the
     rationale and copy guidance in `docs/DECISIONS.md` and `AGENTS.md` current. Add a
     `postteardown` step
     that removes the generated `wrangler.jsonc` and `worker-configuration.d.ts`.

@@ -13,6 +13,9 @@ describe("validateMessageInput", () => {
     '{"body":""}',
     '{"body":"line\u0001break"}',
     '{"body":"ok","author":"spoofed@example.com"}',
+    "5",
+    "[1,2]",
+    '{"body":123}',
   ])("rejects invalid or spoofable payload %j", (payload) => {
     expect(() => validateMessageInput(payload)).toThrow();
   });

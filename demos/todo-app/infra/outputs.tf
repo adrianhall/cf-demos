@@ -1,3 +1,8 @@
+output "cloudflare_team_domain" {
+  description = "Cloudflare Access team domain for Worker JWT validation."
+  value       = local.cloudflare_team_domain
+}
+
 output "d1_database_id" {
   description = "D1 database identifier bound to the Worker as DB in wrangler.jsonc."
   value       = cloudflare_d1_database.demo.id

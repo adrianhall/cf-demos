@@ -21,7 +21,6 @@
     "vite.config.ts",
     "vitest.config.ts",
     "src/worker/vitest.config.ts",
-    "playwright.config.ts",
     "worker-configuration.d.ts"
   ]
 }

@@ -1,6 +1,10 @@
 import { defineStore } from "pinia";
-import type { MediaItem } from "../media";
-import { getErrorMessage } from "../utils/defensive-guards";
+import { replaceMedia, type MediaItem } from "../media";
+import {
+  getErrorMessage,
+  parseJsonOrEmpty,
+  wrapOnProgress,
+} from "../utils/defensive-guards";
 import { valueOrDefault } from "@adrianhall/cloudflare-toolkit";
 
 /** Progress callback invoked while an XMLHttpRequest upload transfers file bytes. */
@@ -64,27 +68,28 @@ export const useStudioStore = defineStore("studio", {
         request.open("POST", "/api/studio/media");
         request.setRequestHeader("Content-Type", file.type);
         request.setRequestHeader("X-Media-Title", title);
-        request.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            onProgress(Math.round((event.loaded / event.total) * 100));
-          }
-        };
+        request.upload.onprogress = (event) =>
+          wrapOnProgress(onProgress, event);
         request.onerror = () =>
           reject(new Error("The upload could not reach Media Drop."));
         request.onload = () => {
           let body: { detail?: string; media?: MediaItem } = {};
           try {
-            body = JSON.parse(request.responseText || "{}") as {
-              detail?: string;
-              media?: MediaItem;
-            };
+            body = parseJsonOrEmpty<{ detail?: string; media?: MediaItem }>(
+              request.responseText,
+            );
           } catch {
             reject(new Error(`Upload failed (${request.status}).`));
             return;
           }
           if (request.status !== 201 || body.media === undefined) {
             reject(
-              new Error(valueOrDefault(body.detail, `Upload failed (${request.status}).`)),
+              new Error(
+                valueOrDefault(
+                  body.detail,
+                  `Upload failed (${request.status}).`,
+                ),
+              ),
             );
             return;
           }
@@ -108,9 +113,7 @@ export const useStudioStore = defineStore("studio", {
         return;
       }
       const body = (await response.json()) as { media: MediaItem };
-      this.media = this.media.map((item) =>
-        item.id === id ? body.media : item,
-      );
+      this.media = replaceMedia(this.media, id, body.media);
     },
     /** Delete an owned item and remove it from the local studio listing. */
     async remove(id: string): Promise<void> {

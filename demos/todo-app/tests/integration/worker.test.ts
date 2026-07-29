@@ -59,6 +59,16 @@ describe("Tasks Worker", () => {
     );
   });
 
+  it("binds CLOUDFLARE_TEAM_DOMAIN so cloudflareAccess can verify real Access tokens in production", () => {
+    // Regression test: this Worker previously omitted CLOUDFLARE_TEAM_DOMAIN from
+    // wrangler.jsonc.tpl entirely. Locally and in this test suite, `enableDevTokens` masked the
+    // gap because signDevJwt()-signed tokens never reach the JWKS verification path that reads
+    // this binding — every request here still returned 200/401 as expected either way. In a
+    // deployed Worker (where dev tokens are disabled), a missing team domain makes
+    // cloudflareAccess() reject every request with 401, since it has nothing to verify against.
+    expect((env as TestEnv).CLOUDFLARE_TEAM_DOMAIN).toBeTruthy();
+  });
+
   it("returns the identity from a verified Access token", async () => {
     const response = await exports.default.fetch(
       await apiRequest("identity@example.com", "/api/me"),

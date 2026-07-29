@@ -63,6 +63,22 @@ Terraform and Wrangler have separate responsibilities:
   baseline is `~> 5.22.0`; update it only after validating the newer release.
 - Wrangler owns Worker code versions and deployments. Terraform must not
   create, update, or promote the Worker's real deployments.
+- Every `cloudflare_worker` resource MUST set an explicit `subdomain` block
+  (`enabled`/`previews_enabled`). The Cloudflare API always returns this
+  object, so omitting it causes a diff on every subsequent `terraform plan`.
+  Set both flags to match this demo's `wrangler.jsonc.tpl` `workers_dev`/
+  `preview_urls` values exactly, so Terraform and Wrangler agree and neither
+  tool fights the other.
+- Every `cloudflare_worker` resource MUST declare `depends_on` pointing at
+  every binding-backing resource it uses (D1, KV, R2, Queue). Wrangler wires
+  the actual binding at deploy time, so Terraform's dependency graph has no
+  implicit edge between the Worker and its bindings; without an explicit
+  `depends_on`, `terraform destroy` can delete a bound resource before (or
+  concurrently with) the Worker, and the Cloudflare API refuses to delete a
+  D1 database, KV namespace, R2 bucket, or Queue that a live Worker still
+  binds to. `depends_on` on the Worker (not the binding) is deliberate:
+  Terraform destroys in reverse dependency order, so this ordering removes
+  the Worker — and its binding — before the backing resource.
 - Sanctioned exception: `cloudflare_workers_custom_domain` requires the Worker
   to already have at least one deployment, and Cloudflare rejects attaching a
   domain earlier with error `100124`. On a brand-new Worker, give Terraform a
@@ -121,30 +137,40 @@ Terraform and Wrangler have separate responsibilities:
   first apply. No `package.json` script changes are needed for this — it is
   entirely a Terraform-side fix and is idempotent across every `npm run
   deploy`.
-- Use `@adrianhall/cloudflare-scripts` from a pinned GitHub release to generate
-  `wrangler.jsonc` from Terraform outputs, generate binding types, and perform
-  cleanup that Terraform cannot perform.
+- Use `@adrianhall/cloudflare-toolkit`'s pinned npm release (its `generate-wrangler`,
+  `generate-wrangler-types`, `destroy-containers`, and `empty-r2-bucket` CLIs) to
+  generate `wrangler.jsonc` from Terraform outputs, generate binding types, and
+  perform cleanup that Terraform cannot perform. Do not add
+  `@adrianhall/cloudflare-scripts` — it predates the toolkit's CLI commands and is
+  not published to npm.
 - Commit exactly one Wrangler configuration template, `wrangler.jsonc.tpl`,
   with a `{{placeholder}}` marker for every Terraform-sourced value. Do not
   also commit a static `wrangler.local.jsonc`: that two-file split was tried
   first and abandoned because running Vite against an alternate config file
   caused real problems (see `docs/DECISIONS.md`).
-- Add a small `scripts/generate-local-wrangler.js` that fills the same
-  `{{placeholder}}` markers with hardcoded local-development values and writes
-  the result to the ordinary gitignored `wrangler.jsonc` — the exact filename
-  `generate-wrangler` (`@adrianhall/cloudflare-scripts`) also writes from real
-  Terraform outputs. The script must do nothing but exit `0` if `wrangler.jsonc`
-  already exists, so it never overwrites a real Terraform-generated config, and
-  it must throw if the template contains a `{{marker}}` with no configured
-  local value, so a newly added Terraform output can never silently leak an
-  unsubstituted placeholder into a local build. Wire it into `prebuild`,
-  `prestart`, and `precheck:types` (each as `run-s generate:wrangler:local
-  generate:types`) so `vite dev`, `vite build`, and `tsc --noEmit` all work
-  from a clean checkout with no Terraform state.
+- Commit a flat `infra/local-outputs.json` mapping every `{{placeholder}}` marker
+  in `wrangler.jsonc.tpl` to a hardcoded local-development value. Use
+  `generate-wrangler`'s own `--local`/`-l` mode
+  (`generate-wrangler -c -l infra/local-outputs.json`) to substitute it into the
+  ordinary gitignored `wrangler.jsonc` — the same CLI `generate-wrangler` also
+  writes from real Terraform outputs. `-l` already does nothing but exit `0` if
+  `wrangler.jsonc` already exists, so it never overwrites a real
+  Terraform-generated config, and `-c` already fails if the template contains a
+  `{{marker}}` with no matching key in `infra/local-outputs.json`, so a newly
+  added Terraform output can never silently leak an unsubstituted placeholder
+  into a local build. Wire it into `prebuild`, `prestart`, `precheck:types`,
+  `pretest`, `pretest:coverage`, and `pretest:integration` (each as `run-s
+  generate:wrangler:local generate:types`) so `vite dev`, `vite build`, `tsc
+  --noEmit`, and every Vitest invocation that starts the Workers pool all work
+  from a clean checkout with no Terraform state. `pretest` alone is not enough:
+  npm only runs `pre<exact-script-name>`, so `test:coverage` and
+  `test:integration` each need their own hook, or the `integration` project
+  fails to start and every file only it exercises silently reports 0% coverage.
 - `npm run deploy`'s `predeploy:worker` hook must always regenerate the real
-  config afterward with `generate-wrangler -f --terraform infra` — the `-f`
+  config afterward with `generate-wrangler -cf --terraform infra` — the `-f`
   matters, or a once-generated local placeholder `wrangler.jsonc` would never
-  get overwritten by a real deploy.
+  get overwritten by a real deploy; the `-c` matters, or a dropped Terraform
+  output silently ships a literal `{{marker}}` into the deployed config.
 - Because there is only ever one canonical `wrangler.jsonc` on disk at a time,
   the Cloudflare Vite plugin's default config-file discovery is fine. Still
   point `@cloudflare/vitest-pool-workers` at it explicitly via a `configPath`
@@ -311,20 +337,17 @@ Use `@adrianhall/cloudflare-toolkit` where applicable for:
 - Defensive guards and test helpers.
 - Access JWT validation only for traffic protected by Access. Pair
   `cloudflareAccess()` with `cloudflareAccessPlugin()` in Vite-based demos.
+- Its CLIs — `generate-wrangler`, `generate-wrangler-types`, `destroy-containers`,
+  and `empty-r2-bucket` — for generating `wrangler.jsonc` and binding types from
+  Terraform outputs, and for deployment/teardown cleanup Terraform cannot perform.
 
-Use `@adrianhall/cloudflare-scripts` where applicable for:
-
-- Generating `wrangler.jsonc` from Terraform outputs.
-- Generating Wrangler binding types.
-- Removing Container applications and images before destruction.
-- Deployment and teardown orchestration.
-
-For R2 teardown, copy `demos/media-drop/scripts/empty-r2-bucket.js` and run it as a
-`preteardown` step in preference to `@adrianhall/cloudflare-scripts`' `empty-r2-bucket`
-command. The script uses the demo's ordinary Cloudflare API token with `Workers R2 Storage -
-Edit` to call the dashboard-observed empty-bucket API; it does not need a Terraform-created
-S3 token. This endpoint is not documented as a public API contract, so see `docs/DECISIONS.md`
-and revalidate it before relying on it in another demo.
+For R2 teardown, run `empty-r2-bucket -t infra --env-file .env --yes` as a
+`preteardown` step. It reads the account ID and bucket name from
+`terraform output -json` and calls the demo's ordinary Cloudflare API token
+(`Workers R2 Storage - Edit`/`Write` permission group) against the
+dashboard-observed empty-bucket API; it does not need a Terraform-created S3
+token. This endpoint is not documented as a public API contract, so see
+`docs/DECISIONS.md` and revalidate it before relying on it in another demo.
 
 ## Source Organization
 
@@ -454,15 +477,31 @@ Every `.env.example` starts with the baseline permissions and adds only those
 required by the demonstrated products:
 
 ```ini
-# Baseline API token permissions:
-# - Account: Workers Scripts - Edit
-# - Account: Access: Apps and Policies - Edit
+# Required permissions:
+#   Entire Account:
+#     Developer Platform:
+#       Workers Scripts : Edit
+#       <add any additional permissions here>
+#     Cloudflare One / Zero Trust:
+#       Access : Edit
+#       Access: Identity Providers : Read
+#   <your-domain>:
+#     DNS & Zones:
+#       DNS : Write     
+#
 # Add only the permissions required by the products demonstrated.
 # Logs and analytics read access is operational, not required for deployment.
 CLOUDFLARE_API_TOKEN="<from-dashboard>"
 CLOUDFLARE_ACCOUNT_ID="<from-dashboard>"
+
+# The domain your applications are going to be hosted under
 CLOUDFLARE_ZONE_ID="<from-dashboard>"
-DEMO_DOMAIN="cfapps.uk"
+DEMO_DOMAIN="<your-domain>"
+
+# Your Cloudflare Access team domain, without the https:// prefix.
+CLOUDFLARE_TEAM_DOMAIN="<from-dashboard>"
+
+# The name of the worker for the demo
 DEMO_NAME="this-demo"
 ```
 
@@ -516,6 +555,8 @@ Load skills before doing the work they cover:
 - `cloudflare-email-service`: email sending or routing.
 - `turnstile-spin`: Turnstile integration.
 - `web-perf`: performance validation for browser demos.
+- `testing-durable-objects`: read this skill when writing tests for a
+  WebSocket-based application that uses Durable Objects.
 
 Skills do not replace current documentation. Retrieve current Cloudflare docs,
 the pinned Terraform provider schema, Workers types, and Wrangler schema before
@@ -572,7 +613,6 @@ A demo is complete only when:
 ### Application Libraries
 
 - [`@adrianhall/cloudflare-toolkit`](https://adrianhall.github.io/cloudflare-toolkit/)
-- [`@adrianhall/cloudflare-scripts`](https://github.com/adrianhall/cloudflare-scripts)
 - [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)
 - [Hono](https://hono.dev/docs/getting-started/cloudflare-workers)
 - [Vue 3](https://vuejs.org/guide/introduction.html)

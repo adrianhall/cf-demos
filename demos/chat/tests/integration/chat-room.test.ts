@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { evictAllDurableObjects, runInDurableObject } from "cloudflare:test";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CHANNEL_REMOVED_CLOSE_CODE } from "../../src/worker/chat-room/chat-room";
 import {
   ALICE,
@@ -274,5 +274,84 @@ describe("ChatRoom coordination", () => {
     // row second). Rejoining the same name proves the store was freshly reinitialized empty.
     const recreated = await openChannelSocket(channel, BOB);
     expect(recreated.history).toEqual({ type: "history", messages: [] });
+  });
+
+  it("rejects a direct upgrade request missing the Worker-set identity headers", async () => {
+    // The public `/api/channels/:channel/ws` route always sets these trusted headers before
+    // forwarding to the Durable Object (see `src/worker/routes/rooms.ts`); this exercises
+    // `ChatRoom.fetch()`'s own defensive guard against a request that bypassed the Worker
+    // entirely. It deliberately never sets an `Upgrade: websocket` header on the *request* this
+    // test sends: doing so (even without ever calling `acceptWebSocket`) reliably hung this
+    // pool's eviction cleanup in development (see docs/DECISIONS.md). The guard's own condition
+    // is still fully exercised, since a missing identity header alone already satisfies it.
+    const channel = uniqueChannelName();
+    await createChannel(channel);
+
+    // Only plain, structured-clone-friendly values are returned across the `runInDurableObject`
+    // boundary — returning the `Response` object itself hung this pool's eviction cleanup in
+    // development (see docs/DECISIONS.md).
+    const { status, hasWebSocket } = await runInDurableObject(
+      env.CHAT_ROOM.getByName(channel),
+      (instance) => {
+        const response = instance.fetch(new Request("https://chat.internal/"));
+        return {
+          hasWebSocket: response.webSocket !== null,
+          status: response.status,
+        };
+      },
+    );
+
+    expect(status).toBe(400);
+    expect(hasWebSocket).toBe(false);
+  });
+
+  it("closes a socket with no attachment instead of persisting an unattributable message", async () => {
+    // `serializeAttachment` always runs before `acceptWebSocket` in `fetch()`, so a socket with
+    // no attachment can only arise defensively; this drives that guard directly through
+    // `runInDurableObject` rather than trying to construct an un-attached real socket.
+    const channel = uniqueChannelName();
+    await createChannel(channel);
+    const closed = vi.fn();
+    const fakeSocket = {
+      close: closed,
+      deserializeAttachment: () => null,
+    } as unknown as WebSocket;
+
+    await runInDurableObject(env.CHAT_ROOM.getByName(channel), (instance) =>
+      instance.webSocketMessage(fakeSocket, JSON.stringify({ body: "hi" })),
+    );
+
+    expect(closed).toHaveBeenCalledWith(1_011, "Missing chat identity.");
+    expect(await messageCount(channel)).toBe(0);
+  });
+
+  it("skips sending a rejection frame to a socket that is no longer open", async () => {
+    const channel = uniqueChannelName();
+    await createChannel(channel);
+    const fakeSocket = {
+      deserializeAttachment: () => ({ channel, email: ALICE }),
+      readyState: 3, // WebSocket.CLOSED — the socket closed before the rejection could be sent.
+    } as unknown as WebSocket;
+
+    await expect(
+      runInDurableObject(env.CHAT_ROOM.getByName(channel), (instance) =>
+        instance.webSocketMessage(fakeSocket, "not json"),
+      ),
+    ).resolves.toBeUndefined();
+    expect(await messageCount(channel)).toBe(0);
+  });
+
+  it("webSocketError broadcasts an updated presence count without throwing", async () => {
+    const channel = uniqueChannelName();
+    await createChannel(channel);
+    const fakeSocket = {
+      deserializeAttachment: () => ({ channel, email: ALICE }),
+    } as unknown as WebSocket;
+
+    await expect(
+      runInDurableObject(env.CHAT_ROOM.getByName(channel), (instance) =>
+        instance.webSocketError(fakeSocket, new Error("connection reset")),
+      ),
+    ).resolves.toBeUndefined();
   });
 });

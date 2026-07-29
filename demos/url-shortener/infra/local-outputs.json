@@ -1,0 +1,7 @@
+{
+  "admin_email": "admin@example.com",
+  "cloudflare_team_domain": "local.cloudflareaccess.com",
+  "environment": "development",
+  "links_kv_namespace_id": "00000000000000000000000000000000",
+  "worker_name": "url-shortener-local"
+}

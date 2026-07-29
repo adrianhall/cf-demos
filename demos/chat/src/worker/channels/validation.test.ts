@@ -12,6 +12,11 @@ describe("validateChannelName", () => {
       expect(() => validateChannelName(name)).toThrow();
     },
   );
+
+  it("rejects a non-string candidate name", () => {
+    expect(() => validateChannelName(42)).toThrow();
+    expect(() => validateChannelName(null)).toThrow();
+  });
 });
 
 describe("validateCreateChannelInput", () => {
@@ -26,4 +31,11 @@ describe("validateCreateChannelInput", () => {
       validateCreateChannelInput({ name: "plans", owner: "alice" }),
     ).toThrow();
   });
+
+  it.each([null, "plans", ["plans"], 42])(
+    "rejects a non-object request body %j",
+    (value) => {
+      expect(() => validateCreateChannelInput(value)).toThrow();
+    },
+  );
 });

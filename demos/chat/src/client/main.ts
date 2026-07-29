@@ -3,7 +3,16 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import { createRouter, createWebHistory } from "vue-router";
 import { createVuetify } from "vuetify";
-import { VApp, VContainer, VMain } from "vuetify/components";
+import {
+  VAlert,
+  VApp,
+  VBtn,
+  VList,
+  VListItem,
+  VListItemTitle,
+  VMain,
+  VTextField,
+} from "vuetify/components";
 import App from "./App.vue";
 import HomeView from "./views/HomeView.vue";
 
@@ -24,7 +33,36 @@ export function startClient(): void {
   app.use(router);
   app.use(
     createVuetify({
-      components: { VApp, VContainer, VMain },
+      components: {
+        VAlert,
+        VApp,
+        VBtn,
+        VList,
+        VListItem,
+        VListItemTitle,
+        VMain,
+        VTextField,
+      },
+      theme: {
+        defaultTheme: "chat",
+        themes: {
+          chat: {
+            colors: {
+              background: "#f5f6fa",
+              "on-primary": "#1a1a1a",
+              "on-surface": "#1f2430",
+              "on-surface-variant": "#5b6472",
+              outline: "#8d94a3",
+              "outline-variant": "#d7dce6",
+              primary: "#f6821f",
+              secondary: "#052e60",
+              surface: "#ffffff",
+              "surface-variant": "#eef1f8",
+            },
+            dark: false,
+          },
+        },
+      },
     }),
   );
   app.mount("#app");

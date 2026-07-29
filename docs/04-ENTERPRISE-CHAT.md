@@ -88,7 +88,7 @@ store without teaching anything new.
 - `cloudflare-one`
 - `durable-objects`
 - `cloudflare-terraform-best-practices`
-- `cloudflare-scripts`
+- `cloudflare-deploy-scripts`
 - `cloudflare-toolkit`
 - `workers-best-practices`
 - `wrangler`
@@ -247,12 +247,13 @@ does not grow without limit; long-term archival is out of scope.
    "new_sqlite_classes": ["ChatRoom"] }`), and configure `assets` with
    `not_found_handling: single-page-application` and `run_worker_first:
    ["/api/*"]`. Set a current `compatibility_date` (≥ `2024-04-03` for Durable
-   Object RPC) and enable `nodejs_compat`. Add
-   `scripts/generate-local-wrangler.js` that fills hardcoded local values
-   (including a local D1 database id/name) and throws if any `{{marker}}` has no
-   configured local value; wire it into `prebuild`, `prestart`, and
-   `precheck:types` as `run-s generate:wrangler:local generate:types`. Generate
-   binding types from `wrangler.jsonc`; never hand-maintain the binding
+   Object RPC) and enable `nodejs_compat`. Add a committed
+   `infra/local-outputs.json` with hardcoded local values (including a local
+   D1 database id/name); running `generate-wrangler -c -l
+   infra/local-outputs.json` fails fast if any `{{marker}}` has no matching
+   key. Wire it into `prebuild`, `prestart`, and `precheck:types` as `run-s
+   generate:wrangler:local generate:types`. Generate binding types from
+   `wrangler.jsonc`; never hand-maintain the binding
    interface. Commit a `.dev.vars` (no secrets) that sets a local `ENVIRONMENT`.
 
 ### Phase 2 — Cloudflare Access (authenticated identity)

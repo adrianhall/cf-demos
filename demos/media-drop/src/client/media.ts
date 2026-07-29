@@ -52,3 +52,19 @@ export function formatDate(timestamp: string): string {
     timeStyle: "short",
   }).format(new Date(timestamp));
 }
+
+/**
+ * Returns a new array with the item matching `id` replaced by `replacement`,
+ * leaving every other item unchanged.
+ * @param items the source media list
+ * @param id the identifier of the item to replace
+ * @param replacement the fresh item returned by the API
+ * @returns a new array reflecting the replacement
+ */
+export function replaceMedia(
+  items: MediaItem[],
+  id: string,
+  replacement: MediaItem,
+): MediaItem[] {
+  return items.map((item) => (item.id === id ? replacement : item));
+}

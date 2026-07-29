@@ -55,9 +55,11 @@ Cloudflare products: Workers, Cloudflare Access, and D1.
    schema migrations.
 4. Commit a single `wrangler.jsonc.tpl` with `{{placeholder}}` markers for every
    Terraform-sourced value (Worker name, D1 database id/name, Access audience),
-   plus `scripts/generate-local-wrangler.js` that fills hardcoded local values
-   and wires into `prebuild`, `prestart`, and `precheck:types`. Generate binding
-   types from `wrangler.jsonc`; never hand-maintain the binding interface.
+   plus a committed `infra/local-outputs.json` that
+   `generate-wrangler -c -l infra/local-outputs.json` fills with hardcoded
+   local values, wired into `prebuild`, `prestart`, and `precheck:types`.
+   Generate binding types from `wrangler.jsonc`; never hand-maintain the
+   binding interface.
 
 ### Phase 2 — Cloudflare Access (per-user identity)
 

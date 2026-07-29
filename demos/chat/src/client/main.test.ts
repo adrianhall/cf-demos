@@ -29,9 +29,14 @@ vi.mock("vue-router", () => ({
 }));
 vi.mock("vuetify", () => ({ createVuetify: mocks.createVuetify }));
 vi.mock("vuetify/components", () => ({
+  VAlert: "VAlert",
   VApp: "VApp",
-  VContainer: "VContainer",
+  VBtn: "VBtn",
+  VList: "VList",
+  VListItem: "VListItem",
+  VListItemTitle: "VListItemTitle",
   VMain: "VMain",
+  VTextField: "VTextField",
 }));
 
 describe("startClient", () => {

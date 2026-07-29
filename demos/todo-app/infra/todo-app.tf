@@ -1,34 +1,13 @@
-terraform {
-  required_version = ">= 1.10.0"
-
-  required_providers {
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "~> 5.22.0"
-    }
-    dotenv = {
-      source  = "jrhouston/dotenv"
-      version = "~> 1.0"
-    }
-  }
-}
-
-data "dotenv" "config" {
-  filename = "${path.module}/../.env"
-}
-
-provider "cloudflare" {
-  api_token = data.dotenv.config.env["CLOUDFLARE_API_TOKEN"]
-}
-
-locals {
-  hostname    = "${local.demo_name}.${local.demo_domain}"
-  worker_name = local.demo_name
-}
-
 resource "cloudflare_worker" "demo" {
   account_id = local.cloudflare_account_id
   name       = local.worker_name
+
+  # Matches this demo's wrangler.jsonc.tpl `workers_dev`/`preview_urls` settings exactly, so
+  # Terraform and Wrangler agree on the subdomain and neither tool fights the other on plan.
+  subdomain = {
+    enabled          = false
+    previews_enabled = false
+  }
 
   observability = {
     enabled = true
@@ -44,9 +23,14 @@ resource "cloudflare_worker" "demo" {
       persist            = true
     }
   }
+
+  # Terraform destroys resources in reverse dependency order. This edge forces the Worker (and
+  # its wrangler-managed D1 binding) to be destroyed before the database itself, since nothing
+  # in either resource's own arguments references the other.
+  depends_on = [cloudflare_d1_database.demo]
 }
 
-resource "cloudflare_d1_database" "media" {
+resource "cloudflare_d1_database" "demo" {
   account_id = local.cloudflare_account_id
   name       = "${local.demo_name}-db"
 
@@ -55,13 +39,12 @@ resource "cloudflare_d1_database" "media" {
   }
 }
 
-resource "cloudflare_r2_bucket" "media" {
-  account_id = local.cloudflare_account_id
-  name       = "${local.demo_name}-store"
-}
-
-# A custom domain requires a Worker deployment. Wrangler owns all real deployments, so this
-# immutable placeholder only satisfies the first-apply ordering requirement.
+# Cloudflare rejects a custom domain attached to a Worker with zero deployments (error 100124).
+# Terraform never manages the Worker's real code deployments (Wrangler owns those), so this
+# placeholder version/deployment exists solely to give the Worker a first deployment to satisfy
+# that API requirement. It is created once and then ignored forever via `ignore_changes`: every
+# `wrangler deploy` creates its own new version and deployment that supersedes this placeholder,
+# and Terraform never revisits or reverts that. See AGENTS.md (Resource Ownership).
 resource "cloudflare_worker_version" "bootstrap" {
   account_id         = local.cloudflare_account_id
   worker_id          = cloudflare_worker.demo.id

@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { CHANNEL_REMOVED_CLOSE_CODE } from "../../chat-protocol";
 import { validateMessageInput } from "./validation";
 import type {
   ChatMessage,
@@ -8,12 +9,10 @@ import type {
 
 const HISTORY_LIMIT = 100;
 
-/**
- * WebSocket close code sent by {@link ChatRoom.destroy} so a client can distinguish an
- * intentional channel removal from a transient connection drop and avoid reconnecting to a
- * channel that no longer exists.
- */
-export const CHANNEL_REMOVED_CLOSE_CODE = 4_001;
+// Re-exported so both the Worker's own tests and this module's callers have one name for the
+// close code {@link ChatRoom.destroy} sends; the canonical value lives in `src/chat-protocol.ts`,
+// shared with the browser's room store.
+export { CHANNEL_REMOVED_CLOSE_CODE };
 
 /** Raw snake-cased message row returned by the Durable Object SQLite store. */
 interface MessageRow {

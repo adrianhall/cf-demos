@@ -50,9 +50,7 @@ todosRouter.patch("/:id", async (context) => {
   if (input.completed !== undefined) {
     context
       .get("LOGGER")
-      .info(todo.completed ? "todo_completed" : "todo_uncompleted", {
-        todoId: todo.id,
-      });
+      .info("todo_setstate", { todoId: todo.id, completed: input.completed });
   }
   return context.json({ todo });
 });

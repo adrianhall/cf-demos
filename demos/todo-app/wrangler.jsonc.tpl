@@ -6,6 +6,7 @@
   "workers_dev": false,
   "preview_urls": false,
   "vars": {
+    "CLOUDFLARE_TEAM_DOMAIN": "{{cloudflare_team_domain}}",
     "ENVIRONMENT": "{{environment}}"
   },
   "d1_databases": [

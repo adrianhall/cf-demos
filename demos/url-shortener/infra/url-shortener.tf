@@ -1,34 +1,13 @@
-terraform {
-  required_version = ">= 1.10.0"
-
-  required_providers {
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "~> 5.22.0"
-    }
-    dotenv = {
-      source  = "jrhouston/dotenv"
-      version = "~> 1.0"
-    }
-  }
-}
-
-data "dotenv" "config" {
-  filename = "${path.module}/../.env"
-}
-
-provider "cloudflare" {
-  api_token = data.dotenv.config.env["CLOUDFLARE_API_TOKEN"]
-}
-
-locals {
-  hostname    = "${local.demo_name}.${local.demo_domain}"
-  worker_name = local.demo_name
-}
-
 resource "cloudflare_worker" "demo" {
   account_id = local.cloudflare_account_id
   name       = local.worker_name
+
+  # Matches this demo's wrangler.jsonc.tpl `workers_dev`/`preview_urls` settings exactly, so
+  # Terraform and Wrangler agree on the subdomain and neither tool fights the other on plan.
+  subdomain = {
+    enabled          = false
+    previews_enabled = false
+  }
 
   observability = {
     enabled = true
@@ -44,15 +23,16 @@ resource "cloudflare_worker" "demo" {
       persist            = true
     }
   }
+
+  # Terraform destroys resources in reverse dependency order. This edge forces the Worker (and
+  # its wrangler-managed KV binding) to be destroyed before the KV namespace itself, since
+  # nothing in either resource's own arguments references the other.
+  depends_on = [cloudflare_workers_kv_namespace.links]
 }
 
-resource "cloudflare_d1_database" "demo" {
+resource "cloudflare_workers_kv_namespace" "links" {
   account_id = local.cloudflare_account_id
-  name       = "${local.demo_name}-db"
-
-  read_replication = {
-    mode = "disabled"
-  }
+  title      = "${local.demo_name}-links"
 }
 
 # Cloudflare rejects a custom domain attached to a Worker with zero deployments (error 100124).
@@ -60,12 +40,12 @@ resource "cloudflare_d1_database" "demo" {
 # placeholder version/deployment exists solely to give the Worker a first deployment to satisfy
 # that API requirement. It is created once and then ignored forever via `ignore_changes`: every
 # `wrangler deploy` creates its own new version and deployment that supersedes this placeholder,
-# and Terraform never revisits or reverts that. See AGENTS.md (Resource Ownership).
+# and Terraform never revisits or reverts that. See docs/DECISIONS.md #3.
 resource "cloudflare_worker_version" "bootstrap" {
   account_id         = local.cloudflare_account_id
   worker_id          = cloudflare_worker.demo.id
   main_module        = "index.js"
-  compatibility_date = "2026-07-27"
+  compatibility_date = "2026-07-24"
 
   modules = [{
     name         = "index.js"
@@ -107,33 +87,4 @@ resource "cloudflare_workers_custom_domain" "demo" {
   zone_id    = local.cloudflare_zone_id
 
   depends_on = [cloudflare_workers_deployment.bootstrap]
-}
-
-resource "cloudflare_zero_trust_access_policy" "authenticated_users" {
-  account_id = local.cloudflare_account_id
-  name       = "${local.demo_name} any authenticated user"
-  decision   = "allow"
-
-  include = [{
-    everyone = {}
-  }]
-}
-
-# Access enforces this application at the edge, including SPA page routes that are served
-# directly by the ASSETS binding and never reach the Worker.
-resource "cloudflare_zero_trust_access_application" "demo" {
-  account_id = local.cloudflare_account_id
-  name       = local.demo_name
-  domain     = local.hostname
-  type       = "self_hosted"
-
-  destinations = [{
-    type = "public"
-    uri  = local.hostname
-  }]
-
-  policies = [{
-    id         = cloudflare_zero_trust_access_policy.authenticated_users.id
-    precedence = 1
-  }]
 }

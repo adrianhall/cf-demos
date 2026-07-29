@@ -1,51 +1,78 @@
 # Chat (Enterprise Channel Chat)
 
-An independently deployable Cloudflare Workers, Cloudflare Access, D1, and Durable Objects
-demo: a channel-based chat workspace where every signed-in user shares a live conversation
-routed to one Durable Object per channel.
+An independently deployable Cloudflare Workers, Cloudflare Access, D1, and Durable Objects demo:
+a channel-based chat workspace where every signed-in user shares a live conversation routed to
+one Durable Object per channel.
 
-> **Status:** Phases 1 and 2 of `docs/04-ENTERPRISE-CHAT.md` are complete. The hostname and
-> `/api/*` are now Access-protected, and the `D1`/`CHAT_ROOM` bindings are provisioned. The
-> channel directory API, the `ChatRoom` Durable Object's real behavior, and the chat UI arrive
-> in Phases 3-5. `src/worker/chat-room/chat-room.ts` currently exports an intentionally empty
-> `ChatRoom` class — just enough for the `durable_objects` binding in `wrangler.jsonc.tpl` to
-> resolve — so do not expect a working chat experience yet.
-
-## Architecture (current)
+## Architecture
 
 ```text
-Terraform: Worker + custom domain (chat.cfapps.uk) + D1 database + Access application
-Access:    any enabled identity provider, required for the whole hostname
-Worker:    validates Access JWTs for /api/*; exports the (still-empty) ChatRoom Durable Object
-Wrangler:  Worker code deployment, D1 migrations, the CHAT_ROOM Durable Object namespace and
-           SQLite migration, static assets
+Browser <--Access--> Worker
+  |  static assets (SPA shell)         |  /api/channels*      -> D1 (channel directory)
+  |  WebSocket to /api/channels/:c/ws  -> CHAT_ROOM.getByName(c) -> ChatRoom Durable Object
+                                                                     (SQLite message history,
+                                                                      hibernatable sockets)
 ```
 
-Terraform owns the Worker service, the D1 database (the future channel directory only — never
-message history), the custom domain, the Access application and policy, and Worker
-observability settings (Workers Logs + traces with explicit sampling). Wrangler owns Worker
-code versions, D1 schema migrations, the `CHAT_ROOM` Durable Object namespace/migration, and
-static asset deployment. The Durable Object namespace needs no separate Terraform resource — it
-is created and torn down with the Worker itself.
+- **D1** holds only the shared **channel directory**: which channel names exist, who created
+  them, and when. It is a small relational catalog any signed-in user can add to or remove from.
+- **`ChatRoom`** (one Durable Object instance per channel name, addressed with
+  `env.CHAT_ROOM.getByName(name)`) holds the channel's authoritative state: its recent message
+  history in the Durable Object's own embedded SQLite storage, and its live participants as
+  hibernatable WebSockets. A different channel name always routes to a different Durable Object,
+  so channels are isolated from one another by construction — there is no cross-channel query.
+- Every message is persisted to SQLite **before** it is broadcast, and every new connection
+  replays the bounded recent history from that same store. The Durable Object, not any browser,
+  is the source of truth; a client that disconnects and reconnects recovers the authoritative
+  conversation instead of an empty room, even after the Durable Object has hibernated or been
+  evicted.
+- Terraform owns the Worker service, the D1 database, the custom domain, the Access application
+  and policy, and Worker observability settings. Wrangler owns Worker code versions, D1 schema
+  migrations, the `CHAT_ROOM` Durable Object namespace and its SQLite migration, and static asset
+  deployment. The Durable Object namespace needs no separate Terraform resource — it is created
+  and torn down with the Worker itself.
 
-Later phases add:
-
-- The `channels` D1 schema (seeded with `general` and `random`) and an authenticated
-  `/api/channels*` CRUD API any signed-in user can call (Phase 3).
-- The real `ChatRoom` Durable Object: a SQLite-backed `messages` table, the hibernatable
-  WebSocket upgrade, message validation and broadcast, and a `destroy()` RPC method that purges
-  a removed channel's state (Phase 3).
-- A channel sidebar, message pane, and composer Vue 3 + Vuetify interface (Phase 4).
-- Full test coverage and final documentation (Phase 5).
-
-This demo uses one Wrangler configuration file, generated in two different ways:
+This demo uses one Wrangler configuration file, generated two different ways:
 
 - `wrangler.jsonc.tpl`: committed template with `{{placeholder}}` markers.
-- `wrangler.jsonc`: gitignored, generated either from hardcoded local values
-  (`scripts/generate-local-wrangler.js`, used by `dev`/`build`/`check:types`) or from live
-  Terraform outputs (`generate-wrangler`, used by `npm run deploy`). Only one of these ever
-  runs against a given checkout at a time — the local script is a no-op once a real
+- `wrangler.jsonc`: gitignored, generated by the same `generate-wrangler` CLI
+  (`@adrianhall/cloudflare-toolkit`) either from hardcoded local values in the committed
+  `infra/local-outputs.json` (`generate-wrangler -c -l infra/local-outputs.json`, used by
+  `dev`/`build`/`check:types`) or from live Terraform outputs
+  (`generate-wrangler -cf --terraform infra`, used by `npm run deploy`). Only one of these ever
+  runs against a given checkout at a time — the local invocation is a no-op once a real
   `wrangler.jsonc` exists.
+
+## Access Model
+
+Every participant must have a verified identity — the whole point of the demo is showing who
+said what and keeping two distinct users apart — so the entire `chat.cfapps.uk` hostname is
+gated by a single Cloudflare Access self-hosted application backed by an `allow` policy that
+requires authentication through any configured identity provider. There is **no** public bypass
+application: no route, including the SPA shell, is anonymous.
+
+- The SPA shell is served by the `ASSETS` `single-page-application` fallback and is gated at the
+  edge by Access before the request reaches the Worker, so page routes need no Worker route or
+  `run_worker_first` entry.
+- `cloudflareAccess()` is mounted once, globally, in `src/worker/index.ts` for every `/api/*`
+  request. Following `demos/todo-app`, it deliberately does **not** validate the Access
+  `audience`; it derives each caller's stable identity (email) from the verified Access identity
+  on every request, never from client-supplied input.
+- **WebSocket authentication**: the browser opens the WebSocket to a same-origin `/api/...` URL,
+  so the upgrade request carries the Access session cookie and is validated by the edge Access
+  application and by `cloudflareAccess()` exactly like any other request. The Worker verifies the
+  identity on the upgrade request, strips any inbound `X-Chat-Identity`/`X-Chat-Channel` headers
+  from the client, and sets its own trusted values before forwarding the request to the channel's
+  Durable Object (`src/worker/routes/rooms.ts`). The Durable Object never sees or validates a JWT
+  itself — it pins the Worker-supplied identity to the socket via `serializeAttachment`, so a
+  client can never spoof another participant's identity in the messages it sends
+  (`src/worker/chat-room/chat-room.ts`).
+- The shared path-policy array in `src/access-policies.ts` marks the whole app
+  `authenticate: true`: `/api/*` → `authenticate: true, redirect: false` (so API and
+  WebSocket-upgrade requests receive a status code, not an HTML redirect), and a final catch-all
+  `/` → `authenticate: true, redirect: true` for pages. Every entry is `authenticate: true`, so
+  the array is fail-safe: a route added later with no earlier match still falls through to the
+  authenticated catch-all.
 
 ## Prerequisites
 
@@ -56,15 +83,14 @@ This demo uses one Wrangler configuration file, generated in two different ways:
   - Account: Workers Scripts - Edit
   - Account: Access: Apps and Policies - Edit
   - Account: D1 - Edit
-- A Cloudflare Zero Trust organization with at least one enabled identity provider (any
-  provider works — this demo does not restrict which one).
+  - Zone: DNS - Write (required to attach the custom domain in the configured zone)
+- A Cloudflare Zero Trust organization with at least one enabled identity provider (any provider
+  works — this demo does not restrict which one).
 
-Use a remote, encrypted Terraform state backend for shared or production operation. The
-local state files are ignored and must not be committed.
+Use a remote, encrypted Terraform state backend for shared or production operation. Local state
+files are gitignored and must not be committed.
 
 ## Configuration
-
-Create the operator environment file:
 
 ```sh
 cd demos/chat
@@ -73,7 +99,7 @@ cp .env.example .env
 
 Set every value in `.env`:
 
-- `CLOUDFLARE_API_TOKEN`: API token with the required permissions.
+- `CLOUDFLARE_API_TOKEN`: API token with the permissions listed above.
 - `CLOUDFLARE_ACCOUNT_ID`: account that owns the Worker, D1 database, and Access application.
 - `CLOUDFLARE_ZONE_ID`: zone ID for `cfapps.uk`.
 - `DEMO_DOMAIN`: `cfapps.uk`.
@@ -81,42 +107,79 @@ Set every value in `.env`:
 - `CLOUDFLARE_TEAM_DOMAIN`: your Zero Trust team domain (for example
   `your-team.cloudflareaccess.com`), used by the Worker to validate Access JWTs.
 
-Do not commit `.env`, Terraform state, the generated `wrangler.jsonc`, or generated binding
-types (`worker-configuration.d.ts`).
+Do not commit `.env`, Terraform state, the generated `wrangler.jsonc`, or generated binding types
+(`worker-configuration.d.ts`).
 
 ## Local Development
-
-Install dependencies and start the local Worker/Vite server:
 
 ```sh
 npm install
 npm start
 ```
 
-`prestart` generates a local `wrangler.jsonc` (fixed placeholder values, no Terraform
-required), builds worker binding types, applies any D1 migrations locally, and builds before
-`vite dev` starts. D1 and the `CHAT_ROOM` Durable Object both run against Miniflare's local
-simulation — no real Cloudflare D1 database or Durable Object namespace is touched locally.
+`prestart` generates a local `wrangler.jsonc` (fixed placeholder values, no Terraform required),
+builds Worker binding types, applies the D1 migration locally, and builds before `vite dev`
+starts. D1 and the `CHAT_ROOM` Durable Object both run against Miniflare's local simulation — no
+real Cloudflare D1 database or Durable Object namespace is touched locally.
 
-The development-only Access plugin redirects protected paths to its local login page; choose
-either `alice@example.com` or `bob@example.com` — the two identities the eventual two-user demo
-flow needs. The always-visible **Sign out** control uses `/cdn-cgi/access/logout`, which the
-plugin emulates locally and Cloudflare Access serves in production.
+The development-only Access plugin offers two selectable identities, matching `.env.example`:
+`alice@example.com` and `bob@example.com` — enough to run the two-user demo flow from one
+machine using two browser windows (or one normal and one private window), one signed in as each
+identity. The always-visible **Sign out** control uses `/cdn-cgi/access/logout`, which the plugin
+emulates locally and Cloudflare Access serves in production — useful for switching identities or
+recovering from having signed in as the wrong one.
+
+## API and Routing
+
+Every route below requires a verified Cloudflare Access identity. Errors use RFC 9457
+`application/problem+json` responses.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| `GET` | `/api/me` | Return the verified identity email, for the UI header and message labeling. |
+| `GET` | `/api/channels` | List the shared, D1-backed channel directory. |
+| `POST` | `/api/channels` | Add a channel from `{ "name": "..." }` (validated, lowercased, normalized). Any authenticated user may add a channel. |
+| `DELETE` | `/api/channels/:channel` | Remove a channel: purges the channel's Durable Object state, then deletes its D1 directory row. Any authenticated user may remove any channel — there is no admin role. |
+| `GET` | `/api/channels/:channel/ws` | The WebSocket upgrade route. Validates the channel exists in D1, then forwards the upgrade to the channel's `ChatRoom` Durable Object with the trusted, Worker-verified identity. |
+
+Message exchange after the upgrade happens entirely over the WebSocket, handled by the
+`ChatRoom` Durable Object — there is no per-message REST endpoint. The Durable Object sends the
+replayed history as the first frame on connect, broadcasts every persisted message and presence
+update to every socket connected to that channel, and sends a `channel_removed` frame (followed
+by a close using close code `4001`) to every socket when its channel is removed.
 
 ## Testing
 
 ```sh
-npm test              # all Vitest projects (client, worker, integration)
-npm run test:unit     # client + worker projects only
+npm test              # all Vitest projects (worker, client, integration)
+npm run test:unit     # worker + client projects only
+npm run test:worker
+npm run test:client
 npm run test:integration
 npm run test:coverage
 ```
 
-Integration tests run the real Worker (and, once implemented, the real `ChatRoom` Durable
-Object) in `workerd` via `@cloudflare/vitest-pool-workers`, against the same generated
-`wrangler.jsonc` used for local development. Phase 1/2 tests only cover unauthenticated API
-rejection and a verified development token; the full channel/WebSocket workflow follows in
-Phase 3.
+- The `worker` project (`src/worker/vitest.config.ts`, Node environment) unit-tests channel-name
+  validation, the channel directory repository (against a mocked D1 database), message
+  validation, and the Access path policies — no real bindings needed.
+- The `client` project (`src/client/vitest.config.ts`, jsdom) covers the Pinia stores (`session`,
+  `channels`, and the WebSocket-owning `room` store, exercised against a deterministic mocked
+  `WebSocket`) and every Vue component (`ChannelSidebar`, `MessagePane`, `MessageComposer`,
+  `HomeView`, `App`) with Vue Test Utils and `@pinia/testing`.
+- The `integration` project (`tests/integration/vitest.config.ts`,
+  `@cloudflare/vitest-pool-workers`) runs the real Worker and the real `ChatRoom` Durable Object
+  in `workerd`. It covers the full authenticated API, Access enforcement on every mutation and on
+  the WebSocket upgrade, channel routing isolation between two Durable Object instances, message
+  broadcast to every connected participant, reconnect history replay, and `destroy()` purging a
+  removed channel's Durable Object state (including that a channel recreated with the same name
+  starts empty). See `docs/DECISIONS.md` (§8) for hard-won rules this suite follows to stay
+  deterministic when testing hibernatable WebSocket Durable Objects in this pool — most notably,
+  never returning a `Response` object across a `runInDurableObject` callback boundary, and using
+  `evictAllDurableObjects({ webSockets: "close" })` in `afterEach` rather than depending on a
+  client-initiated close handshake.
+
+`npm run test:coverage` uses `@vitest/coverage-istanbul` and writes HTML and LCOV reports to
+gitignored `coverage/`.
 
 ## Deployment
 
@@ -126,40 +189,66 @@ cp .env.example .env   # fill in real values
 npm run deploy
 ```
 
-`npm run deploy` provisions infrastructure with Terraform, generates `wrangler.jsonc` and
-binding types from the live Terraform outputs, applies D1 migrations to the remote database,
-builds the client, and deploys the Worker — which also applies the Durable Object migration and
+`npm run deploy` provisions infrastructure with Terraform, generates `wrangler.jsonc` and binding
+types from the live Terraform outputs, applies D1 migrations to the remote database, builds the
+client, and deploys the Worker — which also applies the Durable Object SQLite migration and
 creates the `CHAT_ROOM` namespace.
 
-## Teardown
+Verify deployment:
 
-```sh
-npm run teardown
-```
+1. Open two browser windows (or one normal and one private) and sign in as two different
+   identities at `https://chat.cfapps.uk`.
+2. In both windows, select the seeded `general` channel.
+3. Post a message in one window and confirm it appears immediately in the other, labeled with
+   the sender's identity.
+4. As either user, add a new channel (for example `deploys`); confirm it appears in both windows'
+   channel lists, and that messages posted in `general` never appear there.
+5. Close and reopen one window, rejoin `general`, and confirm the recent history replays instead
+   of showing an empty room.
+6. Remove the `deploys` channel and confirm it disappears from both channel lists, any window
+   still viewing it is dropped with a clear notice, and rejoining that name later starts empty.
+7. In **Workers & Pages → chat → Logs**, filter for `channel_created`, `channel_removed`,
+   `channel_joined`, `message_posted`, or `channel_left`.
 
-`terraform destroy` removes the Worker, the custom domain, the D1 database, and the Access
-application/policy — no named or billable resources are left behind. The Durable Object
-namespace and all channel state are removed along with the Worker; no separate preteardown step
-is needed. `postteardown` removes the generated `wrangler.jsonc` and `worker-configuration.d.ts`.
+See `DEMO.md` for the full presenter walkthrough.
 
 ## Observability
 
 Workers Logs (100% sampling) and traces (10% sampling) are enabled via Terraform on the
-`cloudflare_worker` resource. Once the channel and message routes exist (Phase 3), structured
-`channel_created`, `channel_removed`, `channel_joined`, `message_posted`, and `channel_left`
-log events will be visible in the Cloudflare dashboard under **Workers & Pages → chat → Logs**.
+`cloudflare_worker` resource. `cloudflareLogger()` resolves level and transport automatically
+from the Worker's `ENVIRONMENT` binding. Structured, informational events are emitted after their
+respective Access/validation guards so they reflect only successful, authorized activity:
+
+| Event | Emitted by | Fields |
+| --- | --- | --- |
+| `channel_created` | `POST /api/channels` | `channel` |
+| `channel_removed` | `DELETE /api/channels/:channel` | `channel` |
+| `channel_joined` | `GET /api/channels/:channel/ws` (Worker) and `ChatRoom.fetch()` (Durable Object) | `channel`, `participants` |
+| `message_posted` | `ChatRoom.webSocketMessage()` | `channel`, `messageId`, `participants` |
+| `channel_left` | `ChatRoom.webSocketClose()`/`webSocketError()` | `channel`, `participants` |
+
+No event logs message bodies, tokens, authorization headers, or the Access JWT.
 
 ## Troubleshooting
 
-- **`terraform apply` fails with error `100124`** attaching the custom domain: this is
-  expected on a truly fresh Worker before the bootstrap deployment exists; re-running
-  `npm run deploy:infra:apply` after the bootstrap resources are created resolves it.
-- **`wrangler.jsonc` already exists and looks wrong**: delete it and re-run the relevant
-  generation step (`npm run generate:wrangler:local` for local development, or
-  `npm run generate:wrangler` after a real `terraform apply`).
-- **Access sign-in is denied**: confirm the target Zero Trust organization has an enabled login
-  method. The deployed application accepts any available identity provider.
-- **`wrangler dev`/`vite dev` fails to resolve the `CHAT_ROOM` binding**: confirm
-  `src/worker/index.ts` still re-exports `ChatRoom` from `./chat-room/chat-room` — the
-  `durable_objects` binding in `wrangler.jsonc.tpl` requires a named export with that exact
-  class name from the Worker's main module.
+| Symptom | Resolution |
+| --- | --- |
+| `terraform apply` fails with error `100124` attaching the custom domain | Expected on a truly fresh Worker before the bootstrap deployment exists; re-run `npm run deploy` — the inert bootstrap version/deployment satisfies the required ordering. |
+| `wrangler.jsonc` already exists and looks wrong | Delete it and re-run the relevant generation step: `npm run generate:wrangler:local` for local development, or `npm run generate:wrangler` after a real `terraform apply`. |
+| Access sign-in is denied | Confirm the target Zero Trust organization has an enabled identity provider. The deployed application accepts any available provider. |
+| `wrangler dev`/`vite dev` fails to resolve the `CHAT_ROOM` binding | Confirm `src/worker/index.ts` still re-exports `ChatRoom` from `./chat-room/chat-room` — the `durable_objects` binding in `wrangler.jsonc.tpl` requires a named export with that exact class name from the Worker's main module. |
+| A channel never receives messages sent in another window | Confirm both windows selected the *same* channel name — a different name always routes to a different Durable Object by design. |
+| Rejoining a removed channel isn't empty | Confirm the removal actually completed (`DELETE /api/channels/:channel` returned `204`); `destroy()` purges Durable Object storage synchronously before the route deletes the D1 row. |
+
+## Teardown
+
+```sh
+cd demos/chat
+npm run teardown
+```
+
+`terraform destroy` removes the Worker, the custom domain, the D1 database, and the Access
+application/policy — no named or billable resources are left behind. The `CHAT_ROOM` Durable
+Object namespace and all channel state are removed along with the Worker; no separate
+preteardown step is needed, unlike demos using R2. `postteardown` removes the generated
+`wrangler.jsonc` and `worker-configuration.d.ts`.

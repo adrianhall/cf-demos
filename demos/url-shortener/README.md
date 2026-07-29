@@ -97,7 +97,7 @@ terraform -chdir=infra init
 terraform -chdir=infra validate
 ```
 
-`test:unit` runs the Worker and client unit projects. `test:client` covers Vue components, browser bootstrap, and Pinia API state in jsdom. `test:integration` runs in workerd with the configured KV binding and verifies Access enforcement, authenticated CRUD, redirect headers, missing-link errors, and the informational usage log. The combined suite enforces complete source coverage through `npm run test:coverage`.
+`test:unit` runs the Worker and client unit projects. `test:client` covers Vue components, browser bootstrap, and Pinia API state in jsdom. `test:integration` runs in workerd with the configured KV binding and verifies Access enforcement, authenticated CRUD, redirect headers, missing-link errors, and the informational usage log. `npm run test:coverage` reports merged istanbul coverage across all three projects, which currently covers every authored source file.
 
 ## Deployment
 
@@ -114,7 +114,7 @@ npm run deploy
 | --- | --- | --- |
 | 1 | `deploy:infra:init` | `terraform init` in `infra/`. |
 | 2 | `deploy:infra:apply` | `terraform apply -auto-approve`; reads all configuration from `.env` via the Terraform `dotenv` provider. |
-| 3 | `generate:wrangler` (via the `predeploy:worker` hook) | Writes `wrangler.jsonc` from `wrangler.jsonc.tpl` and the new Terraform outputs. |
+| 3 | `generate:wrangler` (via the `predeploy:worker` hook) | `generate-wrangler -cf --terraform infra` writes `wrangler.jsonc` from `wrangler.jsonc.tpl` and the new Terraform outputs, failing fast (`-c`) if any output is missing. |
 | 4 | `generate:types` (via the `predeploy:worker` hook) | Regenerates `worker-configuration.d.ts` from the generated `wrangler.jsonc`. |
 | 5 | `deploy:worker` | Builds the frontend and Worker bundle against `wrangler.jsonc` (`vite build`), then runs `wrangler deploy`, which follows the Vite-generated redirect config (`.wrangler/deploy/config.json`) to deploy that exact bundle. |
 
@@ -151,7 +151,7 @@ The event deliberately excludes access tokens, authorization headers, visitor IP
 | `401` from `/api/links` in production | Confirm `CLOUDFLARE_TEAM_DOMAIN` in `.env` matches the real Access team domain; a mismatch fails JWKS verification even for an otherwise-valid Access JWT. The Worker deliberately does not check the Access application audience (see the Architecture section), so a missing audience is never the cause. |
 | Short URL briefly returns 404 or an old destination | Wait for Workers KV propagation, then retry. Do not configure a long KV `cacheTtl` for mutable links. |
 | Domain fails to provision | Remove the conflicting DNS record and confirm the supplied zone ID owns `cfapps.uk`. |
-| `infra:generate-wrangler` fails | Run `npm run infra:apply` successfully first; required Terraform output values must exist. |
+| `generate:wrangler` fails | Run `npm run deploy:infra:apply` successfully first; required Terraform output values must exist. |
 | Logs are missing | Confirm the deployed Worker is the Terraform-created service and filter Workers Logs for `short_link_used`. |
 
 ## Teardown

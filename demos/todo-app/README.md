@@ -15,8 +15,9 @@ Terraform owns the Worker service, D1 database, custom domain, Access applicatio
 The demo uses one generated, gitignored `wrangler.jsonc`:
 
 - `wrangler.jsonc.tpl` is the committed template with Terraform placeholders.
-- `scripts/generate-local-wrangler.js` fills local values when no config exists.
-- `generate-wrangler -f --terraform infra` replaces it with Terraform outputs during deployment.
+- `generate-wrangler -c -l infra/local-outputs.json` fills local values from the committed
+  `infra/local-outputs.json` when no config exists.
+- `generate-wrangler -cf --terraform infra` replaces it with Terraform outputs during deployment.
 
 ## Prerequisites
 
