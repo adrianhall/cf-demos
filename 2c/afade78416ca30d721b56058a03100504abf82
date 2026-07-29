@@ -1,0 +1,263 @@
+demos/media-drop/package.json
+  s_57660ba26304c6::t_5606416d5ded0a 34-35
+  s_57660ba26304c6::t_3dcdc32d8d64e2 40
+  s_c20ef75f34fced::t_e86e5519001e83 43,45,47
+  s_57660ba26304c6::t_99d44776bcc4e8 54
+  s_57660ba26304c6::t_e0975208ce142e 13,16
+demos/chat/src/client/views/HomeView.vue
+  s_6d0e77b31f46a1::t_82438ecce1e498 2-115,119-158,160-207
+demos/todo-app/infra/providers.tf
+  s_57660ba26304c6::t_40517fa3bff063 1-33
+demos/media-drop/infra/media-drop.tf
+  s_57660ba26304c6::t_4b36bb5c24ead5 1-95
+docs/DECISIONS.md
+  s_57660ba26304c6::t_77cd1a04cd8a79 39
+  s_57660ba26304c6::t_785496cdef15f4 41-45
+  s_57660ba26304c6::t_57e8b18c9906e5 11-13
+  s_6d0e77b31f46a1::t_605eafc77048c4 100-110
+  s_57660ba26304c6::t_a90b46fc2499b1 51
+  s_57660ba26304c6::t_38802884a9b318 40
+demos/chat/infra/providers.tf
+  s_57660ba26304c6::t_2e67a0951b8957 1-33
+demos/chat/src/client/components/MessageComposer.vue
+  s_6d0e77b31f46a1::t_d1c151012b2678 1-2,4-70
+  s_6d0e77b31f46a1::t_e8e1e12f287d28 3
+demos/media-drop/infra/providers.tf
+  s_57660ba26304c6::t_212805732033a5 1-33
+demos/chat/src/client/main.ts
+  s_6d0e77b31f46a1::t_d5b0e1218aae1b 6-15,36-65
+demos/chat/src/client/stores/session.test.ts
+  s_6d0e77b31f46a1::t_3fca9e42a2639d 1-74
+demos/todo-app/infra/todo-app.tf
+  s_57660ba26304c6::t_7f53f59cfd948a 1-94
+demos/url-shortener/vite.config.ts
+  s_57660ba26304c6::t_2f7a7e7fc782ea 12-15
+demos/chat/src/client/stores/room.ts
+  s_6d0e77b31f46a1::t_27f105eb8b16b0 1-126,130-131,133-161,165-196
+  s_6d0e77b31f46a1::t_9ac4595b279331 127-129,132
+  s_6d0e77b31f46a1::t_423e1327e917c1 162-164
+demos/chat/src/client/App.test.ts
+  s_6d0e77b31f46a1::t_4bf574015a579d 1,3,10,26-65
+demos/chat/src/client/stores/channels.test.ts
+  s_6d0e77b31f46a1::t_6b79825f5ebd71 1-65,80-88,90-131,136-138,140-141
+  s_6d0e77b31f46a1::t_bee2b9a65426a0 132-135,139
+  s_6d0e77b31f46a1::t_831801a7520602 66-79
+  s_6d0e77b31f46a1::t_4c9c7953b1030f 89
+demos/chat/src/client/components/MessagePane.vue
+  s_6d0e77b31f46a1::t_2844c8e826d80e 3
+  s_6d0e77b31f46a1::t_75ec1571eaebf6 2
+  s_6d0e77b31f46a1::t_5e10a562d319d8 1,4-169
+AGENTS.md
+  s_57660ba26304c6::t_586a7dc0b5e032 140-145,151-160,170,172-173
+  s_57660ba26304c6::t_3a0172c8c6b72b 340-350
+  s_57660ba26304c6::t_31dfb3913562bb 484
+  s_6d0e77b31f46a1::t_b9331de5986b1d 558-559
+  s_57660ba26304c6::t_48d36cbedd9d79 66-81
+  s_c20ef75f34fced::t_df3247009b05be 161-168
+  s_57660ba26304c6::t_30da665dffe11c 481-483
+  s_57660ba26304c6::t_eb98cc65f95d2a 485-487
+demos/media-drop/src/client/utils/defensive-guards.test.ts
+  s_158f214e9e0b0f::t_aafea19f277e69 1-6,24-65
+demos/chat/src/client/App.vue
+  s_6d0e77b31f46a1::t_1223d96126bb59 1-10,14-19,26-45,48-55
+demos/media-drop/infra/local-outputs.json
+  s_57660ba26304c6::t_c58a80e950ccb7 1-8
+demos/todo-app/.env.example
+  s_57660ba26304c6::t_0dd81acf23ec41 21-22
+  s_57660ba26304c6::t_6f3e974cc670e6 20
+  s_57660ba26304c6::t_632188b217a7ec 23-25
+demos/chat/src/client/main.test.ts
+  s_6d0e77b31f46a1::t_9a97828bf94e20 32,34-37,39
+.opencode/skills/testing-durable-objects/SKILL.md
+  s_6d0e77b31f46a1::t_abefed6b4ea903 1-274
+demos/todo-app/infra/outputs.tf
+  s_57660ba26304c6::t_158006552ba258 1-5
+demos/media-drop/src/client/stores/studio.ts
+  s_158f214e9e0b0f::t_0c1104c713d9ab 71-72,78-80
+  s_57660ba26304c6::t_a401aac3eda62f 87-92
+  s_158f214e9e0b0f::t_c524244ddfc642 2-7
+  s_158f214e9e0b0f::t_87c82dec9cd7d5 116
+docs/01-URL-SHORTENER.md
+  s_57660ba26304c6::t_ceab3a6a40f7b9 30-33
+demos/chat/src/client/components/ChannelSidebar.test.ts
+  s_6d0e77b31f46a1::t_d267968c778c44 1-90
+demos/chat/src/worker/chat-room/validation.test.ts
+  s_6d0e77b31f46a1::t_50010149b4c8d6 16-18
+demos/url-shortener/infra/url-shortener.tf
+  s_57660ba26304c6::t_530c3cfe58a676 1-90
+demos/chat/tests/integration/chat-room.test.ts
+  s_6d0e77b31f46a1::t_71379ddbe31058 281-282,294
+  s_6d0e77b31f46a1::t_81edf013b54be5 3
+  s_6d0e77b31f46a1::t_dc162e3972d03b 290-293,295,297-301,304-305
+  s_6d0e77b31f46a1::t_7949d1b2fa7c7a 296
+  s_6d0e77b31f46a1::t_2f2eceb6e58dc6 328-343
+  s_6d0e77b31f46a1::t_1f46f0d1284326 278,308-327,344-356
+  s_6d0e77b31f46a1::t_184ef45c483aab 279-280,287-289,302-303,306-307
+  s_6d0e77b31f46a1::t_e5d0f352872bb0 283-286
+demos/url-shortener/package.json
+  s_57660ba26304c6::t_3551d6a76edf62 13,16
+  s_57660ba26304c6::t_23dbe1dfd91ad1 47
+  s_57660ba26304c6::t_c86b25d2ccbdd5 34-35
+  s_c20ef75f34fced::t_e89e681ca7ed80 36,39,41
+  s_57660ba26304c6::t_9c91b5c67a2d67 30-31
+demos/chat/src/client/components/MessageComposer.test.ts
+  s_6d0e77b31f46a1::t_c025de2722019c 1-13,16-54
+  s_6d0e77b31f46a1::t_4c9c7953b1030f 14-15
+demos/chat/src/worker/chat-room/chat-room.ts
+  s_6d0e77b31f46a1::t_f136b9d645a7d8 2,12-15
+demos/chat/src/client/components/MessagePane.test.ts
+  s_6d0e77b31f46a1::t_4a8a524af2149f 103-104,106
+  s_6d0e77b31f46a1::t_4c9c7953b1030f 18-24
+  s_6d0e77b31f46a1::t_81358940d5fc95 2-17,25-79,121-142
+  s_6d0e77b31f46a1::t_0a5a12e2b410dc 1
+  s_6d0e77b31f46a1::t_6c493507f2d30d 80-93
+  s_6d0e77b31f46a1::t_9a42b36527fefd 109-120
+  s_6d0e77b31f46a1::t_93cab3e1bd2cc8 94-102,105,107-108
+demos/chat/src/worker/chat-room/types.ts
+  s_6d0e77b31f46a1::t_5208288e8653fc 1-3
+  s_6d0e77b31f46a1::t_4c9c7953b1030f 4-7
+demos/todo-app/package.json
+  s_57660ba26304c6::t_cd1b820fba4aaf 13,16
+  s_57660ba26304c6::t_51b028f279eba1 33-34
+  s_57660ba26304c6::t_bb87a65fedcab4 37-38
+  s_57660ba26304c6::t_88815513730992 50
+  s_c20ef75f34fced::t_f89f296abcbf03 39,42,44
+demos/chat/src/client/stores/room.test.ts
+  s_6d0e77b31f46a1::t_7f503a165ea42a 369-394
+  s_6d0e77b31f46a1::t_a393152b7008fb 1,3-47,51-87,102-114,121-124,131-142,149-151,158-225,227-239,241,249-251,274-284,291-340,410
+  s_6d0e77b31f46a1::t_8854c3ac91932a 226,240,242-248,252-273
+  s_6d0e77b31f46a1::t_4c9c7953b1030f 2,48-50,88,101,115-120,125-130,143-148,152-157,285-290
+  s_6d0e77b31f46a1::t_68367c89d34972 89-100
+  s_6d0e77b31f46a1::t_89c581a844f446 341-368,395-409
+demos/chat/infra/local-outputs.json
+  s_57660ba26304c6::t_7721a4719f7282 1-7
+docs/04-ENTERPRISE-CHAT.md
+  s_57660ba26304c6::t_48ee3562fff9a2 91
+  s_57660ba26304c6::t_f0aa382bcc119c 250-256
+docs/03-MEDIA-DROP.md
+  s_57660ba26304c6::t_03f2c556ce2f40 149-154
+  s_57660ba26304c6::t_c9e37b8b1803bc 292,296-299,301-303
+  s_57660ba26304c6::t_087ff2d9295185 56
+demos/chat/src/client/stores/session.ts
+  s_6d0e77b31f46a1::t_2eb1020f8481e8 1-57
+demos/todo-app/infra/local-outputs.json
+  s_57660ba26304c6::t_9e8a1e161faddc 1-7
+demos/media-drop/src/worker/vitest.config.ts
+  s_57660ba26304c6::t_b5d888b8137f8a 6
+demos/media-drop/src/client/media.ts
+  s_158f214e9e0b0f::t_5033c39c105009 55-70
+demos/url-shortener/infra/access.tf
+  s_57660ba26304c6::t_d1066dfc53ddc2 1-65
+demos/chat/infra/chat.tf
+  s_57660ba26304c6::t_96c99d5cbbf111 1-99
+demos/chat/src/client/components/ChannelSidebar.vue
+  s_6d0e77b31f46a1::t_364db786b289e1 3
+  s_6d0e77b31f46a1::t_3f7858e213255f 1-2,4-149
+demos/chat/package.json
+  s_c20ef75f34fced::t_79a2a3dbd1dd92 39,42,44
+  s_57660ba26304c6::t_297dfc3166ba85 13,16
+  s_57660ba26304c6::t_52cac003536495 33-34
+  s_57660ba26304c6::t_c06fc1339cd4dc 50
+  s_6d0e77b31f46a1::t_f43125f9c9e448 56
+  s_57660ba26304c6::t_2ec18c0a23cee3 37-38
+demos/media-drop/src/client/media.test.ts
+  s_158f214e9e0b0f::t_34c8e3c4bbd24d 2,10-35
+  s_158f214e9e0b0f::t_37411ef55c42fd 36
+demos/chat/src/client/stores/channels.ts
+  s_6d0e77b31f46a1::t_4c9c7953b1030f 88-90
+  s_6d0e77b31f46a1::t_e49fd3c71b5881 1-87,91-98
+docs/02-TODO-APP.md
+  s_57660ba26304c6::t_983daf2186c564 58-62
+demos/media-drop/src/client/utils/defensive-guards.ts
+  s_158f214e9e0b0f::t_67491096e60307 10-37
+demos/todo-app/wrangler.jsonc.tpl
+  s_57660ba26304c6::t_76b64328e1f051 9
+demos/chat/src/worker/channels/repository.test.ts
+  s_6d0e77b31f46a1::t_1524fe3c97a1a0 1-37,43-96,100-101
+  s_6d0e77b31f46a1::t_7949d1b2fa7c7a 38-42,97-99
+demos/url-shortener/infra/local-outputs.json
+  s_57660ba26304c6::t_80b3fcf8398b00 1-7
+demos/chat/README.md
+  s_57660ba26304c6::t_8d05e64d5c2a35 38,42-43
+  s_6d0e77b31f46a1::t_5e6807ec4a1598 3-5,7,10-14,17-35,39-41,46-76,86-88,90-91,102,110-111,120-149,154-157,162-182,192-194,197,199-211,213,218-230,234-254
+demos/url-shortener/infra/providers.tf
+  s_57660ba26304c6::t_4b7ef7874ea0d7 1-32,34
+  s_57660ba26304c6::t_ccfa82906ec020 33
+demos/todo-app/README.md
+  s_57660ba26304c6::t_dd6dda92e2449b 18-20
+demos/media-drop/README.md
+  s_57660ba26304c6::t_c623655c314b95 47
+  s_57660ba26304c6::t_67ae8915d0a639 85
+demos/chat/src/worker/channels/validation.test.ts
+  s_6d0e77b31f46a1::t_7f7e0789abe1a8 15-19,34-40
+demos/chat/infra/access.tf
+  s_57660ba26304c6::t_0351d263ca62c7 1-32
+demos/chat/src/chat-protocol.ts
+  s_6d0e77b31f46a1::t_fb1eec1d2b3f1e 1-71
+demos/chat/DEMO.md
+  s_6d0e77b31f46a1::t_81a2de2adb5c01 1,3,5-10,12,15-21,24-26,30-95
+demos/chat/.env.example
+  s_57660ba26304c6::t_73a1cac22c90d7 5
+  s_57660ba26304c6::t_27a9d335bbef90 2-4
+  s_57660ba26304c6::t_096235d16190cc 6-8
+demos/todo-app/tests/integration/worker.test.ts
+  s_57660ba26304c6::t_d2b770fcbb28d7 62-71
+demos/todo-app/src/worker/middleware/access.ts
+  s_57660ba26304c6::t_698649a47acfad 7-8
+demos/todo-app/infra/access.tf
+  s_57660ba26304c6::t_f55dcc19ecfa65 1-28
+demos/chat/src/client/views/HomeView.test.ts
+  s_6d0e77b31f46a1::t_4feee4e409bea6 46
+  s_6d0e77b31f46a1::t_ed0ea688181060 83,89-105
+  s_6d0e77b31f46a1::t_8825beda4f05f2 261-274
+  s_6d0e77b31f46a1::t_7ab052ff0753b3 316,326
+  s_6d0e77b31f46a1::t_3bda0f8622779a 338-358
+  s_6d0e77b31f46a1::t_4c9c7953b1030f 47-48
+  s_6d0e77b31f46a1::t_f5d0d7cb3c3ff9 1-6,9-45,49-80,82,84-88,106-189,191-213,215-234,236-260,275-315,317-325,327-337,359-366
+demos/url-shortener/README.md
+  s_57660ba26304c6::t_dd6790088454e3 117
+  s_57660ba26304c6::t_240b2cad27c1b8 154
+  s_c20ef75f34fced::t_71b26530dd51a5 100
+demos/media-drop/infra/outputs.tf
+  s_57660ba26304c6::t_a8332672e42c49 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2cafade78416ca30d721b56058a03100504abf82",
+  "prompts": {},
+  "sessions": {
+    "s_158f214e9e0b0f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0526fdf78ffe39LaRsic8PknEq",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_57660ba26304c6": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_052e303eeffeEqKrpEY1TqMs0W",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_6d0e77b31f46a1": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05298d7a4ffe1ICUp95ZTX1Pf0",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_c20ef75f34fced": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_052a7af64ffeYr6PAjVR2W1YPP",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
