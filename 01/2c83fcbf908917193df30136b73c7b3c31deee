@@ -1,0 +1,125 @@
+demos/ai-chat/src/worker/chat/stream.test.ts
+  s_c5f22fe058d9b3::t_0ac6057926c918 8-9,12-14,56-61,64-71,85-90,102-110,122-130,146-148,157-165,183-187,194-203
+  s_c5f22fe058d9b3::t_c7e5a5adbbc428 144,150-152
+  s_c5f22fe058d9b3::t_db0aac1d8b8448 1-7,10-11,15-55,62-63,72-84,91-101,111-121,131-143,145,149,153-156,166-182,188-193,204-219
+demos/ai-chat/src/worker/chat/adapters/openai-chat.test.ts
+  s_c5f22fe058d9b3::t_d58055e7235278 1-42,49-58,62-82,86-113
+  s_c5f22fe058d9b3::t_0ac6057926c918 43-48,59-61,83-85
+demos/ai-chat/src/chat-protocol.ts
+  s_c5f22fe058d9b3::t_7a4dc2d6f13c14 1-87
+demos/ai-chat/src/sse.ts
+  s_c5f22fe058d9b3::t_a678bf1906bc03 1-92
+demos/ai-chat/src/worker/chat/log-fields.test.ts
+  s_c5f22fe058d9b3::t_0ac6057926c918 2-5,83-85
+  s_c5f22fe058d9b3::t_6b8ceea3375d04 1,6-82,86-111
+demos/ai-chat/tests/integration/fixtures.ts
+  s_c5f22fe058d9b3::t_f1ac4db013a756 63-93,99-123,125-127
+  s_c5f22fe058d9b3::t_c2e79bd7a925e0 124
+  s_c5f22fe058d9b3::t_537acab1de35b9 94-98
+demos/ai-chat/src/worker/routes/chat.ts
+  s_c5f22fe058d9b3::t_bf8c404fdec4ba 1-38,49-60,105-106,108
+  s_c5f22fe058d9b3::t_0ac6057926c918 39-48,61-104,107
+demos/ai-chat/src/models.ts
+  s_c5f22fe058d9b3::t_0ac6057926c918 31-34,159-160
+  s_c5f22fe058d9b3::t_56cdf1c9109192 1-30,35-158
+demos/ai-chat/src/worker/lib/read-json-body.ts
+  s_c5f22fe058d9b3::t_1a5a977004c93b 1-17
+demos/ai-chat/src/worker/chat/reasoning.test.ts
+  s_c5f22fe058d9b3::t_0ac6057926c918 7-10,36-43,55-58,63-66,85-87,114-120
+  s_c5f22fe058d9b3::t_197060b835bffe 88-95
+  s_c5f22fe058d9b3::t_6206cc0cda8de4 1-6,11-35,44-54,59-62,67-84,96-113,121-151
+demos/ai-chat/src/worker/middleware/body-limit.test.ts
+  s_c5f22fe058d9b3::t_a233a00ef362d3 1-67
+demos/ai-chat/src/sse.test.ts
+  s_c5f22fe058d9b3::t_b03d482f257a92 1-4,8-42,44-58,60-93
+  s_c5f22fe058d9b3::t_0ac6057926c918 5-7,43,59
+demos/ai-chat/src/worker/chat/inference.ts
+  s_c5f22fe058d9b3::t_77f8184fe1c2ca 5-7,12-56,61,69-98,102-121,123-130,137-187,191-200,203-210
+  s_c5f22fe058d9b3::t_8cd1544a832bae 122
+  s_c5f22fe058d9b3::t_0ac6057926c918 1-4,8-11,57-60,62-68,99-101,131-136,188-190,201-202
+demos/ai-chat/src/worker/chat/validation.test.ts
+  s_c5f22fe058d9b3::t_0ac6057926c918 16-18,168-173
+  s_c5f22fe058d9b3::t_73e4fb22643de0 1-8,10-15,19-167,174-291
+  s_c5f22fe058d9b3::t_fe7a428956cb34 9
+demos/ai-chat/src/worker/chat/adapters/types.ts
+  s_c5f22fe058d9b3::t_356961db49abc9 1-38
+demos/ai-chat/src/worker/chat/log-fields.ts
+  s_c5f22fe058d9b3::t_0ac6057926c918 66-68,74-76,84-86
+  s_c5f22fe058d9b3::t_80a541b311986f 1-47,51-65,70-73,90-91
+  s_c5f22fe058d9b3::t_3e9d92026bd576 69,77-83,87-89
+  s_c5f22fe058d9b3::t_d48a6c827e625a 48-50
+docs/05-AI-CHAT.md
+  s_c5f22fe058d9b3::t_fc076dba240759 237-240,246,250-258
+  s_c5f22fe058d9b3::t_ecfa2ef70b8999 301-308,311,313-356,360-362,366-368,371-375,385-392
+  s_c5f22fe058d9b3::t_f446e209cba6b1 259
+demos/ai-chat/src/worker/chat/reasoning.ts
+  s_c5f22fe058d9b3::t_0ac6057926c918 122-124
+  s_c5f22fe058d9b3::t_92a2041130fad0 1-121,125-128
+demos/ai-chat/src/worker/chat/adapters/shared.ts
+  s_c5f22fe058d9b3::t_a7fda7cebef24e 1-22,26-54,59-72,76-152
+  s_c5f22fe058d9b3::t_0ac6057926c918 23-25,73-75
+  s_c5f22fe058d9b3::t_9b38e659cc8de6 55-58
+demos/ai-chat/src/worker/index.ts
+  s_c5f22fe058d9b3::t_871c9e5cd15ddf 9,21
+demos/ai-chat/src/worker/chat/validation.ts
+  s_c5f22fe058d9b3::t_0ac6057926c918 60-63,79-81,105-107,118-120,178-180,182-185
+  s_c5f22fe058d9b3::t_5d05529e9109ba 1-59,64-78,82-104,108-117,121-177,181,186-205
+demos/ai-chat/src/worker/lib/read-json-body.test.ts
+  s_c5f22fe058d9b3::t_3b546262bfbca4 20-22,24-26
+  s_c5f22fe058d9b3::t_ac1d0c2796b4a2 1-19,23,27-35
+demos/ai-chat/src/worker/chat/adapters/openai-chat.ts
+  s_c5f22fe058d9b3::t_0ac6057926c918 14-16,25-28,56-59
+  s_c5f22fe058d9b3::t_ea1b492205dc03 18-23
+  s_c5f22fe058d9b3::t_a9cb080f1b5268 1-13,17,24,29-53,60-110
+  s_c5f22fe058d9b3::t_ab378164496871 54-55
+demos/ai-chat/src/worker/middleware/body-limit.ts
+  s_c5f22fe058d9b3::t_14577abcd99418 21
+  s_c5f22fe058d9b3::t_6e36ae94fd63bd 1
+  s_c5f22fe058d9b3::t_9d75c9c552b603 2-20,22-25
+docs/DECISIONS.md
+  s_c5f22fe058d9b3::t_5668268c0f42e0 159-204
+demos/ai-chat/src/worker/chat/adapters/index.ts
+  s_c5f22fe058d9b3::t_734d27f8d206cb 1-58
+demos/ai-chat/tests/integration/chat.test.ts
+  s_c5f22fe058d9b3::t_3b546262bfbca4 228-230
+  s_c5f22fe058d9b3::t_af773fdab6af0c 266
+  s_c5f22fe058d9b3::t_537acab1de35b9 37-39,55-57,158-167,284-286
+  s_c5f22fe058d9b3::t_4f6cdefda93784 1-36,40-54,58-157,168-187,262-265,267-283,287-288
+  s_c5f22fe058d9b3::t_8c253b7f811833 188-227,231-261
+demos/ai-chat/src/worker/chat/inference.test.ts
+  s_c5f22fe058d9b3::t_34bea8ae92a635 1-18,22-29,32-33,36-79,89,93-111,178-183,185-249,253-268,274-278,282-283
+  s_c5f22fe058d9b3::t_3b546262bfbca4 115-118,132-140,164-172
+  s_c5f22fe058d9b3::t_f06e100918b9a2 184
+  s_c5f22fe058d9b3::t_3fdb017292ef4e 112-114,119-131,141-163,173-177
+  s_c5f22fe058d9b3::t_0ac6057926c918 19-21,30-31,34-35,80-88,90-92,250-252,269-273,279-281
+demos/ai-chat/src/models.test.ts
+  s_c5f22fe058d9b3::t_0ac6057926c918 6-11,15-20,30-38,66-68
+  s_c5f22fe058d9b3::t_cbacda494c7fbd 1-5,12-14,21-29,39-65,69-83
+demos/ai-chat/src/worker/chat/adapters/cf-native.test.ts
+  s_c5f22fe058d9b3::t_f754c09d002714 1-87,91-103,107-121
+  s_c5f22fe058d9b3::t_0ac6057926c918 88-90,104-106
+demos/ai-chat/src/worker/chat/stream.ts
+  s_c5f22fe058d9b3::t_9348f1524f33b7 1-107,111-112,116-141,147-148,155,162-172,177-187
+  s_c5f22fe058d9b3::t_0ac6057926c918 108-110,113-115,142-146,149-154,156-161,173-176
+demos/ai-chat/src/worker/chat/adapters/cf-native.ts
+  s_c5f22fe058d9b3::t_b7d76461e67a91 1-18,25,30-52,59-113
+  s_c5f22fe058d9b3::t_81539a311eb0cb 53-54
+  s_c5f22fe058d9b3::t_0ac6057926c918 26-29,55-58
+  s_c5f22fe058d9b3::t_1ad3fe40baa75b 19-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "012c83fcbf908917193df30136b73c7b3c31deee",
+  "prompts": {},
+  "sessions": {
+    "s_c5f22fe058d9b3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_046190fa3ffek6xh9mahl1y7CC",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
