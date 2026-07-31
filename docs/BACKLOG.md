@@ -99,7 +99,7 @@ Keep out:
 
 - Transcoding, AI analysis, background jobs, and collaborative viewing.
 
-## State And Asynchronous Processing Track
+## 4. Group Chat
 
 Directory: `demos/chat`
 
@@ -134,7 +134,7 @@ Keep out:
 
 ### 5. AI Model Playground
 
-Directory: `demos/ai-model-playground`
+Directory: `demos/ai-chat`
 
 Demo location: `ai-chat`
 
@@ -151,13 +151,18 @@ Demonstrates:
 
 Primary flow:
 
-1. Select a model and submit a prompt.
-2. Observe the response stream incrementally.
-3. Compare response time and output with a second model.
+1. Enter a prompt in the chat prompt box, and select a model from drop down.
+2. Model is submitted to Workers AI.
+3. Show activity (bouncing dots) while the model is working.
+4. Stream content to the chat view - thinking is collapsed behind a "Thinking" box.
+5. At the end, output the response from the model.
+6. Additional prompts can be provided once the model has finished (normal chat with AI).
+7. Provide an export button for storing the chat history as markdown file.
 
 Keep out:
 
 - Persistent conversations, tools, RAG, agents, and external providers.
+- Audio recording (speech-to-text).
 
 ### 6. Multi-Provider AI Chat
 
@@ -179,15 +184,68 @@ Demonstrates:
 
 Primary flow:
 
-1. Send equivalent prompts to two configured providers.
-2. Inspect requests, latency, and usage in AI Gateway.
-3. Demonstrate one gateway policy such as caching or fallback.
+basically the same as the `ai-chat` demo with the following changes:
+
+1. The model selector contains at least one dynamic route.
+2. The cost of each request (tokens in/out/cost $) is shown at the end of the chat cycle.
+3. A running total of the cost of the chat is provided in the UI.
+4. The cost of the chat is included in the markdown export.
+
+Keep out:
+
+- Tools, long-term memory, retrieval, and autonomous behavior.
+- Speech to text
+
+### 7. Speech-to-text for ai-chat
+
+Directory: `demos/ai-audio-chat`
+
+Demo location: `ai-chat`
+
+Introduces: Speech to text audio recording
+
+Builds on: AI gateway chat (demo 6).
+
+Demonstrates:
+
+- Using speech-to-text for audio transcription
+
+Primary flow:
+
+basically the same as the `ai-chat` demo with the following changes:
+
+1. There is a microphone on the chat - pressing it will allow speaking the prompt and it will be transcribed.
+2. The cost of audio transcription is broken out as a separate cost at the end of transcription.
+3. A running total of the cost of the chat is provided in the UI includes cost of transcription.
+4. The cost of the chat including transcription is included in the markdown export.
 
 Keep out:
 
 - Tools, long-term memory, retrieval, and autonomous behavior.
 
-### 7. Watch Together
+### 8. OpenCode in Browser
+
+Directory: `demos/opencode`
+
+Introduces: Durable Objects and Containers
+
+Demonstrates:
+
+- Running a container with a browser frontend
+- Configuring the container based on logged in user
+- Egress control
+
+Primary flow:
+
+1. User logs into the web site
+2. User creates a workspace (`+ Workspace` button) from a GitHub or GitLab repo.
+3. Workspace establishes a durable object and container - container clones repo.
+4. User is presented with "OpenCode" in a terminal connected to the container.
+5. OpenCode configured to route AI traffic through AI Gateway automatically.
+6. When an external website is accessed, egress controller logs request.
+7. User can see the egress requests via sidebar in UI.
+
+### 9. Watch Together
 
 Directory: `demos/watch-together`
 
@@ -212,7 +270,7 @@ Keep out:
 
 - Chat, AI recommendations, transcoding, and durable job orchestration.
 
-### 8. Upload Indexer
+### 10. Upload Indexer
 
 Directory: `demos/upload-indexer`
 
@@ -238,7 +296,7 @@ Keep out:
 - Containers and multi-step Workflows. The consumer performs a small amount of
   Worker-compatible metadata extraction only.
 
-### 9. Video Transcoder
+### 11. Video Transcoder
 
 Directory: `demos/video-transcoder`
 
@@ -263,7 +321,7 @@ Keep out:
 
 - Multiple renditions, approvals, transcription, and AI-generated metadata.
 
-### 10. Video Publishing Pipeline
+### 12. Video Publishing Pipeline
 
 Directory: `demos/video-publishing-workflow`
 
@@ -289,7 +347,7 @@ Keep out:
 
 - AI transcription and generated content. This demo is about orchestration.
 
-### 11. Transcript Studio
+### 13. Transcript Studio
 
 Directory: `demos/transcript-studio`
 
@@ -314,7 +372,7 @@ Keep out:
 
 - Semantic search, summarization, chat, and synthetic speech.
 
-### 12. Ask Your Media
+### 14. Ask Your Media
 
 Directory: `demos/media-search`
 
@@ -340,7 +398,7 @@ Keep out:
 
 - Agent tools, autonomous actions, and multiple model providers.
 
-### 13. Persistent Assistant
+### 15. Persistent Assistant
 
 Directory: `demos/persistent-assistant`
 
@@ -366,7 +424,7 @@ Keep out:
 
 - External tools, MCP servers, broad skills catalogs, and autonomous loops.
 
-### 14. Operations Agent
+### 16. Operations Agent
 
 Directory: `demos/operations-agent`
 
@@ -397,7 +455,7 @@ Keep out:
 - Arbitrary code execution, unrestricted web browsing, and a large catalog of
   unrelated skills.
 
-### 15. Audio And Text Conversation Bridge
+### 17. Audio And Text Conversation Bridge
 
 Directory: `demos/conversation-bridge`
 

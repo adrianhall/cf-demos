@@ -108,3 +108,51 @@ following test in the file, since the stuck eviction call never resolved. Read w
 structured-clone-friendly fields the assertion actually needs (`response.status`,
 `response.webSocket !== null`) inside the callback and return only those; never let a `Response`,
 `Request`, or other non-plain object cross that boundary as a return value.
+
+## NEW DECISIONS
+
+New decisions will be located below here before they are incorporated, and moved above this
+heading when they have been incorporated.
+
+## 9. Workers AI local-development findings (`demos/ai-chat`, Phase 1)
+
+Building `demos/ai-chat`'s scaffold (docs/05-AI-CHAT.md, Phase 1) required verifying every claim
+in that document's "Workers AI Has No Local Simulation" section against current behavior before
+committing to it. All of them held:
+
+- The `ai` binding **must** be declared `{ "binding": "AI", "remote": true }` in
+  `wrangler.jsonc.tpl`. Current Cloudflare docs confirm: omitting `remote` on an `ai` binding
+  connects remotely anyway and logs a warning; setting `remote: false` on it is a hard error.
+  Every other "recommended remote binding" (Browser Run, Vectorize, mTLS, Images) only *warns*
+  when `remote` is omitted — Workers AI is the one binding type where the omission is upgraded to
+  an error, not just a warning.
+- Wrangler picks up `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` from the ordinary `.env` file
+  already committed to each demo's root (the same file the `dotenv` Terraform provider reads) with
+  no additional export or wrapper script — confirmed by running `npm run build` (no `.env`
+  present) and `vite dev` (real `.env` present) from a clean checkout.
+- `vite build` does **not** open a remote-binding session even though the `ai` binding is declared
+  `remote: true` — confirmed: `npm run build` succeeds with no Cloudflare credentials anywhere in
+  the environment. Only a session that actually starts a `workerd` runtime (`vite dev`,
+  `vitest`) touches the binding at all.
+- `.dev.vars` does what the scenario doc predicted for a second, independent reason beyond the
+  local `ENVIRONMENT` value already established for other demos: because it exists, Wrangler stops
+  reading `.env` into the Worker's own `env` object, so `CLOUDFLARE_API_TOKEN` never becomes
+  readable from `env` inside Worker code even though the same token is used out-of-band to open
+  the remote-binding session itself.
+- `@cloudflare/vitest-pool-workers`'s `cloudflareTest()` plugin exposes a top-level
+  `remoteBindings` boolean option (confirmed by reading the pool's own Zod options schema:
+  `remoteBindings: z.boolean().default(true)`), independent of `wrangler`/`miniflare`/`main`. It
+  is not documented on the public Configuration page as of this writing, so the schema itself —
+  not the docs site — is the source of truth for this option's existence and default. Setting it
+  `false` in `tests/integration/vitest.config.ts` was sufficient to run the full test suite
+  (`npm test`) on a clean checkout with zero Cloudflare credentials in the environment and no
+  network calls to Cloudflare's remote-binding proxy — verified by running the suite with no
+  `.env` file present at all.
+- Integration tests drive the Worker via `worker.fetch(request, env, ctx)` (importing the Hono app
+  directly, with `createExecutionContext()`/`waitOnExecutionContext()` from `cloudflare:test`)
+  rather than `SELF.fetch()`, established starting in Phase 1/2 even before any route calls
+  `env.AI.run()`, specifically so a later phase can substitute `{ ...env, AI: fakeAi }` at the
+  exact same call site without restructuring the test fixtures.
+
+Demos 6 and 7 (AI Gateway, voice) inherit an `AI` or equivalent remote-only binding and should
+reuse this section's findings rather than rediscovering them.
