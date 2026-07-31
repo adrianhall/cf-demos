@@ -234,15 +234,28 @@ Rules for the catalog:
    shape that does not match the model becomes a type error rather than a
    silent fallback to `Record<string, unknown>`.
 
-The starting set, verified against the live catalog on 2026-07-31:
+The starting set, verified against the live catalog on 2026-07-31, **and re-verified
+against a live streaming spike on the deployed account the same day** (see the
+correction below the table — the spike found one wrong bound the catalog page
+itself does not surface):
 
 | `id` | Provider | Adapter | Reasoning | Context | Temperature |
 | --- | --- | --- | --- | --- | --- |
 | `@cf/zai-org/glm-4.7-flash` | Zhipu AI | `openai-chat` | `reasoning-field` | 131,072 | 0–2 |
 | `@cf/google/gemma-4-26b-a4b-it` | Google | `openai-chat` | `reasoning-field` | 256,000 | 0–2 |
-| `@cf/meta/llama-4-scout-17b-16e-instruct` | Meta | `cf-native` | `none` | 131,000 | 0–5 |
+| `@cf/meta/llama-4-scout-17b-16e-instruct` | Meta | `cf-native` | `none` | 131,000 | **0–2** |
 | `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b` | DeepSeek | `cf-native` | `inline-think-tags` | 80,000 | 0–5 |
 | `@cf/ibm-granite/granite-4.0-h-micro` | IBM | `cf-native` | `none` | 131,000 | 0–5 |
+
+**Spike correction (temperature): Llama 4 Scout's real range is 0–2, not 0–5.**
+The catalog page and the generated `AiTextGenerationInput` type both suggest the
+same 0–5 range as Granite and DeepSeek, since all three share that permissive
+type. Sending Scout `temperature: 3.5` in the live spike returned a `400` from
+Workers AI itself (`temperature must be in [0, 2], got 3.5`). Granite and
+DeepSeek really do accept up to `5` (confirmed: `5` succeeds, `5.5` is rejected
+by Granite). This is exactly the scenario the per-descriptor (not per-adapter)
+clamp bounds exist to catch — see "Model Adapters" below for why one shared
+`cf-native` input *type* does not imply one shared valid *range*.
 
 Why Granite 4.0 H Micro is the fifth entry, rather than any other
 non-reasoning model:
@@ -285,29 +298,81 @@ client imports only the descriptors — never an adapter implementation.
 
 **Answering the open question in the catalog notes: yes, an adapter identifier
 is required, not optional.** The five chosen models do not share one interface.
-Verified from the model pages and the Workers AI types on 2026-07-31:
+Verified from the model pages and the Workers AI types on 2026-07-31 — then
+**re-verified with a live throwaway streaming spike against the deployed
+account the same day**, which found the real *streaming chunk shape* is not
+what either the model pages or the generated types predict for two of the
+three `cf-native`-typed models. Do not implement `readChunk()` from the table
+below without first reading the correction underneath it.
 
-| | `cf-native` (Scout, DeepSeek R1, Granite) | `openai-chat` (GLM 4.7 Flash, Gemma 4) |
+| | `cf-native` **input type** (Scout, DeepSeek R1, Granite) | `openai-chat` **input type** (GLM 4.7 Flash, Gemma 4) |
 | --- | --- | --- |
 | Output token limit field | `max_tokens` (**default 256**) | `max_completion_tokens` (`max_tokens` deprecated) |
-| Temperature range | 0–5 | 0–2 |
+| Temperature range | 0–5 for Granite/DeepSeek, **0–2 for Scout** (per-descriptor, not per-adapter — see the catalog correction above) | 0–2 |
 | Non-streaming output | `{ response, usage, tool_calls }` | `{ id, object, created, model, choices[], usage }` |
-| Streaming text delta | `response` | `choices[0].delta.content` |
-| Streaming reasoning | inline `<think>` … `</think>` inside the text | `choices[0].delta.reasoning_content` |
-| Finish reason | terminal chunk | `choices[0].finish_reason` |
-| Usage while streaming | `usage` on the terminal chunk | requires `stream_options: { include_usage: true }` |
+
+**Spike correction (streaming shape): the input-type split above does *not*
+predict the streaming chunk shape.** Calling `env.AI.run(model, { messages,
+stream: true })` on the live account returns, per model:
+
+| Model | Every per-token chunk shape | Terminal chunk (immediately before `[DONE]`) |
+| --- | --- | --- |
+| DeepSeek R1 Distill | `{ response: "<text>", usage }` — the true "raw cf-native" shape, no `choices` at all | `{ response: "", usage: <cumulative totals> }` |
+| Granite 4.0 H Micro | `{ choices: [{ delta: { content }, finish_reason }], usage }` — **OpenAI delta shape**, despite its `AiTextGenerationInput`-typed input | same terminal shape as DeepSeek |
+| Llama 4 Scout | `{ choices: [{ delta: { content }, finish_reason }], response, usage }` — OpenAI delta shape, *and* a redundant top-level `response` mirror | same terminal shape as DeepSeek |
+| GLM 4.7 Flash | `{ choices: [{ delta: { content?, reasoning_content? }, finish_reason }], usage }` | same terminal shape as DeepSeek |
+| Gemma 4 | `{ choices: [{ delta: { content?, reasoning_content? }, finish_reason }], usage }` | same terminal shape as DeepSeek |
+
+So only **DeepSeek R1 Distill** actually streams the raw `{ response }`
+cf-native shape end to end. Granite and Scout accept the same `cf-native`
+*input* type (`max_tokens`, no `stream_options`) but stream back **the other
+adapter's chunk shape**. Consequently `src/worker/chat/adapters/cf-native.ts`'s
+`readChunk()` must itself handle both physical shapes it may receive — checking
+for a `choices` array first (Granite/Scout) and falling back to the plain
+`response` field (DeepSeek) — while `buildInput()`/`run()` stay keyed on the
+`AiTextGenerationInput`-compatible input type shared by all three models. The
+`openai-chat` adapter's `readChunk()` only ever sees the `choices` shape, so it
+stays simple. A small `src/worker/chat/adapters/shared.ts` holds the
+`choices`-shape parsing and `usage` normalization used by **both** adapters,
+so that duplicated logic (not model-invocation logic — each adapter still owns
+its own `env.AI.run()` call site) is implemented once.
+
+**Spike correction (usage timing): usage is not cumulative per delta.** Every
+per-token chunk carries its own small `usage` object (typically
+`completion_tokens: 1`, describing just that delta) — not a running total. The
+one **terminal** chunk immediately before `[DONE]` is the only frame carrying
+the true cumulative `{ prompt_tokens, completion_tokens, total_tokens }` for
+the whole turn, and it has the identical `{ response: "", usage }` shape for
+**every** model regardless of adapter. The correct extraction rule proven by
+the spike is therefore "last `usage` value seen before `[DONE]` wins", not
+"sum every delta's `usage`" and not "only trust a `choices`-shaped terminal
+frame" (DeepSeek never has `choices` at all).
+
+**Spike correction (`stream_options.include_usage`): usage was present in the
+terminal frame even without this flag during the spike**, contradicting the
+model pages' documented requirement. The flag is still sent — it is the
+documented, forward-compatible way to request it, cheap to include, and this
+finding may not hold on every account/gateway version — but do not treat its
+absence as proof usage will be `null`; verify empirically per account.
 
 So the demo needs `src/worker/chat/adapters/` with a registry keyed by
 `ModelAdapterId` (the literal union declared in the shared `src/models.ts`) and
-one module per adapter, each colocated with its own tests. Every adapter exposes
-the same two operations:
+one module per adapter, each colocated with its own tests, plus the shared
+`choices`-parsing/usage-normalization helper above. Every adapter exposes the
+same two operations:
 
 - `buildInput(descriptor, messages, params)` — produce that model's input
   object, mapping the clamped `maxTokens` onto the correct field name and the
-  clamped `temperature` onto the correct range, and adding
-  `stream_options: { include_usage: true }` where usage requires it.
+  clamped `temperature` onto the correct range (per descriptor — Scout's 0–2
+  differs from Granite/DeepSeek's 0–5 despite sharing an adapter), and adding
+  `stream_options: { include_usage: true }` on the `openai-chat` side.
 - `readChunk(parsedChunk)` — return `{ answerDelta?, thinkingDelta?, usage?,
   finishReason? }` from one already-JSON-parsed upstream SSE frame.
+  `thinkingDelta` is populated here only when the JSON already separates it
+  (`reasoning_content`, `openai-chat`'s job); the `inline-think-tags` mechanism
+  is **not** an adapter concern — `readChunk()` returns the raw combined text
+  as `answerDelta`, and a later stage (`src/worker/chat/reasoning.ts`, driven
+  by the descriptor's `reasoning` field, not the adapter) re-splits it.
 
 Each adapter owns its own `env.AI.run()` call site so the model-ID union and
 input type stay narrow within it. Do not build one generic call site for all
@@ -317,12 +382,14 @@ prevent.
 
 Two traps worth naming, because both produce plausible-looking wrong output:
 
-- **`max_tokens` defaults to 256 on all three `cf-native` models.** Left unset,
-  every answer silently truncates mid-sentence and the demo looks broken. Always
-  send an explicit value from the descriptor.
-- **`openai-chat` streams report no usage unless `stream_options.include_usage`
-  is set**, so the "log token usage" lesson would quietly degrade to `null` for
-  the two `openai-chat` entries.
+- **`max_tokens` defaults to 256 on all three `cf-native`-input models.** Left
+  unset, every answer silently truncates mid-sentence and the demo looks
+  broken. Always send an explicit value from the descriptor.
+- **Reading `choices[0].delta.content` only for the two `openai-chat`-input
+  models would silently drop Granite's and Scout's entire streamed answer**,
+  since those two `cf-native`-input models emit exactly that shape, not
+  `response`, per the spike above. This is the single easiest way to "carry a
+  documented shape into code unverified" that the spike step exists to prevent.
 
 `reasoning_effort` exists on the `openai-chat` models. Deliberately do **not**
 expose it: two parameters (temperature and output limit) are enough for the

@@ -156,3 +156,49 @@ committing to it. All of them held:
 
 Demos 6 and 7 (AI Gateway, voice) inherit an `AI` or equivalent remote-only binding and should
 reuse this section's findings rather than rediscovering them.
+
+## 10. Workers AI streaming chunk shapes do not follow the declared input type (`demos/ai-chat`, Phase 3)
+
+docs/05-AI-CHAT.md's Phase 3, step 9 mandates a throwaway spike against the deployed account
+before writing the model catalog or adapters, specifically because the model catalog page and the
+generated types describe *input* shapes, not *streaming output* shapes. The spike (`curl -N` against
+`POST /client/v4/accounts/{account}/ai/run/{model}` with `stream: true`, one call per catalog
+model) found real behavior materially different from the scenario doc's original draft in three
+ways. All three are now corrected directly in docs/05-AI-CHAT.md's Model Catalog and Model
+Adapters sections; this entry is the supporting evidence trail, not a duplicate of the correction.
+
+**Streaming chunk shape is not determined by the model's declared input type.** Of the three
+models sharing the permissive `AiTextGenerationInput`/`BaseAiTextGeneration` input type (Granite,
+Scout, DeepSeek R1 Distill), only DeepSeek actually streams the "raw cf-native" `{ response,
+usage }` chunk shape the type's family name suggests. Granite and Scout both stream the *other*
+adapter's shape instead — `{ choices: [{ delta: { content }, finish_reason }], usage }` — despite
+accepting `max_tokens`/no `stream_options` on the way in. Scout additionally mirrors the same text
+into a redundant top-level `response` field per chunk; Granite does not. Do not assume "shares an
+input type" implies "shares an output shape" for any future catalog addition — spike the actual
+stream before writing its `readChunk()`.
+
+**Per-model temperature bounds can be tighter than the shared input type's declared range.**
+Granite and DeepSeek both accept `temperature` up to `5` (confirmed: `5` succeeds, `5.5` is
+rejected). Scout — despite sharing Granite/DeepSeek's input type — rejects anything above `2` with
+a `400` (`temperature must be in [0, 2], got 3.5`) directly from Workers AI, not from this Worker's
+own validation. This is why `src/worker/chat/validation.ts` clamps to the **descriptor's** bounds,
+never an adapter-wide constant: two models sharing one adapter can disagree on range.
+
+**Per-chunk `usage` is not cumulative; only the final chunk before `[DONE]` carries the true
+total, and this holds for every model regardless of adapter.** Every per-token delta chunk carries
+its own small `usage` object (typically `completion_tokens: 1`, describing just that one delta).
+Immediately before the `[DONE]` sentinel, every model — including DeepSeek, which has no `choices`
+key anywhere else in its stream — emits one identically-shaped terminal chunk, `{ response: "",
+usage: { prompt_tokens, completion_tokens, total_tokens } }`, carrying the cumulative total for the
+whole turn. The correct extraction rule proven by the spike is "keep overwriting a single tracked
+`usage` value with whatever the most recent chunk reported, and use whatever is left when the
+stream ends" — not summing deltas, and not gating extraction on the presence or absence of a
+`choices` key (which would incorrectly exclude DeepSeek, whose *only* chunk shape lacks `choices`).
+`stream_options: { include_usage: true }` is still sent on the `openai-chat` adapter's input as the
+documented, forward-compatible way to request usage, but the spike observed the terminal usage
+frame appear even without it — do not treat its absence elsewhere as proof usage will come back
+`null` without re-verifying per account/gateway version.
+
+Demos 6 and 7 build directly on the adapter registry this spike shaped; reuse `readChunk()`'s
+choices-shape-first-then-response-fallback pattern and the "last usage chunk wins" extraction rule
+rather than rediscovering either.
