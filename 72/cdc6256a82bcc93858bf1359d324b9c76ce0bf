@@ -1,0 +1,104 @@
+demos/ai-chat/src/client/views/HomeView.test.ts
+  s_ac18e904690f1a::t_aa5d9774519b5f 101-107
+  s_ac18e904690f1a::t_f0664c6d5367e7 11-13,46-48
+  s_ac18e904690f1a::t_cae8cdd36ae7e7 32-34
+  s_ac18e904690f1a::t_9c28d296d246b4 2-6,9-10,14-19,21-31,35-45,49-100
+demos/ai-chat/src/client/lib/transcript.ts
+  s_ac18e904690f1a::t_4592c4aa204c39 1-39,41-47,67-69,72-99
+  s_ac18e904690f1a::t_c2b44d9c80418d 40,48-66,70-71
+demos/ai-chat/src/client/components/ActivityIndicator.vue
+  s_ac18e904690f1a::t_fdec145f2cdd43 1-72
+demos/ai-chat/src/client/components/ChatTranscript.vue
+  s_ac18e904690f1a::t_e90c5147d79755 4,6
+  s_ac18e904690f1a::t_69d99aa3a97591 1-3,5,7-187
+demos/ai-chat/src/client/stores/chat.test.ts
+  s_ac18e904690f1a::t_2a61384511666e 319-345
+  s_ac18e904690f1a::t_f0664c6d5367e7 72-76,91-97,170-176,202-208,215-221,247-253,367-373,390-392
+  s_ac18e904690f1a::t_6824f6d8cf4e55 1-71,77-90,98-109,159-169,177-201,209-214,222-246,254-318,346-366,374-389,393-431
+  s_ac18e904690f1a::t_536b119f1d1485 121-127,136-142
+  s_ac18e904690f1a::t_afc98c71e1a012 110-120,128-135,143-158
+demos/ai-chat/src/client/components/ActivityIndicator.test.ts
+  s_ac18e904690f1a::t_cb9985007d1fb4 1-19
+demos/ai-chat/src/client/components/ChatTranscript.test.ts
+  s_ac18e904690f1a::t_f0664c6d5367e7 59-61,89-92,97-99,104-106
+  s_ac18e904690f1a::t_be5852386a3020 133-141
+  s_ac18e904690f1a::t_ea2c1420b735ec 1-58,62-88,93-96,100-103,107-132,142-149
+demos/ai-chat/src/client/components/ExportButton.test.ts
+  s_ac18e904690f1a::t_521fb76850baff 1-49
+demos/ai-chat/src/client/components/ModelSelector.test.ts
+  s_ac18e904690f1a::t_99587193fb1e02 61,66-67,69-79
+  s_ac18e904690f1a::t_1d2a0cae4f2711 1-2,4-60,80-95
+  s_ac18e904690f1a::t_5dd07338c50867 62-65,68
+  s_ac18e904690f1a::t_17e982217112ee 3
+demos/ai-chat/src/client/lib/download.ts
+  s_ac18e904690f1a::t_9148a7a9309174 1-33
+demos/ai-chat/src/client/components/ThinkingPanel.test.ts
+  s_ac18e904690f1a::t_4ad605df8f0fe1 1-24
+demos/ai-chat/src/client/stores/settings.ts
+  s_ac18e904690f1a::t_95e9e064f926a6 43-45
+  s_ac18e904690f1a::t_536b119f1d1485 31-34
+  s_ac18e904690f1a::t_5de0247aaca467 29-30
+  s_ac18e904690f1a::t_9d1e6675fabba3 2-28,35-42,46-93
+  s_ac18e904690f1a::t_078f76c649ba21 1
+demos/ai-chat/src/client/components/ThinkingPanel.vue
+  s_ac18e904690f1a::t_064d8fc31c7b40 1-49
+demos/ai-chat/src/client/lib/download.test.ts
+  s_ac18e904690f1a::t_199a1ca8899e2a 2-3,6,12-22,24,26-34,36-37
+  s_ac18e904690f1a::t_86ca780986bbee 1,4-5,7-11,23,25,35
+demos/ai-chat/src/client/stores/settings.test.ts
+  s_ac18e904690f1a::t_f0664c6d5367e7 15-17
+  s_ac18e904690f1a::t_9b0656894e9f61 1-14,18-43,47,50-87
+  s_ac18e904690f1a::t_1b82c32d90f6c4 44-46,48-49
+demos/ai-chat/src/client/components/ChatComposer.vue
+  s_ac18e904690f1a::t_d0de46893df249 1-150
+docs/BACKLOG.md
+  s_ac18e904690f1a::t_d11773a1c1eae8 180,188-194,198,219,228
+  s_ac18e904690f1a::t_736bdf127e8889 253
+  s_ac18e904690f1a::t_8f17946d3f3a61 167,169,171,173
+  s_ac18e904690f1a::t_70cc422cfd0141 205,234
+  s_ac18e904690f1a::t_e5801de3a7bf2e 203,232
+  s_ac18e904690f1a::t_5cd6986ffe20c2 209-211,229-231,233,235-252
+demos/ai-chat/src/client/lib/stream-reader.test.ts
+  s_ac18e904690f1a::t_02399878c7ea1b 1-108,114-117
+  s_ac18e904690f1a::t_9137407bc7c85f 109-113
+demos/ai-chat/src/client/components/ExportButton.vue
+  s_ac18e904690f1a::t_da5133abcdff64 1-59
+demos/ai-chat/src/client/views/HomeView.vue
+  s_ac18e904690f1a::t_7d47cd88509a7f 20,22-25,27-29
+  s_ac18e904690f1a::t_9ed4a5da104a20 2-19,33-50,52-71,75-147
+  s_ac18e904690f1a::t_b5d86e234f43fb 51
+demos/ai-chat/src/client/components/ModelSelector.vue
+  s_ac18e904690f1a::t_f0664c6d5367e7 27-29,34-35
+  s_ac18e904690f1a::t_da47287d62fce9 103-159
+  s_ac18e904690f1a::t_42ae8e7798f8a8 1-26,30-33,36-102
+demos/ai-chat/src/client/stores/chat.ts
+  s_ac18e904690f1a::t_d127faad8a6b40 52-58,60-62
+  s_ac18e904690f1a::t_43a78a610e9d7b 1-51,59,63-260
+demos/ai-chat/src/client/main.ts
+  s_ac18e904690f1a::t_30ef0e46f66399 6
+demos/ai-chat/src/client/lib/stream-reader.ts
+  s_ac18e904690f1a::t_bb157bd93d9277 1-83
+demos/ai-chat/src/client/components/ChatComposer.test.ts
+  s_ac18e904690f1a::t_40a4855a556e30 1-12,16-61
+  s_ac18e904690f1a::t_f0664c6d5367e7 13-15
+demos/ai-chat/src/client/lib/transcript.test.ts
+  s_ac18e904690f1a::t_f0664c6d5367e7 28-31
+  s_ac18e904690f1a::t_2c00346d5c4a4b 77-96
+  s_ac18e904690f1a::t_48470768d00fe3 1-27,32-76,97-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "72cdc6256a82bcc93858bf1359d324b9c76ce0bf",
+  "prompts": {},
+  "sessions": {
+    "s_ac18e904690f1a": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_04265c0b6ffeDCH0iDtXlftESY",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
