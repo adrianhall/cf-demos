@@ -205,7 +205,8 @@ This demo seeks to emulate "Gemini AI Chat" using Cloudflare capabilities.  Thin
   - writeMarkdown allows the system to write a markdown file and store it in R2 for the user - it's attached to the chat
   - getUrl allows the system to get a URL from the internet - it goes through egress control
   - other tools as needed
-- AIChatAgent has access to personal and enterprise skills
+  - Consider using sandbox SDK or Dynamic Workers (Cloudflare service) for running tools, so that we get automatic egress control.
+- AIChatAgent has access to personal and enterprise skills (use agents/skills SkillsRegistry())
   - Enterprise skills are uploaded by admins (or point URL at a skill file / repo)
   - Personal skills are uploaded by users (or point URL at a skill file / repo)
   - When repos are used, install the same way as "npx skills add" for this tool
