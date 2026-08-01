@@ -1,0 +1,94 @@
+demos/url-shortener/README.md
+  s_22c92103c781fd::t_e1aef4f9961f27 3,5,11-18,20,29-37,48,50,53-55,67,69,71-74,76,78-83,89-94,103
+demos/todo-app/README.md
+  s_e2b7f25fee5267::t_fe5ff330bdce2e 1,3,9-16,18,25,27-34,36,45,47,50-52,64,66,68,70-71,73,75-79,83,85-90,99-101
+AGENTS.md
+  s_30f7f40243c9c5::t_2e360fc3d341b8 602-607
+  s_30f7f40243c9c5::t_f6b601a709ca4b 405-408,415-444
+demos/chat/README.md
+  s_c7849bd9351661::t_14ff9dda181afd 1,3,5,11-18,20,29-36,38,47-49,54-55,58,68,70,72,74-84,88,90-91,94-95,104
+demos/chat/EXPLAIN-DEMO.md
+  s_c7849bd9351661::t_e071f31e45d393 1-41
+demos/media-drop/DEMO.md
+  s_6762d1af62397e::t_cc34f7183a109e 1,3,5,7-12,16-42
+demos/url-shortener/EXPLAIN-DEMO.md
+  s_30f7f40243c9c5::t_1b34148ea25adc 15-24
+  s_22c92103c781fd::t_bedb034fdf6400 1-14,25-68
+demos/todo-app/EXPLAIN-DEMO.md
+  s_e2b7f25fee5267::t_931322eed6d178 1-34,36-70
+  s_e2b7f25fee5267::t_1c3d1fe685f4f6 35
+demos/url-shortener/DEMO.md
+  s_22c92103c781fd::t_d68a7c1c349fc6 1,3,7-11,15-27,31,33-34,39,41,43
+demos/chat/DEMO.md
+  s_c7849bd9351661::t_2d83432f3de929 1,3,7-9,13,15,17-21,25,28-29,34-38,40
+demos/ai-chat/README.md
+  s_e44348f02987ee::t_0bddbca92176be 3,5,11-18,20,22,31-38,40,49,51,62-63,74,76,78,80-82,86,88-92,96,101-105,114
+demos/ai-chat/DEMO.md
+  s_e44348f02987ee::t_dbf33b85cfa684 1,3,7-11,15-23,27-29,41
+demos/media-drop/README.md
+  s_6762d1af62397e::t_9abc8fb1f03ec9 3-5,9-26,28,30-37,39,48,50,52,55-56,58-59,65,69,71,73-78,80,82-88,92-99,104,108
+demos/media-drop/EXPLAIN-DEMO.md
+  s_6762d1af62397e::t_e6e551850d0edb 1-13,39-83
+  s_30f7f40243c9c5::t_802ece47417c8c 14-38
+demos/ai-chat/EXPLAIN-DEMO.md
+  s_e44348f02987ee::t_9d19fe1539c973 1-15,30-148
+  s_30f7f40243c9c5::t_53c841eb1b63ed 16-29
+demos/todo-app/DEMO.md
+  s_e2b7f25fee5267::t_490a1c5e4f6583 1,3,7-11,15-23,31-35,39-42,46-49,51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "46ea3ba5534ee66511a27a42b9e70e087136302a",
+  "prompts": {},
+  "sessions": {
+    "s_22c92103c781fd": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_042252560ffe8va4AG3utPpSBs",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_30f7f40243c9c5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0422993c6ffeXhw9JQ2Vbzi9pc",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_6762d1af62397e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0421e32bbffeYWaPm1frA80i5l",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_c7849bd9351661": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0421b9397ffesn1cmv44tAT4E0",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_e2b7f25fee5267": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0422161b6ffeitysBXb3oTXy00",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_e44348f02987ee": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_042174954ffe7E7b9EEdbEampE",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
