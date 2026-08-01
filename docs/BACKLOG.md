@@ -231,13 +231,17 @@ Demonstrates:
 Prior Art
 
 - <https://github.com/adrianhall/cf-architect>
-- <https://gitlab.cfdata.org/stephane/interactive-demos> - the architect section under src/server
+  - Available in `~/repos/adrianhall/CF-Architect`
+- <https://gitlab.cfdata.org/stephane/interactive-demos>
+  - Available in `~/repos/stephane/interactive-demos`
+  - the architect section under src/server
 
 Primary flow:
 
-This web UI allows an architect to collaborate with a customer or an SE on a cloudflare architecture.  The cf-architect is the main prior art here (and is available in `~/repos/adrianhall/CF-Architect`) - however, we need to rewrite it for our demo structure.
-
-Additionally, I should be able to share an authenticated URL with a user - once authenticated, the user can edit the same diagram as the person who shared with edits appearing AT THE SAME TIME.  This is appropriately called "collaborative editing".  I should be able to see the other persons cursor (in a different color) when on the canvas.
+This web UI allows an architect to collaborate with a customer or an SE on a cloudflare architecture.  We want to combine parts of CF-Architect (mainly the sharing and ability to anonymously view the shared read-only version) and the interactive-demos (primarily the 
+AI capabilities to design an architecture for an application), and add collaborative
+editing (two authenticated users can edit the same diagram and each user sees the cursor
+of the other user).
 
 ### 8. OpenCode in Browser
 
@@ -416,31 +420,19 @@ Keep out:
 
 - Agent tools, autonomous actions, and multiple model providers.
 
-### 15. Persistent Assistant
+### 15. Multi-player game
 
-Directory: `demos/persistent-assistant`
+Directories: `demos/asteroid` (or the game name)
 
-Introduces: Agents SDK.
+Demo location: asteroids.cfapps.uk (or the game name)
 
-Builds on: Streaming chat and Durable Object concepts.
+Suggest multi-player (1-4 cooperating players) video game (e.g. Asteroids, Gauntlet,
+Joust, Rampage) in the browser, using WebSockets.  The game supports authentication,
+high score tables, and sharing a game link (or creating a game, obviously).
 
-Demonstrates:
-
-- Persisting conversation state per assistant instance.
-- Synchronizing state across browser connections.
-- Resuming an interrupted response stream.
-- Scheduling a simple future reminder from the conversation.
-
-Primary flow:
-
-1. Start a conversation and provide a preference.
-2. Reconnect from another browser and observe retained context.
-3. Interrupt and resume a streamed response.
-4. Schedule and receive a reminder.
-
-Keep out:
-
-- External tools, MCP servers, broad skills catalogs, and autonomous loops.
+Also, consider board games like scrabble, monopoly.
+ 
+Potentially, we will do all four (as 15A, 15B, 15C, 15D)
 
 ### 16. Operations Agent
 
