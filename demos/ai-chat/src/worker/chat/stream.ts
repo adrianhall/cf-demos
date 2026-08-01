@@ -2,6 +2,7 @@ import { ProblemDetailsError } from "@adrianhall/cloudflare-toolkit/problem-deta
 import type { ChatStreamFrame, UsageInfo } from "../../chat-protocol";
 import type { ModelDescriptor } from "../../models";
 import { readInferenceEvents } from "./inference";
+import { valueOrDefault } from "@adrianhall/cloudflare-toolkit";
 
 /** Outcome reported to {@link ChatStreamCallbacks.onDone} when a turn completes normally. */
 export interface ChatStreamDoneResult {
@@ -144,7 +145,7 @@ export function buildChatStreamResponse(
                 title: "Inference failed",
                 detail: "Workers AI inference failed.",
               };
-        const detail = problem.detail ?? problem.title;
+        const detail = valueOrDefault(problem.detail, problem.title);
         controller.enqueue(
           encodeFrame({
             type: "error",

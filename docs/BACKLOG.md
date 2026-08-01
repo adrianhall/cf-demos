@@ -164,21 +164,20 @@ Keep out:
 - Persistent conversations, tools, RAG, agents, and external providers.
 - Audio recording (speech-to-text).
 
-### 6. Multi-Provider AI Chat
+### 6. Agentic AI Chat
 
-Directory: `demos/ai-gateway-chat`
+Directory: `demos/agentic-ai-chat`
 
-Demo location: `ai-chat`
+Demo location: `agentic-chat`
 
-Introduces: AI Gateway and Secrets Store.
+Introduces: AI Gateway, Agents SDK (AIChatAgent), Durable Objects
 
 Builds on: Basic text generation and streaming (demo 5).
 
 Demonstrates:
 
 - Routing model requests through one governed control point.
-- Keeping external provider credentials out of source and configuration files.
-- Comparing provider behavior using AI Gateway observability.
+- Agentic AI Chat (allows adding tools / MCP / Skills later on) within durable object (one durable object per chat session)
 - Gateway caching, rate controls, or provider fallback where supported by the selected providers.
 - Dynamic routes where supported by the selected providers.
 
@@ -186,25 +185,30 @@ Primary flow:
 
 basically the same as the `ai-chat` demo with the following changes:
 
-1. The model selector contains at least one dynamic route.
-2. The cost of each request (tokens in/out/cost $) is shown at the end of the chat cycle.
-3. A running total of the cost of the chat is provided in the UI.
-4. The cost of the chat is included in the markdown export.
+1. User can set metadata fields on chat (proposed metadata fields: dept = sales|eng, type = agent|human)
+2. Two dynamic routes - one for dynamic/normal, and one for dynamic/reasoning - select model for reasoning via type metadata, select model for normal via dept metadata
+3. The cost of each request (tokens in/out/cost $) is shown at the end of the chat cycle.
+4. A running total of the cost of the chat is provided in the UI.
+5. The cost of the chat is included in the markdown export.
+6. The chat survives refresh of the page / reload of the chat
+7. User can select old chats via a sidebar (prior art: Gemini chat)
 
 Keep out:
 
-- Tools, long-term memory, retrieval, and autonomous behavior.
+- Tools, skills, MCP, and autonomous behavior.
 - Speech to text
 
 ### 7. Speech-to-text for ai-chat
 
-Directory: `demos/ai-audio-chat`
+Directory: `demos/agentic-chat`
 
-Demo location: `ai-chat`
+Demo location: `agentic-chat`
 
 Introduces: Speech to text audio recording
 
-Builds on: AI gateway chat (demo 6).
+Builds on: Agentic AI chat (demo #6).  
+
+**Note:** Tag the individual steps 6, 7, 8, etc.) for this chat with step markers.
 
 Demonstrates:
 
@@ -212,7 +216,7 @@ Demonstrates:
 
 Primary flow:
 
-basically the same as the `ai-chat` demo with the following changes:
+basically the same as the #6 demo with the following changes:
 
 1. There is a microphone on the chat - pressing it will allow speaking the prompt and it will be transcribed.
 2. The cost of audio transcription is broken out as a separate cost at the end of transcription.
@@ -221,7 +225,32 @@ basically the same as the `ai-chat` demo with the following changes:
 
 Keep out:
 
-- Tools, long-term memory, retrieval, and autonomous behavior.
+- Tools, MCP, Skills, and autonomous behavior.
+
+### 8 Add Tools to Agentic Chat
+
+Directory: `demos/agentic-chat`
+
+Demo location: `agentic-chat`
+
+Introduces: Speech to text audio recording
+
+Builds on: Agentic AI chat (demo #6).  
+
+**Note:** Tag the individual steps 6, 7, 8, etc.) for this chat with step markers.
+
+Demonstrates:
+
+- Egress control
+- Adding tools to the AIChatAgent
+
+Primary flow:
+
+**TODO:** Determine the correct set of tools for a compelling demo flow.
+
+Keep out:
+
+- MCP Services, Skills, and autonomous behaviour
 
 ### 8. OpenCode in Browser
 

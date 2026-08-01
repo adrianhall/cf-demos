@@ -1,3 +1,4 @@
+import { valueOrDefault } from "@adrianhall/cloudflare-toolkit";
 import type { UsageInfo } from "../../../chat-protocol";
 import type { NormalizedChunk } from "./types";
 
@@ -27,9 +28,9 @@ export function normalizeUsage(
     return undefined;
   }
   return {
-    promptTokens: usage.prompt_tokens ?? 0,
-    completionTokens: usage.completion_tokens ?? 0,
-    totalTokens: usage.total_tokens ?? 0,
+    promptTokens: valueOrDefault(usage.prompt_tokens, 0),
+    completionTokens: valueOrDefault(usage.completion_tokens, 0),
+    totalTokens: valueOrDefault(usage.total_tokens, 0),
   };
 }
 

@@ -3,7 +3,7 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import { createRouter, createWebHistory } from "vue-router";
 import { createVuetify } from "vuetify";
-import { VAlert, VApp, VBtn, VMain } from "vuetify/components";
+import { VApp, VBtn, VMain } from "vuetify/components";
 import App from "./App.vue";
 import HomeView from "./views/HomeView.vue";
 
@@ -25,7 +25,6 @@ export function startClient(): void {
   app.use(
     createVuetify({
       components: {
-        VAlert,
         VApp,
         VBtn,
         VMain,
