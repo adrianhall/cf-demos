@@ -61,6 +61,11 @@ describe("decodeSseStream", () => {
     await expect(collect(stream)).resolves.toEqual(['{"a":1}']);
   });
 
+  it("yields nothing for a mid-stream frame with no data: line at all", async () => {
+    const stream = streamFromChunks([":heartbeat\n\n", 'data: {"a":1}\n\n']);
+    await expect(collect(stream)).resolves.toEqual(['{"a":1}']);
+  });
+
   it("flushes a trailing frame with no closing blank line", async () => {
     const stream = streamFromChunks(['data: {"a":1}']);
     await expect(collect(stream)).resolves.toEqual(['{"a":1}']);

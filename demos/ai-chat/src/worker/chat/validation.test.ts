@@ -97,6 +97,17 @@ describe("validateChatRequest", () => {
     );
   });
 
+  it("rejects a non-object entry within messages", () => {
+    expectProblem(
+      () =>
+        validateChatRequest({
+          model: DEFAULT_MODEL_ID,
+          messages: ["just a string", { role: "user", content: "Hi" }],
+        }),
+      { status: 422, detail: "messages[0] must be an object." },
+    );
+  });
+
   it("rejects more than the maximum message count", () => {
     const messages = Array.from({ length: 41 }, (_, index) => ({
       role: index % 2 === 0 ? "user" : "assistant",

@@ -93,6 +93,23 @@ describe("openInferenceStream", () => {
     expect(systemMessages).toHaveLength(1);
   });
 
+  it("maps a non-Error rejection from env.AI.run() to a 502 problem details error", async () => {
+    const fakeAi = {
+      // Deliberately rejects with a non-Error value, to exercise mapUpstreamError's
+      // String(error) fallback for a thrown value that isn't an Error instance.
+      run: () => Promise.reject("boom"),
+    } as unknown as Ai;
+
+    await expect(
+      openInferenceStream(fakeAi, GRANITE, [{ role: "user", content: "hi" }], {
+        temperature: 0.6,
+        maxTokens: 256,
+      }),
+    ).rejects.toMatchObject({
+      problemDetails: { status: 502 },
+    });
+  });
+
   it("maps a rejected env.AI.run() call to a 502 problem details error, before any stream opens", async () => {
     const fakeAi = {
       run: async () => {
@@ -196,6 +213,40 @@ describe("readInferenceEvents", () => {
     expect(events.some((event) => event.thinkingDelta)).toBe(false);
   });
 
+  it("drops an entirely empty intermediate frame instead of yielding an empty event", async () => {
+    // No content, no finish_reason, and no usage — nothing for `readInferenceEvents` to report,
+    // so the frame must be silently skipped rather than yielding an event with every field
+    // absent.
+    const stream = sseStream([
+      '{"choices":[{"delta":{}}]}',
+      '{"choices":[{"delta":{"content":"Hi"}}]}',
+      "[DONE]",
+    ]);
+
+    const events = await collect(readInferenceEvents(GRANITE, stream));
+    expect(events).toEqual([{ answerDelta: "Hi" }]);
+  });
+
+  it("carries usage and finishReason alongside an answer delta through the reasoning splitter", async () => {
+    // DeepSeek's own real stream never emits this shape (it always uses the plain `{ response }`
+    // form — see docs/DECISIONS.md #10), but the `cf-native` adapter's readChunk() dispatches
+    // purely on the presence of a `choices` key, independent of which model sent it (defensive
+    // parsing for exactly the kind of per-model shape surprise the spike already found once).
+    // This proves usage/finishReason survive the splitter branch, not only the non-splitter one
+    // the previous test covers.
+    const stream = sseStream([
+      '{"choices":[{"delta":{"content":"answer text"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}',
+      "[DONE]",
+    ]);
+
+    const events = await collect(readInferenceEvents(DEEPSEEK, stream));
+    expect(events).toContainEqual({
+      answerDelta: "answer text",
+      finishReason: "stop",
+      usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 },
+    });
+  });
+
   it("separates inline <think> reasoning from the answer for DeepSeek", async () => {
     const stream = sseStream([
       '{"response":"<think>"}',
@@ -225,6 +276,29 @@ describe("readInferenceEvents", () => {
     const thinking = events.map((event) => event.thinkingDelta ?? "").join("");
     expect(thinking).toBe("cut off mid-thought");
     expect(events.every((event) => !event.answerDelta)).toBe(true);
+  });
+
+  it("flushes an unclosed </think> partial marker held back mid-block as a trailing thinking event", async () => {
+    // "</th" is a partial closing marker: the splitter holds it back waiting to see whether
+    // "ink>" follows, so it never reaches `readInferenceChunk`/the splitter's `push()` as
+    // ordinary text. The stream ends (`[DONE]`) before the rest of the marker ever arrives, so
+    // `readInferenceEvents`'s own end-of-stream `splitter.flush()` call is what must release it —
+    // and, since the splitter was still inside the block, it must come back as thinking.
+    const stream = sseStream(['{"response":"<think>reasoning</th"}', "[DONE]"]);
+
+    const events = await collect(readInferenceEvents(DEEPSEEK, stream));
+    expect(events).toContainEqual({ thinkingDelta: "</th" });
+    expect(events.every((event) => !event.answerDelta)).toBe(true);
+  });
+
+  it("flushes a held-back false-alarm partial marker as a trailing answer event", async () => {
+    // "<th" is a partial opening marker held back the same way, but the splitter was never inside
+    // a block, so the flush at end of stream must come back as answer, not thinking.
+    const stream = sseStream(['{"response":"hello <th"}', "[DONE]"]);
+
+    const events = await collect(readInferenceEvents(DEEPSEEK, stream));
+    expect(events).toContainEqual({ answerDelta: "<th" });
+    expect(events.every((event) => !event.thinkingDelta)).toBe(true);
   });
 
   it("reads reasoning_content directly for an openai-chat reasoning-field model", async () => {

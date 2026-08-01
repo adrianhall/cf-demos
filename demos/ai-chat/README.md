@@ -5,20 +5,24 @@ streaming chat playground where a signed-in user picks a curated model, adjusts 
 validated parameters, and holds an ordinary multi-turn conversation with tokens streamed to the
 browser as they are produced.
 
-**Implementation status.** This checkout currently implements **Phase 1 and Phase 2** of
-`docs/05-AI-CHAT.md`: the scaffold, baseline infrastructure (Worker, custom domain, Workers Logs
-and tracing), and the fully authenticated Cloudflare Access shell (`GET /api/me`, the signed-in
-header, and the logout control). The model catalog, streaming `/api/chat` inference endpoint, and
-full playground UI described in that scenario are added in later phases and are **not yet
-present** — the landing page currently renders a placeholder confirming the signed-in identity.
-Everything documented below (infrastructure, Access model, local development, testing, deployment,
-teardown) reflects what is actually implemented today.
+This is the curriculum's introduction to **Workers AI**. The lesson is model inference over a
+binding plus streaming a response to a browser: obtaining an async token stream from `env.AI`,
+re-emitting it incrementally as the Worker's own Server-Sent Events, and rendering it
+progressively in the client. No storage product is used at all — the Worker is a stateless
+streaming proxy in front of a model; the conversation lives entirely in the browser tab.
 
 ## Architecture
 
 ```text
 Browser <--Access--> Worker
-  |  static assets (SPA shell)   |  /api/me  -> verified Cloudflare Access identity
+  |  static assets (SPA shell)   |  GET  /api/me    -> verified Cloudflare Access identity
+  |  Vue playground UI           |  POST /api/chat  -> streams the model's answer over SSE
+                                        |
+                                        v
+                                  env.AI.run(model, { messages, stream: true, ... })
+                                        |
+                                        v
+                                  Workers AI (serverless GPU inference)
 ```
 
 - **Workers** is the single deployed unit: it serves the API and, through the `ASSETS` binding,
@@ -28,13 +32,12 @@ Browser <--Access--> Worker
   every page route is served directly by the assets layer and gated by Cloudflare Access at the
   edge, never reaching the Worker.
 - **Workers AI** (`AI` binding) is declared in `wrangler.jsonc.tpl` as `{ "binding": "AI",
-  "remote": true }` (see "Workers AI Has No Local Simulation" below) but is not yet called from
-  any route — that arrives with the streaming inference endpoint in a later phase. It is an
-  **account capability reached through a binding, not a provisioned resource**: there is nothing
-  for Terraform to create and nothing for teardown to clean up (see `infra/ai-chat.tf`).
+  "remote": true }` (see "Workers AI Has No Local Simulation" below) and is called from
+  `POST /api/chat` for every turn. It is an **account capability reached through a binding, not a
+  provisioned resource**: there is nothing for Terraform to create and nothing for teardown to
+  clean up (see `infra/ai-chat.tf`).
 - **Cloudflare Access** gates the entire hostname with one self-hosted application backed by an
-  `allow` policy — there is no public bypass application, since every route in this demo will
-  eventually trigger billable Workers AI inference.
+  `allow` policy — there is no public bypass application, since inference is billable compute.
 - **Workers Logs and automatic tracing** are enabled via Terraform with explicit sampling.
 - Terraform owns the Worker service, the custom domain, the Access application and policy, and
   Worker observability settings. Wrangler owns Worker code versions and deployments.
@@ -50,10 +53,99 @@ This demo uses one Wrangler configuration file, generated two different ways:
   runs against a given checkout at a time — the local invocation is a no-op once a real
   `wrangler.jsonc` exists.
 
+### The stateless Worker, the browser-held conversation
+
+The Worker keeps **no state between requests**. Every `POST /api/chat` call sends the entire
+conversation so far (`{ model, messages, temperature?, maxTokens? }`); the Worker prepends its own
+server-owned system prompt, forwards the turn to the selected model, streams the answer back, and
+forgets everything the moment the response ends. The Pinia `chat` store
+(`src/client/stores/chat.ts`) is the only place the conversation is held — refreshing the page, or
+signing out and back in, loses it. This is deliberate: it is the point of the "stateless streaming
+proxy in front of a model" lesson, and adding a database or Durable Object here would teach nothing
+new while contradicting the scenario's "no persistent conversations" rule.
+
+## Model Catalog
+
+`src/models.ts` is the single source of truth for the curated catalog, imported by **both** the
+Worker (validation, adapter selection) and the client (the model selector) — so it contains data
+and pure lookups only, never adapter implementations. Five models, five providers, two adapters,
+all three reasoning mechanisms:
+
+| Display name | Provider | Adapter | Reasoning | Temperature | Max output tokens |
+| --- | --- | --- | --- | --- | --- |
+| Granite 4.0 H Micro (default) | IBM | `cf-native` | none | 0–5 (default 0.6) | up to 2048 (default 256) |
+| Llama 4 Scout 17B | Meta | `cf-native` | none | 0–2 (default 0.7) | up to 2048 (default 512) |
+| DeepSeek R1 Distill Qwen 32B | DeepSeek | `cf-native` | inline `<think>` tags | 0–5 (default 0.6) | up to 4096 (default 1024) |
+| GLM 4.7 Flash | Zhipu AI | `openai-chat` | `reasoning_content` field | 0–2 (default 0.7) | up to 2048 (default 512) |
+| Gemma 4 26B | Google | `openai-chat` | `reasoning_content` field | 0–2 (default 0.7) | up to 2048 (default 512) |
+
+Granite is the default selection: it is the cheapest catalog entry, so an accidental first prompt
+costs the least, and it is the "small and fast" side of the demo's latency comparison.
+
+Bounds are **per model, not per adapter** — Llama 4 Scout shares its input type with Granite and
+DeepSeek but has a real temperature ceiling of `2`, not `5` (verified by a live streaming spike;
+see `docs/DECISIONS.md` #10). `src/worker/chat/validation.ts` always clamps to the selected
+model's own descriptor, never to a shared adapter-wide constant.
+
+### Adding a model
+
+1. Confirm the model is current at <https://developers.cloudflare.com/workers-ai/models/> — do
+   not add a deprecated model.
+2. Run a throwaway streaming spike against the deployed account (`curl -N` against
+   `POST /client/v4/accounts/{account}/ai/run/{model}` with `stream: true`) and record: the real
+   per-chunk shape, where reasoning appears (if any), whether `usage` arrives and in which chunk,
+   and the real temperature/output-token bounds. **Do not trust the model catalog page or the
+   generated input type alone** — both describe the input shape, not necessarily the streaming
+   output shape (see `docs/DECISIONS.md` #10 for two models that share an input type but stream
+   completely different chunk shapes).
+3. Add one entry to `MODEL_CATALOG` in `src/models.ts` with the spike-verified bounds. TypeScript
+   checks `id` against the generated `AiModels` keys (`worker-configuration.d.ts`), so a typo or a
+   retired model ID is a compile error, not a runtime `404`.
+4. **A new adapter is required only if the model's real request/response shape doesn't match
+   either existing one.** Check whether the model's streaming chunks match:
+   - `cf-native` (`src/worker/chat/adapters/cf-native.ts`) — accepts `max_tokens`, no
+     `stream_options`; its `readChunk()` already tolerates *either* the plain `{ response, usage }`
+     shape or the OpenAI delta shape, since the catalog already contains a model of each kind
+     sharing this adapter's input type.
+   - `openai-chat` (`src/worker/chat/adapters/openai-chat.ts`) — accepts `max_completion_tokens`
+     and `stream_options: { include_usage: true }`; its chunks are always the OpenAI delta shape.
+   If the model needs a genuinely different input field set, add a new module in
+   `src/worker/chat/adapters/` exposing the same `buildInput()`/`run()`/`readChunk()` shape, add it
+   to the `ADAPTERS` registry in `src/worker/chat/adapters/index.ts`, and add its ID to
+   `ModelAdapterId` in `src/models.ts`.
+5. If the model reports reasoning, set `reasoning` to `"reasoning-field"` (a distinct JSON field —
+   no new code needed) or `"inline-think-tags"` (reused from DeepSeek's `src/worker/chat/reasoning.ts`
+   splitter — also no new code needed, since the splitter is model-agnostic). A model with no
+   reasoning uses `"none"`.
+6. Add unit tests for the new adapter/reasoning path (colocated `*.test.ts`) and an integration
+   test in `tests/integration/chat.test.ts` exercising the new adapter shape end to end with a
+   scripted fake `Ai`.
+
+## Streaming Protocol
+
+The Worker never proxies the model's raw SSE bytes to the browser — it decodes them
+(`src/sse.ts`), normalizes them through the model's adapter, separates reasoning from the answer,
+and **re-emits its own** SSE stream (`src/worker/chat/stream.ts`) with `Content-Type:
+text/event-stream`, `Cache-Control: no-store`, and `X-Content-Type-Options: nosniff`. Frames,
+defined once in `src/chat-protocol.ts` and shared by the Worker, the client, and tests:
+
+- `start` — sent immediately, so the browser can confirm the stream opened.
+- `thinking` — a reasoning-text delta (only for a model whose descriptor declares reasoning).
+- `answer` — an answer-text delta.
+- `done` — the last frame of a normal or stopped turn: `finishReason`, `ttftMs`, `totalMs`, and
+  `usage` (`{ promptTokens, completionTokens, totalTokens }` or `null` when the model reported
+  none).
+- `error` — a failure **after** the first byte, when the HTTP status can no longer change (a
+  failure **before** the first byte is instead an ordinary RFC 9457 JSON response).
+
+Cancelling the response stream (the browser's **Stop** control, or a lapsed connection) cancels
+the upstream Workers AI reader too, so an abandoned generation actually stops running — and
+billing — instead of continuing unread.
+
 ## Workers AI Has No Local Simulation
 
-This is the single most important operational fact about this demo, and it already shapes the
-Wrangler config and every test project even before the streaming endpoint exists:
+This is the single most important operational fact about this demo, and it shapes the Wrangler
+config, local development, and every test:
 
 - Workers AI has no local simulator. The `AI` binding is declared `{ "binding": "AI", "remote":
   true }`. Cloudflare **errors** if `remote` is `false` and warns (while still connecting
@@ -71,17 +163,20 @@ Wrangler config and every test project even before the streaming endpoint exists
   local simulator — including `ai` — regardless of the `remote` flag. Left alone, `npm test` on a
   clean checkout would demand credentials and network access. `tests/integration/vitest.config.ts`
   therefore sets `remoteBindings: false`; `env.AI` still exists in tests but is non-functional,
-  which is correct — a later phase's tests inject a scripted fake `Ai` implementation instead of
-  calling the real binding.
+  which is correct — every integration test injects a scripted fake `Ai` implementation
+  (`tests/integration/fixtures.ts`) instead of calling the real binding.
+- Consequently, real inference cannot be automated. See "Manual Smoke Check" below for the one
+  thing every deployment must still verify by hand.
 
-See `docs/DECISIONS.md` for the dated verification of these points.
+See `docs/DECISIONS.md` (#9, #10) for the dated verification of these points, and for the
+streaming-chunk-shape spike findings behind the model catalog and adapters.
 
 ## Access Model
 
-Inference will be billable compute once the streaming endpoint exists, so no route in this demo
-is anonymous even today. The **entire `ai-chat.cfapps.uk` hostname** is gated by a single
-Cloudflare Access self-hosted application backed by an `allow` policy requiring authentication
-through a configured identity provider. There is **no** public bypass application.
+Inference is billable compute, so no route in this demo is anonymous. The **entire
+`ai-chat.cfapps.uk` hostname** is gated by a single Cloudflare Access self-hosted application
+backed by an `allow` policy requiring authentication through a configured identity provider. There
+is **no** public bypass application.
 
 - The SPA shell is served by the `ASSETS` `single-page-application` fallback and gated at the edge
   by Access before the request reaches the Worker, so page routes need no Worker route or
@@ -91,17 +186,40 @@ through a configured identity provider. There is **no** public bypass applicatio
   it derives the caller's identity (email) from the verified Access identity on every request and
   never from client input.
 - `src/access-policies.ts` is **fail-safe**: `/api/*` → `authenticate: true, redirect: false` (so
-  a `fetch()` — including one that will later read a Server-Sent Events stream — receives a
-  `401`/`403` instead of an HTML sign-in redirect), then a catch-all `/` → `authenticate: true,
-  redirect: true` for pages. Every entry authenticates, so a route added later cannot accidentally
-  become public.
-- Because any authenticated user will be a legitimate user of the playground, no per-email
-  allowlist is used. **To tighten this for cost control** once the inference endpoint exists,
-  narrow `cloudflare_zero_trust_access_policy.authenticated_users` in `infra/access.tf` — for
-  example, replace `include = [{ everyone = {} }]` with a specific email list
-  (`include = [{ email = { email = "you@example.com" } }]`), an email domain
-  (`email_domain`), or a Zero Trust group. A permissive identity provider such as one-time PIN
-  would otherwise make paid inference broadly reachable to anyone who can receive an email.
+  a `fetch()` — including one that reads a Server-Sent Events stream — receives a `401`/`403`
+  instead of an HTML sign-in redirect), then a catch-all `/` → `authenticate: true, redirect:
+  true` for pages. Every entry authenticates, so a route added later cannot accidentally become
+  public.
+- Because any authenticated user is a legitimate user of the playground, no per-email allowlist is
+  used by default. **To tighten this for cost control**, narrow
+  `cloudflare_zero_trust_access_policy.authenticated_users` in `infra/access.tf` — for example,
+  replace `include = [{ everyone = {} }]` with a specific email list
+  (`include = [{ email = { email = "you@example.com" } }]`), an email domain (`email_domain`), or
+  a Zero Trust group. A permissive identity provider such as one-time PIN would otherwise make
+  paid inference broadly reachable to anyone who can receive an email. Per-request input caps
+  (below) are the in-application half of that control.
+- **A session can expire mid-conversation, between turns.** The browser POSTs to a same-origin
+  `/api/*` URL, so the Access cookie travels with it, but if the session has lapsed the response is
+  a `401` JSON body, not an event stream. `src/client/lib/stream-reader.ts` checks the response
+  status and `Content-Type` **before** treating the body as SSE, and the playground surfaces a
+  "Your session expired" notice with a reload control (`src/client/views/HomeView.vue`) instead of
+  failing to parse JSON as event-stream frames.
+
+## Input Caps
+
+`src/worker/chat/validation.ts` and `src/worker/middleware/body-limit.ts` are the demo's cost and
+abuse control, alongside authentication:
+
+| Limit | Value |
+| --- | --- |
+| Request body size | 65,536 bytes (`413` before any JSON parsing is attempted) |
+| Messages per request | 40 |
+| Characters per message | 4,000 |
+| Total characters per request | 24,000 |
+
+A client-supplied `system`-role message is rejected outright (`422`) — the system prompt is a
+server-owned constant (`SYSTEM_PROMPT` in `validation.ts`), never request input. `temperature` and
+`maxTokens` are clamped, never rejected, to the selected model's own descriptor bounds.
 
 ## Prerequisites
 
@@ -117,8 +235,7 @@ through a configured identity provider. There is **no** public bypass applicatio
   - Zone: DNS - Write (required to attach the custom domain in the configured zone)
 - A Cloudflare Zero Trust organization with at least one enabled identity provider (any provider
   works — this demo does not restrict which one).
-- Workers AI access on the target account (used by local development today, and by every model
-  once the streaming endpoint is implemented).
+- Workers AI access on the target account.
 
 Use a remote, encrypted Terraform state backend for shared or production operation. Local state
 files are gitignored and must not be committed.
@@ -154,8 +271,8 @@ npm start
 `prestart` generates a local `wrangler.jsonc` (fixed placeholder values, no Terraform required),
 builds Worker binding types, and builds before `vite dev` starts. Because the `AI` binding has no
 local simulator, `vite dev` opens a real, credentialed remote-binding session against the account
-named in `.env` — see "Workers AI Has No Local Simulation" above. No inference is actually
-performed yet in this checkout, but the session still opens because the binding is declared.
+named in `.env` and performs **real inference against real Workers AI** — see "Workers AI Has No
+Local Simulation" above.
 
 The development-only Access plugin offers two selectable identities, matching `.env.example`
 conventions: `alice@example.com` and `bob@example.com`. The always-visible **Sign out** control
@@ -167,12 +284,10 @@ production — useful for recovering from having signed in as the wrong identity
 Every route below requires a verified Cloudflare Access identity. Errors use RFC 9457
 `application/problem+json` responses.
 
-| Method | Path      | Behavior                                                          |
-| ------ | --------- | ------------------------------------------------------------------ |
-| `GET`  | `/api/me` | Return the verified identity email, for the header and logout UI. |
-
-The streaming `POST /api/chat` inference endpoint described in `docs/05-AI-CHAT.md` is added in a
-later phase.
+| Method | Path | Behavior |
+| ------ | ---- | -------- |
+| `GET`  | `/api/me` | Returns the verified identity email, for the header and logout UI. |
+| `POST` | `/api/chat` | Validates the request, opens the upstream Workers AI stream, and streams `start`/`thinking`/`answer`/`done`/`error` frames back over SSE. See "Streaming Protocol" above for the request/response shapes. |
 
 ## Testing
 
@@ -185,21 +300,54 @@ npm run test:integration
 npm run test:coverage
 ```
 
-- The `worker` project (`src/worker/vitest.config.ts`, Node environment) unit-tests the shared
-  Access path policies — no real bindings needed.
-- The `client` project (`src/client/vitest.config.ts`, jsdom) covers the `session` Pinia store,
-  `App.vue` (identity display and the unconditional logout control), the bootstrap entry point,
-  and the placeholder `HomeView`, with Vue Test Utils and `@pinia/testing`.
-- The `integration` project (`tests/integration/vitest.config.ts`,
+- The **`worker`** project (`src/worker/vitest.config.ts`, Node environment) unit-tests: request
+  validation and per-descriptor parameter clamping (including a value legal for one model's range
+  but not a different model sharing its adapter); catalog lookup and rejection of an unknown or
+  non-exact model ID; the shared SSE decoder (frames split across byte chunks, `[DONE]`,
+  blank-line handling); both adapters' `buildInput()` (correct token-limit field name, an explicit
+  limit always set, `include_usage` present only for `openai-chat`) and `readChunk()` (answer/
+  reasoning deltas, finish reason, usage normalization); the inline-`<think>` splitter (markers
+  split across chunk boundaries, an unclosed marker flushed at end of stream, pass-through);
+  Workers AI error-message mapping; SSE frame encoding; and `buildInferenceLogFields()`'s guarantee
+  that it structurally cannot emit prompt or completion content. This project's `include` glob
+  also reaches the shared, non-Worker-specific modules colocated one directory up at `src/*.test.ts`
+  (`models.ts`, `sse.ts`) — they are imported by both the Worker and the client, so they live above
+  `src/worker/`, but still need one Node-environment project to actually run their tests.
+- The **`client`** project (`src/client/vitest.config.ts`, jsdom) covers the model selector and its
+  per-model parameter bounds (including re-clamping on model switch), transcript rendering, the
+  Thinking panel appearing only for a reasoning turn, the activity-indicator lifecycle, Stop
+  aborting an in-flight request, the stream reader fed a synthetic stream (including a
+  chunk-split frame and a `401` JSON response), and the Markdown transcript builder — with Vue
+  Test Utils and `@pinia/testing`.
+- The **`integration`** project (`tests/integration/vitest.config.ts`,
   `@cloudflare/vitest-pool-workers`) drives the real Hono app in `workerd` by calling
   `worker.fetch(request, env, ctx)` directly (see `tests/integration/fixtures.ts`) rather than
-  `SELF.fetch()`, so a later phase can substitute a fake `Ai` implementation at the same call
-  site. It covers unauthenticated rejection, the authenticated `/api/me` identity, and the RFC
-  9457 `404` shape for an unknown route. `remoteBindings: false` keeps this runnable on a clean
-  checkout with no Cloudflare credentials — see "Workers AI Has No Local Simulation" above.
+  `SELF.fetch()`, so tests can substitute a scripted fake `Ai` implementation into `env` at the
+  same call site. It covers unauthenticated rejection on both routes; a full valid turn's frame
+  order and headers; every adapter shape end to end (`cf-native` plain-response, `cf-native`
+  OpenAI-delta, and `openai-chat` `reasoning_content`); that the exact requested catalog model is
+  invoked with a correctly-built, clamped, system-prompt-prepended input; rejection of an unknown
+  model, an empty conversation, a conversation not ending in a user turn, and an oversized body,
+  each before any stream opens; a pre-first-byte upstream failure becoming a `502` and a
+  post-first-byte failure becoming an in-band `error` frame; and that cancelling the response
+  stream cancels the upstream reader. `remoteBindings: false` is what keeps this runnable on a
+  clean checkout with no Cloudflare credentials — without it,
+  `@cloudflare/vitest-pool-workers` would open a real, credentialed remote-binding session for the
+  `ai` binding on every test run, regardless of `wrangler.jsonc`'s own `remote: true` flag, since
+  Workers AI has no local simulator at all (see "Workers AI Has No Local Simulation" above).
 
 `npm run test:coverage` uses `@vitest/coverage-istanbul` and writes HTML and LCOV reports to
-gitignored `coverage/`.
+gitignored `coverage/`. This checkout maintains 100% statement/branch/function/line coverage of
+authored source with no `istanbul ignore` suppressions.
+
+### Manual Smoke Check
+
+Real inference cannot be automated (see "Workers AI Has No Local Simulation"). After every
+deployment, submit one prompt to **each** of the five catalog models on the deployed hostname and
+confirm: the answer streams token by token (not all at once); a Thinking panel appears and fills
+in first for DeepSeek R1, GLM 4.7 Flash, and Gemma 4 (and does **not** appear for Granite or
+Llama 4 Scout); and the turn's footer reports non-zero latency and, for every model except a
+provider that genuinely reports none, non-null token usage.
 
 ## Deployment
 
@@ -216,19 +364,54 @@ Verify deployment:
 
 1. Open `https://ai-chat.cfapps.uk` and sign in through Cloudflare Access.
 2. Confirm the header shows your verified identity and an unconditional **Sign out** control.
-3. Confirm the placeholder message renders — the full playground is added in a later phase.
-4. In **Workers & Pages → ai-chat → Logs**, confirm requests to `/api/me` appear.
+3. Send a prompt to the default model (Granite 4.0 H Micro) and confirm the answer streams token
+   by token, ending with a latency/usage footer.
+4. Switch to a reasoning model (for example DeepSeek R1 Distill) and confirm a collapsed
+   **Thinking** panel fills in before the answer.
+5. Run the full manual smoke check above across all five catalog models.
+6. In **Workers & Pages → ai-chat → Logs**, confirm `ai_prompt_submitted`, `ai_first_token`,
+   `ai_stream_completed` events appear, correlated by `requestId`, with no prompt or completion
+   text in any field.
 
-See `DEMO.md` for the current presenter walkthrough, scoped to what is implemented so far.
+See `DEMO.md` for the full presenter walkthrough.
 
 ## Observability
 
 Workers Logs (100% sampling) and traces (10% sampling) are enabled via Terraform on the
-`cloudflare_worker` resource. `cloudflareLogger()` resolves level and transport automatically
-from the Worker's `ENVIRONMENT` binding. No custom log events are emitted yet — the
-`ai_prompt_submitted` / `ai_first_token` / `ai_stream_completed` / `ai_stream_aborted` /
-`ai_inference_failed` events described in `docs/05-AI-CHAT.md` arrive with the streaming
-inference endpoint in a later phase.
+`cloudflare_worker` resource. `cloudflareLogger()` resolves level and transport automatically from
+the Worker's `ENVIRONMENT` binding.
+
+`src/worker/routes/chat.ts` emits five informational structured log events per turn, all built
+through `buildInferenceLogFields()` (`src/worker/chat/log-fields.ts`), which **structurally
+cannot** carry prompt or completion text, tokens, authorization headers, or the Access JWT — only
+`model`, `requestId`, `messageCount`, `totalCharacters`, timing (`ttftMs`/`totalMs`), token usage,
+and `finishReason`/`status`/`detail` where applicable:
+
+| Event | When |
+| --- | --- |
+| `ai_prompt_submitted` | After validation succeeds, before the upstream call. |
+| `ai_first_token` | On the first `thinking`/`answer` delta. |
+| `ai_stream_completed` | On a normal `done` frame. |
+| `ai_stream_aborted` | When the consumer (Stop, or a closed connection) cancels the stream. |
+| `ai_inference_failed` | On a post-first-byte upstream failure (`error` frame). |
+
+All five logs are placed after the Access and validation guards, so they only ever reflect
+authorized, valid requests.
+
+### Workers AI cost and cold start
+
+- Workers AI has a free daily allocation of neurons per account, then billed per-neuron
+  consumption above it — check the current free tier and per-model neuron pricing at
+  <https://developers.cloudflare.com/workers-ai/platform/pricing/> before a sustained demo
+  session, since usage does not reset mid-day.
+- The Cloudflare dashboard's **Workers AI** metrics page (Account Home → Workers AI) reports
+  requests per model and neurons consumed, independent of this Worker's own logs — useful for
+  showing the product-side view of the same activity during a presentation.
+- **Cold start**: the first request to a given model after a period of inactivity has materially
+  higher time-to-first-token than a subsequent request, since Workers AI has to provision GPU
+  capacity for that model. The activity-dots indicator (`ActivityIndicator.vue`) exists
+  specifically to make this latency visible rather than looking like a hang; a live demo's first
+  prompt to any given model should be expected to take noticeably longer than the second.
 
 ## Troubleshooting
 
@@ -239,6 +422,9 @@ inference endpoint in a later phase.
 | Access sign-in is denied | Confirm the target Zero Trust organization has an enabled identity provider. The deployed application accepts any available provider. |
 | `vite dev`/`vitest` hangs or asks for interactive Cloudflare login | The `AI` binding forces a real remote-binding session (see "Workers AI Has No Local Simulation"). Confirm `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` are set in `.env` for `vite dev`; integration tests should never need this because `remoteBindings: false` disables it for that project specifically. |
 | `npm run build` fails without `.env` | It should not — `vite build` never opens a remote-binding session. If it does, check for an accidental import of `@adrianhall/cloudflare-toolkit/vite` from Worker code (see the toolkit skill's anti-patterns). |
+| A response ends abruptly with a `400` from Workers AI mentioning `temperature` | A future catalog entry likely has a tighter real bound than its shared input type suggests — re-run the streaming spike for that specific model and correct its descriptor in `src/models.ts` (see "Model Catalog", and `docs/DECISIONS.md` #10 for a worked example). |
+| The Thinking panel never appears for a reasoning model | Confirm the model's descriptor `reasoning` field matches its actual behavior (`reasoning-field` vs. `inline-think-tags`) — re-run the spike rather than adding runtime sniffing. |
+| The composer shows "Your session expired" mid-conversation | Expected: the Access session lapsed between turns. Reload and sign in again — this does not indicate a bug (see "Access Model"). |
 
 ## Teardown
 

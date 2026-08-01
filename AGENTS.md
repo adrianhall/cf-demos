@@ -45,10 +45,12 @@ name. Each demo MUST contain:
   Organization and Testing And Verification.
 - `.env.example`: every required environment variable, with no real secrets.
 - `package.json`: consistent `build`, `test`, `deploy`, and `teardown` scripts.
-- `README.md`: the operator and developer guide, including architecture, local
-  development, deployment, observability, troubleshooting, and teardown.
-- `DEMO.md`: the presenter and user guide explaining the demo, the Cloudflare
-  capabilities it showcases, and the complete demonstration workflow.
+- `README.md`: a one-sentence description of the demo naming the Cloudflare
+  products involved, plus install/operate/teardown instructions only.
+- `DEMO.md`: a presenter's demo script — step-by-step instructions covering
+  both the running app and the Cloudflare dashboard.
+- `EXPLAIN-DEMO.md`: what the demo teaches, how it works, and links to further
+  reading. See Documentation for the exact scope of each file.
 
 Keep demos independent. A user must be able to deploy or destroy one demo
 without affecting another.

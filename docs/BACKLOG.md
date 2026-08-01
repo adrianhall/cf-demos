@@ -192,6 +192,7 @@ basically the same as the `ai-chat` demo with the following changes:
 5. The cost of the chat is included in the markdown export.
 6. The chat survives refresh of the page / reload of the chat
 7. User can select old chats via a sidebar (prior art: Gemini chat)
+8. Show off rate limiting - provide a rate limit based on metadata type = agent; have a "burst" option that submits N prompts in parallel to simulate a burst that should be rate limited.  The requests should show 429 (Rate Limited) in the chat window to show the activity.
 
 Keep out:
 

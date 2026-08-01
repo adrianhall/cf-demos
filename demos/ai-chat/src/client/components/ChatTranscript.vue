@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, useTemplateRef, watch } from "vue";
+import { scrollToBottom } from "../lib/scroll";
 import type { ChatTurn } from "../stores/chat";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import ActivityIndicator from "./ActivityIndicator.vue";
@@ -32,10 +33,7 @@ watch(
   () => props.turns,
   async () => {
     await nextTick();
-    const region = scrollRegion.value;
-    if (region !== null) {
-      region.scrollTop = region.scrollHeight;
-    }
+    scrollToBottom(scrollRegion.value);
   },
 );
 </script>

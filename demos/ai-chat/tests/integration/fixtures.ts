@@ -125,3 +125,46 @@ export function createFakeAi(payloads: readonly string[]): Pick<Ai, "run"> {
     }) as any,
   };
 }
+
+/** What {@link createCapturingFakeAi} recorded about the one call it received. */
+export interface CapturedAiCall {
+  /** The exact model ID string `env.AI.run()` was called with. */
+  readonly modelId: string;
+  /** The exact input object built for that model, before any adapter/model-specific typing. */
+  readonly input: Record<string, unknown>;
+}
+
+/**
+ * Build a fake `Ai` binding identical to {@link createFakeAi}, but that also records the model ID
+ * and input object it was actually called with, in `capture`. Used to prove
+ * `src/worker/routes/chat.ts` invokes the exact requested catalog model, with an adapter input
+ * that carries the server-owned system prompt, excludes any client-supplied `system` message, and
+ * clamps `temperature`/`maxTokens` to that model's descriptor bounds — properties the unit tests
+ * already prove for the adapters and validation in isolation, but which only an end-to-end request
+ * through the real Worker can prove are actually wired together correctly.
+ *
+ * @param payloads Raw `data:` payload strings streamed back, exactly as {@link createFakeAi}.
+ * @param capture A mutable single-element holder the fake writes its one observed call into.
+ * @returns A fake `Ai`-shaped object suitable for {@link authenticatedRequestWithAi}.
+ */
+export function createCapturingFakeAi(
+  payloads: readonly string[],
+  capture: { call?: CapturedAiCall },
+): Pick<Ai, "run"> {
+  return {
+    run: ((modelId: string, input: Record<string, unknown>) => {
+      capture.call = { modelId, input };
+      const encoder = new TextEncoder();
+      const text = payloads.map((payload) => `data: ${payload}\n\n`).join("");
+      return Promise.resolve(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(text));
+            controller.close();
+          },
+        }),
+      );
+      // biome-ignore lint/suspicious/noExplicitAny: matching env.AI.run()'s broad overloaded signature for a test fake is not worth reproducing.
+    }) as any,
+  };
+}

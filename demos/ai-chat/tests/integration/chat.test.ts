@@ -5,6 +5,8 @@ import {
   ALICE,
   authenticatedRequest,
   authenticatedRequestWithAi,
+  type CapturedAiCall,
+  createCapturingFakeAi,
   createFakeAi,
   unauthenticatedRequest,
 } from "./fixtures";
@@ -57,6 +59,63 @@ describe("POST /api/chat", () => {
     );
   });
 
+  it("rejects an empty conversation before opening any stream", async () => {
+    const response = await authenticatedRequest(
+      "/api/chat",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          model: "@cf/ibm-granite/granite-4.0-h-micro",
+          messages: [],
+        }),
+      },
+      ALICE,
+    );
+    expect(response.status).toBe(422);
+    expect(response.headers.get("content-type")).toContain(
+      "application/problem+json",
+    );
+  });
+
+  it("rejects a conversation not ending in a user turn before opening any stream", async () => {
+    const response = await authenticatedRequest(
+      "/api/chat",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          model: "@cf/ibm-granite/granite-4.0-h-micro",
+          messages: [
+            { role: "user", content: "hi" },
+            { role: "assistant", content: "hello" },
+          ],
+        }),
+      },
+      ALICE,
+    );
+    expect(response.status).toBe(422);
+    expect(response.headers.get("content-type")).toContain(
+      "application/problem+json",
+    );
+  });
+
+  it("rejects an oversized request body before opening any stream", async () => {
+    const response = await authenticatedRequest(
+      "/api/chat",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          model: "@cf/ibm-granite/granite-4.0-h-micro",
+          messages: [{ role: "user", content: "x".repeat(100_000) }],
+        }),
+      },
+      ALICE,
+    );
+    expect(response.status).toBe(413);
+    expect(response.headers.get("content-type")).toContain(
+      "application/problem+json",
+    );
+  });
+
   it("streams start, answer deltas, and done for a valid request (cf-native/plain-response shape)", async () => {
     const fakeAi = createFakeAi([
       '{"response":"Hello"}',
@@ -92,11 +151,62 @@ describe("POST /api/chat", () => {
       .map((frame) => frame.text)
       .join("");
     expect(answer).toBe("Hello world");
-    expect(frames.at(-1)).toMatchObject({
+    const doneFrame = frames.at(-1);
+    expect(doneFrame).toMatchObject({
       type: "done",
       finishReason: "stop",
       usage: { promptTokens: 5, completionTokens: 2, totalTokens: 7 },
     });
+    // TTFT/total duration are wall-clock measurements taken around the fake stream, not values
+    // the fake itself supplies — asserting they are non-negative numbers (rather than a specific
+    // value) is what proves `stream.ts` actually measured them, without making the test flaky.
+    if (doneFrame?.type === "done") {
+      expect(typeof doneFrame.ttftMs).toBe("number");
+      expect(doneFrame.ttftMs).toBeGreaterThanOrEqual(0);
+      expect(typeof doneFrame.totalMs).toBe("number");
+      expect(doneFrame.totalMs).toBeGreaterThanOrEqual(doneFrame.ttftMs);
+    }
+  });
+
+  it("invokes exactly the requested catalog model with an adapter input carrying the server-owned system prompt, clamped parameters, and no client-supplied system message", async () => {
+    const capture: { call?: CapturedAiCall } = {};
+    const fakeAi = createCapturingFakeAi(
+      ['{"response":"hi"}', "[DONE]"],
+      capture,
+    );
+
+    const response = await authenticatedRequestWithAi(
+      "/api/chat",
+      fakeAi,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          model: "@cf/ibm-granite/granite-4.0-h-micro",
+          // Requests a temperature above Granite's own descriptor max (5) — proves clamping is
+          // actually applied along this end-to-end path, not only in the validation unit tests.
+          temperature: 999,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      },
+      ALICE,
+    );
+    expect(response.status).toBe(200);
+
+    expect(capture.call?.modelId).toBe("@cf/ibm-granite/granite-4.0-h-micro");
+    const input = capture.call?.input;
+    expect(input?.max_tokens).toBeTypeOf("number");
+    expect(input?.temperature).toBe(5);
+    const messages = input?.messages as
+      | readonly { role: string; content: string }[]
+      | undefined;
+    // The server-owned system prompt is prepended, and it is the only system message: a
+    // client-supplied "system" role is rejected outright by validation (see the dedicated
+    // rejection test above), never merged in alongside it.
+    expect(
+      messages?.filter((message) => message.role === "system"),
+    ).toHaveLength(1);
+    expect(messages?.[0]?.role).toBe("system");
+    expect(messages?.at(-1)).toEqual({ role: "user", content: "hi" });
   });
 
   it("streams a Thinking panel split from the answer for a reasoning model (inline-think-tags)", async () => {
