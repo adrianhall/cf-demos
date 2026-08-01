@@ -215,6 +215,29 @@ This demo seeks to emulate "Gemini AI Chat" using Cloudflare capabilities.  Thin
 
 **Note**: Unlike the previous demos, this demo should be broken into user stories - beyond the basic "agentic chat", each feature or user story is its own phase.  Tag each phase when checking it in so that we can diff between phases.
 
+### 7. Cooperative Architect Drawing
+
+Directory: `demos/architect`
+
+Demo Location: architect.cfapps.uk
+
+Demonstrates:
+
+- Durable Objects
+- D1 / R2 / KV
+- Cooperative editing with Workflows
+
+Prior Art
+
+- <https://github.com/adrianhall/cf-architect>
+- <https://gitlab.cfdata.org/stephane/interactive-demos> - the architect section under src/server
+
+Primary flow:
+
+This web UI allows an architect to collaborate with a customer or an SE on a cloudflare architecture.  The cf-architect is the main prior art here (and is available in `~/repos/adrianhall/CF-Architect`) - however, we need to rewrite it for our demo structure.
+
+Additionally, I should be able to share an authenticated URL with a user - once authenticated, the user can edit the same diagram as the person who shared with edits appearing AT THE SAME TIME.  This is appropriately called "collaborative editing".  I should be able to see the other persons cursor (in a different color) when on the canvas.
+
 ### 8. OpenCode in Browser
 
 Directory: `demos/opencode`
@@ -233,6 +256,8 @@ Primary flow:
 2. User creates a workspace (`+ Workspace` button) from a GitHub or GitLab repo.
 3. Workspace establishes a durable object and container - container clones repo.
 4. User is presented with "OpenCode" in a terminal connected to the container.
+    - OpenCode configured with skills and cc-safety-net appropriate to project.
+    - Consider "skills-recommender" process when opening project for first time?
 5. OpenCode configured to route AI traffic through AI Gateway automatically.
 6. When an external website is accessed, egress controller logs request.
 7. User can see the egress requests via sidebar in UI.
