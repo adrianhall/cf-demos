@@ -1,0 +1,58 @@
+AGENTS.md
+  s_30f7f40243c9c5::t_6d3abecc14b4e4 48-53
+demos/ai-chat/src/client/lib/scroll.ts
+  s_20687e167645dd::t_757c0740ca4c8d 1-23
+demos/ai-chat/src/sse.test.ts
+  s_20687e167645dd::t_6c867788b20236 64-68
+demos/ai-chat/tests/integration/chat.test.ts
+  s_20687e167645dd::t_1e7205ce5b41eb 178,188,193,202-204,208
+  s_20687e167645dd::t_0ccdb5f66c9e8a 8-9
+  s_20687e167645dd::t_51553e47373a15 154-155,160-177,179-187,189-192,194-201,205-207,209
+  s_20687e167645dd::t_5d6269ab3ce6b5 62-118
+demos/ai-chat/DEMO.md
+  s_20687e167645dd::t_233baba49b1383 5-19,21-25,33-90,94-102,108,114-117
+demos/ai-chat/src/worker/chat/inference.test.ts
+  s_20687e167645dd::t_8347fc122896b4 281-286,288-303
+  s_20687e167645dd::t_6f14cf3d49c561 98-100
+  s_20687e167645dd::t_304d627e332799 96-97,101-112
+  s_20687e167645dd::t_f365f6424ae23a 287
+  s_20687e167645dd::t_096dbbd3a682ea 216-249
+demos/ai-chat/src/client/components/ChatTranscript.vue
+  s_20687e167645dd::t_51de10ca101bd1 3
+  s_20687e167645dd::t_72ffc8bafffe28 36
+demos/ai-chat/src/worker/vitest.config.ts
+  s_20687e167645dd::t_33fb31a8a41135 6-11
+demos/ai-chat/tests/integration/fixtures.ts
+  s_20687e167645dd::t_9f151e7ae43e5a 128-170
+demos/ai-chat/src/client/lib/scroll.test.ts
+  s_20687e167645dd::t_042d8d0b2d277f 1-16
+demos/ai-chat/src/worker/chat/validation.test.ts
+  s_20687e167645dd::t_03af729c5b6a30 100-109
+  s_20687e167645dd::t_58d9c06e08cf0f 99
+demos/ai-chat/README.md
+  s_20687e167645dd::t_dc58a6112d9f1b 8-12,18-25,35-38,40,56-144,147-148,166-169,171-172,176-179,189-222,238,274-275,287-290,303-322,325-337,340-350,367-374,376,381-414,425-427
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a9ce4629360e8fdcc53fd535d2abdaed0b974b0b",
+  "prompts": {},
+  "sessions": {
+    "s_20687e167645dd": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0424140fdffePyVnanTcMwvY7m",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_30f7f40243c9c5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0422993c6ffeXhw9JQ2Vbzi9pc",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
