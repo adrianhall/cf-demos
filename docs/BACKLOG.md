@@ -130,8 +130,6 @@ Keep out:
 
 - personal chats, uploads, trasncoding, translation.
 
-## Pending Apps
-
 ### 5. AI Model Playground
 
 Directory: `demos/ai-chat`
@@ -164,94 +162,58 @@ Keep out:
 - Persistent conversations, tools, RAG, agents, and external providers.
 - Audio recording (speech-to-text).
 
+## Pending Apps
+
 ### 6. Agentic AI Chat
 
 Directory: `demos/agentic-ai-chat`
 
 Demo location: `agentic-chat`
 
-Introduces: AI Gateway, Agents SDK (AIChatAgent), Durable Objects
+Introduces:
+
+- Durable Objects
+- Agents SDK (AIChatAgent)
+- AI Gateway
+- Workers AI
 
 Builds on: Basic text generation and streaming (demo 5).
 
 Demonstrates:
 
-- Routing model requests through one governed control point.
-- Agentic AI Chat (allows adding tools / MCP / Skills later on) within durable object (one durable object per chat session)
-- Gateway caching, rate controls, or provider fallback where supported by the selected providers.
-- Dynamic routes where supported by the selected providers.
+- Agentic Chat
+- Dynamic Routes
+- AI Gateway (Rate Limiting, Cost Controls)
+- Speech to Text
 
 Primary flow:
 
-basically the same as the `ai-chat` demo with the following changes:
+This demo seeks to emulate "Gemini AI Chat" using Cloudflare capabilities.  Think of it as a simplified "enterprise AI chat" capabilities.  The focus is on the AIChatAgent from Agents SDK, built to look and feel like Gemini AI Chat (`https://gemini.google.com/app`)
 
-1. User can set metadata fields on chat (proposed metadata fields: dept = sales|eng, type = agent|human)
-2. Two dynamic routes - one for dynamic/normal, and one for dynamic/reasoning - select model for reasoning via type metadata, select model for normal via dept metadata
-3. The cost of each request (tokens in/out/cost $) is shown at the end of the chat cycle.
-4. A running total of the cost of the chat is provided in the UI.
-5. The cost of the chat is included in the markdown export.
-6. The chat survives refresh of the page / reload of the chat
-7. User can select old chats via a sidebar (prior art: Gemini chat)
-8. Show off rate limiting - provide a rate limit based on metadata type = agent; have a "burst" option that submits N prompts in parallel to simulate a burst that should be rate limited.  The requests should show 429 (Rate Limited) in the chat window to show the activity.
+- Once a user has logged in with Cloudflare Access, they have a prompt entry in the middle.
+  - Prompt entry has a microphone so that you can use speech-to-text
+  - Prompt entry has a drop-down model selector that only allows dynamic routes (basic, which is the default, and reasoning).
+  - Once the prompt is submitted, the normal AI chat mechanism works (use WebSockets in preference to SSE here, and use one durable object per chat topic).
+- The side bar contains "+ New Chat" at the top, then a list of the chats (summarized to a title).
+- Each chat has a cost, tokens in/out associated with it.
+- If the user is an admin (decide how to represent this, but suggest D1 flag), then they can see the top users based on cost, and can set users individual metadata.  Propose two pieces of metadata for each user:
+  - business = field, product, leadership
+  - geo = emea, apac, americas
+- The admin can also show cost per business and cost per geo as reports.
+- The dynamic routes decide on the model based on metadata - field / product / leadership get different models.
+- AIChatAgent has access to models:
+  - writeMarkdown allows the system to write a markdown file and store it in R2 for the user - it's attached to the chat
+  - getUrl allows the system to get a URL from the internet - it goes through egress control
+  - other tools as needed
+- AIChatAgent has access to personal and enterprise skills
+  - Enterprise skills are uploaded by admins (or point URL at a skill file / repo)
+  - Personal skills are uploaded by users (or point URL at a skill file / repo)
+  - When repos are used, install the same way as "npx skills add" for this tool
+- AIChatAgent has access to Cloudflare MCP Portal (may need authentication)
+- Chats can be exported as markdown, complete with cost/tokens breakdown
+- Files generated can be exported as markdown, complete with cost/tokens breakdown
 
-Keep out:
-
-- Tools, skills, MCP, and autonomous behavior.
-- Speech to text
-
-### 7. Speech-to-text for ai-chat
-
-Directory: `demos/agentic-chat`
-
-Demo location: `agentic-chat`
-
-Introduces: Speech to text audio recording
-
-Builds on: Agentic AI chat (demo #6).  
-
-**Note:** Tag the individual steps 6, 7, 8, etc.) for this chat with step markers.
-
-Demonstrates:
-
-- Using speech-to-text for audio transcription
-
-Primary flow:
-
-basically the same as the #6 demo with the following changes:
-
-1. There is a microphone on the chat - pressing it will allow speaking the prompt and it will be transcribed.
-2. The cost of audio transcription is broken out as a separate cost at the end of transcription.
-3. A running total of the cost of the chat is provided in the UI includes cost of transcription.
-4. The cost of the chat including transcription is included in the markdown export.
-
-Keep out:
-
-- Tools, MCP, Skills, and autonomous behavior.
-
-### 8 Add Tools to Agentic Chat
-
-Directory: `demos/agentic-chat`
-
-Demo location: `agentic-chat`
-
-Introduces: Speech to text audio recording
-
-Builds on: Agentic AI chat (demo #6).  
-
-**Note:** Tag the individual steps 6, 7, 8, etc.) for this chat with step markers.
-
-Demonstrates:
-
-- Egress control
-- Adding tools to the AIChatAgent
-
-Primary flow:
-
-**TODO:** Determine the correct set of tools for a compelling demo flow.
-
-Keep out:
-
-- MCP Services, Skills, and autonomous behaviour
+**Note**: Unlike the previous demos, this demo should be broken into user stories - beyond the basic "agentic chat", each feature or user story is its own phase.  Tag each phase when checking it in so that we can diff between phases.
 
 ### 8. OpenCode in Browser
 

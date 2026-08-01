@@ -402,23 +402,46 @@ must meet WCAG 2.2 AA expectations.
 ## Documentation
 
 These repositories are demonstrations, so documenting what is actually
-implemented is part of the deliverable. Every demo MUST provide all three
-documentation layers:
+implemented is part of the deliverable. Every demo MUST provide all four
+documentation layers, and each MUST stay in its own lane — do not duplicate
+conceptual explanation into `README.md`, or installation/teardown steps into
+`DEMO.md` or `EXPLAIN-DEMO.md`:
 
 1. TypeScript API documentation. Add JSDoc to every authored TypeScript
    interface, type alias, enum, class, function, and method, including internal
    declarations. Document parameters, return values, thrown errors, side
    effects, and non-obvious constraints where applicable. Keep JSDoc synchronized
    with the implementation; do not document planned or unimplemented behavior.
-2. `README.md`. Provide a solid operator and developer guide with prerequisites,
-   architecture, environment configuration, local development, testing,
-   observability, exact deployment steps, verification, troubleshooting, and
-   exact teardown steps. A new operator should be able to deploy and completely
-   remove the demo using this document alone.
-3. `DEMO.md`. Explain the demo's purpose, what Cloudflare products and
-   capabilities it showcases, any demonstration prerequisites, the step-by-step
-   presentation flow, expected results, and where to observe relevant logs,
-   traces, metrics, or state.
+2. `README.md`. An operator's install/operate/teardown reference, not an
+   explainer. Open with exactly one sentence describing the demo and naming
+   the Cloudflare products involved — for example "An authenticated personal
+   todo app based on Cloudflare Workers and D1." Follow with only: prerequisites,
+   environment configuration, local development commands, testing commands,
+   exact deployment steps, post-deploy verification, a short troubleshooting
+   table, and exact teardown steps. A new operator should be able to deploy and
+   completely remove the demo using this document alone, without reading a
+   product explanation first. Keep any architecture content to a minimal,
+   factual list of provisioned resources and bindings (what an operator needs to
+   recognize in the dashboard or reason about permissions) — never a narrative
+   about why the design works or what it teaches; that belongs in
+   `EXPLAIN-DEMO.md`. Link to `EXPLAIN-DEMO.md` and `DEMO.md` instead of
+   repeating their content.
+3. `DEMO.md`. A presenter's demo script: demonstration prerequisites, then a
+   numbered, step-by-step sequence of concrete actions — clicks, form entries,
+   URLs to open — that alternate between the running application and the
+   Cloudflare dashboard, showing off the capabilities the scenario names. Every
+   step should be something a presenter literally does, not a description of
+   what the product does. Do not open with a "Purpose" or "Capabilities"
+   section; link to `EXPLAIN-DEMO.md` for that instead. It MAY end with expected
+   results and exactly where to observe logs, traces, or state during the walk-
+   through, since the presenter needs that while running the script.
+4. `EXPLAIN-DEMO.md`. What this specific demo teaches and how it works: the
+   Cloudflare capabilities it showcases and why they matter, the key design
+   decisions and data flow, and a "Further Reading" section linking to current
+   Cloudflare documentation (and, where genuinely useful, external videos or
+   third-party articles) for the concepts demonstrated. This is where the
+   product-capability explanations and architecture narrative that do not
+   belong in `README.md` or `DEMO.md` live.
 
 Internal code comments are encouraged when behavior or a design decision is
 non-obvious. Comments should explain why the code exists, important tradeoffs,
@@ -576,8 +599,12 @@ A demo is complete only when:
 - Logs and traces expose the activity the scenario asks the presenter to show.
 - JSDoc covers all authored TypeScript declarations and describes implemented
   behavior accurately.
-- `README.md` contains complete, tested deployment and teardown instructions.
-- `DEMO.md` explains the showcased capabilities and a reproducible demo flow.
+- `README.md` contains only a one-sentence description plus complete, tested
+  install/operate/teardown instructions — no capability explainer.
+- `DEMO.md` is a reproducible, step-by-step presenter script covering the app
+  and the Cloudflare dashboard, with no "Purpose"/"Capabilities" preamble.
+- `EXPLAIN-DEMO.md` explains what the demo teaches, how it works, and links to
+  further reading.
 - Formatting, linting, type checking, tests, build, and Terraform validation
   pass.
 - No secrets or generated local configuration are committed.

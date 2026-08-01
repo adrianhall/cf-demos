@@ -1,44 +1,42 @@
-# Media Drop Demonstration
+# Media Drop Demo Script
 
-Media Drop introduces R2 object storage while reusing Workers, D1, Static Assets, and Cloudflare Access. It demonstrates a public library and an authenticated creator Studio on one hostname, without ever exposing the R2 bucket directly.
+See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 
-## What It Shows
+## Demonstration Prerequisites
 
-- R2 holds media bytes while D1 holds only searchable, owner-scoped metadata.
-- An uploaded file streams from the request into R2 and starts as a private draft.
-- Cloudflare Access is optional at the hostname level: public library traffic is bypassed, while Studio traffic has a verified identity.
-- The Worker permits draft content only to its verified owner and serves published content to everyone, including byte ranges for audio and video.
-- Deletion removes the R2 object first and then its D1 metadata.
-
-## Before Presenting
-
-1. Deploy with `npm run deploy`.
-2. Open a private browser window for the anonymous part of the presentation.
-3. Prepare a small PNG, MP3, or MP4 under 100 MB.
-4. Keep Workers Logs, the R2 bucket, and D1 database consoles available.
+1. Deploy the demo with `npm run deploy` from `demos/media-drop`.
+2. Prepare a small sample image, audio file, and/or short video (under 100 MB) ready to upload.
+3. Confirm you can authenticate through the configured identity provider.
+4. Open two dashboard tabs: **R2** > the `<DEMO_NAME>-store` bucket browser, and **D1** > the `<DEMO_NAME>-db` console (`SELECT * FROM media;`).
+5. Open a third dashboard tab to **Workers & Pages** > `<DEMO_NAME>` > **Logs**.
+6. Open a private/incognito browser window for the anonymous parts of the presentation.
 
 ## Presentation Flow
 
-1. Open `https://media.cfapps.uk/` anonymously. The public library loads without a sign-in prompt.
-2. Open `/studio`. Cloudflare Access asks the visitor to sign in, demonstrating the more-specific protected application on the same hostname.
-3. In Studio, upload the prepared media with a title. It appears under **Drafts** and is visible only to that creator.
-4. In the anonymous window, refresh the library and attempt the draft's URL if known. It is neither listed nor available through the public API.
-5. Back in Studio, use the draft's preview or download control. The owner can stream private content through the authorized Worker.
-6. Publish the draft. Refresh the anonymous library: the item appears with metadata, inline playback where applicable, and a download action.
-7. Open the public detail page and seek the audio or video. The Worker forwards R2 range handling so streaming works correctly.
-8. Delete the item in Studio. Confirm it disappears from the public library, the R2 object is gone, and the matching D1 row is gone.
+1. In the incognito window, open `https://media.cfapps.uk/`. Show the public library loads with no sign-in prompt, and that there is no Studio link or affordance for an anonymous visitor.
+2. In your normal browser, open `/studio`. Show Cloudflare Access requesting sign-in, then authenticate.
+3. In Studio, use **Upload media** to upload the prepared file with a title. Show it appears under **Drafts**, visible only to you.
+4. Switch to the incognito window, refresh the library, and show the draft is not listed. Attempting its detail or content URL directly also fails — drafts are never served to anonymous visitors.
+5. Back in Studio, use the draft's preview/download control and show the owner can stream their own private content through the authorized Worker.
+6. Publish the draft.
+7. Switch to the incognito window and refresh the public library. Show the item now appears with metadata, inline playback where applicable, and a download control. Open the detail page and, for audio/video, seek partway through to show range-request streaming working.
+8. Back in Studio, delete the item.
+9. Switch to the incognito window and refresh the library — the item is gone.
+10. Switch to the R2 bucket browser tab and refresh — the object is gone. Switch to the D1 console tab and re-run the query — the row is gone.
+11. Switch to the Workers Logs tab and locate, in order, the `media_uploaded`, `media_published`, `media_downloaded`, and `media_deleted` events for this walkthrough. Open one and point out it contains only the media ID, content type, byte size, and caller — never object bytes or authorization headers.
 
-## Observability
+## Expected Results
 
-Open **Workers & Pages** > **Media Drop** > **Logs** and locate the successful action events:
+- Anonymous visitors can browse, view, stream, and download only published items; drafts are invisible and unreachable without authentication.
+- The signed-in creator can preview and manage only their own items, whether draft or published.
+- Deleting an item removes both the R2 object and the D1 metadata row — no orphaned object or row remains.
+- Each successful upload, publish, download, and delete produces exactly one correlated, non-sensitive log event.
 
-- `media_uploaded`
-- `media_published`
-- `media_downloaded`
-- `media_deleted`
+## Where To Observe State
 
-Each event has the media ID, content type, and byte size needed to follow the demonstration without logging object bytes or credentials. Automatic Workers tracing is enabled by Terraform as well.
+- **Worker logs:** Workers & Pages > `<DEMO_NAME>` > Logs; filter for `media_uploaded`, `media_published`, `media_downloaded`, `media_deleted`.
+- **R2 bucket:** R2 > `<DEMO_NAME>-store`; objects are keyed `media/<owner-hash>/<id>`.
+- **D1 database:** D1 > `<DEMO_NAME>-db`; query the `media` table for `status`, `owner`, and `r2_key`.
+- **Access applications:** Zero Trust > Access controls > Applications; inspect the public library and studio applications and their policies.
 
-## Resetting The Demo
-
-Delete the test item through Studio between presentations. To remove the complete demo and all billable named resources, run `npm run teardown`; it empties R2 before Terraform destroys the Worker, D1 database, R2 bucket, custom domain, and Access applications.
+Run `npm run teardown` after the presentation; see README.md for details.

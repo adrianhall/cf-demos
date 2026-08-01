@@ -1,25 +1,42 @@
 # Media Drop
 
-Media Drop is a complete Cloudflare Workers demonstration of an optional-authentication media library. Anyone can browse and download published media; authenticated creators use the Studio to upload private drafts, publish them, and remove them.
+A public media library with an authenticated creator studio, based on Cloudflare Workers, D1, R2, and Cloudflare Access.
+
+See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches and how it works, and [`DEMO.md`](./DEMO.md) for a presenter's demo script.
 
 ## Prerequisites
 
-- Node.js 24+, npm 11+, and Terraform 1.10+.
-- An active Cloudflare zone containing `cfapps.uk`.
-- A Cloudflare API token with the permissions listed in `.env.example`.
-- A configured Cloudflare Access team and identity provider.
+- Node.js 24 or newer and npm 11 or newer.
+- Terraform 1.10 or newer.
+- A Cloudflare account with a zone that can host `<DEMO_NAME>.<DEMO_DOMAIN>` (default `media.cfapps.uk`) and no conflicting CNAME on that hostname.
+- A Cloudflare Zero Trust team with an identity provider that can authenticate creators.
+- A Cloudflare API token scoped to the target account and zone with:
+  - Entire Account > Developer Platform > Workers Scripts: Edit
+  - Entire Account > Developer Platform > D1: Edit
+  - Entire Account > Developer Platform > Workers R2 Storage: Edit
+  - Entire Account > Cloudflare One / Zero Trust > Access: Edit
+  - Entire Account > Cloudflare One / Zero Trust > Access: Identity Providers: Read
+  - `<your-domain>` > DNS & Zones > DNS: Write
 
-Copy `.env.example` to `.env` and provide the account, zone, API token, and Access team-domain values. Do not commit `.env`.
+## Environment Configuration
 
-## Architecture
+```sh
+cd demos/media-drop
+cp .env.example .env
+```
 
-- One Worker serves the Vue static assets and Hono API at `https://media.cfapps.uk`.
-- D1 stores metadata only: title, verified owner email, type, byte count, R2 key, publication state, and timestamps.
-- R2 stores media bytes only. The bucket is never public; the Worker authorizes every object read.
-- `GET /api/library/*` returns only published metadata and content. R2 range and conditional reads support streaming and seeking.
-- `/api/studio/*` requires Cloudflare Access. Every D1 query and R2 key lookup is scoped to the verified owner, so creators cannot access each other's media.
-- A hostname-wide Access bypass application covers the public library. A more-specific Access application protects `/studio*` and `/api/studio*` for any authenticated user.
-- Terraform owns the Worker registration, custom domain, Access applications, D1 database, and R2 bucket. Wrangler owns D1 migrations and Worker code deployments.
+Set every value in `.env`:
+
+| Variable | Meaning |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | API token with the permissions listed above. |
+| `CLOUDFLARE_ACCOUNT_ID` | Account that owns the Worker, D1 database, R2 bucket, and Access applications. |
+| `CLOUDFLARE_ZONE_ID` | Zone ID for `DEMO_DOMAIN`. |
+| `DEMO_DOMAIN` | Zone hostname the demo is deployed under, e.g. `cfapps.uk`. |
+| `DEMO_NAME` | Worker name and hostname label, e.g. `media` for `media.cfapps.uk`. |
+| `CLOUDFLARE_TEAM_DOMAIN` | Access team domain without `https://`, e.g. `example.cloudflareaccess.com`. |
+
+No `ADMIN_EMAIL` is required: any authenticated user is a valid creator. Do not commit `.env`, Terraform state, the generated `wrangler.jsonc`, or generated binding types (`worker-configuration.d.ts`).
 
 ## Local Development
 
@@ -28,58 +45,64 @@ npm install
 npm start
 ```
 
-`prestart` generates an ignored local `wrangler.jsonc` and binding types, applies D1 migrations to local storage, then starts Vite. The local Access emulator offers `creator@example.com` and `another-creator@example.com`; use the visible **Log out** control at `/studio` to switch identities.
+`prestart` generates an ignored local `wrangler.jsonc` from `wrangler.jsonc.tpl` and the committed placeholder values in `infra/local-outputs.json`, then generates binding types. `npm start` then applies D1 migrations locally (`db:migrate:local`) before starting Vite. No Terraform state or cloud resources are required.
 
-Local objects and D1 rows are stored under the ignored `.wrangler/` directory. Delete that directory to reset local demo data.
+Open `http://localhost:5173/` for the public library and `http://localhost:5173/studio` for the studio; the local Access emulator offers selectable dev identities so signing in takes one click. Use the visible logout control at `/studio` to switch identities. Local D1 rows and R2 objects live under the ignored `.wrangler/` directory; delete it to reset local demo data.
 
-## Testing And Checks
+## Testing
 
 ```sh
-npm run test
-npm run test:coverage
-npm run test:worker
-npm run test:client
+npm run check          # format, lint, type check, Terraform fmt/validate
+npm run test:unit      # Worker and client unit projects
 npm run test:integration
-npm run check
-terraform -chdir=infra fmt -check
+npm run test:coverage
+npm run build
 ```
-
-The Worker tests cover validation, R2 key/range logic, and Access policy ordering. Client tests cover upload validation, the public library grid, and Studio media actions. Integration tests run the Worker with Miniflare D1 and R2, apply the real migrations, and cover draft privacy, Access enforcement, owner isolation, publishing, streaming, and deletion of both the R2 object and D1 row.
-
-`npm run check` runs formatting, linting, type checking, and Terraform validation. Terraform validation requires `terraform -chdir=infra init` first.
 
 ## Deployment
 
 ```sh
+cd demos/media-drop
 npm run deploy
 ```
 
-The command initializes and applies Terraform, force-generates `wrangler.jsonc` from Terraform outputs, generates binding types, applies D1 migrations remotely with `CI=1`, builds the Vue application, and deploys the Worker. The first Terraform apply creates an inert bootstrap deployment so Cloudflare can attach the custom domain; later Wrangler deployments own all real Worker versions.
+`npm run deploy` runs `deploy:infra` (Terraform `init` then `apply -auto-approve`, reading configuration from `.env`) followed by `deploy:worker`. Before building, the `predeploy:worker` hook regenerates `wrangler.jsonc` from the live Terraform outputs (`generate-wrangler -cf --terraform infra`) and regenerates binding types (`generate-wrangler-types`). `deploy:worker` then applies D1 migrations against the remote database (`db:migrate:remote`, `CI=1 wrangler d1 migrations apply DB --remote`), builds the Vue application, and deploys the Worker.
 
-Verify the deployment:
+### Post-Deploy Verification
 
-1. Open `https://media.cfapps.uk/` anonymously. The library is public.
-2. Open `/studio`; Cloudflare Access must request sign-in.
-3. Upload a supported image, audio file, or short video. It appears only in the signed-in creator's drafts.
-4. Publish it and confirm it appears in the public library and can stream or download.
-5. Delete it from Studio and confirm it no longer appears publicly.
+1. Open `https://<DEMO_NAME>.<DEMO_DOMAIN>/` (default `https://media.cfapps.uk/`) anonymously and confirm the public library loads with no sign-in prompt.
+2. Open `/studio` and confirm Cloudflare Access requests sign-in.
+3. Sign in and upload a small image, audio file, or short video with a title. Confirm it appears under **Drafts**.
+4. Publish it and confirm it now appears in the public library and can stream or download.
+5. Delete it from the studio and confirm it no longer appears in the library.
+6. In the Cloudflare dashboard under **Workers & Pages** > `<DEMO_NAME>` > **Logs**, confirm `media_uploaded`, `media_published`, and `media_deleted` events were recorded.
 
-## Observability
+## Provisioned Resources
 
-Terraform enables Workers Logs and automatic tracing with explicit sampling. Workers emits structured informational events after successful actions: `media_uploaded`, `media_published`, `media_downloaded`, and `media_deleted`. Filter Workers Logs by these event names. Logs contain media identifiers and non-sensitive metadata, never Access tokens, object bytes, or authorization headers.
+- Worker (`<DEMO_NAME>`) serving the Vue library/studio UI as static assets and a Hono API.
+- D1 database `<DEMO_NAME>-db`, bound as `DB`.
+- R2 bucket `<DEMO_NAME>-store`, bound as `MEDIA`.
+- Custom domain `<DEMO_NAME>.<DEMO_DOMAIN>`.
+- Access application + bypass policy covering the whole hostname (the public library).
+- Access application + allow policy for any authenticated user, scoped to `/studio*` and `/api/studio*`.
+- Workers Logs (100% sampling) and traces (10% sampling).
 
 ## Troubleshooting
 
-- If local bindings are stale, remove the ignored `wrangler.jsonc` and `worker-configuration.d.ts`, then run `npm run check:types`.
-- If local Studio authentication loops, visit `/cdn-cgi/access/logout` and choose an identity again.
-- If deployment migration fails, confirm the API token has `Account: D1 - Edit` and that the generated config binds D1 as `DB`.
-- If `/studio` is public, confirm the authenticated Access application lists both `/studio*` and `/api/studio*` destinations.
-- If teardown reports a non-empty R2 bucket, rerun `npm run teardown`; its preteardown step empties the Terraform-derived bucket before destroy.
+| Symptom | Cause and resolution |
+| --- | --- |
+| `/studio` is public | Confirm the studio Access application lists both `/studio*` and `/api/studio*` destinations, then re-run `npm run deploy`. |
+| Local sign-in loops or shows the wrong identity | Visit `/cdn-cgi/access/logout` and choose a different dev identity. |
+| `401`/`403` from `/api/studio/*` | Confirm you are signed in through the configured identity provider; any authenticated identity is accepted, so this indicates no valid session. |
+| Deployment migration fails | Confirm the API token has `Account: D1 - Edit` and that the generated config binds D1 as `DB`. |
+| `generate:wrangler` fails during deploy | Run `npm run deploy:infra:apply` successfully first; every referenced Terraform output must exist. |
+| Teardown reports a non-empty R2 bucket | Re-run `npm run teardown`; its `preteardown:r2` step empties the bucket before `terraform destroy`. |
 
 ## Teardown
 
 ```sh
+cd demos/media-drop
 npm run teardown
 ```
 
-`preteardown` runs `empty-r2-bucket -t infra --env-file .env --yes` (`@adrianhall/cloudflare-toolkit`), which reads the account ID and bucket name from `terraform output -json` and calls the dashboard-observed empty-bucket endpoint with the ordinary deployment token from `.env`, because Cloudflare refuses to delete non-empty buckets. The endpoint is undocumented; its rationale and copy guidance live in `docs/DECISIONS.md`. Terraform then destroys the Worker, D1 database, R2 bucket, domain, and Access resources. `postteardown` removes generated Wrangler configuration and binding types.
+R2 rejects destroying a non-empty bucket, so `preteardown` runs `preteardown:r2` (`empty-r2-bucket -t infra --env-file .env --yes`) to empty the Terraform-managed bucket first. `teardown` then runs `terraform destroy -auto-approve`, removing the Worker, D1 database, R2 bucket, custom domain, and both Access applications/policies. `postteardown` deletes the locally generated `wrangler.jsonc` and `worker-configuration.d.ts`. Confirm no `<DEMO_NAME>` Worker, D1 database, R2 bucket, or Access applications remain in the account before discarding local Terraform state.
