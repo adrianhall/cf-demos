@@ -27,6 +27,11 @@ export default defineProject(async () => {
     test: {
       name: "integration",
       include: ["**/*.test.ts"],
+      // Phase 2 adds real WebSocket connections to `ChatAgent` Durable Objects. Test files that
+      // open real WebSockets against this pool's shared workerd runtime can intermittently hang
+      // when run concurrently -- see the `testing-durable-objects` skill and
+      // `docs/DECISIONS.md` item 8.
+      fileParallelism: false,
     },
   };
 });

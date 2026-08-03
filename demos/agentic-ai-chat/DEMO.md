@@ -1,6 +1,6 @@
 # Agentic Chat Demo Script
 
-See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This checkout implements Phase 1 (Scaffolding) only — there is no chat feature to demonstrate yet, only the authenticated shell and D1 user directory the rest of `docs/06-AGENTIC-CHAT.md`'s phases build on.
+See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This checkout implements Phase 1 (Scaffolding) and Phase 2 (Core Agentic Chat, US-1) — the authenticated shell, the D1 user directory, and a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`. Later phases' demo scripts pick up from here for the chat sidebar, model routing, cost tracking, tools, skills, and the admin console.
 
 ## Demonstration Prerequisites
 
@@ -8,7 +8,8 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
 2. Confirm you can authenticate through the configured identity provider as at least two different identities: one matching this deployment's `ADMIN_EMAIL`, and one that does not.
 3. Open a second browser window or tab to the Cloudflare dashboard at **Zero Trust** > **Access controls** > **Applications**.
 4. Open a third browser window or tab to the Cloudflare dashboard's **D1** section, ready to open the `agentic-chat-db` database's console.
-5. Sign out of, or use a private/incognito window for, the demo hostname so the first step shows the unauthenticated experience.
+5. Open a fourth browser window or tab to the Cloudflare dashboard's **AI Gateway** section, ready to open the `agentic-chat` gateway's request log.
+6. Sign out of, or use a private/incognito window for, the demo hostname so the first step shows the unauthenticated experience.
 
 ## Presentation Flow
 
@@ -16,31 +17,41 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
 2. Switch to the dashboard tab. Open **Zero Trust** > **Access controls** > **Applications** and show the single application for this demo, covering the whole hostname with an allow policy that requires authentication from any identity in the configured provider — no public bypass — and note its Audience tag, matched by `VITE_ACCESS_AUDIENCE` in the deployed Worker.
 3. Back in the browser, sign in as the identity matching `ADMIN_EMAIL`.
 4. Point out the header: the signed-in email and an **Administrator** badge, sourced from `GET /api/me`'s D1-backed `isAdmin` flag, not from Cloudflare Access itself.
-5. Switch to the D1 tab. Open the `agentic-chat-db` database's console and run:
+5. Type a message in the composer (for example "In one sentence, what is Cloudflare Workers?") and press Enter. Point out:
+   - The activity indicator while waiting for the first token.
+   - The response streaming in token by token, not appearing all at once.
+6. Switch to the D1 tab. Open the `agentic-chat-db` database's console and run:
 
    ```sql
-   SELECT email, is_admin, created_at FROM users ORDER BY created_at;
+   SELECT id, owner_email, created_at FROM chats ORDER BY created_at;
    ```
 
-   Point out the administrator's row with `is_admin = 1`.
-6. Back in the browser, use the always-visible **Sign out** control.
-7. Sign in as the second, non-administrator identity. Point out the header shows no **Administrator** badge.
-8. Re-run the D1 query from step 5 and show both identities now have their own row, the second with `is_admin = 0`.
-9. Switch to the dashboard tab. Open **Workers & Pages** > `agentic-chat` > **Logs** and show the requests from both sign-ins.
-10. Optionally, open **AI Gateway** in the dashboard and show the `agentic-chat` gateway and its two dynamic routes (`agentic-chat-basic`, `agentic-chat-reasoning`), provisioned now but not yet called by any route — a later phase's demo script picks this back up once the chat agent calls them.
+   Point out the new row: one D1 directory entry per chat, owned by the signed-in identity.
+7. Switch to the AI Gateway tab. Refresh the `agentic-chat` gateway's request log and point out the request just sent — the model actually called, its latency, and its cost, all attributed to the same gateway later phases reuse for governed routing and cost tracking.
+8. Back in the browser, send a second message referencing the first (for example "Can you say that more simply?") and point out the response reflects the earlier turn — the conversation has real, multi-turn context, not just a single request/response.
+9. **Reload the page.** Point out the same conversation reappears exactly as it was — this is loaded from the `ChatAgent` Durable Object's own durable storage on the request that follows, not replayed from anything kept in browser memory.
+10. Back in the dashboard, open **Workers & Pages** > `agentic-chat` > **Logs** and show the `chat_created` and `chat_connected` log entries from this session.
+11. Optionally, open **Durable Objects** in the dashboard (under **Workers & Pages** > `agentic-chat` > **Bindings**, or the account-level Durable Objects view) and show the `ChatAgent` class with one live instance — the coordination atom for this one conversation.
+12. Back in the browser, use the always-visible **Sign out** control.
+13. Sign in as the second, non-administrator identity and send a message. Point out this identity gets its own separate chat — one D1 directory row and one `ChatAgent` instance per identity in this phase's single-chat-per-user UI (Phase 3 adds a real multi-chat sidebar).
+14. Re-run the D1 query from step 6 and show both identities now each own a row.
 
 ## Expected Results
 
 - Unauthenticated visitors to the hostname see the Cloudflare Access login screen, never the app; an unauthenticated `GET /api/me` receives `401`.
 - Every sign-in upserts a `users` row; only the identity matching `ADMIN_EMAIL` ever has `is_admin = 1`, regardless of sign-in order.
-- The header's **Administrator** badge is driven entirely by that D1 flag, not by Cloudflare Access.
+- A submitted prompt streams a response incrementally, with visible progress before the first token.
+- A second prompt in the same chat has access to the first turn's context.
+- Reloading the page resumes the same conversation from durable storage.
+- Each identity's chat is fully isolated from every other identity's.
 
 ## Where To Observe State
 
-- **Worker logs:** Workers & Pages > `agentic-chat` > Logs.
+- **Worker logs:** Workers & Pages > `agentic-chat` > Logs (`chat_created`, `chat_connected` entries).
 - **Traces:** Workers & Pages > `agentic-chat` > Observability > Traces (10% sampling).
-- **D1 data:** D1 > `agentic-chat-db` > Console; query the `users` table as shown above.
+- **D1 data:** D1 > `agentic-chat-db` > Console; query the `chats`/`users` tables as shown above.
 - **Access application:** Zero Trust > Access controls > Applications > `agentic-chat`.
-- **AI Gateway:** AI Gateway > `agentic-chat` (gateway and both dynamic routes exist but are unused until a later phase).
+- **AI Gateway:** AI Gateway > `agentic-chat` — every chat turn's request log entry, model, latency, and cost.
+- **Durable Objects:** the `ChatAgent` class and its live instances, one per chat.
 
 Run `npm run teardown` after the presentation; see README.md for details.

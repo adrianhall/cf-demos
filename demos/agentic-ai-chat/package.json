@@ -48,13 +48,19 @@
   },
   "dependencies": {
     "@adrianhall/cloudflare-toolkit": "2.3.0",
+    "@cloudflare/ai-chat": "0.10.1",
     "@vitejs/plugin-vue": "6.0.8",
     "@vitest/coverage-istanbul": "^4.1.10",
+    "agents": "0.20.1",
+    "ai": "7.0.48",
     "hono": "4.12.32",
     "pinia": "4.0.2",
     "vue": "3.5.40",
+    "vue-feather": "^2.0.0",
     "vue-router": "5.2.0",
-    "vuetify": "4.1.6"
+    "vuetify": "4.1.6",
+    "workers-ai-provider": "4.0.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",
@@ -72,6 +78,8 @@
     "wrangler": "4.115.0"
   },
   "allowScripts": {
+    "core-js@3.49.0": true,
+    "core-js-pure@3.49.0": true,
     "esbuild@0.28.1": true,
     "fsevents": false,
     "workerd@1.20260722.1": true,

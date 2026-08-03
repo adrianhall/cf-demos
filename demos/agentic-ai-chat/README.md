@@ -2,7 +2,7 @@
 
 An authenticated enterprise AI chat agent based on Cloudflare Workers, D1, Cloudflare Access, Durable Objects, the Agents SDK, Workers AI, AI Gateway, and Dynamic Workers.
 
-> This demo ships in phases (see `docs/06-AGENTIC-CHAT.md`), each tagged in git so any two can be diffed. This checkout currently implements **Phase 1 (Scaffolding)** only: a working, Access-gated, empty shell with a D1 user directory. Later phases add the chat agent itself, model routing, cost tracking, tools, skills, and an admin console.
+> This demo ships in phases (see `docs/06-AGENTIC-CHAT.md`), each tagged in git so any two can be diffed. This checkout implements **Phase 1 (Scaffolding)** and **Phase 2 (Core Agentic Chat, US-1)**: a signed-in user can hold a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, persisted across reloads. Later phases add a chat sidebar, governed model routing, cost tracking, tools, skills, and an admin console.
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ An authenticated enterprise AI chat agent based on Cloudflare Workers, D1, Cloud
 - A Cloudflare API token scoped to the target account and zone with:
   - Entire Account > Developer Platform > Workers Scripts: Edit
   - Entire Account > Developer Platform > D1: Edit
-  - Entire Account > Developer Platform > Workers AI: Edit (local development only — see Troubleshooting)
+  - Entire Account > Developer Platform > Workers AI: Edit (also required for local development — see Troubleshooting)
   - Entire Account > Developer Platform > AI Gateway: Edit
   - Entire Account > Cloudflare One / Zero Trust > Access: Edit
   - Entire Account > Cloudflare One / Zero Trust > Access: Identity Providers: Read
@@ -47,9 +47,9 @@ npm install
 npm start
 ```
 
-`npm start` generates `wrangler.jsonc` from `wrangler.jsonc.tpl` and the committed local placeholder values in `infra/local-outputs.json`, generates binding types, applies the D1 migration to the local SQLite database (`db:migrate:local`), builds, and starts Vite. No Terraform state or cloud resources are required for the Access, D1, or SPA-shell behavior this phase implements. Open the printed local address and sign in using the local Access dev-login form, which offers `admin@example.com` (this demo's local administrator) and `alice@example.com` (an ordinary identity). An always-visible **Sign out** control uses `/cdn-cgi/access/logout`, useful for recovering from having signed in as the wrong identity. Local D1 data lives under `.wrangler/` and can be deleted between sessions.
+`npm start` generates `wrangler.jsonc` from `wrangler.jsonc.tpl` and the committed local placeholder values in `infra/local-outputs.json`, generates binding types, applies the D1 migration to the local SQLite database (`db:migrate:local`), builds, and starts Vite. No Terraform state or cloud resources are required for the Access, D1, or SPA-shell behavior. Open the printed local address and sign in using the local Access dev-login form, which offers `admin@example.com` (this demo's local administrator) and `alice@example.com` (an ordinary identity). An always-visible **Sign out** control uses `/cdn-cgi/access/logout`, useful for recovering from having signed in as the wrong identity. Local D1 data lives under `.wrangler/` and can be deleted between sessions.
 
-The `AI` binding (declared now for Phase 2 onward) has no local simulator; it is not called by any route yet in this phase, so `vite dev` never actually reaches it.
+The `AI` binding has no local simulator (`docs/05-AI-CHAT.md`, "Workers AI Has No Local Simulation"): `vite dev` always reaches the real account for it, using the local placeholder AI Gateway id `"default"` (`infra/local-outputs.json`), which auto-provisions on first use. Signing in and sending a message locally makes a real, billable Workers AI call.
 
 ## Testing
 
@@ -74,15 +74,19 @@ npm run deploy
 
 1. Visit `https://<DEMO_NAME>.<DEMO_DOMAIN>` (default `https://agentic-chat.cfapps.uk`) and authenticate through the configured identity provider.
 2. Confirm the header shows your signed-in email and an **Administrator** badge only if you signed in as `ADMIN_EMAIL`.
-3. Sign out using the visible **Sign out** control.
-4. In the Cloudflare dashboard under **D1** > `<DEMO_NAME>-db` > Console, run `SELECT email, is_admin, created_at FROM users;` and confirm your identity was upserted with the expected `is_admin` value.
-5. Under **Workers & Pages** > `<DEMO_NAME>` > **Logs**, confirm requests are being logged.
+3. Send a message in the composer and confirm a streamed response appears.
+4. Reload the page and confirm the same conversation reappears (loaded from the `ChatAgent` Durable Object's own storage, not browser memory).
+5. Sign out using the visible **Sign out** control.
+6. In the Cloudflare dashboard under **D1** > `<DEMO_NAME>-db` > Console, run `SELECT email, is_admin, created_at FROM users;` and confirm your identity was upserted with the expected `is_admin` value.
+7. Under **Workers & Pages** > `<DEMO_NAME>` > **Logs**, confirm requests are being logged, including a `chat_created` and a `chat_connected` entry.
+8. Under **AI Gateway** > `<DEMO_NAME>`, confirm the sent message appears in the gateway's request log.
 
 ## Provisioned Resources
 
 - Worker (`<DEMO_NAME>`) serving the Vue shell as static assets and a Hono API.
+- `CHAT_AGENT` Durable Object binding (`ChatAgent`, one instance per chat, `new_sqlite_classes` migration `v1`) -- created by Wrangler on first deploy, not Terraform (AGENTS.md, Resource Ownership).
 - D1 database `<DEMO_NAME>-db`, bound as `DB`, holding the `users` and `chats` tables.
-- AI Gateway `<DEMO_NAME>` and two dynamic routes (`<DEMO_NAME>-basic`, `<DEMO_NAME>-reasoning`) — provisioned now, not yet called by any route until a later phase.
+- AI Gateway `<DEMO_NAME>`, called directly (not yet through a dynamic route) for every chat turn, bound to the Worker as the `AI_GATEWAY_ID` var. Its two dynamic routes (`<DEMO_NAME>-basic`, `<DEMO_NAME>-reasoning`) remain provisioned but unused until Phase 4.
 - Custom domain `<DEMO_NAME>.<DEMO_DOMAIN>`.
 - Access application + allow policy requiring authentication for the whole hostname, with `audience` pinned.
 - Workers Logs (100% sampling) and traces (10% sampling).
@@ -96,8 +100,10 @@ npm run deploy
 | Domain fails to provision | Remove the conflicting DNS record and confirm the supplied zone ID owns `DEMO_DOMAIN`. |
 | `generate:wrangler` fails during deploy | Run `npm run deploy:infra:apply` successfully first; every referenced Terraform output must exist. |
 | D1 migration fails during deploy | Confirm Terraform apply completed (the D1 database must exist) before `db:migrate:remote` runs; re-run `npm run deploy`. |
-| `vite dev`/`vitest` hang or fail to reach Workers AI | `Workers AI : Edit` is required only because the `AI` binding has no local simulator (it is unused by any route in this phase); confirm the token has that permission. |
+| `vite dev`/`vitest` hang or fail to reach Workers AI | The `AI` binding has no local simulator and always reaches the real account; confirm the token has `Workers AI : Edit`. |
 | Signed in but no `Administrator` badge | Confirm you signed in with the identity matching this deployment's `ADMIN_EMAIL`, and that D1 migrations have applied. |
+| Composer stays disabled after sending the first message | The chat WebSocket has not reported `connected` yet; check the browser console/Workers Logs for a rejected upgrade (for example an expired Access session). |
+| A stale chat reappears after `npm run teardown`/re-deploy | This phase remembers the active chat id in the browser's `localStorage` (`agentic-chat:current-chat-id`) as a temporary bridge until Phase 3's real chat list ships; clear it (or use a private window) to start a fresh chat against a freshly re-provisioned D1 database. |
 
 ## Teardown
 

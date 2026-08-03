@@ -730,3 +730,81 @@ all.
 call the plain REST API from inside the Worker (with a Wrangler secret for the account API token)
 for this one operation — the one place `AGENTS.md`'s "prefer bindings over REST calls" guidance
 cannot be followed, because no such binding exists.
+
+## NEW DECISIONS
+
+New decisions will be located below here before they are incorporated, and moved above this
+heading when they have been incorporated.
+
+## 17. `@cloudflare/vitest-pool-workers`'s shared `env` lets a test fake a binding a Durable
+    Object itself reads (`demos/agentic-ai-chat`, Phase 2)
+
+Building `ChatAgent`'s Phase 2 integration tests (docs/06-AGENTIC-CHAT.md, Phase 2) needed a way
+to drive a real WebSocket chat turn against the real Durable Object without a real Workers AI
+call — the same "inject a fake `Ai`" need `docs/05-AI-CHAT.md`'s Phase 3 established, but this
+time the binding is read by a Durable Object (`this.env.AI` inside `ChatAgent.onChatMessage()`),
+not the top-level Worker `fetch()` handler `authenticatedRequestWithAi()` substitutes `env` for.
+
+**Confirmed live: mutating `env.AI` (imported from `cloudflare:workers`) before making a request
+reaches the Durable Object's own `this.env.AI` at call time**, with no extra wiring. Concretely:
+
+```ts
+import { env } from "cloudflare:workers";
+
+const original = env.AI;
+(env as unknown as { AI: Pick<Ai, "run"> }).AI = fakeAi;
+try {
+  // ...drive a real WebSocket chat turn through the real Worker route...
+} finally {
+  (env as unknown as { AI: Ai }).AI = original;
+}
+```
+
+This works because `@cloudflare/vitest-pool-workers` runs the whole test file's Worker script and
+every Durable Object it creates inside one in-process `workerd` instance for that file, sharing
+the exact same `env` bindings object by reference — not a separately provisioned script the way a
+deployed Worker's Durable Object bindings are configured independently in production. Verified
+with a real, capturing fake (`createCapturingFakeAi()`, mirroring `docs/05-AI-CHAT.md`'s
+`createCapturingFakeAi()`) that recorded the exact `model`/`input` `workers-ai-provider`'s
+`doStream()` passed to `env.AI.run()`, proving the Durable Object's own code path — not merely the
+Worker's top-level routing — actually observed the fake.
+
+**The fake's `run()` must still return the raw Workers AI SSE stream shape**
+(`data: {"response": "..."}\n\n` / `data: [DONE]\n\n`), exactly `docs/05-AI-CHAT.md`'s
+`createFakeAi()` fixture already produces — confirmed by reading the installed
+`workers-ai-provider` package's `doStream()`/`getMappedStream()` source: it calls
+`this.config.binding.run(model, inputs, options)` (the literal `env.AI.run()` signature) and, when
+the result is a `ReadableStream`, decodes it with the identical SSE `data:`-line parser demo 5's
+own raw-`env.AI.run()` code path uses. A future demo faking `env.AI` for anything built on
+`workers-ai-provider`/`AIChatAgent` can reuse demo 5's existing SSE-fixture helpers verbatim; no
+new fake-response shape was needed.
+
+**A remaining cost, not a correctness blocker**: the test pool still spends roughly ten seconds
+per test file attempting the real `ai: { remote: true }` binding's "Establishing remote
+connection…" handshake against the real account (docs/05-AI-CHAT.md, "Workers AI Has No Local
+Simulation") before any test in that file runs, even though the fake substitution means no test
+ever actually calls it. This is `remote: true`'s own Miniflare startup cost, not something the
+fake-`env.AI` substitution can skip.
+
+## 18. `AIChatAgent`'s built-in `get-messages` endpoint is how a client reloads a chat's history
+    (`demos/agentic-ai-chat`, Phase 2)
+
+US-1's acceptance criterion ("reloading the page and reconnecting resumes the same conversation
+from durable storage, not from browser memory") needs a way for the browser to fetch a chat's full
+persisted transcript before opening its live WebSocket connection. Neither `docs/06-AGENTIC-CHAT.md`
+nor Spike A's report named a mechanism for this — Spike A only confirmed message persistence
+*server-side* across two separate connections, not how a *client* retrieves that history.
+
+**Source-read from the installed `@cloudflare/ai-chat@0.10.1` package: `AIChatAgent`'s own
+`onRequest` hook already answers a plain (non-upgrade) `GET` request whose path's final segment is
+exactly `get-messages`, returning `Response.json(this._loadMessagesFromDb())`** — the same
+`UIMessage[]` shape (`{id, role, parts}`) `this.messages` holds, read fresh from the Durable
+Object's SQLite store rather than depending on the instance already being warm. No route
+registration, no code of this demo's own — the Worker (`src/worker/routes/chats.ts`) only needs to
+forward an already-ownership-checked request ending in `/get-messages` to
+`getAgentByName(...).fetch(request)` for this to work. This is the mechanism a future demo (or a
+later phase of this one) should reuse for "load history before connecting" rather than inventing a
+custom REST endpoint or relying on a wire-protocol frame — there is no `cf_agent_chat_messages`
+broadcast sent automatically on every connect in this installed version (that frame type exists,
+but source-reading `@cloudflare/ai-chat@0.10.1` shows it is only ever sent from a narrower
+dropped-submit-rollback path, not as a general connect-time history replay).

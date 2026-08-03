@@ -10,6 +10,7 @@
   "preview_urls": false,
   "vars": {
     "ADMIN_EMAIL": "{{admin_email}}",
+    "AI_GATEWAY_ID": "{{ai_gateway_id}}",
     "CLOUDFLARE_TEAM_DOMAIN": "{{cloudflare_team_domain}}",
     "ENVIRONMENT": "{{environment}}"
   },
@@ -23,12 +24,16 @@
   ],
   // Workers AI has no local simulator: this binding always reaches the real account, in both
   // `vite dev` and a deployed Worker (docs/05-AI-CHAT.md, "Workers AI Has No Local Simulation").
-  // Unused by any route until Phase 2 -- declared now so this phase's `compatibility_date`/flags
-  // are exercised end to end and Phase 2 adds no new Wrangler config surface of its own.
   "ai": {
     "binding": "AI",
     "remote": true
   },
+  // One Durable Object per chat (docs/06-AGENTIC-CHAT.md Section 6.2), addressed by
+  // `getAgentByName()` rather than `routeAgentRequest()`'s default routing (Spike A).
+  "durable_objects": {
+    "bindings": [{ "name": "CHAT_AGENT", "class_name": "ChatAgent" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChatAgent"] }],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
