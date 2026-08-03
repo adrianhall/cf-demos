@@ -1,0 +1,109 @@
+demos/agentic-ai-chat/src/client/stores/chats.test.ts
+  s_99bbadf31c2c7f::t_b670cb39fab3e7 271-277,279
+  s_99bbadf31c2c7f::t_36c053f69fac74 245-270,278,280-297
+  s_99bbadf31c2c7f::t_ad61962d9ff721 11
+demos/agentic-ai-chat/src/worker/chats/types.ts
+  s_99bbadf31c2c7f::t_7d1dae18addba0 18-21
+  s_99bbadf31c2c7f::t_617b66a9650c24 2,17,22
+  s_99bbadf31c2c7f::t_6324545abdedfd 1
+demos/agentic-ai-chat/tests/integration/dynamic-routes.test.ts
+  s_99bbadf31c2c7f::t_f904a065e2ba78 1-124,142-222
+  s_99bbadf31c2c7f::t_af04fac344dfb9 125-141
+demos/agentic-ai-chat/wrangler.jsonc.tpl
+  s_99bbadf31c2c7f::t_e2c1cf7886b92e 14-19
+demos/agentic-ai-chat/src/worker/chats/repository.ts
+  s_99bbadf31c2c7f::t_ef7cf3b7e90649 68-73
+  s_99bbadf31c2c7f::t_251c558fb34300 16-20
+  s_99bbadf31c2c7f::t_491f95c4344023 1
+  s_99bbadf31c2c7f::t_f9b79919fdab27 44-47,59,66
+  s_99bbadf31c2c7f::t_0e05912eab0208 67,174-203
+  s_99bbadf31c2c7f::t_f54a559c62b210 14-15,21,27
+  s_99bbadf31c2c7f::t_56a127293f48da 173
+demos/agentic-ai-chat/src/worker/chats/route.ts
+  s_99bbadf31c2c7f::t_bc061fb008d520 1-40,49-53,55-61
+  s_99bbadf31c2c7f::t_ca78dac0b7d074 41-48,54
+demos/agentic-ai-chat/src/worker/chats/repository.test.ts
+  s_99bbadf31c2c7f::t_918e04eb1cd9d8 77,84,92
+  s_99bbadf31c2c7f::t_10c479760ac958 105,119,129-144
+  s_99bbadf31c2c7f::t_7b1329151f8481 145,245-274
+  s_99bbadf31c2c7f::t_6e1c58383b7fb8 146
+demos/agentic-ai-chat/infra/agentic-ai-chat.tf
+  s_99bbadf31c2c7f::t_03869382866b21 69-74
+demos/agentic-ai-chat/src/client/components/ChatSidebar.test.ts
+  s_99bbadf31c2c7f::t_03485f2a2ba251 12
+demos/agentic-ai-chat/src/worker/chats/route.test.ts
+  s_99bbadf31c2c7f::t_118d1d93763227 1-61
+demos/agentic-ai-chat/src/client/views/HomeView.test.ts
+  s_99bbadf31c2c7f::t_59ef7b2d35c7ad 282-311
+  s_99bbadf31c2c7f::t_fd6760b200b890 165
+  s_99bbadf31c2c7f::t_f003284f3941bd 181-281
+  s_99bbadf31c2c7f::t_3d14792397175c 5
+demos/agentic-ai-chat/src/worker/routes/chats.ts
+  s_99bbadf31c2c7f::t_3050acd77279ec 1-5,10
+  s_99bbadf31c2c7f::t_cfc2499fb02a6e 59-96
+  s_99bbadf31c2c7f::t_86d6449c0c84da 40-43,45
+  s_99bbadf31c2c7f::t_3486e79c9e5ee7 58
+demos/agentic-ai-chat/DEMO.md
+  s_99bbadf31c2c7f::t_f6542645e11308 55-56,58
+  s_99bbadf31c2c7f::t_4f67132b65fe28 3
+  s_99bbadf31c2c7f::t_d32bcb73ef34a1 62,64,66
+  s_99bbadf31c2c7f::t_81451bf5ad47aa 11
+  s_99bbadf31c2c7f::t_37a3f8774ff324 20,22,29,32-33,35-45
+demos/agentic-ai-chat/src/worker/agent/chat-agent.ts
+  s_99bbadf31c2c7f::t_ba4a7cc7db7f8a 17-21
+  s_99bbadf31c2c7f::t_f64731abafee21 39-41,46-47
+  s_99bbadf31c2c7f::t_01d09a40832b2b 61-68,77
+  s_99bbadf31c2c7f::t_fef43c303cd65d 112-119
+demos/agentic-ai-chat/infra/local-outputs.json
+  s_99bbadf31c2c7f::t_cd7581bdccc274 4-5
+demos/agentic-ai-chat/src/client/components/RouteSelector.vue
+  s_99bbadf31c2c7f::t_bb67a4fd5d91e1 1-75
+demos/agentic-ai-chat/src/client/components/RouteSelector.test.ts
+  s_99bbadf31c2c7f::t_7fa20f745d0a1c 1-42,62-77
+  s_99bbadf31c2c7f::t_cb952ce99b6ad5 54
+  s_99bbadf31c2c7f::t_2331b71286329f 43-53,55-61
+demos/agentic-ai-chat/README.md
+  s_99bbadf31c2c7f::t_0f3837fb8d2189 79-88
+  s_99bbadf31c2c7f::t_ab34b8e643537d 96
+  s_99bbadf31c2c7f::t_83459ca4b5a3dc 115-116
+  s_99bbadf31c2c7f::t_f02894c2a92ffb 5
+  s_99bbadf31c2c7f::t_c58a5885e4e5f1 89
+  s_99bbadf31c2c7f::t_62e20e1ee0f98e 64-65
+demos/agentic-ai-chat/EXPLAIN-DEMO.md
+  s_99bbadf31c2c7f::t_2583ea58a5eb0c 3
+  s_99bbadf31c2c7f::t_0bb25a098780eb 34-42
+  s_99bbadf31c2c7f::t_0f0c960a1c25b9 133-134,137
+  s_99bbadf31c2c7f::t_dc1d7a14d8b087 80,82,84,86-88,90-92
+  s_99bbadf31c2c7f::t_0aa9f455334100 148
+  s_99bbadf31c2c7f::t_914cf0bbab90b1 68
+demos/agentic-ai-chat/src/client/stores/chats.ts
+  s_99bbadf31c2c7f::t_02ad301ba5c018 149-172,176-178,188
+  s_99bbadf31c2c7f::t_ef7cf3b7e90649 173-175
+  s_99bbadf31c2c7f::t_1bd63c63df0aaa 4-11,23-25
+demos/agentic-ai-chat/infra/outputs.tf
+  s_99bbadf31c2c7f::t_9e74af1b420661 16-25
+demos/agentic-ai-chat/tests/integration/chat.test.ts
+  s_99bbadf31c2c7f::t_6d14b1dc082e20 66,70-71
+demos/agentic-ai-chat/src/client/views/HomeView.vue
+  s_99bbadf31c2c7f::t_7c67ac181fb301 97-103
+  s_99bbadf31c2c7f::t_bf0957a383eee8 2,9-11,20-23,28-35
+  s_99bbadf31c2c7f::t_7ff2bd088c15dc 144-151
+  s_99bbadf31c2c7f::t_ef7cf3b7e90649 24-27
+  s_99bbadf31c2c7f::t_a16ad2c29d11cf 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "928f94d3366ca83d99b5bbacb0b341c702ec67a4",
+  "prompts": {},
+  "sessions": {
+    "s_99bbadf31c2c7f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_037626cf8ffeoXaghFKdn880tm",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
