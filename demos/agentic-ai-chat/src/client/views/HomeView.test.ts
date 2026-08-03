@@ -2,6 +2,7 @@ import { createTestingPinia } from "@pinia/testing";
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it, vi } from "vitest";
+import RouteSelector from "../components/RouteSelector.vue";
 import { useChatStore } from "../stores/chat";
 import { useChatsStore } from "../stores/chats";
 import { useSessionStore } from "../stores/session";
@@ -161,7 +162,7 @@ describe("HomeView", () => {
                     id: "chat-1",
                     ownerEmail: "alice@example.com",
                     title: "Trip Planning",
-                    route: null,
+                    route: "basic",
                     createdAt: "2026-08-01T00:00:00.000Z",
                     updatedAt: "2026-08-01T00:00:00.000Z",
                   },
@@ -175,6 +176,137 @@ describe("HomeView", () => {
     });
 
     expect(wrapper.text()).toContain("Trip Planning");
+  });
+
+  it("renders the route selector for the currently open chat, reflecting its persisted route", () => {
+    const wrapper = mount(HomeView, {
+      global: {
+        plugins: [
+          createTestingPinia({
+            createSpy: vi.fn,
+            initialState: {
+              session: { email: "alice@example.com" },
+              chats: {
+                selectedChatId: "chat-1",
+                chats: [
+                  {
+                    id: "chat-1",
+                    ownerEmail: "alice@example.com",
+                    title: null,
+                    route: "reasoning",
+                    createdAt: "2026-08-01T00:00:00.000Z",
+                    updatedAt: "2026-08-01T00:00:00.000Z",
+                  },
+                ],
+              },
+            },
+          }),
+        ],
+        stubs,
+      },
+    });
+
+    const select = wrapper.get("select");
+    expect((select.element as HTMLSelectElement).value).toBe("reasoning");
+    expect(select.attributes("disabled")).toBeUndefined();
+  });
+
+  it("disables the route selector once the open chat already has turns", () => {
+    const wrapper = mount(HomeView, {
+      global: {
+        plugins: [
+          createTestingPinia({
+            createSpy: vi.fn,
+            initialState: {
+              session: { email: "alice@example.com" },
+              chats: {
+                selectedChatId: "chat-1",
+                chats: [
+                  {
+                    id: "chat-1",
+                    ownerEmail: "alice@example.com",
+                    title: null,
+                    route: "basic",
+                    createdAt: "2026-08-01T00:00:00.000Z",
+                    updatedAt: "2026-08-01T00:00:00.000Z",
+                  },
+                ],
+              },
+              chat: {
+                turns: [
+                  {
+                    id: "turn-1",
+                    role: "user",
+                    content: "Hi",
+                    status: "done",
+                    errorDetail: null,
+                  },
+                ],
+              },
+            },
+          }),
+        ],
+        stubs,
+      },
+    });
+
+    expect(wrapper.get("select").attributes("disabled")).toBeDefined();
+  });
+
+  it("changes the chat's route through the store when the selector emits change", async () => {
+    setActivePinia(createPinia());
+    const session = useSessionStore();
+    const chatsStore = useChatsStore();
+    session.email = "alice@example.com";
+    chatsStore.chats = [
+      {
+        id: "chat-1",
+        ownerEmail: "alice@example.com",
+        title: null,
+        route: "basic",
+        createdAt: "2026-08-01T00:00:00.000Z",
+        updatedAt: "2026-08-01T00:00:00.000Z",
+      },
+    ];
+    chatsStore.select("chat-1");
+    const setRouteSpy = vi
+      .spyOn(chatsStore, "setRoute")
+      .mockResolvedValue(undefined);
+
+    const wrapper = mount(HomeView, { global: { stubs } });
+    await wrapper.get("select").setValue("reasoning");
+
+    expect(setRouteSpy).toHaveBeenCalledWith("chat-1", "reasoning");
+  });
+
+  it("does not call setRoute if the open chat is deselected between render and the selector's own change event (defensive)", async () => {
+    setActivePinia(createPinia());
+    const session = useSessionStore();
+    const chatsStore = useChatsStore();
+    session.email = "alice@example.com";
+    chatsStore.chats = [
+      {
+        id: "chat-1",
+        ownerEmail: "alice@example.com",
+        title: null,
+        route: "basic",
+        createdAt: "2026-08-01T00:00:00.000Z",
+        updatedAt: "2026-08-01T00:00:00.000Z",
+      },
+    ];
+    chatsStore.select("chat-1");
+    const setRouteSpy = vi
+      .spyOn(chatsStore, "setRoute")
+      .mockResolvedValue(undefined);
+
+    const wrapper = mount(HomeView, { global: { stubs } });
+    // Simulate a race: the chat is deselected after the selector rendered but before its own
+    // change event is handled -- `onRouteChange`'s own guard, not `RouteSelector`'s, must be
+    // what prevents calling `setRoute` with a stale/absent id.
+    chatsStore.selectedChatId = null;
+    await wrapper.findComponent(RouteSelector).vm.$emit("change", "reasoning");
+
+    expect(setRouteSpy).not.toHaveBeenCalled();
   });
 
   it("reloads the chat directory once the server broadcasts that its metadata write landed", async () => {

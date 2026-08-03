@@ -14,6 +14,11 @@ import {
   type ChatRemovedFrame,
 } from "../../agent-protocol";
 import { ChatRepository } from "../chats/repository";
+import {
+  type ChatRoute,
+  DEFAULT_CHAT_ROUTE,
+  resolveDynamicRouteModelId,
+} from "../chats/route";
 import { sanitizeTitle } from "../chats/title";
 
 /**
@@ -27,27 +32,19 @@ const TITLE_SYSTEM_PROMPT =
   "preamble.";
 
 /**
- * Phase 2's hard-coded model, called directly (not through an AI Gateway dynamic route) via the
- * already-provisioned `cloudflare_ai_gateway.demo` gateway (Phase 1's Terraform). This proves the
- * `AIChatAgent` + `streamText()` + AI Gateway mechanism with the simplest possible model wiring
- * (docs/06-AGENTIC-CHAT.md, Phase 2, step 2); Phase 4 replaces this literal model ID with a
- * client-selected `"basic"`/`"reasoning"` AI Gateway dynamic route name (Section 6.3) -- the two
- * dynamic routes Terraform already provisions are deliberately unused until then. Reuses demo
- * 5's verified non-reasoning catalog entry (`docs/05-AI-CHAT.md`), which Spike A confirmed works
- * end to end through this exact `workers-ai-provider` + `AIChatAgent` chain.
- */
-const PHASE_2_CHAT_MODEL_ID = "@cf/ibm-granite/granite-4.0-h-micro";
-
-/**
  * Props threaded into a `ChatAgent` instance by `getAgentByName()` at routing time (delivered to
  * `onStart()`, per Spike A's confirmed mechanism -- never a field the client's own message body
  * can set). The Worker's routing layer (`src/worker/routes/chats.ts`) extracts this from the
  * Cloudflare Access-verified identity, after confirming that identity owns the D1 `chats` row
- * for this chat ID.
+ * for this chat ID -- `route` is re-read from that same D1 row on every request, so a route
+ * change made via `PATCH /api/chats/:id` always reaches the next turn with no separate
+ * invalidation step (docs/06-AGENTIC-CHAT.md Phase 4, US-3).
  */
 export interface ChatAgentProps extends Record<string, unknown> {
   /** Verified Cloudflare Access identity that owns this chat. */
   ownerEmail: string;
+  /** This chat's currently persisted governed model route. */
+  route: ChatRoute;
 }
 
 /**
@@ -61,6 +58,14 @@ export class ChatAgent extends AIChatAgent<Env, unknown, ChatAgentProps> {
   /** Captured from `props` on first start; never trusted from client-supplied message data. */
   private ownerEmail: string | undefined;
 
+  /** Captured from `props` on first start; the chat's persisted route at the moment this
+   * instance was last routed to, re-derived from D1 by `src/worker/routes/chats.ts`'s
+   * `ownedAgentStub()` on every request (docs/06-AGENTIC-CHAT.md Phase 4, US-3). Falls back to
+   * {@link DEFAULT_CHAT_ROUTE} if a wake ever occurs with no props at all (mirrors
+   * `onStart()`'s existing `ownerEmail` fallback below -- see the "no-props" integration test
+   * this class already has for that case). */
+  private route: ChatRoute = DEFAULT_CHAT_ROUTE;
+
   /**
    * `partyserver`'s `Server.onStart()` lifecycle hook, called once per wake with the `props`
    * passed to `getAgentByName()` at routing time (Spike A, Section 7) -- this is how the
@@ -69,6 +74,7 @@ export class ChatAgent extends AIChatAgent<Env, unknown, ChatAgentProps> {
    */
   override async onStart(props?: ChatAgentProps): Promise<void> {
     this.ownerEmail = props?.ownerEmail;
+    this.route = props?.route ?? DEFAULT_CHAT_ROUTE;
   }
 
   /**
@@ -103,9 +109,14 @@ export class ChatAgent extends AIChatAgent<Env, unknown, ChatAgentProps> {
     options?: OnChatMessageOptions,
   ): Promise<Response | undefined> {
     const workersai = createWorkersAI({ binding: this.env.AI });
-    // Direct AI Gateway binding (Section 6.3): the already-provisioned gateway from Phase 1's
-    // Terraform, not yet one of its two dynamic routes -- see PHASE_2_CHAT_MODEL_ID above.
-    const model = workersai(PHASE_2_CHAT_MODEL_ID, {
+    // Governed model selection (docs/06-AGENTIC-CHAT.md Phase 4, US-3): `this.route` is never a
+    // client-supplied model id -- it is one of exactly two literal strings, resolved here to the
+    // real AI Gateway dynamic route name via Terraform-sourced Worker vars
+    // (`resolveDynamicRouteModelId()`, `src/worker/chats/route.ts`), then called through
+    // `env.AI.run()`'s `dynamic/<name>` run path (confirmed by Spikes B/F). Which underlying
+    // model that route actually resolves to is editable in the AI Gateway dashboard without a
+    // Worker redeploy.
+    const model = workersai(resolveDynamicRouteModelId(this.route, this.env), {
       gateway: { id: this.env.AI_GATEWAY_ID },
     });
 

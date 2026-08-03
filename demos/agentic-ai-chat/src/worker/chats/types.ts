@@ -1,3 +1,5 @@
+import type { ChatRoute } from "./route";
+
 /**
  * A chat directory entry: the D1 row backing one `ChatAgent` Durable Object instance
  * (docs/06-AGENTIC-CHAT.md Section 6.2/6.4). The Durable Object itself, not this row, is the
@@ -12,8 +14,12 @@ export interface Chat {
   ownerEmail: string;
   /** Short generated title, or `null` until Phase 3's auto-titling runs after the first turn. */
   title: string | null;
-  /** Selected AI Gateway dynamic route name, or `null` until Phase 4's route selector exists. */
-  route: string | null;
+  /** Selected AI Gateway dynamic route (docs/06-AGENTIC-CHAT.md Phase 4, US-3) -- never `null`
+   * for a chat this repository created: `ChatRepository.create()` always writes the default
+   * route (`"basic"`, see `./route.ts`'s `DEFAULT_CHAT_ROUTE`), and `ChatRepository`'s own row
+   * mapping defensively coerces an unexpected stored value back to that default rather than
+   * ever surfacing `null` here. */
+  route: ChatRoute;
   /** ISO 8601 timestamp of chat creation. */
   createdAt: string;
   /** ISO 8601 timestamp of the chat's most recent activity; only ever set at creation until a

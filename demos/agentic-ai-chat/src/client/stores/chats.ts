@@ -1,6 +1,14 @@
 import { defineStore } from "pinia";
 import { shallowRef } from "vue";
 
+/**
+ * A chat's governed AI Gateway dynamic route selection (docs/06-AGENTIC-CHAT.md Phase 4, US-3)
+ * -- mirrors `src/worker/chats/route.ts`'s `ChatRoute` (duplicated here, not imported, matching
+ * this file's existing convention of defining its own client-side `Chat` shape rather than
+ * importing the Worker's).
+ */
+export type ChatRoute = "basic" | "reasoning";
+
 /** A chat directory entry, from `GET /api/chats`/`POST /api/chats` (docs/06-AGENTIC-CHAT.md
  * Section 6.4's `chats` table). Conversation content itself is never part of this shape -- it
  * lives entirely in the chat's own `ChatAgent` Durable Object, fetched separately by
@@ -12,8 +20,9 @@ export interface Chat {
   ownerEmail: string;
   /** Short generated title, or `null` until the chat's first turn completes. */
   title: string | null;
-  /** Selected AI Gateway dynamic route name, or `null` until Phase 4 exists. */
-  route: string | null;
+  /** Selected AI Gateway dynamic route, defaulting to `"basic"` (docs/06-AGENTIC-CHAT.md Phase
+   * 4, US-3). Changeable via `setRoute()` only while {@link title} is still `null`. */
+  route: ChatRoute;
   /** ISO 8601 timestamp of chat creation. */
   createdAt: string;
   /** ISO 8601 timestamp of the chat's most recent activity. */
@@ -137,6 +146,36 @@ export const useChatsStore = defineStore("chats", () => {
     selectedChatId.value = id;
   }
 
+  /**
+   * Change a chat's governed model route (docs/06-AGENTIC-CHAT.md Phase 4, US-3). The Worker
+   * rejects this once the chat's first turn has completed (`422`); this store surfaces that as
+   * an ordinary {@link error}, the same way every other rejected mutation here does, rather than
+   * throwing -- the caller (`RouteSelector.vue`) is expected to also hide/disable its own control
+   * once a turn exists, so reaching this rejection at all should be rare in normal use.
+   *
+   * @param id Chat id whose route to change.
+   * @param route The new route.
+   */
+  async function setRoute(id: string, route: ChatRoute): Promise<void> {
+    error.value = null;
+    try {
+      const response = await fetch(`/api/chats/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ route }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseMessage(response));
+      }
+      await load();
+    } catch (cause) {
+      error.value =
+        cause instanceof Error
+          ? cause.message
+          : "Could not change the chat's mode.";
+    }
+  }
+
   return {
     chats,
     create,
@@ -146,5 +185,6 @@ export const useChatsStore = defineStore("chats", () => {
     remove,
     select,
     selectedChatId,
+    setRoute,
   };
 });

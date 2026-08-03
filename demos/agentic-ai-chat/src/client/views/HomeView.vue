@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { watch } from "vue";
+import { computed, watch } from "vue";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import ChatComposer from "../components/ChatComposer.vue";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import ChatSidebar from "../components/ChatSidebar.vue";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import ChatTranscript from "../components/ChatTranscript.vue";
+// biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
+import RouteSelector from "../components/RouteSelector.vue";
+import type { ChatRoute } from "../stores/chats";
 import { useChatStore } from "../stores/chat";
 import { useChatsStore } from "../stores/chats";
 import { useSessionStore } from "../stores/session";
@@ -13,6 +16,23 @@ import { useSessionStore } from "../stores/session";
 const session = useSessionStore();
 const chatsStore = useChatsStore();
 const chat = useChatStore();
+
+/** The currently open chat's own directory row (for its `route`), or `null` before any chat is
+ * selected -- `useChatStore`'s live connection has no directory fields of its own (Section
+ * 6.2a), so the route selector reads this store instead (docs/06-AGENTIC-CHAT.md Phase 4,
+ * US-3). */
+const selectedChat = computed(
+  () =>
+    chatsStore.chats.find((entry) => entry.id === chatsStore.selectedChatId) ??
+    null,
+);
+
+/** Change the currently open chat's route (docs/06-AGENTIC-CHAT.md Phase 4, US-3). */
+function onRouteChange(route: ChatRoute): void {
+  if (chatsStore.selectedChatId) {
+    void chatsStore.setRoute(chatsStore.selectedChatId, route);
+  }
+}
 
 // `session.load()` (App.vue) resolves asynchronously after this view mounts, so
 // `session.isAuthenticated` is not yet `true` at mount time for the common case -- watch it
@@ -74,6 +94,13 @@ watch(
         <template
           v-if="chatsStore.selectedChatId && chat.connectionStatus !== 'removed'"
         >
+          <div v-if="selectedChat" class="conversation-header">
+            <RouteSelector
+              :disabled="chat.turns.length > 0"
+              :route="selectedChat.route"
+              @change="onRouteChange"
+            />
+          </div>
           <ChatTranscript :turns="chat.turns" />
           <ChatComposer
             :disabled="chat.connectionStatus !== 'connected'"
@@ -112,6 +139,14 @@ watch(
 
 .notice {
   margin: 0.75rem 1rem 0;
+}
+
+.conversation-header {
+  align-items: center;
+  border-bottom: 1px solid rgb(var(--v-theme-outline-variant));
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.75rem 1rem;
 }
 
 .notice-error {

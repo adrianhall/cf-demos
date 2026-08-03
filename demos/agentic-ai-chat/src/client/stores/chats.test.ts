@@ -8,7 +8,7 @@ function chat(overrides: Partial<Chat> = {}): Chat {
     id: "chat-1",
     ownerEmail: "alice@example.com",
     title: null,
-    route: null,
+    route: "basic",
     createdAt: "2026-08-01T00:00:00.000Z",
     updatedAt: "2026-08-01T00:00:00.000Z",
     ...overrides,
@@ -241,5 +241,58 @@ describe("useChatsStore", () => {
     store.select("chat-2");
 
     expect(store.selectedChatId).toBe("chat-2");
+  });
+
+  it("changes a chat's route with a PATCH request and reloads the directory from the server", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ chat: chat({ route: "reasoning" }) }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ chats: [chat({ route: "reasoning" })] }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    const store = useChatsStore();
+
+    await store.setRoute("chat-1", "reasoning");
+
+    expect(fetch).toHaveBeenNthCalledWith(1, "/api/chats/chat-1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ route: "reasoning" }),
+    });
+    expect(store.chats).toEqual([chat({ route: "reasoning" })]);
+  });
+
+  it("stores a problem-detail message when changing the route is rejected (already started)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            detail:
+              "This chat's route can only be changed before its first turn completes.",
+          },
+          422,
+        ),
+      ),
+    );
+    const store = useChatsStore();
+
+    await store.setRoute("chat-1", "reasoning");
+
+    expect(store.error).toBe(
+      "This chat's route can only be changed before its first turn completes.",
+    );
+  });
+
+  it("falls back to a generic message when changing the route rejects with a non-Error value", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue("network exploded"));
+    const store = useChatsStore();
+
+    await store.setRoute("chat-1", "reasoning");
+
+    expect(store.error).toBe("Could not change the chat's mode.");
   });
 });

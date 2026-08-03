@@ -1,3 +1,4 @@
+import { type ChatRoute, DEFAULT_CHAT_ROUTE, isChatRoute } from "./route";
 import type { Chat } from "./types";
 
 /** Raw snake-cased chat row returned by D1. */
@@ -10,13 +11,20 @@ interface ChatRow {
   updated_at: string;
 }
 
-/** Convert D1's storage shape into the API representation. */
+/**
+ * Convert D1's storage shape into the API representation. `row.route` is defensively coerced
+ * back to {@link DEFAULT_CHAT_ROUTE} for anything that is not a valid chat route -- covers a
+ * pre-Phase-4 row this repository itself never wrote with a non-`NULL` route, and any value that
+ * reached the column by some path other than `create()`/`setRouteIfUnstarted()` (both of which
+ * only ever write a validated route) -- so `Chat.route` can stay non-nullable rather than pushing
+ * a `null` check onto every caller.
+ */
 function toChat(row: ChatRow): Chat {
   return {
     id: row.id,
     ownerEmail: row.owner_email,
     title: row.title,
-    route: row.route,
+    route: isChatRoute(row.route) ? row.route : DEFAULT_CHAT_ROUTE,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -33,7 +41,10 @@ export class ChatRepository {
   constructor(private readonly database: Pick<D1Database, "prepare">) {}
 
   /**
-   * Create a new chat directory row for the given owner.
+   * Create a new chat directory row for the given owner, defaulting its governed model route to
+   * {@link DEFAULT_CHAT_ROUTE} (docs/06-AGENTIC-CHAT.md Phase 4, US-3's "defaulting to Basic"
+   * acceptance criterion) -- a brand-new chat always has zero turns yet, so this default is
+   * always still changeable via {@link setRouteIfUnstarted} immediately afterward.
    *
    * @param ownerEmail Verified Cloudflare Access identity creating the chat.
    * @returns The persisted chat, whose `id` is also the `ChatAgent` Durable Object instance name
@@ -45,16 +56,22 @@ export class ChatRepository {
       id: crypto.randomUUID(),
       ownerEmail,
       title: null,
-      route: null,
+      route: DEFAULT_CHAT_ROUTE,
       createdAt: now,
       updatedAt: now,
     };
     await this.database
       .prepare(
         `INSERT INTO chats (id, owner_email, title, route, created_at, updated_at)
-         VALUES (?, ?, NULL, NULL, ?, ?)`,
+         VALUES (?, ?, NULL, ?, ?, ?)`,
       )
-      .bind(chat.id, chat.ownerEmail, chat.createdAt, chat.updatedAt)
+      .bind(
+        chat.id,
+        chat.ownerEmail,
+        chat.route,
+        chat.createdAt,
+        chat.updatedAt,
+      )
       .run();
     return chat;
   }
@@ -151,6 +168,37 @@ export class ChatRepository {
       .prepare(`UPDATE chats SET title = ? WHERE id = ? AND title IS NULL`)
       .bind(title, id)
       .run();
+  }
+
+  /**
+   * Change a chat's governed model route, but only while the chat has no completed turns yet
+   * (docs/06-AGENTIC-CHAT.md Phase 4, US-3's "selectable only when a chat has no turns yet"
+   * affordance) -- reusing the same `title IS NULL` signal Phase 3's auto-titling already
+   * establishes as "this chat's first turn has not completed" (`setTitleIfUnset()`'s own guard),
+   * rather than introducing a second, separate "has this chat started" column. Scoped to the
+   * owner in the same query as {@link findOwned}, for the same defense-in-depth reason.
+   *
+   * @param id Chat id whose route to change.
+   * @param ownerEmail Verified Cloudflare Access identity making the request.
+   * @param route The new, already-validated route (see `./route.ts`'s `isChatRoute()`).
+   * @returns Whether a row was actually updated. `false` covers two different reasons the
+   * caller must distinguish itself beforehand (via {@link findOwned}) to reply correctly: the
+   * chat does not exist/is not owned by `ownerEmail`, or it exists but already has a title (its
+   * first turn already completed).
+   */
+  async setRouteIfUnstarted(
+    id: string,
+    ownerEmail: string,
+    route: ChatRoute,
+  ): Promise<boolean> {
+    const result = await this.database
+      .prepare(
+        `UPDATE chats SET route = ?
+         WHERE id = ? AND owner_email = ? AND title IS NULL`,
+      )
+      .bind(route, id, ownerEmail)
+      .run();
+    return result.meta.changes > 0;
   }
 
   /**

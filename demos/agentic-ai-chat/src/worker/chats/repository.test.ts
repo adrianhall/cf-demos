@@ -74,14 +74,14 @@ function databaseFor(
 }
 
 describe("ChatRepository", () => {
-  it("creates a new chat row for the given owner with no title or route yet", async () => {
+  it("creates a new chat row for the given owner with no title yet, defaulted to the basic route", async () => {
     const { database, statements } = databaseFor(null);
 
     const chat = await new ChatRepository(database).create("alice@example.com");
 
     expect(chat.ownerEmail).toBe("alice@example.com");
     expect(chat.title).toBeNull();
-    expect(chat.route).toBeNull();
+    expect(chat.route).toBe("basic");
     expect(chat.id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u,
     );
@@ -89,6 +89,7 @@ describe("ChatRepository", () => {
       parameters: [
         chat.id,
         "alice@example.com",
+        "basic",
         chat.createdAt,
         chat.updatedAt,
       ],
@@ -101,7 +102,7 @@ describe("ChatRepository", () => {
       id: "chat-1",
       owner_email: "alice@example.com",
       title: null,
-      route: null,
+      route: "reasoning",
       created_at: "2026-08-03T00:00:00.000Z",
       updated_at: "2026-08-03T00:00:00.000Z",
     });
@@ -115,7 +116,7 @@ describe("ChatRepository", () => {
       id: "chat-1",
       ownerEmail: "alice@example.com",
       title: null,
-      route: null,
+      route: "reasoning",
       createdAt: "2026-08-03T00:00:00.000Z",
       updatedAt: "2026-08-03T00:00:00.000Z",
     });
@@ -123,6 +124,24 @@ describe("ChatRepository", () => {
       parameters: ["chat-1", "alice@example.com"],
       sql: expect.stringContaining("WHERE id = ? AND owner_email = ?"),
     });
+  });
+
+  it("coerces a stored route that is not a valid chat route back to the default (a pre-Phase-4 NULL row, for example)", async () => {
+    const { database } = databaseFor({
+      id: "chat-1",
+      owner_email: "alice@example.com",
+      title: null,
+      route: null,
+      created_at: "2026-08-03T00:00:00.000Z",
+      updated_at: "2026-08-03T00:00:00.000Z",
+    });
+
+    const chat = await new ChatRepository(database).findOwned(
+      "chat-1",
+      "alice@example.com",
+    );
+
+    expect(chat?.route).toBe("basic");
   });
 
   it("returns null for a chat owned by a different identity, indistinguishable from a missing one", async () => {
@@ -221,6 +240,36 @@ describe("ChatRepository", () => {
       parameters: ["Trip Planning", "chat-1"],
       sql: expect.stringContaining("WHERE id = ? AND title IS NULL"),
     });
+  });
+
+  it("setRouteIfUnstarted writes the new route and reports true when a row updated (scoped by owner and title IS NULL)", async () => {
+    const { database, statements } = databaseFor(null, { changes: 1 });
+
+    const updated = await new ChatRepository(database).setRouteIfUnstarted(
+      "chat-1",
+      "alice@example.com",
+      "reasoning",
+    );
+
+    expect(updated).toBe(true);
+    expect(statements[0]).toMatchObject({
+      parameters: ["reasoning", "chat-1", "alice@example.com"],
+      sql: expect.stringContaining(
+        "WHERE id = ? AND owner_email = ? AND title IS NULL",
+      ),
+    });
+  });
+
+  it("setRouteIfUnstarted reports false when the chat already has a title (its first turn already completed)", async () => {
+    const { database } = databaseFor(null, { changes: 0 });
+
+    const updated = await new ChatRepository(database).setRouteIfUnstarted(
+      "chat-1",
+      "alice@example.com",
+      "reasoning",
+    );
+
+    expect(updated).toBe(false);
   });
 
   it("remove reports true when a row owned by the requester was actually deleted", async () => {

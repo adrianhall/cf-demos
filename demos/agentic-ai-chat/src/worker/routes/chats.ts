@@ -1,8 +1,13 @@
-import { badRequest, notFound } from "@adrianhall/cloudflare-toolkit/errors";
+import {
+  badRequest,
+  notFound,
+  unprocessableContent,
+} from "@adrianhall/cloudflare-toolkit/errors";
 import { getAgentByName } from "agents";
 import { Hono } from "hono";
 import type { ChatAgent, ChatAgentProps } from "../agent/chat-agent";
 import type { AppBindings } from "../bindings";
+import { CHAT_ROUTES, isChatRoute } from "../chats/route";
 import { ChatRepository } from "../chats/repository";
 
 /** Authenticated chat directory and agent-routing API mounted at `/api/chats`. */
@@ -32,8 +37,12 @@ async function ownedAgentStub(
   if (chat === null) {
     throw notFound({ detail: "Chat not found." });
   }
+  // Threading this chat's currently persisted route in as props (docs/06-AGENTIC-CHAT.md Phase
+  // 4, US-3) re-derives it from D1 on every request that reaches the Durable Object, rather than
+  // caching it anywhere -- so a route changed via `PATCH /:id` (below) always reaches the next
+  // `onChatMessage()` call with no separate invalidation step needed.
   return getAgentByName<Env, ChatAgent, ChatAgentProps>(env.CHAT_AGENT, id, {
-    props: { ownerEmail },
+    props: { ownerEmail, route: chat.route },
   });
 }
 
@@ -44,6 +53,45 @@ chatsRouter.post("/", async (context) => {
   const chat = await repository.create(ownerEmail);
   context.get("LOGGER").info("chat_created", { chatId: chat.id });
   return context.json({ chat }, 201);
+});
+
+/**
+ * Change a chat's governed model route (docs/06-AGENTIC-CHAT.md Phase 4, US-3). The client
+ * sends one of exactly two literal strings -- `"basic"` or `"reasoning"` -- never a raw model
+ * id (Section 6.3's "the Worker resolves by exact match" rule); `isChatRoute()` rejects anything
+ * else with `422` before any D1 write. Only allowed while the chat has no completed turns yet
+ * (`ChatRepository.setRouteIfUnstarted()`'s `title IS NULL` guard) -- mirroring a real product's
+ * "can't switch models mid-thread" affordance (Phase 4, step 3). A chat that already has a
+ * title reports `422` here too, distinguished from an invalid route only by its `detail` text;
+ * both are "the request cannot be processed as sent," not "malformed request shape," so this
+ * demo does not introduce a separate `409` for the second case (AGENTS.md's toolkit error
+ * helpers have no `conflict()` -- see the two validation modules in `demos/todo-app`/
+ * `demos/chat` for the same `unprocessableContent()`-for-state-conflicts convention).
+ */
+chatsRouter.patch("/:id", async (context) => {
+  const id = context.req.param("id");
+  const ownerEmail = context.get("Cloudflare_Access_Identity").email;
+  const body = await context.req.json().catch(() => null);
+  const route = (body as { route?: unknown } | null)?.route;
+  if (!isChatRoute(route)) {
+    throw unprocessableContent({
+      detail: `route must be one of: ${CHAT_ROUTES.join(", ")}.`,
+    });
+  }
+  const repository = new ChatRepository(context.env.DB);
+  const chat = await repository.findOwned(id, ownerEmail);
+  if (chat === null) {
+    throw notFound({ detail: "Chat not found." });
+  }
+  const updated = await repository.setRouteIfUnstarted(id, ownerEmail, route);
+  if (!updated) {
+    throw unprocessableContent({
+      detail:
+        "This chat's route can only be changed before its first turn completes.",
+    });
+  }
+  context.get("LOGGER").info("chat_route_changed", { chatId: id, route });
+  return context.json({ chat: { ...chat, route } });
 });
 
 /**

@@ -63,11 +63,12 @@ describe("Chat agent (US-1)", () => {
 
     expect(response.status).toBe(201);
     const body = (await response.json()) as {
-      chat: { id: string; ownerEmail: string; title: null; route: null };
+      chat: { id: string; ownerEmail: string; title: null; route: string };
     };
     expect(body.chat.ownerEmail).toBe(ALICE);
     expect(body.chat.title).toBeNull();
-    expect(body.chat.route).toBeNull();
+    // Defaults to the "basic" governed route (docs/06-AGENTIC-CHAT.md Phase 4, US-3).
+    expect(body.chat.route).toBe("basic");
     expect(body.chat.id).toMatch(/^[0-9a-f-]{36}$/u);
   });
 

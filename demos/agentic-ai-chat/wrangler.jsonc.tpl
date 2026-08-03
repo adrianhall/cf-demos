@@ -11,6 +11,12 @@
   "vars": {
     "ADMIN_EMAIL": "{{admin_email}}",
     "AI_GATEWAY_ID": "{{ai_gateway_id}}",
+    // The two dynamic routes' real Cloudflare-assigned names (docs/06-AGENTIC-CHAT.md Phase 4,
+    // US-3) -- ChatAgent resolves a client-selected "basic"/"reasoning" literal to one of these
+    // var values, then calls `dynamic/<value>`, never interpolating client input into a model
+    // id (Section 6.3's "resolve by exact match" rule).
+    "AI_GATEWAY_ROUTE_BASIC": "{{ai_gateway_route_basic}}",
+    "AI_GATEWAY_ROUTE_REASONING": "{{ai_gateway_route_reasoning}}",
     "CLOUDFLARE_TEAM_DOMAIN": "{{cloudflare_team_domain}}",
     "ENVIRONMENT": "{{environment}}"
   },

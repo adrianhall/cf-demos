@@ -13,6 +13,16 @@ output "ai_gateway_id" {
   value       = cloudflare_ai_gateway.demo.id
 }
 
+output "ai_gateway_route_basic" {
+  description = "The 'basic' dynamic route's real Cloudflare-assigned name, bound to the Worker as the AI_GATEWAY_ROUTE_BASIC var (docs/06-AGENTIC-CHAT.md Phase 4, US-3) -- ChatAgent calls dynamic/<this value> through the AI_GATEWAY_ID gateway rather than hard-coding the route name in application code, so the two stay in sync if this resource is ever renamed."
+  value       = cloudflare_ai_gateway_dynamic_routing.basic.name
+}
+
+output "ai_gateway_route_reasoning" {
+  description = "The 'reasoning' dynamic route's real Cloudflare-assigned name, bound to the Worker as the AI_GATEWAY_ROUTE_REASONING var (docs/06-AGENTIC-CHAT.md Phase 4, US-3). See ai_gateway_route_basic's description."
+  value       = cloudflare_ai_gateway_dynamic_routing.reasoning.name
+}
+
 output "cloudflare_team_domain" {
   description = "Cloudflare Access team domain for Worker JWT validation."
   value       = local.cloudflare_team_domain

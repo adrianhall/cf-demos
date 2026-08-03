@@ -66,10 +66,12 @@ resource "cloudflare_ai_gateway" "demo" {
 }
 
 # The "basic" governed route (docs/06-AGENTIC-CHAT.md Section 6.3/6.1, US-3). A single model
-# node for now -- Phase 4 is what actually wires the client's route selector to call this route
-# by name; Phase 8 extends this same route with a business-metadata conditional node. The model
-# is one of the four confirmed working through a dynamic route's model node by Spike B's live
-# sweep (spikes/01-ai-gateway-dynamic-routing/REPORT.md Section 4) -- most of demo 5's own
+# node for now -- Phase 4 wires the client's route selector to call this route by name (its real
+# name is threaded to the Worker as AI_GATEWAY_ROUTE_BASIC via outputs.tf/wrangler.jsonc.tpl,
+# never hard-coded in application code); Phase 8 extends this same route with a
+# business-metadata conditional node. The model is one of the four confirmed working through a
+# dynamic route's model node by Spike B's live sweep
+# (spikes/01-ai-gateway-dynamic-routing/REPORT.md Section 4) -- most of demo 5's own
 # verified-for-direct-calling catalog, including its usual non-reasoning pick
 # (`@cf/ibm-granite/granite-4.0-h-micro`), fails every call routed through this element type with
 # `AiGatewayError 2002: Failed to parse model output`.
