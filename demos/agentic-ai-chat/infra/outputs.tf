@@ -1,0 +1,44 @@
+output "access_audience" {
+  description = "Application Audience (AUD) tag for the whole-hostname Access application, threaded into the Worker as the VITE_ACCESS_AUDIENCE build-time define (see package.json's deploy:worker:publish script and src/worker/middleware/access.ts)."
+  value       = cloudflare_zero_trust_access_application.demo.aud
+}
+
+output "admin_email" {
+  description = "Identity idempotently promoted to this demo's D1-flagged administrator role on every sign-in, regardless of prior D1 state (docs/06-AGENTIC-CHAT.md Section 6.5)."
+  value       = local.admin_email
+}
+
+output "ai_gateway_id" {
+  description = "AI Gateway id bound at runtime via gateway: { id } in application code (not a wrangler.jsonc binding) from Phase 2 onward."
+  value       = cloudflare_ai_gateway.demo.id
+}
+
+output "cloudflare_team_domain" {
+  description = "Cloudflare Access team domain for Worker JWT validation."
+  value       = local.cloudflare_team_domain
+}
+
+output "d1_database_id" {
+  description = "D1 database identifier bound to the Worker as DB in wrangler.jsonc, holding the users and chats directory."
+  value       = cloudflare_d1_database.demo.id
+}
+
+output "d1_database_name" {
+  description = "D1 database name bound to the Worker as DB in wrangler.jsonc."
+  value       = cloudflare_d1_database.demo.name
+}
+
+output "environment" {
+  description = "Worker ENVIRONMENT variable value for this deployment, resolved automatically by cloudflareLogger()."
+  value       = "production"
+}
+
+output "hostname" {
+  description = "Public custom hostname for the agentic chat demo."
+  value       = local.hostname
+}
+
+output "worker_name" {
+  description = "Worker service name."
+  value       = cloudflare_worker.demo.name
+}
