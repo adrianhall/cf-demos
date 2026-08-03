@@ -13,8 +13,8 @@ reproducible hang or flake in this environment — not from general-purpose advi
 
 **Do not treat a WebSocket/Durable-Object integration test hang as something to patch
 around with a longer `testTimeout`/`hookTimeout`.** A hang here is almost always one of
-the six specific causes below. Find which one actually applies before reaching for a
-timeout knob.
+the specific causes below. Find which one actually applies before reaching for a timeout
+knob.
 
 ## 1. Serialize test files that open real WebSockets
 
@@ -233,6 +233,52 @@ expect(hasWebSocket).toBe(false);
 
 The same rule applies to any other non-plain value a Durable Object method might
 otherwise tempt you to return directly from a `runInDurableObject` callback.
+
+## 7. `evictAllDurableObjects()` hangs on a Durable Object that just called its own
+   `ctx.abort()` (for example an Agents-SDK `Agent.destroy()`) — use
+   `abortAllDurableObjects()` instead
+
+Rule 3's `evictAllDurableObjects({ webSockets: "close" })` is the right default cleanup,
+but it hangs indefinitely — not merely flakes — the first time it runs after a test called
+`.destroy()` on an Agents-SDK `Agent` (`agents` package, `AIChatAgent` included). Reading
+the installed `agents` package: the base `Agent.destroy()` calls
+`this.ctx.abort("destroyed")` from a deferred `setTimeout(..., 0)` so the RPC call that
+triggered it resolves cleanly first — but the abort itself permanently breaks that
+instance's output gate. `evictAllDurableObjects()`'s own documented behavior ("eviction
+waits for in-flight requests to drain, with a timeout") then hangs trying to gracefully
+drain an actor whose gate is already broken. Observed live: an uncaught
+`workerd/api/actor-state.c++:1178: failed: broken.outputGateBroken; jsg.Error: destroyed`
+exception, immediately followed by the `afterEach` hook itself timing out at Vitest's
+default 10-second `hookTimeout` (see `docs/DECISIONS.md` item 19).
+
+**Fix:** in any integration test file where a test might call `.destroy()` on an
+Agents-SDK `Agent`, use `abortAllDurableObjects()` (also from `cloudflare:test`) in place
+of `evictAllDurableObjects()`. It performs the same "reset every Durable Object instance
+so no live connection outlives a test" job by hard-resetting every instance instead of
+attempting a graceful drain-and-wait eviction — confirmed live to not hang on an
+already-aborted actor, and to still force-disconnect an *ordinary*, non-destroyed
+instance's hibernatable WebSocket in the same file's other tests.
+
+```ts
+import { abortAllDurableObjects } from "cloudflare:test";
+
+afterEach(async () => {
+  for (const socket of openSockets) {
+    if (socket.readyState !== WebSocket.CLOSED && socket.readyState !== WebSocket.CLOSING) {
+      socket.close();
+    }
+  }
+  openSockets.clear();
+  // Not evictAllDurableObjects(): a test in this file calls `.destroy()` on an Agents-SDK
+  // Agent, whose base destroy() calls ctx.abort() -- evicting that instance afterward hangs
+  // trying to gracefully drain an already-broken output gate (rule 7).
+  await abortAllDurableObjects();
+});
+```
+
+A hand-rolled `DurableObject` subclass whose own `destroy()` never calls `ctx.abort()`
+(rule 2's `ChatRoom` example, for instance) never hits this — `evictAllDurableObjects()`
+remains the right default for a file where no test calls an SDK method that self-aborts.
 
 ## Putting it together: a minimal, non-flaky test shape
 

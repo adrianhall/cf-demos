@@ -808,3 +808,118 @@ custom REST endpoint or relying on a wire-protocol frame — there is no `cf_age
 broadcast sent automatically on every connect in this installed version (that frame type exists,
 but source-reading `@cloudflare/ai-chat@0.10.1` shows it is only ever sent from a narrower
 dropped-submit-rollback path, not as a general connect-time history replay).
+
+## 19. Evicting an Agents-SDK `Agent` that just called its own `destroy()` hangs
+    `evictAllDurableObjects()`; use `abortAllDurableObjects()` instead (`demos/agentic-ai-chat`,
+    Phase 3)
+
+Phase 3's `DELETE /api/chats/:id` route calls `stub.destroy()` on the chat's `ChatAgent` Durable
+Object (an override that notifies connected clients before delegating to the Agents SDK's own
+base `Agent.destroy()`). Reading the installed `agents` package: that base method drops every
+internal table, deletes the alarm, `await`s `ctx.storage.deleteAll()`, and then calls
+`this.ctx.abort("destroyed")` from a deferred `setTimeout(..., 0)` — deliberately deferred so the
+RPC call itself (and the route that awaited it) resolves cleanly before the abort actually runs.
+
+**The `testing-durable-objects` skill's rule 3 cleanup (`evictAllDurableObjects({ webSockets:
+"close" })` in `afterEach`) hangs indefinitely the first time it runs after a test destroyed a
+`ChatAgent` this way.** Observed live: an uncaught
+`workerd/api/actor-state.c++:1178: failed: broken.outputGateBroken; jsg.Error: destroyed`
+exception logged to the console, immediately followed by the `afterEach` hook itself timing out
+at Vitest's default 10-second `hookTimeout`. `evictAllDurableObjects()`'s own documented
+behavior — "eviction waits for in-flight requests to drain (with a timeout)" — is the likely
+cause: it tries to gracefully drain an actor whose output gate the deferred `ctx.abort()` has
+already permanently broken, and that graceful wait never resolves against a broken gate.
+
+**Fix: call `abortAllDurableObjects()` (also from `cloudflare:test`) instead, in any integration
+test file where a test might call `.destroy()` on an Agents-SDK `Agent`.** It performs the same
+"reset every Durable Object instance so no live connection outlives a test" job the skill's rule
+3 needs, but by hard-resetting every instance rather than attempting a graceful, drain-and-wait
+eviction — confirmed live to not hang on an already-aborted actor, and to still force-disconnect
+an *ordinary*, non-destroyed instance's hibernatable WebSocket in the same file's other tests
+(`demos/agentic-ai-chat/tests/integration/chat-management.test.ts`). A file whose tests never
+call `.destroy()` (for example this demo's own Phase 2 `chat.test.ts`) has no reason to hit this
+and can keep using `evictAllDurableObjects({ webSockets: "close" })` as the skill already
+documents — this is an addition for the destroy()-calling case, not a blanket replacement.
+
+This is now folded into the `testing-durable-objects` skill as a seventh rule, alongside the
+original six from `demos/chat`.
+
+## 20. A `streamText()` turn's client-visible "done" arrives well before its own `onFinish`
+    side effects land — a real, reported bug in `demos/agentic-ai-chat`'s Phase 3 auto-titling
+
+Phase 3 shipped `ChatAgent.afterTurnCompleted()` (a D1 recency touch, plus a second,
+non-streaming `env.AI` call generating the chat's title on its first turn) as a wrapper around
+`AIChatAgent`'s own `onFinish` callback, on the stated assumption that "the AI SDK's stream
+finalization blocks on `onFinish` resolving, so the client cannot observe the turn as done until
+this method's own D1 writes have already landed" — the same guarantee Phase 2's own reload test
+relies on for message persistence. **That assumption is wrong for what the client actually
+treats as "done."**
+
+**Confirmed live with a timestamped diagnostic** (a two-chunk fake model response, plus an
+artificially slow, 500ms title-generation call): the client-visible `{"type":"finish"}`
+UI-message-stream part arrived after **104ms**, while the title-generation call did not resolve
+until **607ms**, and the wire-level `done: true` flag on the *final* `cf_agent_use_chat_response`
+frame did not arrive until **611ms** — essentially the same moment `afterTurnCompleted()`
+finished, not the moment the model stopped generating. Reading the installed `ai` package
+confirms why: `toUIMessageStreamResponse()`'s underlying stream enqueues the "finish" UI part as
+soon as the model's own generation ends, with zero dependency on whether the caller's `onFinish`
+callback has resolved. Only the stream's own final *close* signal (what determines when a reader
+sees `{done: true}`, and therefore when `AIChatAgent`'s relay loop can send its own trailing wire
+frame) is actually gated behind `onFinish` — and nothing on the client reacts to that wire-level
+flag alone; `useChatAgent.ts` treats a turn as `"done"` specifically on the `"finish"` UI part,
+which is the *earlier* of the two signals.
+
+**Real-world consequence, reported directly by a user testing the deployed demo**: Phase 3's
+sidebar refresh logic watched the turn's own `isStreaming` status (derived from that same
+`"finish"` part) to decide when to reload the chat directory — reliably reloading *before*
+`afterTurnCompleted()`'s title/recency writes landed, so the sidebar kept showing "New chat"
+until an unrelated later page reload happened to observe the already-finished write.
+
+**Fix: broadcast, don't infer.** `afterTurnCompleted()` now sends its own explicit
+`chat_metadata_updated` frame (`src/agent-protocol.ts`) to every connected client once its own
+writes (success, failure, or a skipped title generation) are done — the same
+"the side effect itself announces its own completion, the client never infers it from an
+unrelated signal" pattern `docs/06-AGENTIC-CHAT.md` Section 6.6a already established for Phase
+6's cost-reconciliation broadcast. `useChatAgent.ts` exposes this as a `metadataUpdatedAt`
+timestamp ref; the sidebar's refresh watcher (`HomeView.vue`) now watches that instead of
+`isStreaming`. Any future phase adding its own `onFinish`-driven side effect (Phase 6's cost
+ledger already plans exactly this shape) should broadcast its own completion the same way,
+rather than assuming a turn's streaming status is a proxy for "every `onFinish` side effect has
+also finished" — it is not.
+
+## 21. `Agent.destroy()`'s own RPC call is not guaranteed to resolve cleanly for its caller — a
+    second real, reported bug in `demos/agentic-ai-chat`'s Phase 3 chat deletion
+
+Reported directly by a user testing the deployed demo: deleting a chat produced "An unexpected
+error occurred" (the generic RFC 9457 `500` fallback), and the chat was **not** actually removed
+— worse, reopening it afterward showed an empty transcript, as if its content had already been
+wiped despite the chat still appearing in the sidebar.
+
+**Root cause, confirmed by directly patching `ChatAgent.prototype.destroy` in an integration
+test to throw:** `src/worker/routes/chats.ts`'s `DELETE /:id` route called `await
+stub.destroy()` with no error handling at all. The Agents SDK's base `Agent.destroy()` defers
+its own `ctx.abort()` behind a `setTimeout(..., 0)` specifically so its RPC caller receives a
+clean, resolved response before that abort runs (Section 9/Phase 3's own design note, and
+`docs/DECISIONS.md` item 19's investigation into this same method) — **but that guarantee is not
+airtight.** A live case exists where the RPC call itself rejected. Left unguarded, that
+exception aborted the whole route *before* the D1 row was ever removed — reproducing every
+symptom exactly: the thrown exception surfaces as the generic `500` (Hono's
+`problemDetailsErrorHandler` has no more specific mapping for an arbitrary rejected RPC call);
+the D1 directory row survives (the route never reached `repository.remove()`); and the Durable
+Object's own storage had typically *already* been wiped by whatever `destroy()` did manage to
+execute before/around the failure — hence the chat reappearing with an empty transcript despite
+still being listed.
+
+**Fix:** wrap `stub.destroy()` in its own `try`/`catch`, log a failure (`chat_destroy_failed`),
+and *unconditionally* proceed to remove the D1 row regardless of whether the RPC call resolved
+or rejected. This is the same "a side effect's own failure must not block the outcome the route
+exists to guarantee" principle Section 11 already establishes for tool failures, and this
+demo's own `afterTurnCompleted()` already applies to its D1 writes (item 20) — applied here to
+the delete route's own call to a *different* Durable Object RPC method. `stub.destroy()`
+rejecting no longer means "deletion failed"; it means "the live teardown may not have completed
+cleanly, but the directory entry — the actual thing this route promises — is gone either way."
+
+**Any future demo calling `Agent.destroy()`** (or any other Durable Object RPC method whose
+failure must not be allowed to abort an operation with its own separate, more important
+success criterion) should assume the same: a Durable Object RPC call's own promise settling
+cleanly is not a load-bearing assumption, even when the SDK's own source comments say it is.

@@ -80,4 +80,92 @@ export class ChatRepository {
       .first<ChatRow>();
     return row === null ? null : toChat(row);
   }
+
+  /**
+   * Look up a chat by id with **no** ownership scoping -- for `ChatAgent`'s own internal use
+   * only (Phase 3's auto-titling/recency bookkeeping), where the Durable Object's own instance
+   * name already *is* the chat id and is never client-supplied input requiring
+   * re-validation. Every client-facing route must use {@link findOwned} instead.
+   *
+   * @param id Chat ID (the calling `ChatAgent`'s own `this.name`).
+   * @returns The chat if its directory row still exists, otherwise `null` (tolerated the same
+   * way a deleted-mid-turn chat is tolerated elsewhere in this demo -- see
+   * docs/06-AGENTIC-CHAT.md Section 11).
+   */
+  async findById(id: string): Promise<Chat | null> {
+    const row = await this.database
+      .prepare(
+        `SELECT id, owner_email, title, route, created_at, updated_at
+         FROM chats WHERE id = ? LIMIT 1`,
+      )
+      .bind(id)
+      .first<ChatRow>();
+    return row === null ? null : toChat(row);
+  }
+
+  /**
+   * List every chat owned by the given identity, most recently updated first -- the sidebar's
+   * directory listing (docs/06-AGENTIC-CHAT.md Phase 3, US-2).
+   *
+   * @param ownerEmail Verified Cloudflare Access identity making the request.
+   * @returns The identity's own chats, newest activity first.
+   */
+  async listOwned(ownerEmail: string): Promise<Chat[]> {
+    const { results } = await this.database
+      .prepare(
+        `SELECT id, owner_email, title, route, created_at, updated_at
+         FROM chats WHERE owner_email = ? ORDER BY updated_at DESC`,
+      )
+      .bind(ownerEmail)
+      .all<ChatRow>();
+    return results.map(toChat);
+  }
+
+  /**
+   * Bump a chat's `updated_at` to now, so the sidebar's recency ordering reflects its latest
+   * activity (docs/06-AGENTIC-CHAT.md Phase 3, US-2). Called by `ChatAgent` itself after every
+   * completed turn -- never scoped by owner, for the same reason {@link findById} is not: the
+   * calling Durable Object's own instance name already is the chat id.
+   *
+   * @param id Chat id to touch. A no-op (zero rows affected, no error) if the chat's directory
+   * row no longer exists.
+   */
+  async touch(id: string): Promise<void> {
+    await this.database
+      .prepare(`UPDATE chats SET updated_at = ? WHERE id = ?`)
+      .bind(new Date().toISOString(), id)
+      .run();
+  }
+
+  /**
+   * Persist a chat's auto-generated title, but only the first time: the `title IS NULL` guard
+   * makes a second call (a retried completion, or two turns racing before the first write
+   * lands) a silent no-op rather than clobbering a title a later turn -- or eventually a user
+   * edit -- might already have set (docs/06-AGENTIC-CHAT.md Phase 3, US-2).
+   *
+   * @param id Chat id whose title to set.
+   * @param title Already-sanitized title text (see `./title.ts`'s `sanitizeTitle()`).
+   */
+  async setTitleIfUnset(id: string, title: string): Promise<void> {
+    await this.database
+      .prepare(`UPDATE chats SET title = ? WHERE id = ? AND title IS NULL`)
+      .bind(title, id)
+      .run();
+  }
+
+  /**
+   * Remove a chat's directory row, scoped to its owner -- defense in depth alongside the
+   * route's own `ownedAgentStub()` ownership check (docs/06-AGENTIC-CHAT.md Phase 3, US-2).
+   *
+   * @param id Chat id to remove.
+   * @param ownerEmail Verified Cloudflare Access identity making the request.
+   * @returns Whether a row was actually deleted.
+   */
+  async remove(id: string, ownerEmail: string): Promise<boolean> {
+    const result = await this.database
+      .prepare(`DELETE FROM chats WHERE id = ? AND owner_email = ?`)
+      .bind(id, ownerEmail)
+      .run();
+    return result.meta.changes > 0;
+  }
 }

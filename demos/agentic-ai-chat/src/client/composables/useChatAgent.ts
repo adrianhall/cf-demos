@@ -9,6 +9,7 @@ import {
   toValue,
   watch,
 } from "vue";
+import { CHAT_REMOVED_CLOSE_CODE } from "../../agent-protocol";
 import {
   UiMessageStreamDecoder,
   type UiStreamPart,
@@ -35,11 +36,16 @@ export interface ChatTurn {
   readonly errorDetail: string | null;
 }
 
-/** Lifecycle of the composable's live connection to one chat's `ChatAgent` Durable Object. */
+/** Lifecycle of the composable's live connection to one chat's `ChatAgent` Durable Object.
+ * `"removed"` is distinct from `"error"`: it means the chat itself was deleted (its
+ * `ChatAgent.destroy()` notified this connection, docs/06-AGENTIC-CHAT.md Section 11), not that
+ * the connection merely failed -- the composable deliberately does not try to reconnect from
+ * this state, since there is nothing left to reconnect to. */
 export type ChatConnectionStatus =
   | "idle"
   | "connecting"
   | "connected"
+  | "removed"
   | "error";
 
 /** Reactive surface this composable exposes; see `useChatAgent()`'s own JSDoc. */
@@ -50,6 +56,16 @@ export interface UseChatAgentResult {
   readonly connectionStatus: Readonly<ShallowRef<ChatConnectionStatus>>;
   /** `true` while any turn is still streaming -- disables the composer's Send control. */
   readonly isStreaming: ComputedRef<boolean>;
+  /**
+   * Bumped to `Date.now()` each time the server broadcasts a `chat_metadata_updated` frame --
+   * `ChatAgent.afterTurnCompleted()`'s own signal that its D1 writes (the recency touch, and
+   * the first-turn title) have actually landed. A caller that owns the chat directory (the
+   * sidebar) should watch this and reload from `GET /api/chats` when it changes, rather than
+   * watching {@link isStreaming}: that flips to `false` on the turn's own `"finish"` UI part,
+   * which the AI SDK enqueues as soon as the model itself finishes generating -- well before
+   * this method's writes land, confirmed live (`docs/06-AGENTIC-CHAT.md` Section 11).
+   */
+  readonly metadataUpdatedAt: Readonly<ShallowRef<number>>;
   /**
    * Submit one new user turn. A no-op when `text` trims to empty, no chat is connected, or a
    * turn is already streaming (mirrors demo 5's `useChatStore.submit()` guard).
@@ -153,7 +169,8 @@ async function fetchHistory(chatId: string): Promise<ChatTurn[]> {
  * (`create-adaptable-composable` convention) so a caller can pass a reactive selection; `null`
  * disconnects and idles. Switching to a different id closes the previous connection and loads
  * the new chat's history before opening a new one.
- * @returns The reactive turns/connection-status/streaming surface, and a `send()` method.
+ * @returns The reactive turns/connection-status/streaming/metadata surface, and a `send()`
+ * method.
  */
 export function useChatAgent(
   chatId: MaybeRefOrGetter<string | null>,
@@ -163,6 +180,7 @@ export function useChatAgent(
   const isStreaming = computed(() =>
     turns.value.some((turn) => turn.status === "streaming"),
   );
+  const metadataUpdatedAt = shallowRef(0);
 
   let client: AgentClient | null = null;
   const pendingRequests = new Map<string, PendingRequest>();
@@ -251,7 +269,24 @@ export function useChatAgent(
       handleChatResponse(parsed as ChatResponseFrame);
     } else if (parsed.type === "cf_agent_chat_messages") {
       turns.value = (parsed as ChatMessagesFrame).messages.map(toChatTurn);
+    } else if (parsed.type === "chat_removed") {
+      handleRemoval();
+    } else if (parsed.type === "chat_metadata_updated") {
+      metadataUpdatedAt.value = Date.now();
     }
+  }
+
+  /**
+   * Handle the server force-closing this connection because the chat itself was deleted
+   * (`ChatAgent.destroy()`, docs/06-AGENTIC-CHAT.md Section 11) -- distinct from a transient
+   * drop, so the connection must not be allowed to reconnect into a chat that no longer exists.
+   * Idempotent: safe to call once from the `chat_removed` message handler and again (as a
+   * belt-and-suspenders fallback, in case the message frame never arrives) from the "close"
+   * listener's own {@link CHAT_REMOVED_CLOSE_CODE} check.
+   */
+  function handleRemoval(): void {
+    connectionStatus.value = "removed";
+    teardown();
   }
 
   /** Close and forget the current connection, if any. Safe to call when already idle. */
@@ -301,10 +336,17 @@ export function useChatAgent(
     socket.addEventListener("open", () => {
       connectionStatus.value = "connected";
     });
-    socket.addEventListener("close", () => {
-      if (client === socket) {
-        connectionStatus.value = "connecting";
+    socket.addEventListener("close", (event) => {
+      if (client !== socket) {
+        return;
       }
+      if (event.code === CHAT_REMOVED_CLOSE_CODE) {
+        // Belt-and-suspenders alongside the "chat_removed" message-frame path above: reachable
+        // only if that frame never arrived before the close (see `agent-protocol.ts`).
+        handleRemoval();
+        return;
+      }
+      connectionStatus.value = "connecting";
     });
     socket.addEventListener("error", () => {
       connectionStatus.value = "error";
@@ -386,5 +428,5 @@ export function useChatAgent(
     );
   }
 
-  return { turns, connectionStatus, isStreaming, send };
+  return { turns, connectionStatus, isStreaming, metadataUpdatedAt, send };
 }

@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatStore } from "./chat";
+import { useChatsStore } from "./chats";
 
 /** A deterministic WebSocket test double, matching `../composables/useChatAgent.test.ts`'s. */
 class MockWebSocket extends EventTarget {
@@ -26,6 +27,25 @@ class MockWebSocket extends EventTarget {
     this.readyState = MockWebSocket.CLOSED;
     this.dispatchEvent(new CloseEvent("close", { code: 1_000 }));
   }
+
+  simulateOpen(): void {
+    this.readyState = MockWebSocket.OPEN;
+    this.dispatchEvent(new Event("open"));
+  }
+}
+
+/** @returns The most recently constructed mock socket. */
+async function latestSocket(): Promise<MockWebSocket> {
+  await vi.waitFor(() => {
+    if (MockWebSocket.instances.length === 0) {
+      throw new Error("Expected a WebSocket to have been constructed.");
+    }
+  });
+  const socket = MockWebSocket.instances.at(-1);
+  if (socket === undefined) {
+    throw new Error("Expected a WebSocket to have been constructed.");
+  }
+  return socket;
 }
 
 describe("useChatStore", () => {
@@ -33,7 +53,12 @@ describe("useChatStore", () => {
     setActivePinia(createPinia());
     MockWebSocket.instances = [];
     vi.stubGlobal("WebSocket", MockWebSocket);
-    window.localStorage.clear();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(new Response(JSON.stringify([]), { status: 200 })),
+      ),
+    );
   });
 
   afterEach(() => {
@@ -41,87 +66,54 @@ describe("useChatStore", () => {
     vi.restoreAllMocks();
   });
 
-  it("creates a new chat and remembers it in localStorage when none exists yet", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string, init?: RequestInit) => {
-        if (url === "/api/chats" && init?.method === "POST") {
-          return Promise.resolve(
-            new Response(JSON.stringify({ chat: { id: "chat-new" } }), {
-              status: 201,
-            }),
-          );
-        }
-        return Promise.resolve(
-          new Response(JSON.stringify([]), { status: 200 }),
-        );
-      }),
-    );
-
+  it("is idle with no turns when the chats store has nothing selected", () => {
     const store = useChatStore();
-    await store.ensureChat();
 
-    expect(store.chatId).toBe("chat-new");
-    expect(store.initError).toBeNull();
-    expect(window.localStorage.getItem("agentic-chat:current-chat-id")).toBe(
-      "chat-new",
-    );
+    expect(store.connectionStatus).toBe("idle");
+    expect(store.turns).toEqual([]);
+    expect(MockWebSocket.instances).toHaveLength(0);
   });
 
-  it("reuses a chat id already remembered in localStorage without creating a new one", async () => {
-    window.localStorage.setItem(
-      "agentic-chat:current-chat-id",
-      "chat-remembered",
-    );
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
+  it("connects to whichever chat the chats store currently has selected", async () => {
     const store = useChatStore();
-    await store.ensureChat();
+    const chatsStore = useChatsStore();
 
-    expect(store.chatId).toBe("chat-remembered");
-    expect(fetchMock.mock.calls.some(([url]) => url === "/api/chats")).toBe(
-      false,
-    );
+    chatsStore.select("chat-1");
+
+    const socket = await latestSocket();
+    expect(socket.url).toContain("chat-1");
+    expect(store.connectionStatus).toBe("connecting");
+
+    socket.simulateOpen();
+    await vi.waitFor(() => expect(store.connectionStatus).toBe("connected"));
   });
 
-  it("records an error and leaves chatId unset when chat creation fails", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response(null, { status: 500 })),
-    );
-
+  it("reconnects to the new chat when the chats store's selection changes", async () => {
     const store = useChatStore();
-    await store.ensureChat();
+    const chatsStore = useChatsStore();
 
-    expect(store.chatId).toBeNull();
-    expect(store.initError).toMatch(/500/);
+    chatsStore.select("chat-1");
+    const firstSocket = await latestSocket();
+    firstSocket.simulateOpen();
+    await vi.waitFor(() => expect(store.connectionStatus).toBe("connected"));
+
+    chatsStore.select("chat-2");
+
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(2));
+    const secondSocket = await latestSocket();
+    expect(secondSocket.url).toContain("chat-2");
+    expect(firstSocket.readyState).toBe(MockWebSocket.CLOSED);
   });
 
-  it("falls back to a generic message when chat creation rejects with a non-Error value", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue("network exploded"));
-
+  it("goes idle again when the chats store clears its selection", async () => {
     const store = useChatStore();
-    await store.ensureChat();
+    const chatsStore = useChatsStore();
+    chatsStore.select("chat-1");
+    await latestSocket();
 
-    expect(store.chatId).toBeNull();
-    expect(store.initError).toBe("Could not start a chat.");
-  });
+    chatsStore.selectedChatId = null;
+    await vi.waitFor(() => expect(store.connectionStatus).toBe("idle"));
 
-  it("is a no-op when called again while a chat id is already set", async () => {
-    window.localStorage.setItem("agentic-chat:current-chat-id", "chat-1");
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const store = useChatStore();
-    await store.ensureChat();
-    const callCountAfterFirst = fetchMock.mock.calls.length;
-    await store.ensureChat();
-
-    expect(fetchMock.mock.calls.length).toBe(callCountAfterFirst);
+    expect(store.turns).toEqual([]);
   });
 });

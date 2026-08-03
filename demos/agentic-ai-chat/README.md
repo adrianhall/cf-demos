@@ -2,7 +2,7 @@
 
 An authenticated enterprise AI chat agent based on Cloudflare Workers, D1, Cloudflare Access, Durable Objects, the Agents SDK, Workers AI, AI Gateway, and Dynamic Workers.
 
-> This demo ships in phases (see `docs/06-AGENTIC-CHAT.md`), each tagged in git so any two can be diffed. This checkout implements **Phase 1 (Scaffolding)** and **Phase 2 (Core Agentic Chat, US-1)**: a signed-in user can hold a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, persisted across reloads. Later phases add a chat sidebar, governed model routing, cost tracking, tools, skills, and an admin console.
+> This demo ships in phases (see `docs/06-AGENTIC-CHAT.md`), each tagged in git so any two can be diffed. This checkout implements **Phase 1 (Scaffolding)**, **Phase 2 (Core Agentic Chat, US-1)**, and **Phase 3 (Chat Sidebar And Management, US-2)**: a signed-in user can hold a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, persisted across reloads, and manage more than one chat from a sidebar -- creating, switching between, and deleting chats, each auto-titled after its first exchange. Later phases add governed model routing, cost tracking, tools, skills, and an admin console.
 
 ## Prerequisites
 
@@ -74,12 +74,15 @@ npm run deploy
 
 1. Visit `https://<DEMO_NAME>.<DEMO_DOMAIN>` (default `https://agentic-chat.cfapps.uk`) and authenticate through the configured identity provider.
 2. Confirm the header shows your signed-in email and an **Administrator** badge only if you signed in as `ADMIN_EMAIL`.
-3. Send a message in the composer and confirm a streamed response appears.
-4. Reload the page and confirm the same conversation reappears (loaded from the `ChatAgent` Durable Object's own storage, not browser memory).
-5. Sign out using the visible **Sign out** control.
-6. In the Cloudflare dashboard under **D1** > `<DEMO_NAME>-db` > Console, run `SELECT email, is_admin, created_at FROM users;` and confirm your identity was upserted with the expected `is_admin` value.
-7. Under **Workers & Pages** > `<DEMO_NAME>` > **Logs**, confirm requests are being logged, including a `chat_created` and a `chat_connected` entry.
-8. Under **AI Gateway** > `<DEMO_NAME>`, confirm the sent message appears in the gateway's request log.
+3. Click **+ New Chat**, send a message in the composer, and confirm a streamed response appears.
+4. Confirm the sidebar entry for this chat acquires a short generated title shortly after the response finishes.
+5. Click **+ New Chat** again, confirm a second, separate conversation opens, then click back to the first chat in the sidebar and confirm its own history still loads correctly.
+6. Reload the page and confirm the same chat list and conversation reappear (loaded from D1 and the `ChatAgent` Durable Object's own storage, not browser memory).
+7. Delete a chat from the sidebar and confirm it disappears from the list and the view falls back to a remaining chat (or the empty state if none remain).
+8. Sign out using the visible **Sign out** control.
+9. In the Cloudflare dashboard under **D1** > `<DEMO_NAME>-db` > Console, run `SELECT email, is_admin, created_at FROM users;` and confirm your identity was upserted with the expected `is_admin` value.
+10. Under **Workers & Pages** > `<DEMO_NAME>` > **Logs**, confirm requests are being logged, including `chat_created`, `chat_connected`, and `chat_deleted` entries.
+11. Under **AI Gateway** > `<DEMO_NAME>`, confirm the sent messages appear in the gateway's request log.
 
 ## Provisioned Resources
 
@@ -103,7 +106,8 @@ npm run deploy
 | `vite dev`/`vitest` hang or fail to reach Workers AI | The `AI` binding has no local simulator and always reaches the real account; confirm the token has `Workers AI : Edit`. |
 | Signed in but no `Administrator` badge | Confirm you signed in with the identity matching this deployment's `ADMIN_EMAIL`, and that D1 migrations have applied. |
 | Composer stays disabled after sending the first message | The chat WebSocket has not reported `connected` yet; check the browser console/Workers Logs for a rejected upgrade (for example an expired Access session). |
-| A stale chat reappears after `npm run teardown`/re-deploy | This phase remembers the active chat id in the browser's `localStorage` (`agentic-chat:current-chat-id`) as a temporary bridge until Phase 3's real chat list ships; clear it (or use a private window) to start a fresh chat against a freshly re-provisioned D1 database. |
+| Sidebar shows "No chats yet" after a fresh deploy or teardown/re-deploy | Expected: the chat directory is a D1 table, so a freshly re-provisioned database starts empty; click **+ New Chat**. |
+| A chat never acquires a title | Auto-titling is a best-effort second Workers AI call after the first turn (docs/06-AGENTIC-CHAT.md Section 11); check Workers Logs for a `chat_title_failed` entry -- the conversation itself is unaffected either way. |
 
 ## Teardown
 

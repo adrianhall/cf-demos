@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { effectScope, nextTick, ref } from "vue";
+import { CHAT_REMOVED_CLOSE_CODE } from "../../agent-protocol";
 import { useChatAgent } from "./useChatAgent";
 
 /**
@@ -49,10 +50,12 @@ class MockWebSocket extends EventTarget {
     );
   }
 
-  /** Test helper: simulate the server closing the connection unexpectedly. */
-  simulateServerClose(): void {
+  /** Test helper: simulate the server closing the connection, unexpectedly by default (an
+   * arbitrary non-removal code), or with an explicit `code` (for example
+   * `CHAT_REMOVED_CLOSE_CODE`). */
+  simulateServerClose(code = 1_006): void {
     this.readyState = MockWebSocket.CLOSED;
-    this.dispatchEvent(new CloseEvent("close", { code: 1_006 }));
+    this.dispatchEvent(new CloseEvent("close", { code }));
   }
 }
 
@@ -261,6 +264,64 @@ describe("useChatAgent", () => {
 
     socket.simulateServerClose();
     expect(result.connectionStatus.value).toBe("connecting");
+  });
+
+  it("marks the chat removed and does not reconnect on a chat_removed frame", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+
+    socket.simulateMessage({ type: "chat_removed" });
+
+    expect(result.connectionStatus.value).toBe("removed");
+    expect(socket.readyState).toBe(MockWebSocket.CLOSED);
+    // The server also closes with CHAT_REMOVED_CLOSE_CODE right after this frame in production;
+    // simulating that here must not un-set the already-"removed" status.
+    socket.simulateServerClose(CHAT_REMOVED_CLOSE_CODE);
+    expect(result.connectionStatus.value).toBe("removed");
+    expect(MockWebSocket.instances).toHaveLength(1);
+  });
+
+  it("marks the chat removed on the close-code path alone, when no chat_removed frame arrives first", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+
+    socket.simulateServerClose(CHAT_REMOVED_CLOSE_CODE);
+
+    expect(result.connectionStatus.value).toBe("removed");
+    // Unlike an ordinary unexpected drop, a removed chat must not attempt to reconnect.
+    expect(MockWebSocket.instances).toHaveLength(1);
+  });
+
+  it("bumps metadataUpdatedAt on a chat_metadata_updated broadcast", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+    expect(result.metadataUpdatedAt.value).toBe(0);
+
+    socket.simulateMessage({ type: "chat_metadata_updated" });
+
+    expect(result.metadataUpdatedAt.value).toBeGreaterThan(0);
+  });
+
+  it("tolerates repeated chat_metadata_updated broadcasts for the same turn", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+
+    socket.simulateMessage({ type: "chat_metadata_updated" });
+    socket.simulateMessage({ type: "chat_metadata_updated" });
+
+    expect(result.metadataUpdatedAt.value).toBeGreaterThan(0);
   });
 
   it("stays idle and opens no socket when chatId is null", async () => {

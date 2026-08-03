@@ -13,6 +13,8 @@ import {
   createCapturingFakeAi,
   createChat,
   createFakeAi,
+  openChatSocket,
+  sendTurn,
   unauthenticatedRequest,
   withFakeAi,
 } from "./fixtures";
@@ -20,14 +22,6 @@ import {
 /** Test-only Worker bindings injected by the integration Vitest project. */
 interface TestEnv extends Env {
   TEST_MIGRATIONS: { name: string; queries: string[] }[];
-}
-
-/** One decoded `cf_agent_use_chat_response` frame. */
-interface ChatResponseFrame {
-  type: string;
-  id?: string;
-  body?: string;
-  done?: boolean;
 }
 
 /**
@@ -59,73 +53,6 @@ describe("Chat agent (US-1)", () => {
     openSockets.clear();
     await evictAllDurableObjects({ webSockets: "close" });
   });
-
-  /** Open an authenticated chat WebSocket through the real Worker route, tracked for teardown. */
-  async function openChatSocket(
-    chatId: string,
-    email: string = ALICE,
-  ): Promise<WebSocket> {
-    const response = await authenticatedRequest(
-      `/api/chats/${chatId}/ws`,
-      { headers: { Upgrade: "websocket" } },
-      email,
-    );
-    const socket = response.webSocket;
-    if (socket === null) {
-      throw new Error(
-        `Expected a WebSocket upgrade for chat "${chatId}" but got HTTP ${response.status}.`,
-      );
-    }
-    openSockets.add(socket);
-    socket.accept();
-    return socket;
-  }
-
-  /** Send one chat turn and resolve with the fully concatenated raw response body once `done`. */
-  function sendTurn(socket: WebSocket, text: string): Promise<string> {
-    const requestId = crypto.randomUUID();
-    return new Promise<string>((resolve, reject) => {
-      let body = "";
-      const timer = setTimeout(() => {
-        socket.removeEventListener("message", handler);
-        reject(new Error("Timed out waiting for a chat response."));
-      }, 8_000);
-      function handler(event: MessageEvent): void {
-        const parsed = JSON.parse(String(event.data)) as ChatResponseFrame;
-        if (
-          parsed.type === "cf_agent_use_chat_response" &&
-          parsed.id === requestId
-        ) {
-          body += parsed.body ?? "";
-          if (parsed.done) {
-            clearTimeout(timer);
-            socket.removeEventListener("message", handler);
-            resolve(body);
-          }
-        }
-      }
-      socket.addEventListener("message", handler);
-      socket.send(
-        JSON.stringify({
-          type: "cf_agent_use_chat_request",
-          id: requestId,
-          init: {
-            method: "POST",
-            body: JSON.stringify({
-              messages: [
-                {
-                  id: crypto.randomUUID(),
-                  role: "user",
-                  parts: [{ type: "text", text }],
-                },
-              ],
-              trigger: "submit-message",
-            }),
-          },
-        }),
-      );
-    });
-  }
 
   it("creates a chat owned by the signed-in identity", async () => {
     const response = await authenticatedRequest(
@@ -215,7 +142,7 @@ describe("Chat agent (US-1)", () => {
     ]);
 
     const rawBody = await withFakeAi(fakeAi, async () => {
-      const socket = await openChatSocket(chatId, ALICE);
+      const socket = await openChatSocket(chatId, openSockets, ALICE);
       return sendTurn(socket, "Say hello");
     });
 
@@ -256,7 +183,7 @@ describe("Chat agent (US-1)", () => {
     await withFakeAi(
       createFakeAi(['{"response":"pineapple"}', "[DONE]"]),
       async () => {
-        const firstSocket = await openChatSocket(chatId, ALICE);
+        const firstSocket = await openChatSocket(chatId, openSockets, ALICE);
         await sendTurn(firstSocket, "Remember the secret word: pineapple");
       },
     );
@@ -264,7 +191,7 @@ describe("Chat agent (US-1)", () => {
     const secondTurnBody = await withFakeAi(
       createFakeAi(['{"response":"The word was pineapple."}', "[DONE]"]),
       async () => {
-        const secondSocket = await openChatSocket(chatId, ALICE);
+        const secondSocket = await openChatSocket(chatId, openSockets, ALICE);
         return sendTurn(secondSocket, "What was the secret word?");
       },
     );
@@ -288,7 +215,7 @@ describe("Chat agent (US-1)", () => {
     await withFakeAi(
       createCapturingFakeAi(['{"response":"hi"}', "[DONE]"], capture),
       async () => {
-        const socket = await openChatSocket(chatId, ALICE);
+        const socket = await openChatSocket(chatId, openSockets, ALICE);
         await sendTurn(socket, "hi");
       },
     );
