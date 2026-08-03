@@ -387,13 +387,27 @@ also the vehicle for US-7 (metadata-driven routing): the conditional node
 reads request metadata the Worker attaches (the caller's `business`), not
 anything the client can set directly.
 
+**Spike B correction — verify the chosen catalog against a live dynamic route, not just against
+demo 5's direct-call catalog.** Spike B found that not every Workers AI model works when invoked
+through a dynamic route's `model` node — several models, including demo 5's own verified
+non-reasoning pick (`@cf/ibm-granite/granite-4.0-h-micro`), fail every routed call with
+`AiGatewayError 2002: Failed to parse model output`, despite working fine called directly. This
+does not correlate cleanly with `docs/05-AI-CHAT.md`'s declared adapter family (`openai-chat` vs.
+`cf-native`) — it must be spiked per model against a real route. Confirmed working in Spike B's
+own sweep: `@cf/zai-org/glm-5.2`, `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`,
+`@cf/qwen/qwen2.5-coder-32b-instruct`, `@cf/google/gemma-4-26b-a4b-it`. See
+`spikes/01-ai-gateway-dynamic-routing/REPORT.md` Section 4 for the full sweep and the confirmed
+`conditions` expression syntax (a Mongo-style query object, `{"metadata.business": {"$eq":
+"leadership"}}`, `jsonencode()`d into Terraform's `elements.properties.conditions` string
+attribute) that Phase 4/8 should reuse verbatim.
+
 ### 6.4 D1 Schema (Additive Migrations, One Per Phase)
 
 | Table | Introduced | Columns (non-exhaustive) |
 | --- | --- | --- |
 | `users` | Scaffolding | `email` (PK), `is_admin`, `created_at` |
 | `chats` | Scaffolding | `id` (PK), `owner_email`, `title`, `route`, `created_at`, `updated_at` |
-| `chat_usage` | Phase 6 | `id`, `chat_id`, `model`, `prompt_tokens`, `completion_tokens`, `cost_usd`, `cost_source` (`estimated`\|`gateway`), `gateway_log_id` (nullable), `reconcile_attempts`, `created_at`, `updated_at` |
+| `chat_usage` | Phase 6 | `id`, `chat_id`, `model`, `prompt_tokens`, `completion_tokens`, `cost_usd`, `cost_source` (`estimated`\|`gateway`), `correlation_id` (the UUID minted before `env.AI.run()` and searched for during reconciliation — Section 6.6, Spike F), `gateway_log_id` (nullable; the real AI Gateway log id, populated only once reconciliation finds it), `reconcile_attempts`, `created_at`, `updated_at` |
 | `users.business` / `users.geo` | Phase 7 | added by an `ALTER TABLE` migration |
 | `chat_files` | Phase 9 | `id`, `chat_id`, `r2_key`, `filename`, `size_bytes`, `created_at` |
 | `skills` | Phase 11 | `id`, `owner_email` (`NULL` = enterprise), `name`, `source_type` (`upload`\|`url`), `source_ref`, `r2_key`, `created_at` |
@@ -422,51 +436,95 @@ after a redeploy or partial teardown.
 
 ### 6.6 Cost Ledger Prefers AI Gateway's Own Logged Cost, Not A Local Estimate
 
-Every `env.AI.run()` call made through AI Gateway produces a **log ID**
-(`env.AI.aiGatewayLogId`), and that log ID can be exchanged for the
-request's authoritative, AI-Gateway-computed prompt/completion token counts
-and USD cost via `env.AI.gateway(gatewayId).getLog(logId)`. This is a real
-per-request number Cloudflare's own billing/cost-analytics pipeline
-produces — not an estimate this demo invents — so it is the **preferred**
+AI Gateway's own logs-list API (`GET .../ai-gateway/gateways/{id}/logs`)
+records, for every call that reaches a model, the request's authoritative,
+AI-Gateway-computed token counts (`tokens_in`/`tokens_out`) and USD `cost` —
+a real per-request number Cloudflare's own billing/cost-analytics pipeline
+produces, not an estimate this demo invents — so it is the **preferred**
 source for every `chat_usage` row, with the local per-model pricing-table
 calculation (`src/models.ts`, reusing demo 5's verified pricing where the
 same models are reused) demoted to an **explicitly-labeled fallback**, never
 silently blended with the authoritative figure.
 
-**Why not use `getLog()` as the only source.** `env.AI.run()` returns
-`aiGatewayLogId` once the call resolves, but the log entry it points to may
-not be queryable via `getLog()` the instant the response finishes — AI
-Gateway's own documentation describes at least one of its accounting
-features (spend limits) as "eventually consistent," and Spike F (below)
-must establish whether logged cost data shares that lag. A chat UI that
-blocks a turn's cost readout on that round trip would either feel slow or
-occasionally show nothing. So every turn gets an immediately-available
-number, honestly labeled, upgraded to the authoritative one when it arrives.
+**Why not read it back synchronously.** The log entry a call produces is
+not reliably queryable the instant the response finishes (Spike F measured
+267 ms–4,731 ms of real lag, Section 9). A chat UI that blocked a turn's
+cost readout on that round trip would either feel slow or occasionally show
+nothing. So every turn gets an immediately-available number, honestly
+labeled, upgraded to the authoritative one when it arrives.
+
+**How a specific call's log row is actually identified — confirmed by
+Spikes B and F, and load-bearing for every turn from Phase 4 onward.**
+`env.AI.aiGatewayLogId` (the binding's own "log ID of the most recent call"
+property) is **only populated when `env.AI.run()`'s model argument is a
+literal model ID** — Spike B confirmed it is `null` for every call whose
+model argument is a dynamic route name (`dynamic/<name>`), reproduced
+across a dozen-plus calls. Since every real turn from Phase 4 onward calls
+a dynamic route, `aiGatewayLogId` is never usable here. **The working
+mechanism instead (Spike F, `spikes/04-ai-gateway-cost-reconciliation/`):**
+mint a fresh `crypto.randomUUID()` as `correlationId` immediately before
+calling `env.AI.run()`, attach it as `gateway.metadata.correlationId`
+(alongside `business` and any other identifying metadata Phase 7/8 need —
+AI Gateway accepts at most **five** metadata entries per request, a real
+constraint on how many fields a turn's metadata can carry at once), and
+afterward query the logs-list REST endpoint with
+`filters=[{"key":"metadata.value","operator":"eq","value":[correlationId]}]`.
+Live-verified with zero misses across 11 sequential trials and 10
+concurrent calls (no serialization of concurrent `env.AI` calls within
+`ChatAgent` is required to keep this reliable). Two gotchas: the `filters`
+query parameter must be one JSON-encoded array (the bracket-style
+`filters[0][key]=...` encoding is silently ignored, no error, no
+filtering), and the endpoint's separate `metadata.key`/`metadata.value`
+filters are **not** paired to the same metadata entry — each is an
+independent existence check across the whole metadata map — so only a
+value that is already globally unique on its own (a per-turn UUID) is safe
+to correlate on this way; a reused identifier (a chat ID, a `business`
+value) is not, even paired with a `metadata.key` filter naming the intended
+field. `gateway.eventId`/`cf-aig-event-id` was re-tested with the corrected
+query shape and confirmed, again, not to work at all (the resulting log
+row's `event_id` field is always empty) — it is not a fallback option.
+**There is no binding method to list logs** (`AiGateway` exposes only
+`getLog(id)`/`patchLog(id, data)`/`getUrl(provider)`), so this one
+reconciliation step is the sole place this demo calls the Cloudflare REST
+API directly from inside a Worker instead of a binding — call this
+exception out explicitly in `EXPLAIN-DEMO.md` — and needs a Wrangler secret
+for the account API token, not just the `AI` binding.
 
 **The two-write, asynchronously-reconciled design:**
 
 1. **Immediate write (`onFinish`)** — the moment `streamText()`'s `onFinish`
    fires, insert a `chat_usage` row from the locally computed pricing-table
-   estimate, `cost_source = 'estimated'`, and the turn's `aiGatewayLogId`
-   captured for later lookup. The UI can render this instantly.
+   estimate, `cost_source = 'estimated'`, and the turn's `correlationId`
+   (the UUID minted before the call, not `aiGatewayLogId`) captured for
+   later lookup. The UI can render this instantly.
 2. **Reconciliation (Agents SDK scheduling)** — in the same `onFinish`
    handler, call `this.schedule(delaySeconds, "reconcileUsage", { chatUsageId,
-   gatewayLogId })` — the Agents SDK's own one-time scheduled-task
+   correlationId })` — the Agents SDK's own one-time scheduled-task
    primitive, durable across Durable Object eviction, rather than
    `ctx.waitUntil()` (whose lifetime is tied to the now-finished request and
-   is not the right tool for a retryable, possibly-delayed follow-up). The
-   exact initial delay and backoff schedule are set from Spike F's measured
-   lag, not guessed.
-3. **`reconcileUsage(payload)`** calls `getLog(gatewayLogId)`. On success,
-   `UPDATE`s the row's `prompt_tokens`/`completion_tokens`/`cost_usd` with
-   AI Gateway's figures and flips `cost_source = 'gateway'`. If the log is
-   not yet available (confirm the exact not-ready signal in Spike F — a
-   `404`, an empty/`null` cost field, or similar), increment
-   `reconcile_attempts` and reschedule with backoff, up to a small, bounded
-   attempt count (for example 3). Once that bound is reached, the row is
-   left as `estimated` **permanently** — this demo does not retry forever,
-   and a permanently-`estimated` row is a legitimate, visible outcome, not a
-   bug to hide.
+   is not the right tool for a retryable, possibly-delayed follow-up). Spike
+   F's measured lag (267 ms–4,731 ms, ~2.2 s average, on a freshly created,
+   otherwise-idle dedicated gateway — production load on the demo's shared
+   gateway could differ) sets an initial delay of **10 seconds**.
+3. **`reconcileUsage(payload)`** queries the logs-list endpoint by
+   `correlationId` (above). A non-empty result's `tokens_in`/`tokens_out`/
+   `cost` (Spike B's confirmed field names, re-confirmed by Spike F —
+   **not** `prompt_tokens`/`completion_tokens`) `UPDATE`s the row and flips
+   `cost_source = 'gateway'`, also storing the row's own real log `id` into
+   `gateway_log_id` (Section 6.4) for later reference — a failed-but-logged
+   turn (`AiGatewayError 2002` and similar; Spike F confirmed these still
+   produce a correlatable row, `cost: 0, success: false`) reconciles the
+   same way, no special case needed. An **empty** result array is the
+   "not yet available" signal for this path (there is no thrown error or
+   `404` the way `getLog()` has for an unknown id — the list simply returns
+   zero rows) — increment `reconcile_attempts` and reschedule with **+15
+   seconds** backoff, up to 3 attempts total (~40 s worst case). Once that
+   bound is reached, the row is left as `estimated` **permanently** — this
+   demo does not retry forever, and a permanently-`estimated` row is a
+   legitimate, visible outcome, not a bug to hide (this covers a genuinely
+   missing row — one AI Gateway never logged at all, for example a network
+   error before the request reached it — since a logged-but-failed turn
+   already reconciles successfully as above).
 4. **The reconciliation task must tolerate its target having disappeared**
    (the chat was deleted, per Phase 3's teardown) between scheduling and
    running — it must exit cleanly, not throw (Section 11).
@@ -620,8 +678,8 @@ Workers' current plan requirement).
 | Chat coordination primitive | `AIChatAgent` (Agents SDK) | Hand-rolled `DurableObject` (as in demo 4) | The lesson here is the Agents SDK itself; hand-rolling would re-teach demo 4 and skip the SDK's persistence/streaming/tool-loop integration. |
 | Model selection surface | AI Gateway dynamic routes | Client-visible model dropdown (as in demo 5) | Demo 5 already taught raw model comparison; this demo's lesson is *governed* routing, which requires the decision to live server/platform-side. |
 | Egress control for `getUrl` | Dynamic Workers (`worker_loaders` binding, `globalOutbound` gateway) | Sandbox SDK / Containers; Workers VPC `EGRESS` binding + Zero Trust Gateway policy | Avoids a Docker-dependent local dev story and duplicating demo 8's container lesson; avoids standing up a Cloudflare Mesh/Tunnel network or a Zero Trust Gateway policy for one tool's outbound fetch; `globalOutbound` is purpose-built for exactly this "intercept, allow-list, log, inject credentials" shape. |
-| Skills mechanism | Hand-rolled skill catalog + R2 storage, informed by the experimental `@cloudflare/think` Agent Skills shape (pending Spike D) | Adopt `@cloudflare/think`'s `Think` class wholesale | `Think` is a different, higher-level chat agent class than `AIChatAgent`; switching base classes to get skills would drop the WebSocket-based `AIChatAgent` mechanism the backlog explicitly asks for. If Spike D finds the experimental package composable with `AIChatAgent` directly, prefer it over the hand-rolled version and update this row. |
-| Cost source of truth | AI Gateway's own logged cost via `getLog()`, fetched asynchronously and reconciled into the ledger; local pricing-table computation is an immediate, visibly-labeled fallback only (pending Spike F) | Local pricing-table computation as the sole/primary source | `getLog()` is Cloudflare's own authoritative, billing-grade number, not an estimate this demo invents; a local-only estimate would let the "AI Gateway cost controls" lesson the backlog names go untaught. The trade-off — an asynchronous reconciliation step and a two-state UI indicator — is accepted because both are true to how the platform actually reports cost. |
+| Skills mechanism | The released Agents SDK mechanism (`agents/skills`'s `SkillRegistry` + `r2()` source), confirmed composable with `AIChatAgent` by Spike D | A hand-rolled skill catalog + R2 storage; adopting `@cloudflare/think`'s `Think` class wholesale | Spike D confirmed `agents/skills` is `AIChatAgent`-agnostic — a plain `ai`-SDK `ToolSet` (`.tools()`) plus a plain system-prompt string (`.systemPrompt()`), needing zero adapter code, and *not* the same thing as this row previously assumed (it lives in the `agents` package itself, not `@cloudflare/think`, and is unrelated to the Vite-plugin-only `agents:skills` virtual module). Building the hand-rolled equivalent would duplicate an existing feature that already matches the "catalog in prompt, content on demand" shape the fallback was designed to approximate. Adopting `Think` wholesale remains rejected for the original reason: it is a different, higher-level chat agent class than `AIChatAgent`, and switching to it would drop the WebSocket-based `AIChatAgent` mechanism the backlog explicitly asks for. See `spikes/03-agent-skills-composability/REPORT.md`. |
+| Cost source of truth | AI Gateway's own logged cost, found via a per-turn correlation UUID queried against the logs-list REST API and fetched asynchronously into the ledger (Spike F — `aiGatewayLogId`/`getLog()` alone do not work for a dynamic-route call); local pricing-table computation is an immediate, visibly-labeled fallback only | Local pricing-table computation as the sole/primary source | AI Gateway's own logged figures are Cloudflare's own authoritative, billing-grade numbers, not an estimate this demo invents; a local-only estimate would let the "AI Gateway cost controls" lesson the backlog names go untaught. The trade-off — an asynchronous reconciliation step and a two-state UI indicator — is accepted because both are true to how the platform actually reports cost. |
 | Cost UI update mechanism | `ChatAgent`'s own `setState()` (for the durable, reconnect-safe running total) plus `broadcast()` (for an ephemeral reconciliation-transition event) — Section 6.6a | Client-side polling of `GET /api/chats/:id/usage` | Reuses capabilities `ChatAgent` already has as an Agents SDK `Agent`, needs no poll interval to tune, delivers the update the instant reconciliation completes, and — via `state` hydration on connect — is already correct for a client that opens the chat after the fact, which a poll-on-open would also need to handle as a special case anyway. |
 | Admin representation | D1 `is_admin` flag + application middleware | A second Cloudflare Access application/policy for admin routes | Access has no concept of this demo's role; role-based authorization is correctly an application-layer concern per AGENTS.md's separation-of-concerns guidance. |
 | Third-party model providers | Excluded | Allow AI Gateway to proxy OpenAI/Anthropic/etc. | Keeps this demo's credential surface identical to demo 5 (Workers AI only); adding BYOK here would mix a secrets-management lesson into a routing lesson. |
@@ -660,6 +718,20 @@ testing a `403` from Access. Concretely, this changes the earlier blanket
   established for `env.AI`. Several of this demo's spikes can likely stay
   entirely in this category; each spike's own aim should say explicitly
   whether it needs a real deployment, rather than assuming one either way.
+
+  **Correction (Spike A, confirmed on this account):** this assumption did
+  not hold for an `ai` binding specifically. `wrangler dev`'s own
+  "Establishing remote connection…" step for `env.AI` never completed on
+  this account — the remote-binding proxy itself depends on an
+  account-level Cloudflare endpoint gated by this account's Zero Trust
+  posture, so a purely local session had no way to authenticate through it.
+  Any spike (or later, local development for the demo itself) that needs a
+  live `env.AI` call should expect to need a real deployment on this
+  account, not assume `wrangler dev`'s remote-binding proxy will work
+  local-only. See `spikes/00-aichatagent-basics/README.md` for the
+  workaround used (deploy for real, front it with the bypass Access
+  application the next bullet describes, drive it over its own public
+  hostname).
 - **A spike that deploys a Worker and exercises it over its own public
   hostname** (verifying real end-to-end HTTP/WebSocket behavior that local
   dev cannot faithfully simulate) MUST front that Worker's hostname with a
@@ -764,49 +836,92 @@ agentic-chat/phase-03-chat-management`).
 
 ### Phase 0 — Spikes (tag: `phase-00-spikes`)
 
-No feature code. Spikes A–E are independent and may be run in any order.
-Spike F depends on A and B's findings and should run after them. All must
-land before Scaffolding begins, since Scaffolding's Wrangler config and
-Terraform depend on their findings.
+No feature code. Spikes A–E were independent and could be run in any order;
+Spike F depended on A and B's findings and ran after them. **All six spikes
+are now complete** (✅ markers below link each to its `REPORT.md`);
+Scaffolding's Wrangler config and Terraform are written against their
+confirmed findings, not assumptions.
 
-**Spike A — `AIChatAgent` + Workers AI + AI Gateway, end to end.**
+**Spike A — `AIChatAgent` + Workers AI + AI Gateway, end to end. ✅ Complete —
+see `spikes/00-aichatagent-basics/REPORT.md`.**
 *Aim*: prove the minimal working chain: a `@cloudflare/ai-chat` `AIChatAgent`
 subclass, one Durable Object per chat name, `onChatMessage` calling the `ai`
 SDK's `streamText()` with `workers-ai-provider`'s `createWorkersAI({
 binding: env.AI })`, a model routed through an AI Gateway binding
-(`gateway: { id }`), streamed to a browser over WebSocket. Confirm: exact
-package versions compatible with this repo's Node 24/TypeScript 6 baseline;
-the exact `wrangler.jsonc` shape (durable object binding +
-`new_sqlite_classes` migration + `ai` binding + `nodejs_compat`); whether
-`workers-ai-provider` absorbs the per-model streaming-shape differences demo
-5 had to hand-roll (confirm across at least one reasoning and one
-non-reasoning model from demo 5's verified catalog, and record whether
-reasoning content surfaces as a distinct message part); how a chat is
-named/instanced (confirm `routeAgentRequest` default routing vs. a custom
-`getAgentByName(chatId)` call site, since the backlog requires per-topic,
-not per-user, instancing); and whether/how a verified Access identity can be
-threaded into the agent so it never trusts a client-supplied owner.
+(`gateway: { id }`), streamed to a client over WebSocket. Confirmed live
+against the real account (`agents@0.20.1`, `@cloudflare/ai-chat@0.10.1`,
+`ai@7.0.48`, `workers-ai-provider@4.0.0`); the exact `wrangler.jsonc` shape
+matched this section's prediction exactly (durable object binding +
+`new_sqlite_classes` migration + `ai` binding + `nodejs_compat`).
+
+Two corrections to prior assumptions, both load-bearing for later phases:
+
+- **An AI Gateway `id` passed via `gateway: { id }` must already exist —
+  only the literal id `"default"` auto-provisions on first use.** An
+  arbitrary unprovisioned id failed live with `AI_APICallError: 2001: Please
+  configure AI Gateway in the Cloudflare dashboard`. This confirms Spike B's
+  provisioning work (below) is required, not optional, before Phase 4 can
+  assume `agentic-chat-basic`/`agentic-chat-reasoning` exist.
+- **`workers-ai-provider` normalizes streaming *transport* shape (to the AI
+  SDK's uniform `start`/`text-delta`/`finish` UI-message-stream protocol,
+  confirmed identical across both a reasoning and a non-reasoning catalog
+  model) but does NOT lift an inline-`<think>`-tag reasoning model's
+  reasoning to a distinct UI message part.** `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`'s
+  `<think>...</think>` block still arrives as ordinary `text-delta` content,
+  identical to demo 5's own raw-`env.AI.run()` finding
+  (`docs/DECISIONS.md` #10). Phase 2 must reuse demo 5's inline-think-tag
+  splitting approach for this model if a "Thinking" panel is wanted;
+  `workers-ai-provider` is not a substitute for it. Whether a
+  `reasoning-field`-mechanism model (`glm-4.7-flash`, `gemma-4-26b-a4b-it`)
+  fares differently was not tested — spot-check before Phase 2 assumes
+  either answer.
+
+How a chat is named/instanced: confirmed a custom `getAgentByName(env.CHAT_AGENT,
+chatId, { props })` call site (not `routeAgentRequest`'s default routing),
+matching the per-chat (not per-user) instancing the backlog requires.
+Multi-turn persistence was confirmed live across two *separate* WebSocket
+connections to the same chat ID (not just two messages on one socket) — a
+closer match to US-1's "reload and reconnect" acceptance criterion. A
+verified identity threads into the agent via `getAgentByName`'s `props`
+option, delivered to the Durable Object's own `onStart(props)` lifecycle
+hook (confirmed live: a header-derived stand-in identity correctly reached
+the model's system prompt and was never taken from client-supplied message
+data) — the real demo reads this from the Access-validated
+`Cf-Access-Jwt-Assertion` header at the routing call site instead of a
+debug header.
 
 **The Agents SDK's own documented client hooks (`useAgent`/`useAgentChat`
 from `agents/react`) are React-specific**, but AGENTS.md mandates Vue 3 for
-every demo's browser UI. Confirm that the underlying client transport
-(`AgentClient`, per the Agents SDK's client-side API reference) is itself
-framework-agnostic — a plain WebSocket client the React hooks wrap, not
-something React-coupled — so this demo can build its own thin Vue composable
-(`src/client/composables/useChatAgent.ts`, following the pattern in this
-repo's `create-adaptable-composable` skill) directly on top of it for both
-message streaming and state sync (Section 6.6a), instead of reimplementing
-the Agent WebSocket protocol from scratch. Also confirm `setState()`'s
-merge semantics (a full state replacement or a shallow/deep merge with the
-previous state) and whether `AIChatAgent` itself already occupies any part
-of the `State` generic internally (for message history or otherwise) that a
-custom `State` shape added by this demo (Section 6.6a) must coexist with
-rather than accidentally clobber. *Report*: the minimal working example,
-exact versions, the confirmed Vue-composable-over-`AgentClient` pattern, the
-confirmed `setState()` merge semantics, and every gotcha found around
-Durable Object hibernation/eviction interrupting an in-flight stream.
+every demo's browser UI. Confirmed `AgentClient` (`agents/client`) is
+genuinely framework-agnostic by reading its shipped source — it extends
+`PartySocket` extends `ReconnectingWebSocket`, with no React import
+anywhere in that chain, and its own message handling only intercepts
+`cf_agent_identity`/`cf_agent_state`/`cf_agent_state_error`/`rpc` frames,
+passing everything else through untouched — so this demo can build its own
+thin Vue composable (`src/client/composables/useChatAgent.ts`, following
+the pattern in this repo's `create-adaptable-composable` skill) directly on
+top of it for both message streaming and state sync (Section 6.6a), instead
+of reimplementing the Agent WebSocket protocol from scratch. Confirmed
+`setState()` is a **full state replacement**, not a merge
+(`this._state = nextState`, source-read from the installed `agents`
+package) — `refreshUsageState()` (Section 6.6a) must always pass a complete
+state object. Confirmed `AIChatAgent` does **not** occupy any part of the
+`State` generic for message history (that is backed entirely by its own
+dedicated SQLite tables), so a demo-defined `State` shape is free to use the
+whole generic with no collision risk. The chat wire protocol itself
+(`cf_agent_use_chat_request`/`cf_agent_use_chat_response` frames, and
+critically that the response `body` is **not** classic `data: {...}` SSE
+framing but bare concatenated JSON objects) is reverse-engineered and
+documented in full in the spike's `REPORT.md` §5, since no
+framework-agnostic helper for constructing it is exported — the Vue
+composable must hand-build it the same way the spike's probe script does.
+Durable Object hibernation/eviction interrupting an in-flight stream was
+**not** exercised live (only persistence across a closed-and-reopened
+connection between turns was confirmed) — this remains open for a later
+phase's testing, not a Spike A gap severe enough to block Scaffolding.
 
-**Spike B — AI Gateway provisioning and dynamic routes as infrastructure.**
+**Spike B — AI Gateway provisioning and dynamic routes as infrastructure. ✅
+Complete — see `spikes/01-ai-gateway-dynamic-routing/REPORT.md`.**
 *Aim*: determine how much of the AI Gateway configuration this demo needs
 (the gateway itself, the two dynamic routes, their conditional/rate-limit/
 spend-limit nodes) can be created and versioned through Terraform (check the
@@ -827,8 +942,28 @@ exact Terraform resource names if any exist, or the exact script this repo
 will run and when), the verified route JSON schema, and the verified
 conditional-expression syntax.
 
+Confirmed live against the real account: `cloudflare_ai_gateway` and
+`cloudflare_ai_gateway_dynamic_routing` (both present in the pinned provider's
+schema) fully provision the gateway, both routes, a conditional node, a
+rate-limit node, and a gateway-level spend limit — no hand-written script
+needed, contrary to this aim's original hedge — once three HCL-specific
+gotchas are worked around (a model node's `provider` property is named
+`ai_gateway_dynamic_routing_provider`; `conditions` is a plain string
+requiring `jsonencode()`; both route resources need
+`lifecycle { ignore_changes = [elements] }`, since this provider version's
+`Read` does not repopulate `elements` and every subsequent `plan` otherwise
+proposes replacing the route with zero config changes). The conditional
+syntax is `{"metadata.<key>": {"$eq": "<value>"}}`, confirmed both to apply
+and to actually steer the resolved model live. Two corrections, both
+load-bearing for later phases, are recorded directly in Sections 6.3 and
+6.6 above: not every catalog model works through a dynamic route's model
+node (must be spiked per model), and `env.AI.aiGatewayLogId` is `null` for
+every dynamic-route call, leaving Spike F a real log-correlation problem to
+solve rather than a mechanism to confirm — since resolved; see Spike F
+below and Section 6.6.
+
 **Spike C — Dynamic Workers as the egress-control mechanism for the `getUrl`
-tool.**
+tool. ✅ Complete — see `spikes/02-dynamic-workers-egress-control/REPORT.md`.**
 *Aim*: prove the minimal working `globalOutbound` gateway pattern for a
 single tool's outbound fetch. Confirm: the demo Cloudflare account is (or
 can be put) on a **Workers Paid plan** (Dynamic Workers' current plan
@@ -855,7 +990,51 @@ reached from the `ChatAgent` Durable Object at all), the fallback is the
 Sandbox SDK after all, in which case Section 6.7 and Phase 10 must be
 rewritten before Phase 10 starts.
 
-**Spike D — Skills mechanism compatible with `AIChatAgent`.**
+Confirmed live against the real `workerd` runtime (`wrangler@4.115.0`,
+`@cloudflare/vitest-pool-workers@0.19.1`) — **entirely via `wrangler dev`/
+`@cloudflare/vitest-pool-workers`, with no deployment at all**, correcting
+Section 8's blanket framing for this specific spike: unlike Spike A's
+`env.AI` (a proxy to an external account resource, requiring a real
+deployment on this account per Spike A's finding), `worker_loaders` has no
+`remote: true`/`false` option in Wrangler's schema at all — it is a pure
+`workerd` runtime primitive with no account-level proxy step, so local
+`wrangler dev` **is** the real platform behavior here, not a separate
+simulation. The demo account's Workers Paid plan prerequisite (Section
+"Platform prerequisite" above) was independently confirmed via `GET
+/accounts/{account_id}` reporting `"type": "enterprise"` (strictly above the
+required tier) plus direct operator confirmation of prior successful Dynamic
+Workers use on this account — no deployment was needed to settle this either.
+
+Every other question resolved in `ChatAgent`'s favor, none rewriting Section
+6.7 or Phase 10: a Durable Object calls `env.LOADER.get()` exactly like a
+top-level `fetch()` handler (`this.env.LOADER.get(id, callback)`, identical
+shape); `ctx.exports.EgressGateway({})` **requires** its options argument
+(Cloudflare's own docs example shows a bare `ctx.exports.HttpGateway()`,
+which is a TypeScript error against the generated `LoopbackServiceStub` call
+signature — pass `{}` when no `props` are needed); and, a genuine surprise
+`DurableObjectState`'s documented API surface does not hint at,
+**`ctx.exports` is directly reachable from inside a Durable Object method**
+with no threading required at all (`(this.ctx as unknown as { exports?:
+unknown }).exports` was a real, usable object, live-verified) — Phase 10 may
+call `this.ctx.exports.EgressGateway({})` straight from `ChatAgent` if there
+is ever a reason to skip threading the gateway stub in as an RPC parameter
+from the Worker's own `fetch()` call site, though this spike still threads
+it in for the props-scoping reasons `REPORT.md` §5 explains. A real,
+non-obvious gotcha surfaced and was fixed: storing a bare reference to the
+global `fetch` function on a plain object (`{ impl: fetch }`) and calling it
+later throws `Illegal invocation` inside `workerd` — the fix is wrapping it
+in a closure (`{ impl: (request) => fetch(request) }`) so the correct
+implicit `globalThis` receiver survives. Both of the aim's testability
+questions are confirmed **yes**: the gateway is unit-testable by mutating
+that same closure-wrapped seam in place (no real network traffic), and
+`@cloudflare/vitest-pool-workers` fully supports `worker_loaders`, exercised
+end to end (`ctx.exports` → Durable Object → `env.LOADER` → Dynamic Worker →
+gateway) via `exports.default.fetch()` inside the test pool's real
+`workerd`, deliberately against a non-allow-listed host so no real network
+call happens inside the automated suite.
+
+**Spike D — Skills mechanism compatible with `AIChatAgent`. ✅ Complete —
+see `spikes/03-agent-skills-composability/REPORT.md`.**
 *Aim*: determine whether the Agents SDK's released **Agent Skills**
 (`@cloudflare/think`'s `agents:skills` import, `skills.r2()`,
 `activate_skill`/`read_skill_resource`/`run_skill_script` tools — currently
@@ -874,7 +1053,46 @@ with minimal rework. *Report*: the decision (adopt vs. hand-roll) and the
 minimal proof-of-concept shape either way, since Phase 11 is written against
 this finding.
 
-**Spike E — Workers AI speech-to-text.**
+**Two corrections to prior assumptions in this spike's own aim, confirmed
+live:**
+
+- **The mechanism is not `@cloudflare/think`'s.** `SkillRegistry`/`r2()`/
+  `fromManifest()`/`runner()` live in the `agents` package's own
+  `agents/skills` subpath export — `@cloudflare/think` merely also imports
+  them; they have no dependency on `Think` or on `@cloudflare/think` at all.
+  `agents:skills` (the import string this aim named) is a separate,
+  unrelated thing: a build-time-only virtual module the Agents *Vite
+  plugin* resolves for a bundled skill directory, not the runtime R2-backed
+  mechanism US-10 needs.
+- **It composes with `AIChatAgent` directly — confirmed by a live,
+  end-to-end proof**, once one real, non-obvious bug is avoided:
+  `SkillRegistry.tools()` reads its descriptor map synchronously and does
+  not itself await `.load()`; calling it concurrently with
+  `registry.systemPrompt()` (`Promise.all([registry.systemPrompt(),
+  registry.tools()])`) races `.tools()` ahead of the `.load()`
+  `.systemPrompt()` triggers internally, silently returning an empty tool
+  set with no error. `registry.systemPrompt()` must be awaited to
+  completion first; `registry.tools()` called only afterward. With that
+  fix, `SkillRegistry.tools()` (a plain `ai`-SDK `ToolSet`) and
+  `.systemPrompt()` (a plain string) slot directly into `AIChatAgent`'s own
+  `streamText()` call with zero adapter code — confirmed live end to end:
+  `activate_skill` → `read_skill_resource` correctly retrieved a real,
+  R2-stored fixture value the model had no other way to know, and an
+  unrelated question correctly triggered no tool call at all.
+
+**Real cost, not a correctness blocker:** `agents/skills` unconditionally
+imports `@cloudflare/codemode` and `just-bash` at module top level — both
+used only by `runner()` (the `worker_loaders`-backed `run_skill_script`
+executor, not exercised by this spike) but imported regardless, adding a
+measured +58% raw / +71% gzip to the deployed bundle versus an otherwise
+identical Worker with no skills. Both totals stay well under either Workers
+plan's compressed-size ceiling. Not exercised: `run_skill_script` itself
+(needs Spike C's `worker_loaders` pattern) and personal/enterprise skill
+scoping (US-10) — `r2()`'s own `options.skills` allow-list parameter exists
+for the latter but was not tried live.
+
+**Spike E — Workers AI speech-to-text. ✅ Complete — see
+`spikes/05-workers-ai-speech-to-text/REPORT.md`.**
 *Aim*: confirm the exact input contract for a Workers AI speech-to-text
 model (`@cf/openai/whisper-large-v3-turbo` or `@cf/deepgram/nova-3`) called
 via `env.AI.run()` or `workers-ai-provider`'s `experimental_transcribe()` —
@@ -882,40 +1100,120 @@ required audio encoding/format, base64 vs. binary input, maximum duration,
 and the exact output shape. Confirm a browser's `MediaRecorder` default
 output (typically `audio/webm;codecs=opus`) is accepted directly or needs
 client-side conversion, and record realistic latency for a roughly
-10-second utterance. *Report*: the exact request/response shapes and the
-client capture format this demo will use.
+10-second utterance. Confirmed live against the real account
+(`ai@7.0.48`, `workers-ai-provider@4.0.0`, `wrangler@4.115.0`), driven over
+this spike's own bypass-fronted public hostname (`env.AI` needs a real
+deployment, per Spike A's Section 8 correction).
 
-**Spike F — AI Gateway cost/log reconciliation.**
+**`@cf/openai/whisper-large-v3-turbo` is the model this demo should use, and
+no client-side audio conversion is needed.** `env.AI.run("@cf/openai/whisper-large-v3-turbo",
+{ audio: base64String })` — a plain base64-encoded string, the same shape
+`workers-ai-provider`'s `experimental_transcribe()` sends internally —
+transcribed a browser `MediaRecorder`'s actual default output
+(`audio/webm;codecs=opus`, produced here with `ffmpeg`'s real `libopus`
+encoder) exactly as accurately as a client-side-converted 16-bit PCM WAV of
+the same utterance, confirmed by both fixtures reporting an identical
+decoded `transcription_info.duration`. Phase 5 should post the browser's
+raw `MediaRecorder` Blob straight through with no re-encoding step. Model
+call latency for a ~12-second utterance landed roughly 800ms–2.6s across
+repeated live calls — comfortably inside an interactive
+record-then-transcribe UX. A maximum audio duration/size is not documented
+by Cloudflare for this model; not pushed to a real ceiling by this spike.
+
+**`@cf/deepgram/nova-3` is not currently usable for transcription via the
+`env.AI` Workers binding on this account, contradicting
+`workers-ai-provider`'s own shipped implementation.** The provider's
+documented binding-path shape (`{ audio: { body: <base64>, contentType } }`)
+is live-rejected by the platform (`5006: required properties at '/audio'
+are 'body,contentType'`) via three independent call paths — this spike's
+own direct call, the same call with `body` as a raw (non-base64)
+`Uint8Array`, and `workers-ai-provider`'s own `experimental_transcribe()` —
+and reproduced identically via a direct REST call bypassing the Worker,
+gateway, and binding entirely. The only shape that works is the REST
+endpoint's raw-binary-body upload, which the `env.AI` binding (JSON-only
+inputs) cannot reach. This is a second, empirically stronger reason (beyond
+nova-3's real-time-streaming-first design) to standardize this demo on
+`whisper-large-v3-turbo` — worth reporting upstream to
+`workers-ai-provider`/Cloudflare.
+
+**`ai@7.0.48`'s `experimental_transcribe()` has no `mediaType` parameter at
+all**, contradicting Cloudflare's own `workers-ai-provider` changelog
+example — the SDK now derives media type via magic-byte sniffing over the
+raw audio bytes, never from the caller. Its normalized `TranscriptionResult`
+also drops Whisper's per-word `words[]` timestamps (present only in
+`env.AI.run()`'s raw response) — a later phase wanting word-level
+highlighting must call the binding directly, not
+`experimental_transcribe()`. *Report*: `spikes/05-workers-ai-speech-to-text/REPORT.md`.
+
+**Spike F — AI Gateway cost/log reconciliation. ✅ Complete — see
+`spikes/04-ai-gateway-cost-reconciliation/REPORT.md`.**
 *Aim*: determine exactly how this demo reads back a completed turn's
 authoritative cost and token counts, since Section 6.6 makes that the
 ledger's preferred source rather than the local pricing-table fallback.
-Run this spike after Spikes A and B, reusing their harnesses, since the
-answer depends on both: whether the model is called via `env.AI.run()`
-directly or only reachable by name through `workers-ai-provider`'s
-`streamText()` integration (Spike A), and whether a **dynamic route**
-name (`dynamic/agentic-chat-basic`) can be passed as the `model` argument
-to the `AI` binding at all, or whether calling a dynamic route requires the
-OpenAI-compatible HTTP endpoint instead — in which case log-ID retrieval
-may work differently than the binding's `env.AI.aiGatewayLogId` (Spike B).
-Confirm: whether `env.AI.aiGatewayLogId` is populated correctly after a
-`streamText()` call made through `workers-ai-provider`'s binding adapter,
-and precisely *when* during the stream lifecycle it becomes readable (at
-`run()`'s resolution, which per demo 5's finding returns the stream object
-almost immediately, or only once the stream is fully drained); whether
-reading `aiGatewayLogId` is safe when more than one `env.AI` call could be
-in flight within the same Durable Object around the same time (for example
-Phase 3's auto-title generation running close to the main turn) or whether
-the demo must serialize such calls to avoid one call's log ID clobbering
-another's; the exact shape of `getLog()`'s response (field names for
-prompt/completion tokens and USD cost, and what a "not yet available"
-response looks like — absent field, `404`, or a defined pending state); and
-the real-world lag between a turn completing and `getLog()` returning
-populated cost data, which sets Phase 6's reconciliation delay/backoff
-schedule. *Report*: the exact call path this demo will use to obtain a log
-ID, the confirmed `getLog()` response shape, the measured reconciliation
-lag (and therefore the chosen `this.schedule()` delay/backoff), and whether
-any AI call serialization is required within `ChatAgent` to keep log-ID
-capture reliable.
+Spike B already answered part of this: a dynamic route name **can** be
+passed directly as `env.AI.run()`'s `model` argument (no OpenAI-compatible
+HTTP endpoint detour needed) — but doing so leaves `env.AI.aiGatewayLogId`
+**`null`**, confirmed reproducibly across a dozen-plus real calls
+(`spikes/01-ai-gateway-dynamic-routing/REPORT.md` Section 3). Spike F's
+central, still-open question was therefore **not** "does `aiGatewayLogId`
+work" but **"what reliably identifies which AI Gateway log row corresponds
+to a specific dynamic-route call, given `aiGatewayLogId` is unusable for
+it"**.
+
+Confirmed live against the real account (`spike-04-cost-recon`, a dedicated
+gateway + one plain dynamic route): the fix is to mint a fresh
+`crypto.randomUUID()` **before** calling `env.AI.run()`, attach it as
+`gateway.metadata.correlationId`, and afterward query the logs-list REST
+endpoint (`GET .../ai-gateway/gateways/{id}/logs`) with
+`filters=[{"key":"metadata.value","operator":"eq","value":["<uuid>"]}]` —
+the endpoint's own documented `filters` query parameter (present in the
+Cloudflare API reference but not the narrative logging docs page; must be
+one query param whose value is a JSON-encoded array, not the bracket-style
+`filters[0][key]=...` encoding several other Cloudflare list endpoints
+accept, which is silently ignored with no error and no filtering). This
+worked with **zero misses across 11 sequential trials and 10 concurrent
+calls** in this spike. One real limitation: the endpoint's separate
+`metadata.key`/`metadata.value` filters are **not** paired to the same
+metadata entry (each is an independent existence check across the whole
+metadata map) — live-proven with a value that only ever appears under one
+specific key, filtered together with an unrelated-but-always-true key
+filter, returning the exact same (too broad) count as the value filter
+alone. Consequence: only a value that is already globally unique on its
+own (a per-turn UUID) is safe to correlate on this way — a reused
+identifier (a chat ID, a `business` segment name) is not, even paired with
+a same-request `metadata.key` filter naming the intended field, since that
+pairing is not actually enforced. `gateway.eventId`/`cf-aig-event-id` was
+re-tested with the corrected `filters` query shape in case Spike B's
+negative result was a syntax problem — it was not: the resulting log row's
+`event_id` field is still always empty, confirmed a true negative (the
+query syntax itself works for every other filter). The `metadata`-based
+correlation is not a fallback; it is the only mechanism either spike found
+to work.
+
+**Concurrency**: confirmed safe with no serialization required — 5
+concurrent `env.AI.run()` calls inside one Worker invocation
+(`Promise.all`), each with its own UUID, correlated to 5 distinct log rows
+with zero cross-talk, reproduced twice (10/10 total). **`getLog()`**:
+re-confirmed Spike B's field names (`tokens_in`/`tokens_out`/`cost`) and
+"not found" signal (a thrown `AiGatewayLogNotFound: Log not found`, not a
+`404`) continue to hold once a row is found via this new correlation path;
+it also returns `request_head`/`response_head` the list response omits,
+possibly useful for Phase 12's exports. **A failed dynamic-route call
+(`AiGatewayError 2002`, the same model flakiness Spike B flagged) still
+produces its own correlatable log row** (`model:
+"dynamic/<route-name>"`, `provider: "unknown"`, `cost: 0`, `success:
+false`) — Phase 6's reconciliation logic needs no special case for a
+failed-but-logged turn, only for a turn AI Gateway never logs at all.
+**Measured lag**: 267 ms–4,731 ms across 11 trials (~2.2 s average) from
+call completion to the row becoming queryable via the list endpoint — low
+seconds, not the multi-second-to-minutes "eventually consistent" lag
+Section 6.6 originally hedged about (that description was AI Gateway's own
+docs talking about *spend limits* specifically, not logged cost data).
+*Report*: full methodology, raw trial data, and every filter-syntax gotcha
+in `spikes/04-ai-gateway-cost-reconciliation/REPORT.md`; the corrected
+reconciliation design (correlation ID, not `aiGatewayLogId`; REST list
+query, not `getLog()` alone; concrete 10s/+15s/+15s schedule) is applied to
+Section 6.6 and Phase 6 below.
 
 ### Phase 1 — Scaffolding (tag: `phase-01-scaffolding`)
 
@@ -930,10 +1228,24 @@ app must build, deploy, and pass Access sign-in end to end.
 2. Provision baseline Terraform: a Worker (explicit `subdomain` block), the
    `agentic-chat.cfapps.uk` custom domain (with the sanctioned bootstrap
    version/deployment for `cloudflare_workers_custom_domain`), a D1 database,
-   Workers Logs, and automatic tracing with explicit sampling. Provision
-   Spike B's AI Gateway resource(s) to whatever extent Spike B found
-   Terraform-manageable. Read configuration from `../.env` via the `dotenv`
-   provider; `DEMO_NAME=agentic-chat`, `DEMO_DOMAIN=cfapps.uk`.
+   Workers Logs, and automatic tracing with explicit sampling. Provision the
+   AI Gateway itself and both dynamic routes via `cloudflare_ai_gateway`/
+   `cloudflare_ai_gateway_dynamic_routing` — Spike B confirmed both are fully
+   Terraform-manageable, including conditional/rate-limit nodes and
+   gateway-level spend limits, with three attribute-naming/plan-stability
+   gotchas to copy verbatim from
+   `spikes/01-ai-gateway-dynamic-routing/infra/main.tf`: a model node's
+   `provider` property is named `ai_gateway_dynamic_routing_provider` in
+   HCL; a conditional node's `conditions` property is a plain string
+   attribute requiring `jsonencode({"metadata.<key>": {"$eq": "<value>"}}
+   )`, not a nested object; and both route resources need
+   `lifecycle { ignore_changes = [elements] }` (this provider version's
+   `Read` does not repopulate `elements` from the API, so every
+   `terraform plan` after the first `apply` otherwise proposes destroying
+   and recreating the route with zero config changes — a deliberate
+   `-replace` is required to actually change a route's shape later). Read
+   configuration from `../.env` via the `dotenv` provider;
+   `DEMO_NAME=agentic-chat`, `DEMO_DOMAIN=cfapps.uk`.
 3. Provision one Cloudflare Access self-hosted application covering the
    whole hostname, backed by an `allow` policy requiring authentication
    (no bypass), with `audience` set (Section 6.5) — following
@@ -1090,9 +1402,12 @@ Worker redeploy.
 
 ### Phase 5 — Feature: Voice-To-Prompt Dictation (US-4) (tag: `phase-05-speech-to-text`)
 
-1. Per Spike E, implement `POST /api/transcribe` (multipart or raw body,
-   per the spike's confirmed contract) calling the Workers AI speech-to-text
-   model and returning `{ text }`.
+1. Per Spike E, implement `POST /api/transcribe`: accept the browser's raw
+   `MediaRecorder` body (`audio/webm;codecs=opus`) directly with no
+   client-side conversion, base64-encode it server-side, and call
+   `env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: base64 })`
+   (not `@cf/deepgram/nova-3` — Spike E found its `env.AI` binding path
+   live-rejected by the platform); return `{ text }`.
 2. Client: a microphone control using `MediaRecorder`, with clear
    permission-denied and transcription-failure states; on success, populate
    (never auto-submit) the composer.
@@ -1110,38 +1425,57 @@ for a short utterance.
 ### Phase 6 — Feature: Per-Chat Cost And Token Visibility (US-5) (tag: `phase-06-cost-ledger`)
 
 1. Add the `chat_usage` D1 migration (Section 6.4, including `cost_source`,
-   `gateway_log_id`, `reconcile_attempts`) and `src/worker/usage/`
-   repository, exposing separate `insertEstimated()`,
+   `correlation_id`, `gateway_log_id`, `reconcile_attempts`) and
+   `src/worker/usage/` repository, exposing separate `insertEstimated()`,
    `reconcileWithGatewayLog()`, and `aggregateForChat()` operations rather
    than one generic upsert, so each write/read path's intent is explicit
    and independently testable. `aggregateForChat()` is the single query
-   `refreshUsageState()` (Section 6.6a) runs.
+   `refreshUsageState()` (Section 6.6a) runs. Add a `src/worker/ai-gateway/`
+   module wrapping the one REST call this phase needs
+   (`GET .../ai-gateway/gateways/{id}/logs?filters=...`, Section 6.6) behind
+   a typed `findLogByCorrelationId()` function — this is the sole place in
+   the demo that calls the Cloudflare REST API directly instead of a
+   binding (no binding lists logs), so isolating it behind one function
+   keeps that exception contained and independently mockable in tests. Add
+   a Wrangler secret for the account API token this function needs (`AI`
+   alone does not cover it).
 2. Extend `ChatAgent`'s `State` type with `usage: ChatUsageSummary`
    (Section 6.6a), per Spike A's confirmed `setState()` semantics. Implement
    the shared `refreshUsageState()` helper that calls `aggregateForChat()`
    and `this.setState({ usage: {...} })`.
-3. In `ChatAgent`'s `onFinish` callback, per Spike F's confirmed call path:
-   capture the turn's `aiGatewayLogId`; compute the immediate local estimate
-   from `streamText()`'s reported usage and the static per-model pricing
-   table; insert one `chat_usage` row (`cost_source = 'estimated'`) via
-   `insertEstimated()`; call `refreshUsageState()` so the connected client
-   (if any) sees the new total immediately. A turn that never reaches
-   `onFinish` (aborted, errored pre-first-token) must not write a row or
-   call `refreshUsageState()` — verify this explicitly in tests (Failure
-   Modes, Section 11).
+3. In `ChatAgent`'s `onChatMessage`, mint `const correlationId =
+   crypto.randomUUID()` **before** calling `streamText()` and pass it as
+   `gateway.metadata.correlationId` alongside the route's other metadata
+   (Section 6.6, Spike F — `aiGatewayLogId` is `null` for every dynamic-route
+   call and cannot be used). In `onFinish`: compute the immediate local
+   estimate from `streamText()`'s reported usage and the static per-model
+   pricing table; insert one `chat_usage` row (`cost_source = 'estimated'`,
+   `correlation_id = correlationId`) via `insertEstimated()`; call
+   `refreshUsageState()` so the connected client (if any) sees the new total
+   immediately. A turn that never reaches `onFinish` (aborted, errored
+   pre-first-token) must not write a row or call `refreshUsageState()` —
+   verify this explicitly in tests (Failure Modes, Section 11).
 4. Implement `reconcileUsage(payload)` as an Agents SDK scheduled-task
-   handler on `ChatAgent`: call `getLog(gatewayLogId)` per Spike F's
-   confirmed response shape. On success: `reconcileWithGatewayLog()`,
+   handler on `ChatAgent`: call `findLogByCorrelationId(correlationId)`
+   (task 1). On a non-empty result: `reconcileWithGatewayLog()` (mapping the
+   log row's `tokens_in`/`tokens_out`/`cost` — **not**
+   `prompt_tokens`/`completion_tokens`/`cost_usd` — onto the `chat_usage`
+   row, and storing the log row's own real `id` into `gateway_log_id`),
    `refreshUsageState()`, then `this.broadcast({ type: "usage_reconciled",
-   chatUsageId, costSource: "gateway" })` (Section 6.6a). On a
-   not-yet-available result: increment `reconcile_attempts` and reschedule
-   with backoff up to the bounded attempt count from Section 6.6. On
-   exhausting that count: leave the row `estimated` and broadcast
+   chatUsageId, costSource: "gateway" })` (Section 6.6a) — this branch
+   covers a failed-but-logged turn identically to a successful one (Spike F:
+   a failed dynamic-route call still produces its own correlatable,
+   `cost: 0` row). On an **empty** result (the "not yet available" signal
+   for this path — there is no thrown error or `404` the way `getLog()` has
+   for an unknown id): increment `reconcile_attempts` and reschedule with
+   backoff up to the bounded attempt count from Section 6.6. On exhausting
+   that count: leave the row `estimated` and broadcast
    `{ type: "usage_reconcile_exhausted", chatUsageId }` so a connected
    client can settle any "still checking" UI state. If the row's chat/
    target no longer exists, exit without error and without broadcasting
    (Section 11). Schedule the first attempt from `onFinish` with
-   `this.schedule()` using Spike F's measured initial delay.
+   `this.schedule(10, "reconcileUsage", { chatUsageId, correlationId })`
+   (Spike F's measured 10s initial delay), backing off by +15s per retry.
 5. `GET /api/chats` (the sidebar's directory listing, Phase 3) continues to
    read the same `aggregateForChat()`-shaped totals **and** per-chat
    `cost_source` mix from D1 for chats that are not the currently-open one
@@ -1160,28 +1494,32 @@ for a short utterance.
 estimated-row-per-completed-turn invariant, no-row-on-abort/error
 invariant, `aggregateForChat()` correctness, `reconcileUsage()`'s success/
 not-yet-available/exhausted-retries/target-deleted branches (each
-independently testable against a fake `getLog()`), and that `setState()`/
-`broadcast()` are called with the expected payloads for each branch (a
-fake/spy `Agent` base, not a real WebSocket, per Spike A's confirmed
-testing seam). `client` — `useChatAgent`'s `state.usage` reactivity, the
-two broadcast event handlers, badge/confirmation-indicator rendering, and
-that a client connecting fresh sees the correct totals from `state`
-hydration alone (mocked `AgentClient`). `integration` — a full turn over a
-real WebSocket connection produces exactly one `estimated` usage row
-immediately **and** a `state` update the connected test client observes;
-a simulated successful `getLog()` reconciliation flips the row to `gateway`
-with its (deliberately different, so the test can distinguish the two)
-reported numbers **and** delivers the `usage_reconciled` broadcast to the
-connection; a simulated permanently-unavailable log leaves the row
-`estimated`, exhausts the bounded retry count, and delivers
-`usage_reconcile_exhausted`; an aborted turn produces zero rows and no
-state update; a chat deleted between scheduling and reconciliation does
-not error the scheduled task and does not broadcast to a now-nonexistent
-connection.
+independently testable against a fake `findLogByCorrelationId()` — an
+injected `fetch` seam around the one REST call this phase makes, per
+Spike C's confirmed "wrap the seam in a closure, inject a fake
+implementation" testing pattern, not a fake `getLog()`, since this path
+never calls it), and that `setState()`/`broadcast()` are called with the
+expected payloads for each branch (a fake/spy `Agent` base, not a real
+WebSocket, per Spike A's confirmed testing seam). `client` —
+`useChatAgent`'s `state.usage` reactivity, the two broadcast event
+handlers, badge/confirmation-indicator rendering, and that a client
+connecting fresh sees the correct totals from `state` hydration alone
+(mocked `AgentClient`). `integration` — a full turn over a real WebSocket
+connection produces exactly one `estimated` usage row immediately **and**
+a `state` update the connected test client observes; a simulated
+successful logs-list response (a non-empty result matching the turn's
+`correlation_id`) flips the row to `gateway` with its (deliberately
+different, so the test can distinguish the two) reported numbers **and**
+delivers the `usage_reconciled` broadcast to the connection; a simulated
+permanently-empty logs-list response leaves the row `estimated`, exhausts
+the bounded retry count, and delivers `usage_reconcile_exhausted`; an
+aborted turn produces zero rows and no state update; a chat deleted
+between scheduling and reconciliation does not error the scheduled task
+and does not broadcast to a now-nonexistent connection.
 
 **Definition of done**: every chat visibly and correctly tracks its own
 cost; the ledger is provably exact against a scripted fake model's usage
-numbers **and** a scripted fake `getLog()` response; a connected client
+numbers **and** a scripted fake logs-list response; a connected client
 sees both the immediate estimate and the later reconciliation update
 without reloading or polling, driven entirely by `setState()`/`broadcast()`;
 the UI never presents an estimated figure as if it were AI-Gateway-confirmed.
@@ -1326,10 +1664,15 @@ URL (it works) and a disallowed one (it is visibly, gracefully refused).
 ### Phase 11 — Feature: Personal And Enterprise Skills (US-10) (tag: `phase-11-skills`)
 
 1. Add the `skills` D1 migration.
-2. Per Spike D's decision: either wire the real `@cloudflare/think`
-   Agent Skills mechanism into `ChatAgent` (if found composable), or
-   implement the hand-rolled `activateSkill` tool + catalog-in-system-prompt
-   + fetch-on-demand-from-R2 design the spike prototyped.
+2. Per Spike D's decision (`spikes/03-agent-skills-composability/REPORT.md`):
+   wire the released `agents/skills` mechanism into `ChatAgent` — a
+   `SkillRegistry` over one or more `r2()` sources, `registry.systemPrompt()`
+   awaited to completion *before* `registry.tools()` is called (never
+   concurrently — see the spike's report for the bug this ordering avoids),
+   both slotted into the existing `streamText()` call's `system`/`tools`.
+   Use `r2()`'s `options.skills` allow-list (or two separate `SkillSource`s)
+   to scope personal vs. enterprise visibility per caller (step 4 below).
+
 3. `POST /api/skills` (personal, `owner_email` = caller) and
    `POST /api/admin/skills` (enterprise, `owner_email = NULL`, admin-only),
    each accepting an upload or a URL source, storing content in R2 and a
@@ -1479,12 +1822,12 @@ to.
   already removed.
 - **Two `env.AI` calls are in flight in the same `ChatAgent` instance close
   together** (for example the main turn and Phase 3's auto-title
-  generation). If Spike F finds `env.AI.aiGatewayLogId` reflects only "the
-  most recent call" and can be clobbered by an interleaved one, the demo
-  must serialize such calls (capture the log ID synchronously immediately
-  after the relevant `run()`/`streamText()` resolves, before starting any
-  other AI call in that instance) rather than risk attributing one turn's
-  cost to another's log ID.
+  generation). Spike F confirmed this needs no special handling: each
+  call's own freshly minted `correlationId` (Section 6.6) has no shared
+  mutable state for concurrent calls to race on, unlike the rejected
+  "read `env.AI.aiGatewayLogId` off the binding instance" approach might
+  have — live-verified with 5 concurrent calls resolving to 5 distinct,
+  correctly attributed log rows, twice, zero cross-talk.
 - **`reconcileUsage()`'s `broadcast()` call runs with no client currently
   connected** to that chat (the user closed the tab, or is viewing a
   different chat). This must be a safe no-op — the reconciliation still
@@ -1607,17 +1950,20 @@ to.
 - **Whether mid-chat route switching is allowed** — a product decision, not
   a technical unknown; Phase 4 should record whichever choice is made and
   why in `EXPLAIN-DEMO.md`.
-- **Whether `env.AI.aiGatewayLogId`/`getLog()` are reachable at all through
+- ~~Whether `env.AI.aiGatewayLogId`/`getLog()` are reachable at all through
   `workers-ai-provider`'s `streamText()` integration, and whether a dynamic
   route name can be passed as the `AI` binding's model argument in the
-  first place** — resolved by Spike F; if a dynamic route can only be
-  called through the OpenAI-compatible HTTP endpoint rather than the `AI`
-  binding, Section 6.6's reconciliation mechanism needs to be rebuilt
-  around whatever log-ID mechanism that endpoint exposes instead, before
-  Phase 6 starts.
-- **The measured lag between a turn completing and `getLog()` returning
-  populated data**, which sets Phase 6's `this.schedule()` delay and
-  backoff — resolved by Spike F, not guessed at in this document.
+  first place~~ — **resolved by Spikes B and F**: a dynamic route name works
+  fine as the `AI` binding's model argument (no OpenAI-compatible HTTP
+  endpoint detour needed), but `aiGatewayLogId`/`getLog()` alone cannot
+  identify a specific dynamic-route call's log row; Section 6.6's
+  reconciliation mechanism is a per-turn correlation UUID matched against
+  the logs-list REST API instead (Spike F).
+- ~~The measured lag between a turn completing and `getLog()` returning
+  populated data, which sets Phase 6's `this.schedule()` delay and
+  backoff~~ — **resolved by Spike F**: 267 ms–4,731 ms across 11 real
+  trials (~2.2 s average); Phase 6 schedules the first reconciliation
+  attempt at 10 s, then retries at +15 s twice.
 - **Exact correlation key between a `chat_files` row and the `chat_usage`
   row(s) that produced it**, needed for Phase 12's per-file cost export —
   Phase 9 should decide this when `chat_files` is designed, not defer it to

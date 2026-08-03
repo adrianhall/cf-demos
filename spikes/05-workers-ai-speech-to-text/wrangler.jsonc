@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "spike-05-workers-ai-speech-to-text",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-07-29",
+  // `workers_dev`/`preview_urls` are left at their schema defaults (both effectively `true` with
+  // no `routes`/custom domain configured) — this spike needs a real public `*.workers.dev`
+  // hostname to drive over (Section 8, and Spike A's "env.AI needs a real deployment" correction
+  // below), fronted by the bypass Access application `infra/main.tf` creates.
+  //
+  // Workers AI has no local simulator (docs/05-AI-CHAT.md, "Workers AI Has No Local Simulation";
+  // docs/DECISIONS.md #9) and, per Spike A's correction (docs/06-AGENTIC-CHAT.md, Section 8),
+  // `wrangler dev`'s remote-binding proxy for `env.AI` cannot complete on this account at all —
+  // so this binding is declared for `wrangler deploy` only; this spike is never run with
+  // `wrangler dev`. `remote` must be `true` explicitly — Cloudflare errors on `false` and warns
+  // (while still connecting remotely) if omitted.
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  }
+}

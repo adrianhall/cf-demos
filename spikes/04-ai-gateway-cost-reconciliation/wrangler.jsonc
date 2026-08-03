@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "spike-04-ai-gateway-cost-reconciliation",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-07-29",
+  // A real deployment, not `wrangler dev` — this account's `env.AI` remote-binding proxy cannot
+  // complete inside `wrangler dev` (Spike A's finding: it depends on an account-level endpoint
+  // gated by this account's Zero Trust posture), and `env.AI.gateway(id).getLog()` is itself a
+  // Workers Runtime binding feature with no plain-HTTP equivalent, so it can only be observed
+  // against a deployed Worker's own public hostname, fronted by the Access bypass application
+  // `infra/` provisions per Section 8's second spike category.
+  "workers_dev": true,
+  // Workers AI has no local simulator (docs/05-AI-CHAT.md, "Workers AI Has No Local Simulation";
+  // docs/DECISIONS.md #9): this binding always reaches the real account. `remote` must be `true`
+  // explicitly. The AI Gateway itself is chosen per-call via `env.AI.run()`'s own
+  // `gateway: { id }` option, not by this binding declaration.
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  }
+}

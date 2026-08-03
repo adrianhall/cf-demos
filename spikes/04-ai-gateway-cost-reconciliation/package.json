@@ -1,0 +1,26 @@
+{
+  "name": "@cf-spikes/04-ai-gateway-cost-reconciliation",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
+  },
+  "scripts": {
+    "generate:types": "wrangler types",
+    "predeploy": "npm run generate:types",
+    "deploy": "wrangler deploy",
+    "check:types": "tsc --noEmit",
+    "probe": "node --env-file=../../.env scripts/probe.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "typescript": "^7.0.2",
+    "wrangler": "4.115.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20260722.1": true
+  }
+}

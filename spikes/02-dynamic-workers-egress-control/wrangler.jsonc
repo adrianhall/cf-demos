@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "spike-02-dynamic-workers-egress-control",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-07-29",
+  // Worker Loader binding (docs/06-AGENTIC-CHAT.md Section 6.7, Spike C's aim): provides
+  // env.LOADER, through which the Worker (and, this spike's central question, a Durable Object
+  // sharing this same env) can create Dynamic Workers. Unlike `ai`/D1/R2/KV, this binding is not
+  // a proxy to an external account-level resource — see README.md's finding that it therefore
+  // needs no `remote: true` and works fully inside `wrangler dev` with no deployment.
+  "worker_loaders": [{ "binding": "LOADER" }],
+  "durable_objects": {
+    "bindings": [{ "name": "TOOL_RUNNER", "class_name": "ToolRunner" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ToolRunner"] }]
+  // No `enable_ctx_exports` compatibility flag needed: per
+  // developers.cloudflare.com/workers/configuration/compatibility-flags (#enable-ctxexports),
+  // `ctx.exports` has been on by default for any compatibility_date >= 2025-11-17, well before
+  // this spike's date.
+}

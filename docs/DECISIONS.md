@@ -202,3 +202,531 @@ frame appear even without it — do not treat its absence elsewhere as proof usa
 Demos 6 and 7 build directly on the adapter registry this spike shaped; reuse `readChunk()`'s
 choices-shape-first-then-response-fallback pattern and the "last usage chunk wins" extraction rule
 rather than rediscovering either.
+
+## NEW DECISIONS
+
+New decisions will be located below here before they are incorporated, and moved above this
+heading when they have been incorporated.
+
+## 11. `AIChatAgent` + Workers AI + AI Gateway end-to-end findings (`spikes/00-aichatagent-basics`,
+    docs/06-AGENTIC-CHAT.md Spike A)
+
+Full report: `spikes/00-aichatagent-basics/REPORT.md`. Access mechanism used: option 1 (a
+minimal, spike-scoped Terraform config reusing the `dotenv` provider and AGENTS.md's bypass-policy
+shape verbatim) — worked without friction; nothing about a `*.workers.dev` domain (vs. a custom
+domain) needed special handling in the Access application resource itself.
+
+**This account's Zero Trust posture blocks `wrangler dev`'s remote-binding proxy for `env.AI`, not
+only inbound HTTPS to a deployed Worker.** docs/06-AGENTIC-CHAT.md's Section 8 originally assumed a
+spike using only a remote binding (no deployed public endpoint) needs neither Terraform nor Access,
+mirroring demo 5's "Workers AI Has No Local Simulation" finding. On this account, `wrangler dev`'s
+own "Establishing remote connection…" step for `env.AI` never completed — the remote-binding proxy
+itself apparently depends on an account-level Cloudflare endpoint this account's posture gates
+behind Access, so a purely local session has no way to authenticate through it. The workaround was
+to deploy for real and drive the Worker over its own bypass-fronted public hostname instead (Section
+8's second bullet). Future spikes (and local development for the demo itself, if this holds beyond
+`wrangler dev`) needing a live `env.AI` call should expect to need a real deployment on this account
+specifically — this may be an account-level SASE/Gateway policy peculiarity rather than a general
+Cloudflare platform fact, so re-verify on a different account before generalizing further.
+
+**An AI Gateway `gateway: { id }` must reference an already-provisioned gateway; only the literal id
+`"default"` auto-provisions.** Cloudflare's own docs ("AI Gateway automatically creates a default
+gateway on the first authenticated request") read as if any id would auto-provision on first use.
+Passing an arbitrary custom id through `workers-ai-provider`'s `gateway: { id }` option that had
+never been created failed with `AI_APICallError: 2001: Please configure AI Gateway in the
+Cloudflare dashboard` until the gateway was created via `POST
+/accounts/{account}/ai-gateway/gateways` first. Any demo or spike relying on a named (non-`default`)
+AI Gateway must provision it as real infrastructure before first use — do not assume auto-creation
+for anything but the literal id `"default"`.
+
+**`workers-ai-provider` normalizes streaming *transport* shape to the AI SDK's UI-message-stream
+protocol uniformly across models, but does not lift an inline-`<think>`-tag reasoning model's
+reasoning into a distinct message part.** Driving both a non-reasoning model
+(`@cf/ibm-granite/granite-4.0-h-micro`) and demo 5's `inline-think-tags` reasoning model
+(`@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`, docs/DECISIONS.md #10) through the identical
+`streamText()` call produced the identical, clean event sequence (`start → start-step → text-start →
+text-delta × N → text-end → finish-step → finish`) for both — confirming the provider absorbs the
+raw-Workers-AI-native shape divergence #10 found when calling `env.AI.run()` directly. However, the
+DeepSeek model's `<think>...</think>` block still arrived as ordinary `text-delta` content, exactly
+as it does at the raw Workers AI layer — there is no distinct `reasoning`/`reasoning-delta` UI part
+for this model through this provider. Any demo wanting a "Thinking" panel for an
+`inline-think-tags`-mechanism model must still split it out itself (reuse
+`demos/ai-chat/src/worker/chat/reasoning.ts`'s approach); `workers-ai-provider` is not a substitute
+for it. Untested: whether a `reasoning-field`-mechanism model (`glm-4.7-flash`, `gemma-4-26b-a4b-it`)
+fares differently through this provider.
+
+**`AIChatAgent`'s WebSocket wire protocol is undocumented outside its React-only client build, and
+its streaming-response `body` is not classic SSE framing.** No framework-agnostic helper for
+constructing an `AIChatAgent` chat turn is exported — `@cloudflare/ai-chat/react`'s `useAgentChat`
+is the only shipped client, and it is React-only (re-exporting `agents/chat/react`, unusable in a
+Vue app per AGENTS.md). The protocol itself was reverse-engineered from `agents/dist/chat/index.d.ts`'s
+exported (not `@internal`) `parseProtocolMessage()`/`ChatProtocolEvent`/`CHAT_MESSAGE_TYPES` and
+confirmed live: a client sends one `{"type":"cf_agent_use_chat_request","id":"<uuid>",
+"init":{"method":"POST","body":"<json>"}}` frame per turn; the server replies with one or more
+`{"type":"cf_agent_use_chat_response","id":"<same uuid>","body":"<chunk>","done":boolean}` frames.
+Critically, `body` is **not** `data: {...}` SSE framing — it is the raw `toUIMessageStreamResponse()`
+body text forwarded byte-for-byte, which in practice arrives as bare, back-to-back JSON objects with
+no `data:`/`event:` prefix at all. Any hand-rolled client (this demo's planned
+`useChatAgent.ts` Vue composable, per docs/06-AGENTIC-CHAT.md Section 6.2a) must concatenate `body`
+chunks by `id` until `done: true` and parse the resulting text as bare JSON objects, not as SSE.
+`AgentClient` itself (`agents/client`) remains genuinely framework-agnostic (extends `PartySocket`
+extends `ReconnectingWebSocket`, no React anywhere in that chain) and is the right transport to
+build this on — its own message handling only intercepts `cf_agent_identity`/`cf_agent_state`/
+`cf_agent_state_error`/`rpc` frames and passes the chat frames above through untouched.
+
+**`setState()` is a full state replacement, not a merge; `AIChatAgent` never occupies the `State`
+generic.** Confirmed by reading the installed `agents` package: `Agent.prototype.setState(state:
+State)` (not `Partial<State>`) does `this._state = nextState` — full replacement — and broadcasts to
+every other connected client (the originating client, if the call came from a client `setState()`,
+is excluded — it already applied its own value optimistically). Any demo composing a `State` shape
+from multiple independently-updated pieces (docs/06-AGENTIC-CHAT.md Section 6.6a's
+`refreshUsageState()`) must always write the complete object. Separately, `AIChatAgent` backs
+`this.messages` entirely with its own dedicated SQLite tables, never `this.state`/`setState()`, so a
+demo-defined `State` shape can safely use the whole generic.
+
+**Installing `@cloudflare/ai-chat` pulls in `react`/`@ai-sdk/react` even for server-only use, but
+this is inert.** `@cloudflare/ai-chat`'s `package.json` lists `react`/`@ai-sdk/react` as required
+(non-optional) peer dependencies, unlike `agents`, which marks its own React-adjacent peers optional.
+`npm install` auto-installs them even when only the main (non-React) entry is ever imported. Reading
+the compiled bundle confirms the main entry's code never imports React — only the separate
+`/react` subpath does — so this costs `node_modules` weight only, never a deployed bundle or runtime
+concern, as long as `@cloudflare/ai-chat/react`/`agents/react`/`agents/chat/react` are never
+imported.
+
+## 12. Dynamic Workers `globalOutbound` egress-control findings (`spikes/02-dynamic-workers-egress-control`,
+    docs/06-AGENTIC-CHAT.md Spike C)
+
+Full report: `spikes/02-dynamic-workers-egress-control/REPORT.md`. Unlike Spike A, this spike
+needed **no deployment, no Terraform, no Cloudflare Access application at all** — everything below
+was confirmed live entirely via `wrangler dev`/`@cloudflare/vitest-pool-workers`.
+
+**`worker_loaders` is not a proxy to an external account resource, so it has no `remote` mode and
+needs no deployment to test for real.** Unlike `env.AI` (Spike A, decision #11) or D1/KV/R2 remote
+bindings, Wrangler's config schema has no `remote: true`/`false` option for `worker_loaders` at
+all — it is a pure `workerd` runtime primitive. `wrangler dev`'s default local mode runs the real
+`workerd` binary, so a Dynamic Worker loaded, executed, and network-gated through `globalOutbound`
+locally is not a separate "simulation" the way KV/D1's local storage or `env.AI`'s remote proxy
+are — it is the same code path production runs. This means a spike (or later, this demo's own
+local development) exercising Dynamic Workers does not need Spike A's "deploy for real and front
+it with a bypass Access application" workaround; Section 8's original "no inbound HTTPS endpoint →
+no Terraform, no Access" framing holds for this binding specifically.
+
+**The Workers Paid plan prerequisite was confirmed for this account without deploying.** `GET
+/accounts/{account_id}` (the same account-scoped API token every demo's Terraform already reads
+from `.env`) reports this account's `"type"` as `"enterprise"` — strictly above the Workers Paid
+tier Dynamic Workers require — corroborated by direct operator confirmation of prior successful
+Dynamic Workers use on this account. Any future demo/spike needing to confirm this prerequisite on
+a different account can reuse this same unauthenticated-by-billing-tier `GET /accounts/{id}` call
+rather than assuming a deployment is required to find out.
+
+**A Durable Object calls `env.LOADER.get()`/`.load()` exactly like a top-level `fetch()`
+handler — no special-casing.** `this.env.LOADER.get(id, callback)` inside a Durable Object method
+worked identically to the top-level-`fetch()`-handler shape Cloudflare's own docs show, confirmed
+live by a real network fetch to `https://example.com/` returning its actual page body through the
+whole chain (Worker `fetch()` → Durable Object → `env.LOADER.get()` → Dynamic Worker →
+`globalOutbound` gateway → real network).
+
+**`ctx.exports` is directly reachable from inside a Durable Object method, with no threading
+required — a genuine surprise `DurableObjectState`'s documented API surface gives no hint of.**
+`DurableObjectState`'s documented properties (`ctx.storage`/`ctx.id`/`ctx.waitUntil`/
+`ctx.blockConcurrencyWhile`/...) do not list `exports` anywhere. Probing it directly inside a
+Durable Object method (`(this.ctx as unknown as { exports?: unknown }).exports`) returned a real,
+usable object, live-verified. A future phase may call `this.ctx.exports.SomeGateway({})` straight
+from a Durable Object if there is ever a reason to skip threading a `ctx.exports`-derived stub in
+as an RPC parameter from the Worker's own `fetch()` call site — this spike's own code still threads
+it in regardless, for the per-request props-scoping reasons `REPORT.md` §5 explains, not because
+the direct path is broken.
+
+**`ctx.exports.<Name>()` requires its options argument — Cloudflare's own egress-control doc
+example (`ctx.exports.HttpGateway()`) is a TypeScript error against the generated type.**
+`wrangler types`' generated `LoopbackServiceStub<T>` type is `Fetcher<T> & (opts: { props?: Props
+}) => Fetcher<T>` — the call signature's `opts` parameter has no default and is not optional, only
+its own nested `props` field is. Compiling the docs' own bare `()` form fails with `TS2554:
+Expected 1 arguments, but got 0`; the correct call is `ctx.exports.EgressGateway({})` when no
+`props` are needed. Any future TypeScript demo code following Cloudflare's JS-only doc examples
+for `ctx.exports` should expect this.
+
+**Storing a bare reference to the global `fetch` function on a plain object and calling it later
+throws `Illegal invocation` inside `workerd` — wrap it in a closure instead.** To make an
+`EgressGateway` unit-testable by injecting a fake `fetch` (see below), this spike first tried
+`export const networkFetch = { impl: fetch }` and later called `networkFetch.impl(request)`. This
+threw live: `Illegal invocation: function called with incorrect \`this\` reference` — workerd's
+native `fetch` requires the global scope as its receiver, and extracting it as a bare value onto
+another object's field loses that implicit receiver (see
+`developers.cloudflare.com/workers/observability/errors/#illegal-invocation-errors`). The fix is
+wrapping it in an arrow function, `{ impl: (request) => fetch(request) }`, so the call site inside
+the arrow function's own body still invokes `fetch` with the correct implicit receiver. Any future
+Worker code that stores a reference to the global `fetch` (or any other native, receiver-sensitive
+API) on a plain object or class field for dependency-injection purposes should wrap it in a closure
+rather than assigning the bare function reference.
+
+**A blocked `globalOutbound` gateway surfaces to the sandboxed Dynamic Worker's own code as a
+thrown exception from `fetch()`, not merely a non-2xx `Response`.** A tool running inside a Dynamic
+Worker whose `globalOutbound` blocks a request must wrap its own `fetch()` call in a `try`/`catch`
+or an agent-side tool call crashes instead of producing a model-visible refusal explanation (US-9's
+acceptance criterion). This spike's `getUrl`-tool stand-in code does this and turns the caught
+exception into an ordinary `502` `Response` carrying the gateway's refusal message.
+
+**Both of Spike C's stated testability questions are confirmed yes, live.** The `EgressGateway` is
+unit-testable with zero real network traffic by mutating the closure-wrapped `networkFetch.impl`
+seam above in a test (an ES module's imported `const` binding cannot be *reassigned* from another
+module, but the object it points to can be *mutated* in place — `networkFetch.impl = fakeFetch`).
+`@cloudflare/vitest-pool-workers` fully supports `worker_loaders`, exercised end to end
+(`ctx.exports` → Durable Object → `env.LOADER` → Dynamic Worker → gateway) via `import { exports }
+from "cloudflare:workers"; await exports.default.fetch(new Request(...))` — the same pattern
+`demos/chat/tests/integration/worker.test.ts` already uses — deliberately against a
+non-allow-listed host so no real network call happens inside the automated test run. Getting this
+running required two setup details easy to miss in a fresh scaffold: `tsconfig.json`'s
+`compilerOptions.types` must include `"@cloudflare/vitest-pool-workers/types"` (alongside `"node"`)
+for `cloudflare:test`/`cloudflare:workers` test-only imports to resolve at all, and manually
+constructing a `WorkerEntrypoint` subclass in a unit test must pass the real `env` object imported
+from `cloudflare:test`, not a bare `{}` — `wrangler types`' generated `Env` interface includes
+every declared binding, so an empty object literal fails `tsc --noEmit`'s structural check against
+it.
+
+## 13. AI Gateway dynamic routing as Terraform infrastructure (`spikes/01-ai-gateway-dynamic-routing`,
+    docs/06-AGENTIC-CHAT.md Spike B)
+
+Full report: `spikes/01-ai-gateway-dynamic-routing/REPORT.md`. Access mechanism used: option 1 (a
+minimal, spike-scoped Terraform config reusing the `dotenv` provider and AGENTS.md's bypass-policy
+shape, matching Spike A) — needed here specifically because `env.AI.aiGatewayLogId`/
+`env.AI.gateway(id).getLog()` are Workers Runtime binding features with no plain-HTTP equivalent,
+so observing them requires a real deployed Worker, not just `wrangler dev` against a remote
+binding.
+
+**The pinned `cloudflare/cloudflare ~> 5.22.0` provider fully supports AI Gateway dynamic
+routing** — `cloudflare_ai_gateway` (the gateway, including `spend_limits` rules) and
+`cloudflare_ai_gateway_dynamic_routing` (one resource per route, with the same
+`start`/`conditional`/`percentage`/`rate`/`model`/`end` element graph the dashboard's own route
+builder uses) are both present in the schema, confirmed by dumping `terraform providers schema
+-json` directly (the public Terraform Registry page renders client-side and could not be scraped).
+No hand-written provisioning script is needed for any of it — but three non-obvious gotchas must
+be worked around, all now baked into `spikes/01-ai-gateway-dynamic-routing/infra/main.tf` and
+`docs/06-AGENTIC-CHAT.md`'s Phase 1 Scaffolding step for later demos to copy verbatim:
+
+- **A model node's `provider` property is renamed `ai_gateway_dynamic_routing_provider` in this
+  Terraform resource's HCL**, diverging from the raw JSON API's own `properties.provider` key
+  (confirmed by reading back this account's pre-existing `demo-gateway`/`actor-model-routing`
+  route). Using the plain `provider` name is silently dropped by `terraform plan` (no diff, no
+  error) and only surfaces as a `400 { "message": "Required", "path": [..., "properties",
+  "provider"] }` at `apply` time, since the real key was never sent.
+- **A conditional node's `conditions` property is a plain Terraform `string` attribute, not a
+  nested object** — the actual JSON API shape (reverse-engineered from the same pre-existing
+  route, since it appears nowhere in the public docs or the generated `cloudflare-typescript` SDK
+  types) is a small Mongo-style query object keyed by dotted metadata path,
+  `{"metadata.<key>": {"$eq": "<value>"}}`. HCL must `jsonencode()` this object into the string
+  attribute. Live-verified this exact syntax actually steers the resolved model by request
+  metadata, not just that `apply` accepts it: `{"metadata.business": {"$eq": "leadership"}}`
+  correctly routed `leadership` calls to one model and every other value to another, cross-checked
+  against the gateway's own logs list. A "rate" node on the same route (`limit`/`window`/
+  `limit_type` properties) was also live-verified to gate a branch: the first N calls within the
+  window reached the intended model, the next calls automatically fell back, no application code
+  involved.
+- **`cloudflare_ai_gateway_dynamic_routing` is not plan-stable after the first `apply`.** The
+  API's `GET .../routes/{id}` response nests the route's element graph one level down, under
+  `version.data` — never at a top-level `elements` field — and this provider version's `Read`
+  does not map it back onto the `elements` attribute. Every subsequent `terraform plan`, even with
+  zero config changes, therefore reads `elements` back empty and proposes destroying and
+  recreating the whole route. Fix: `lifecycle { ignore_changes = [elements] }` on the resource,
+  the same category of narrow, explicit, documented provider-limitation workaround as the
+  bootstrap-deployment exception. Consequence for later phases: this means a deliberate
+  `terraform apply -replace=<route resource>` is required to actually change a route's shape after
+  creation — a plain `apply` will never pick the change up.
+- **`cloudflare_ai_gateway`'s `log_management`/`log_management_strategy`/`zdr`/`logpush` fields
+  must be pinned explicitly in HCL** (to the values the API itself would otherwise default to) —
+  left unset, the API silently fills them in server-side, Terraform reads those values back on the
+  next `plan`, and — since the config still says nothing — proposes removing them, forever.
+
+**Creating a route (`POST .../routes`, what Terraform's `create()` does) auto-versions and
+auto-deploys/activates it in the same call** — confirmed via a raw scratch API call before
+touching Terraform. There is no separate deployment resource or step needed; a route is live and
+callable immediately after `apply` completes.
+
+**Calling a route works identically via `env.AI.run("dynamic/<name>", ..., { gateway: { id,
+metadata } })` (the Workers binding) and via the plain REST `/ai/v1/chat/completions`/`/ai/run`
+endpoints (header `cf-aig-gateway-id`)** — both were live-verified end to end, including the
+conditional and rate-limit routing behavior above.
+
+**`env.AI.aiGatewayLogId` is confirmed `null` for every call whose model argument is a dynamic
+route name, even though it is correctly populated for a literal model ID through the exact same
+gateway.** Reproduced across a dozen-plus real calls, both routes, with and without metadata,
+successful and failed. This is a load-bearing correction to `docs/06-AGENTIC-CHAT.md` Section
+6.6's original cost-reconciliation design, which assumed `aiGatewayLogId` would always be
+available to schedule a `getLog()` reconciliation from — but every real turn from Phase 4 onward
+calls a dynamic route, not a literal model ID. AI Gateway's own logs-list API (`GET
+/accounts/{account}/ai-gateway/gateways/{id}/logs`) does still record a full, correctly-costed
+entry for the resolved underlying model of a successful dynamic-route call (and a separate,
+`cost: 0`/`provider: "unknown"` entry for `model: "dynamic/<route-name>"` itself, but only when
+every branch fails to resolve) — so a correlation-by-query fallback is plausible — but neither the
+`cf-aig-event-id` request header/`gateway.eventId` binding option nor the logs endpoint's own
+`event_id` query filter behaved as documented in this sweep (the header's value never appeared on
+the resulting log row; the query filter did not filter the returned page at all). Demo 6's Spike
+F, which explicitly depends on this spike's findings, must resolve a working log-correlation
+mechanism for a dynamic-route call before Phase 6's reconciliation design can be implemented as
+originally written. Any future demo reading a completed turn's cost back from AI Gateway when the
+model was chosen via a dynamic route should start from this open question, not assume
+`aiGatewayLogId` works.
+
+**`AiGatewayLog`'s real field names are `tokens_in`/`tokens_out` and a plain-number `cost`, not
+`prompt_tokens`/`completion_tokens`** (confirmed identically via both `env.AI.gateway(id).getLog()`
+and the raw REST logs API) — `usage_metadata.input_tokens`/`usage_metadata.output_tokens` is a
+second, differently-named duplicate of the same two figures. `getLog()`'s "not yet available"
+signal is a **thrown** `AiGatewayLogNotFound: Log not found` error, not a `404`-shaped return
+value, a `null` field, or any other non-throwing signal — confirmed live by calling it with a
+made-up id.
+
+**Not every Workers AI catalog model works when invoked through a dynamic route's `model` node —
+this must be spiked per model against a real route, independent of whether the same model works
+called directly.** A sweep of eight models against disposable scratch routes on this account's
+own pre-existing `demo-gateway` found `@cf/ibm-granite/granite-4.0-h-micro` (demo 5's and Spike
+A's own verified non-reasoning pick), `@cf/meta/llama-3.1-8b-instruct`,
+`@cf/meta/llama-3.3-70b-instruct-fp8-fast`, `@cf/meta/llama-4-scout-17b-16e-instruct`,
+`@cf/openai/gpt-oss-120b`, `@cf/zai-org/glm-4.7-flash`,
+`@cf/mistralai/mistral-small-3.1-24b-instruct`, and `@cf/meta/llama-3.2-3b-instruct` **all fail**
+every routed call with `AiGatewayError 2002: Failed to parse model output` (or, for two of them,
+`7003: Model execution failed (Error)`), despite working fine called directly elsewhere in this
+repo. Only `@cf/zai-org/glm-5.2`, `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`,
+`@cf/qwen/qwen2.5-coder-32b-instruct`, and `@cf/google/gemma-4-26b-a4b-it` were confirmed working
+in this sweep. This does not correlate cleanly with `docs/05-AI-CHAT.md`'s declared adapter family
+(`openai-chat` vs. `cf-native`) — `glm-4.7-flash` and `gemma-4-26b-a4b-it` share that family and
+gave opposite results — extending decision #10's "shares an input type does not imply shares an
+output shape" warning to a third layer (the dynamic route's own model-node response adapter, on
+top of a model's raw streaming shape and its non-streaming chat-completions adapter). A future
+demo choosing a dynamic-route model catalog must re-verify it against a real route rather than
+reusing a prior demo's direct-call catalog.
+
+## 14. Workers AI speech-to-text input contract and a `workers-ai-provider`/platform contradiction
+    for nova-3 (`spikes/05-workers-ai-speech-to-text`, docs/06-AGENTIC-CHAT.md Spike E)
+
+Full report: `spikes/05-workers-ai-speech-to-text/REPORT.md`. Access mechanism used: option 1 (a
+minimal, spike-scoped Terraform config reusing the `dotenv` provider and AGENTS.md's bypass-policy
+shape, matching Spike A) — needed because this spike calls `env.AI.run()` for real transcription,
+and per decision #11, `env.AI` needs a real deployment on this account rather than `wrangler dev`'s
+remote-binding proxy.
+
+**`@cf/openai/whisper-large-v3-turbo` accepts a browser `MediaRecorder`'s raw
+`audio/webm;codecs=opus` output directly, with no client-side conversion — the same base64-string
+`env.AI.run()` call works identically for both a `MediaRecorder`-shaped WebM/Opus fixture and a
+client-side-converted WAV file.** Both fixtures (the same underlying ~12-second utterance) returned
+byte-for-byte-equivalent transcriptions and, tellingly, an **identical** decoded
+`transcription_info.duration` — proving the model decodes the Opus-in-WebM container correctly
+rather than misreading or truncating it. Any future demo needing browser-captured speech-to-text
+should post the `MediaRecorder` Blob straight through; there is no reason to add a client-side
+transcoding step (ffmpeg-WASM or otherwise) for this model.
+
+**`@cf/deepgram/nova-3` is not currently usable for transcription via the `env.AI` Workers binding
+on this account — `workers-ai-provider@4.0.0`'s own shipped implementation for this model is
+live-rejected by the platform.** The provider's `runNova3()` sends `{ audio: { body:
+base64String, contentType } }` for the binding path; this exact shape, live-verified through three
+independent call routes (this spike's own direct binding call, the same call with `body` as a raw
+non-base64 `Uint8Array`, and `workers-ai-provider`'s own `experimental_transcribe()`), fails every
+time with `5006: Error: required properties at '/audio' are 'body,contentType'`. A direct REST API
+call with the identical JSON body reproduces the same error, ruling out an account/gateway-specific
+cause. The only shape that actually works for nova-3 is the REST endpoint's raw-binary-body upload
+(`Content-Type: audio/wav`, the audio's real bytes as the HTTP body, no JSON wrapper) — a
+fundamentally different upload mechanism the `env.AI` binding (JSON-serializable inputs only)
+cannot reach at all. Any future demo evaluating nova-3 via the Workers binding should expect this
+failure and either use `whisper-large-v3-turbo` instead or call nova-3 through a REST fetch with a
+raw binary body (accepting the loss of AI Gateway request/response binding integration that
+implies) — and this is worth reporting upstream to Cloudflare/`workers-ai-provider`, since the
+provider's own compiled code does not work against its own platform's current schema validation
+for this one model.
+
+**`ai@7.0.48`'s `experimental_transcribe()`/`transcribe()` has no `mediaType` parameter at all**,
+contradicting a Cloudflare `workers-ai-provider` changelog example
+(`developers.cloudflare.com/changelog/post/2026-02-13-glm-4.7-flash-workers-ai/`) that shows
+`experimental_transcribe({ ..., mediaType: "audio/wav" })`. Reading `node_modules/ai/dist/index.js`
+confirms the SDK now derives media type itself via magic-byte sniffing over the raw audio bytes
+(`@ai-sdk/provider-utils`' `detectMediaType()`, whose signature table includes `audio/webm` keyed
+on the EBML magic bytes `[0x1A, 0x45, 0xDF, 0xA3]`) — never from the caller's HTTP `Content-Type`
+header. Passing `mediaType` to `experimental_transcribe()` against this pinned `ai` version fails
+`tsc --noEmit` immediately (a real type error, not a silently-ignored option), so this is a
+low-severity but real doc/SDK-version-drift trap: any future demo following that changelog example
+verbatim against a current `ai` install will not compile.
+
+**`experimental_transcribe()`'s normalized output silently drops Whisper's per-word timestamps.**
+The raw `env.AI.run()` response's `segments[].words[]` array (used for word-level highlighting) is
+present in the raw binding response but absent from `workers-ai-provider`'s normalized
+`TranscriptionResult` — confirmed by reading `normalizeWhisperResponse()`, which maps only
+`{ text, startSecond, endSecond }` per segment for turbo (the per-segment `words[]` fallback exists
+only for classic `@cf/openai/whisper`'s flatter output shape). A future phase wanting word-level
+highlighting must call `env.AI.run()` directly rather than `experimental_transcribe()`.
+
+**The older `@cf/openai/whisper` model also tolerates a WebM/Opus container fed as a raw byte
+array** (`{ audio: Array.from(bytes) }`, Cloudflare's own documented shape for this model), not
+only genuinely raw PCM/WAV — but its transcription quality is measurably worse (incorrect brand
+capitalization, dropped punctuation) and its model-call latency measurably higher than the turbo
+model's, for the same audio, in this spike's repeated live comparisons. Combined with nova-3's
+binding failure above, this leaves `whisper-large-v3-turbo` as the clear, doubly-confirmed choice
+for this demo's dictation feature.
+
+## 15. The released Agent Skills mechanism composes with `AIChatAgent` directly — once a real
+    `SkillRegistry` load-ordering bug is avoided (`spikes/03-agent-skills-composability`,
+    docs/06-AGENTIC-CHAT.md Spike D)
+
+Full report: `spikes/03-agent-skills-composability/REPORT.md`. Access mechanism used: option 1 (a
+minimal, spike-scoped Terraform config reusing the `dotenv` provider and AGENTS.md's bypass-policy
+shape, matching Spike A) — needed for the same reason as Spike A: a live, tool-calling `env.AI`
+turn cannot be exercised through `wrangler dev`'s remote-binding proxy on this account
+(decision #11).
+
+**The released Agent Skills mechanism lives in the `agents` package's own `agents/skills` subpath
+export, not `@cloudflare/think`, and is unrelated to the `agents:skills` Vite-plugin virtual
+module of the same-looking name.** `docs/06-AGENTIC-CHAT.md`'s own prior framing (and this spike's
+original aim) assumed the mechanism was `@cloudflare/think`-specific, reachable via an
+`agents:skills` import. Source-verified: `agents:skills` is a **build-time-only** virtual module
+(`agents/skills-module.d.ts`'s own doc comment: resolved by the Agents *Vite plugin* for a
+*bundled* skill directory) — a different, narrower thing from the actual runtime mechanism, which
+is `agents/skills`'s exported `SkillRegistry` class plus source factories (`r2()`, `fromManifest()`,
+`runner()`). `@cloudflare/think` merely also imports this subpath internally; it has no dependency
+on `Think` at all. Any future demo wanting R2-backed, runtime-discovered skills (not skills bundled
+at build time) should import `agents/skills` directly, never `agents:skills`.
+
+**`SkillRegistry.tools()` reads its descriptor map synchronously and does not itself await
+`.load()` — calling it concurrently with `registry.systemPrompt()` silently returns an empty tool
+set, with no error or warning.** This is a real bug this spike hit, not a hypothetical: writing the
+natural-looking `const [catalogPrompt, skillTools] = await Promise.all([registry.systemPrompt(),
+registry.tools()])` evaluates `registry.tools()` **synchronously at call time**, before either
+promise in the array is awaited — so it always runs before `.systemPrompt()`'s internal `.load()`
+(a real, awaited R2 `list()`/`get()` round trip) has populated the registry's descriptor map,
+deterministically, every time, not flakily. The result: `.tools()` returns `{}` (source-verified:
+`tools.activate_skill = tool(...)` is only assigned `if (modelSkillNames.length > 0)`), while
+`.systemPrompt()` still correctly describes the skill and instructs the model to "use
+activate_skill" — so the model, given an instruction to use a tool that does not actually exist,
+narrates the tool call as plain text instead of invoking it (`"activate_skill
+cloudflare-spike-fact"` verbatim, with no structured `tool-call` stream part at all). **The fix is
+sequential, not concurrent, resolution**: `const catalogPrompt = await registry.systemPrompt();
+const skillTools = registry.tools();` — awaiting the catalog to completion first, then calling
+`.tools()` afterward. With that fix, the plain, single-`streamText()`-call design (`system:
+[persona, catalogPrompt].join(...)`, `tools: skillTools`, no forced `toolChoice`) worked correctly
+on the first live try: a skill-matching question correctly chained `activate_skill` →
+`read_skill_resource` → a final answer containing a real R2-stored fixture value the model had no
+other way to know, and an unrelated question correctly triggered no tool call at all. Any future
+Worker code combining an async "describe what's available" call with a synchronous "get the actual
+callable thing" call on the same lazily-loaded object should suspect this same ordering trap if the
+synchronous call appears to return successfully but as if nothing were registered.
+
+**This bug's symptom (narrated-text-instead-of-a-tool-call) is easy to misdiagnose as a model or
+streaming-provider reliability problem, because `workers-ai-provider` has a real, separate
+mechanism for a superficially identical symptom.** Before finding the actual cause above, this
+spike spent real effort suspecting `workers-ai-provider`'s streaming tool-call handling itself,
+because its own source comments name a "gpt-oss harmony quirk" where a *forced* tool call can
+stream as buffered text instead of structured tool-call parts, recovered by a `salvageToolCallsFromText`
+function gated on `isForcedToolChoice` (`toolChoice: "required"` or a named-tool form) — never on
+the default, unforced `"auto"` choice a conditionally-activated tool like `activate_skill` needs.
+This salvage mechanism is real and confirmed live (a hand-rolled tool forced via `toolChoice: {
+type: "tool", toolName: ... }` streamed correctly across three consecutive forced steps), and is
+worth knowing for any future design that must force a tool choice on a Workers AI model for a
+different reason — but it was not the cause of this spike's failure, which reproduced identically
+across streaming and non-streaming calls, forced and unforced, and three different models, right up
+until the `Promise.all` race above was fixed. A future spike or phase hitting "the model narrates
+my tool call as text instead of calling it" should check for this ordering trap (if a `SkillRegistry`
+or similarly lazily-loaded tool source is involved) before assuming it needs `workers-ai-provider`'s
+forced-choice salvage path.
+
+**`agents/skills` unconditionally imports `@cloudflare/codemode` and `just-bash` at module top
+level, even when only `activate_skill`/`read_skill_resource` are used**, adding a measured +58% raw
+/ +71% gzip to the deployed bundle size versus an otherwise-identical Worker with no skills (2840.87
+KiB / 533.70 KiB gzip without, 4479.79 KiB / 912.45 KiB gzip with) — both packages are used only by
+the `worker_loaders`-backed `runner()` factory (`run_skill_script`), never called by this spike, but
+imported regardless (source-verified: `agents/dist/skills/index.js`'s own top-of-file imports).
+Both totals stay well under either Workers plan's compressed-size ceiling, so this is not a
+deployability blocker, but any future demo adopting `agents/skills` for only its catalog/activation
+tools (not script execution) pays this cost with nothing to show for it — worth factoring into a
+bundle-size budget if a demo is already close to a plan ceiling for other reasons.
+
+## 16. AI Gateway cost/log reconciliation for a dynamic-route call — a per-turn correlation UUID
+    against the logs-list REST API, not `aiGatewayLogId`/`getLog()` (`spikes/04-ai-gateway-cost-reconciliation`,
+    docs/06-AGENTIC-CHAT.md Spike F)
+
+Full report: `spikes/04-ai-gateway-cost-reconciliation/REPORT.md`. Access mechanism used: option 1
+(a minimal, spike-scoped Terraform config reusing the `dotenv` provider and AGENTS.md's
+bypass-policy shape, matching Spikes A and B) — needed for the same reason as those two: a live
+`env.AI.run()` call has no local remote-binding simulation on this account (decision #11), and
+`env.AI.gateway(id).getLog()` is itself a Workers Runtime binding feature with no plain-HTTP
+equivalent.
+
+**Decision #13 already established `env.AI.aiGatewayLogId` is `null` for every dynamic-route
+call. This spike found the working replacement**: mint a fresh `crypto.randomUUID()` immediately
+before `env.AI.run()`, attach it as `gateway.metadata.correlationId`, and afterward query
+`GET /accounts/{account}/ai-gateway/gateways/{id}/logs` with
+`filters=[{"key":"metadata.value","operator":"eq","value":["<uuid>"]}]` — live-verified with
+**zero misses across 11 sequential trials and 10 concurrent calls**. Two real gotchas in the
+`filters` query parameter, confirmed by testing directly against the account's pre-existing
+`demo-gateway` before ever touching this spike's own gateway:
+
+- **The Cloudflare API reference documents this `filters` parameter** (an array of
+  `{ key, operator, value }` objects), but the narrative AI Gateway logging docs page does not
+  mention it at all — only the dashboard's own filter UI. It must be sent as **one query
+  parameter whose value is a single JSON-encoded array string** —
+  `filters=[{"key":"model","operator":"eq","value":["..."]}]` — not the bracket-notation encoding
+  several other Cloudflare list endpoints accept (`filters[0][key]=...`), which is **silently
+  ignored with no error and no filtering whatsoever** (confirmed by comparing
+  `result_info.total_count` with and without it — identical both times).
+- **`value` must be a JSON array even for a single-value equality check** — a bare string fails
+  validation (`{"errors":[{"code":7001,"message":"Expected array, received string", "path":
+  ["query","filters",0,"value"]}]}`); wrapping it in `[...]` succeeds. `per_page` also has an
+  undocumented (in the narrative docs) hard ceiling of `50`.
+
+**`metadata.key` and `metadata.value` are separate, independently-applied existence checks
+across a log row's whole metadata map — they are not paired to the same entry**, despite reading
+as if they should be. Live-proven: filtering `metadata.key = "team"` (present on essentially every
+row in a real dataset) **and** `metadata.value = "agent-lead-enrichment"` (a value that, in that
+same dataset, only ever appears under the *different* key `actor_id`, never under `team`) returned
+the exact same row count as filtering `metadata.value` alone — proving the `key` filter added zero
+restriction. **Consequence for any future correlation design using this endpoint**: only a value
+that is already globally unique on its own (a per-turn UUID) is safe to filter on this way: a
+reused identifier (a chat ID, a segment name) is not, even paired with a `metadata.key` filter
+naming the field it is supposed to live under, since that pairing is not enforced. Cross-field
+filters (different top-level `key`s in the array, for example `model` + `metadata.value`) genuinely
+ARE ANDed together correctly — this lack of pairing is specific to the two `metadata.*` sub-filters
+interacting with each other. `eq` is a true exact match, not a substring match (confirmed: filtering
+`metadata.value = "agent"` never matched a row whose only metadata value was the longer string
+`"agent-lead-enrichment"`).
+
+**`gateway.eventId`/`cf-aig-event-id` re-tested with the corrected `filters` query shape (in case
+decision #13's negative result was a query-syntax problem) and confirmed, again, not to work at
+all** — the resulting log row's own `event_id` field is still always empty. This is a true
+negative, not a syntax issue: every other filter in this spike's testing worked correctly with the
+same query shape. The `metadata`-based correlation above is not a second-best fallback; it is the
+only mechanism either spike found that works.
+
+**Concurrency is safe with no serialization required.** Five `env.AI.run()` calls fired via
+`Promise.all` inside one Worker invocation, each with its own UUID, correlated to five distinct
+log rows with zero cross-talk — reproduced twice (10/10 total). This holds because the correlation
+mechanism (a globally unique value, exact-matched) has no shared mutable state for concurrent calls
+to race on.
+
+**Measured reconciliation lag is low seconds, not the multi-second-to-minutes "eventually
+consistent" figure `docs/06-AGENTIC-CHAT.md` originally hedged about** (that hedge was AI
+Gateway's own docs describing *spend limits* specifically, not logged cost data): 267 ms–4,731 ms
+across 11 real trials (~2.2 s average), measured as full wall-clock round trips from a machine
+outside Cloudflare's network, not a pure server-side ingestion figure — so this is a ceiling, not a
+floor. This was measured against a freshly created, otherwise-idle dedicated gateway; production
+load on a shared gateway could differ, which is why a bounded-retry design remains the right shape
+even though the observed numbers are reassuring. Chosen schedule for Phase 6: an initial 10-second
+delay, then two retries at +15 seconds each (three attempts total, ~40 s worst case).
+
+**A failed dynamic-route call (`AiGatewayError 2002` and similar) still produces its own
+correlatable log row** — `model: "dynamic/<route-name>"`, `provider: "unknown"`, `cost: 0`,
+`success: false` — carrying the same request metadata a successful call would. A future demo's
+reconciliation logic needs no special case for a failed-but-logged turn; only a turn AI Gateway
+never logs at all (a network error before the request reaches it, for example) needs the
+"give up after N attempts" path to trigger from a genuinely missing row rather than a `cost: 0`
+failed one.
+
+**`getLog(id)` continues to work once a row's real id is known by this new correlation path** —
+confirmed to return the exact same `tokens_in`/`tokens_out`/`cost`/`metadata` the list already
+returned, plus `request_head`/`response_head` (truncated request/response bodies) the list
+response omits, which a future export feature could use for a richer transcript record.
+`getLog()`'s "not found" signal continues to be a **thrown** `AiGatewayLogNotFound: Log not found`
+error (decision #13), re-confirmed again in this spike — this is distinct from the logs-list
+endpoint's own "not yet available" signal, which is simply an **empty result array**, no error at
+all.
+
+**There is no binding method to list logs** — `AiGateway`'s generated type exposes only
+`getLog(id)`, `patchLog(id, data)`, and `getUrl(provider)` (confirmed by reading
+`worker-configuration.d.ts` directly). Any future demo needing this same correlation pattern must
+call the plain REST API from inside the Worker (with a Wrangler secret for the account API token)
+for this one operation — the one place `AGENTS.md`'s "prefer bindings over REST calls" guidance
+cannot be followed, because no such binding exists.

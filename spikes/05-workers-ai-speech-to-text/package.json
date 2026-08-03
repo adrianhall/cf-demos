@@ -1,0 +1,26 @@
+{
+  "name": "@cf-spikes/05-workers-ai-speech-to-text",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
+  },
+  "scripts": {
+    "generate:types": "wrangler types",
+    "predeploy": "npm run generate:types",
+    "deploy": "wrangler deploy",
+    "check:types": "tsc --noEmit",
+    "probe": "node scripts/probe.mjs"
+  },
+  "dependencies": {
+    "ai": "7.0.48",
+    "workers-ai-provider": "4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "typescript": "^7.0.2",
+    "wrangler": "4.115.0"
+  }
+}
