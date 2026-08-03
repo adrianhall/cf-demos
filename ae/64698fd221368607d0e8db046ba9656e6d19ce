@@ -1,0 +1,110 @@
+demos/agentic-ai-chat/src/client/stores/session.test.ts
+  s_e3df148c157bdf::t_953018fd73218f 17-23,39-45
+  s_e3df148c157bdf::t_19a511788caf76 1-16,24-38,46-98
+demos/agentic-ai-chat/tests/integration/vitest.config.ts
+  s_e3df148c157bdf::t_5adfca77e188a6 1-32
+demos/agentic-ai-chat/vitest.config.ts
+  s_e3df148c157bdf::t_83c13a1fcf5975 1-18
+demos/agentic-ai-chat/infra/providers.tf
+  s_e3df148c157bdf::t_27e7e51aa8d5f9 1-32,34
+  s_e3df148c157bdf::t_d3c4fea6102c0b 33
+demos/agentic-ai-chat/src/worker/users/repository.test.ts
+  s_e3df148c157bdf::t_7fcdda788f6eb7 1-132
+demos/agentic-ai-chat/tsconfig.json
+  s_e3df148c157bdf::t_6316d7ba8aba8c 1-26
+demos/agentic-ai-chat/src/worker/index.ts
+  s_e3df148c157bdf::t_90d2a1551fcb06 1-23
+demos/agentic-ai-chat/src/worker/bindings.ts
+  s_e3df148c157bdf::t_a06b1220405ad8 1-21
+demos/agentic-ai-chat/src/client/App.test.ts
+  s_e3df148c157bdf::t_49ab081b3ffef3 1-80
+demos/agentic-ai-chat/src/client/views/HomeView.vue
+  s_e3df148c157bdf::t_6c4f25ba859582 1-25
+demos/agentic-ai-chat/wrangler.jsonc.tpl
+  s_e3df148c157bdf::t_8ad4daae509c29 1-39
+demos/agentic-ai-chat/infra/.gitignore
+  s_e3df148c157bdf::t_c440b7a182bec2 1-7
+demos/agentic-ai-chat/src/client/main.test.ts
+  s_e3df148c157bdf::t_26d48e0dae79b1 1-64
+demos/agentic-ai-chat/tests/integration/worker.test.ts
+  s_e3df148c157bdf::t_fbc3ee7073fe03 1-84
+demos/agentic-ai-chat/infra/agentic-ai-chat.tf
+  s_e3df148c157bdf::t_dfb33819b7d1cb 1-217
+demos/agentic-ai-chat/src/vue.d.ts
+  s_e3df148c157bdf::t_e7886b48bb5577 1-11
+demos/agentic-ai-chat/src/client/stores/session.ts
+  s_e3df148c157bdf::t_836a264cbeb23f 1-59
+demos/agentic-ai-chat/DEMO.md
+  s_e3df148c157bdf::t_670a0eac91a013 1-46
+demos/agentic-ai-chat/package.json
+  s_e3df148c157bdf::t_912a0256879e1e 76
+  s_e3df148c157bdf::t_ddff394de46dff 1-75,79-80
+  s_e3df148c157bdf::t_2c1d9916f5dc85 77-78
+demos/agentic-ai-chat/infra/local-outputs.json
+  s_e3df148c157bdf::t_2bdeb7bb4e70d9 1-8
+demos/agentic-ai-chat/src/worker/users/types.ts
+  s_e3df148c157bdf::t_91dd99236b5425 1-11
+demos/agentic-ai-chat/src/client/main.ts
+  s_e3df148c157bdf::t_512f240e49ffac 1-5,14-67
+  s_e3df148c157bdf::t_953018fd73218f 6-13
+demos/agentic-ai-chat/src/worker/middleware/access.ts
+  s_e3df148c157bdf::t_4f42ee1d7de45b 1-25
+demos/agentic-ai-chat/src/client/vitest.config.ts
+  s_e3df148c157bdf::t_ccd76afc2d14b7 1-17
+demos/agentic-ai-chat/.dev.vars
+  s_e3df148c157bdf::t_7f1f4411635dfe 1-3
+demos/agentic-ai-chat/src/worker/routes/me.ts
+  s_e3df148c157bdf::t_fcf380b5bf5136 1-24
+demos/agentic-ai-chat/src/worker/vitest.config.ts
+  s_e3df148c157bdf::t_b0c78ac1c60df4 1-9
+demos/agentic-ai-chat/EXPLAIN-DEMO.md
+  s_e3df148c157bdf::t_88f095de30daad 1-68
+demos/agentic-ai-chat/src/worker/middleware/access.test.ts
+  s_e3df148c157bdf::t_ce9c31082ac98f 1-29
+demos/agentic-ai-chat/index.html
+  s_e3df148c157bdf::t_bd2519edacd7ae 1-16
+demos/agentic-ai-chat/infra/access.tf
+  s_e3df148c157bdf::t_108d6784a24f93 1-37
+demos/agentic-ai-chat/infra/outputs.tf
+  s_e3df148c157bdf::t_274ca31ea9b8cb 1-44
+demos/agentic-ai-chat/migrations/0001_create_users_and_chats.sql
+  s_e3df148c157bdf::t_664fbc3234e857 1-19
+demos/agentic-ai-chat/vite.config.ts
+  s_e3df148c157bdf::t_a79d24ee148ed2 1-24
+demos/agentic-ai-chat/biome.json
+  s_e3df148c157bdf::t_0bd49ee7d2ff09 1-36
+demos/agentic-ai-chat/src/access-policies.ts
+  s_e3df148c157bdf::t_71727ca8e1ed26 1-22
+demos/agentic-ai-chat/README.md
+  s_e3df148c157bdf::t_501997a66b9420 1-111
+demos/agentic-ai-chat/src/client/views/HomeView.test.ts
+  s_e3df148c157bdf::t_c5e7d4b39dc997 1-44
+demos/agentic-ai-chat/.env.example
+  s_e3df148c157bdf::t_7228317adc3b0b 1-39
+demos/agentic-ai-chat/src/client/test/setup.ts
+  s_e3df148c157bdf::t_28ef5b4c7128b9 1-13
+demos/agentic-ai-chat/.gitignore
+  s_e3df148c157bdf::t_ec23200ca61cbe 1-12
+demos/agentic-ai-chat/src/client/App.vue
+  s_e3df148c157bdf::t_af268346d668ad 1-74
+demos/agentic-ai-chat/src/worker/users/repository.ts
+  s_e3df148c157bdf::t_5e48726c091d58 1-87
+demos/agentic-ai-chat/package-lock.json
+  s_e3df148c157bdf::t_16735a6b0a8cd4 1-6936
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ae64698fd221368607d0e8db046ba9656e6d19ce",
+  "prompts": {},
+  "sessions": {
+    "s_e3df148c157bdf": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_038c3aea3ffexnnDujmGoVf5Gy",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
