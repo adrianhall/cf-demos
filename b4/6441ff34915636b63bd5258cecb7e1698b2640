@@ -1,0 +1,263 @@
+spikes/01-ai-gateway-dynamic-routing/wrangler.jsonc
+  s_29647b9619c7cd::t_bb699c8179a2b6 1-21
+spikes/01-ai-gateway-dynamic-routing/.gitignore
+  s_29647b9619c7cd::t_f21228dcb07b80 1-3
+spikes/05-workers-ai-speech-to-text/infra/.gitignore
+  s_fba09d5fabbab3::t_d8b79bf26b5938 1-5
+spikes/03-agent-skills-composability/scripts/probe.mjs
+  s_2a6cec43412496::t_bc6fc70225bb5b 1-2,4,10-11,14-18,20-29,31-34,36,40-42,44-47,49-52,61-99,106-109,111-113,115-123,125-129,131-132
+  s_2a6cec43412496::t_9c943e5b15f45f 3,5-9,12-13,19,30,35,37-39,43,48,53-60,100-105,110,114,124,130
+spikes/05-workers-ai-speech-to-text/package.json
+  s_fba09d5fabbab3::t_485fa58a79b305 1-26
+spikes/04-ai-gateway-cost-reconciliation/wrangler.jsonc
+  s_40741d88d3dc27::t_887bdd68c09a45 1-21
+spikes/00-aichatagent-basics/wrangler.jsonc
+  s_bcc3f85eada8a7::t_5d984794a587dc 5
+  s_bcc3f85eada8a7::t_2a0c6177ab84c9 1-4,6-24
+spikes/01-ai-gateway-dynamic-routing/package.json
+  s_29647b9619c7cd::t_941972753a0108 1-13,15-19,24-25
+  s_29647b9619c7cd::t_c02a7a2df198ce 14,20-23
+spikes/03-agent-skills-composability/infra/main.tf
+  s_2a6cec43412496::t_64ec2d6c741663 1-77
+spikes/03-agent-skills-composability/fixtures/skills/cloudflare-spike-fact/SKILL.md
+  s_2a6cec43412496::t_6f12b61c9736f4 1-18
+spikes/04-ai-gateway-cost-reconciliation/REPORT.md
+  s_40741d88d3dc27::t_62dc24a914a723 1-252
+spikes/00-aichatagent-basics/.gitignore
+  s_bcc3f85eada8a7::t_558613afa57598 1-3
+spikes/03-agent-skills-composability/wrangler.jsonc
+  s_2a6cec43412496::t_4d11f61e7fa8be 1-29
+spikes/02-dynamic-workers-egress-control/src/index.ts
+  s_a55d97e0f788dc::t_9d43d35a249735 1-40,42-48
+  s_a55d97e0f788dc::t_348b565d2d6ba8 41
+spikes/02-dynamic-workers-egress-control/REPORT.md
+  s_a55d97e0f788dc::t_cd444b4357dd8f 1-234
+spikes/02-dynamic-workers-egress-control/wrangler.jsonc
+  s_a55d97e0f788dc::t_9aee5fc01f1508 1-20
+spikes/00-aichatagent-basics/REPORT.md
+  s_bcc3f85eada8a7::t_8d2eb818274d5c 1-313
+spikes/00-aichatagent-basics/scripts/probe.mjs
+  s_bcc3f85eada8a7::t_e5b0c65fb4e589 1-97,104-126
+  s_bcc3f85eada8a7::t_78fe3059b6cdf7 98-103
+spikes/02-dynamic-workers-egress-control/src/get-url-tool-code.ts
+  s_a55d97e0f788dc::t_e1591ab05b3a3c 1-37
+spikes/02-dynamic-workers-egress-control/tsconfig.json
+  s_a55d97e0f788dc::t_9631e6a28c534d 1-15,17-19
+  s_a55d97e0f788dc::t_16d2cec6d09bc2 16
+docs/DECISIONS.md
+  s_fba09d5fabbab3::t_4f4bb7fd1fb745 497-561
+  s_2a6cec43412496::t_67769ee49e5e98 562-636
+  s_40741d88d3dc27::t_a960ddf6b14a64 637-732
+  s_29647b9619c7cd::t_734045b97ab11e 386-496
+  s_bcc3f85eada8a7::t_c5479da7d32602 205-294
+  s_a55d97e0f788dc::t_de4c72de80b394 295-385
+spikes/03-agent-skills-composability/README.md
+  s_2a6cec43412496::t_af19a5c653d911 1-91
+spikes/02-dynamic-workers-egress-control/src/egress-gateway.test.ts
+  s_a55d97e0f788dc::t_4a4e027b783352 1-9,11-25,27-37,39-45
+  s_a55d97e0f788dc::t_89681ad73b2bbf 10
+  s_a55d97e0f788dc::t_4bb8b9b2dc2761 26,38
+spikes/00-aichatagent-basics/README.md
+  s_bcc3f85eada8a7::t_ca63a127d820a9 1-79
+spikes/02-dynamic-workers-egress-control/package.json
+  s_a55d97e0f788dc::t_18b40c325adb58 19,22
+  s_a55d97e0f788dc::t_9cc3c12dbb6eac 1-18,20-21,23-29
+spikes/03-agent-skills-composability/fixtures/skills/cloudflare-spike-fact/references/passphrase.md
+  s_2a6cec43412496::t_10636a691914c4 1
+spikes/00-aichatagent-basics/package.json
+  s_bcc3f85eada8a7::t_d5275b904d2397 29-33
+  s_bcc3f85eada8a7::t_09cc4d268d1b55 1-21,23-28,34-35
+  s_bcc3f85eada8a7::t_5fbbd63fb11262 22
+spikes/03-agent-skills-composability/package.json
+  s_2a6cec43412496::t_920c1ba8fd6722 1-38
+spikes/04-ai-gateway-cost-reconciliation/.gitignore
+  s_40741d88d3dc27::t_9de78869ac9a1a 1-3
+spikes/04-ai-gateway-cost-reconciliation/tsconfig.json
+  s_40741d88d3dc27::t_61f20760edf6ee 1-19
+spikes/01-ai-gateway-dynamic-routing/tsconfig.json
+  s_29647b9619c7cd::t_0104b0b4aaa0ca 1-19
+spikes/04-ai-gateway-cost-reconciliation/src/index.ts
+  s_40741d88d3dc27::t_45f7990717db49 64-68,72
+  s_40741d88d3dc27::t_7c694d64b9c442 1-63,69-71,73-172
+spikes/02-dynamic-workers-egress-control/tests/worker-loader.test.ts
+  s_a55d97e0f788dc::t_1b6a39be7b27f2 1-24,30-42
+  s_a55d97e0f788dc::t_6b59c375fd22f5 25-29
+spikes/04-ai-gateway-cost-reconciliation/infra/.gitignore
+  s_40741d88d3dc27::t_9de78869ac9a1a 1-5
+spikes/04-ai-gateway-cost-reconciliation/README.md
+  s_40741d88d3dc27::t_ff564e0f848015 1-91
+spikes/03-agent-skills-composability/tsconfig.json
+  s_2a6cec43412496::t_2038792d0bb234 1-19
+spikes/03-agent-skills-composability/infra/.gitignore
+  s_2a6cec43412496::t_f5b8083dde6f5e 1-5
+  s_2a6cec43412496::t_60dbb593aba428 6
+spikes/05-workers-ai-speech-to-text/REPORT.md
+  s_fba09d5fabbab3::t_485fa58a79b305 1-229
+spikes/02-dynamic-workers-egress-control/src/tool-runner.ts
+  s_a55d97e0f788dc::t_edfcfbfcc61a54 1-87
+spikes/01-ai-gateway-dynamic-routing/infra/.gitignore
+  s_29647b9619c7cd::t_8dbbc6ed5765d9 1-5
+spikes/00-aichatagent-basics/infra/.gitignore
+  s_bcc3f85eada8a7::t_0fb0132d48af0d 1-5
+spikes/03-agent-skills-composability/.gitignore
+  s_2a6cec43412496::t_2038792d0bb234 1-3
+  s_2a6cec43412496::t_cdef4319ee1546 4
+spikes/01-ai-gateway-dynamic-routing/REPORT.md
+  s_29647b9619c7cd::t_3f9fcad0891c81 36
+  s_29647b9619c7cd::t_3ebdbe14c38959 1-8,10-35,37-299,313-325
+  s_29647b9619c7cd::t_87deb096d57b34 300-312
+  s_29647b9619c7cd::t_fa7e94247b7cb1 9
+spikes/02-dynamic-workers-egress-control/README.md
+  s_a55d97e0f788dc::t_e72f61bbccd0fd 1-83
+spikes/01-ai-gateway-dynamic-routing/infra/main.tf
+  s_29647b9619c7cd::t_2d3e7fd207c1c9 108-112,117-118
+  s_29647b9619c7cd::t_ef8dfd2a688610 151-162
+  s_29647b9619c7cd::t_d6f3ee31c758a9 98-105
+  s_29647b9619c7cd::t_43058b3add2d87 113
+  s_29647b9619c7cd::t_e27f2bae90bc1c 114-116
+  s_29647b9619c7cd::t_da66e357eb53bc 196-209
+  s_29647b9619c7cd::t_71969766706489 1-97,106-107,119-142,163-179,184-195,210-263,268-277,282-293,299-315
+  s_29647b9619c7cd::t_00d4b0772a9472 143-150
+  s_29647b9619c7cd::t_0e842b07c6cf4b 181-183,264-267,279-281
+  s_29647b9619c7cd::t_84c5394744ab61 180,278
+  s_29647b9619c7cd::t_608e13ef13e753 294-298
+spikes/05-workers-ai-speech-to-text/infra/main.tf
+  s_fba09d5fabbab3::t_485fa58a79b305 1-78
+spikes/03-agent-skills-composability/REPORT.md
+  s_2a6cec43412496::t_167f16a27155a5 1-279
+spikes/00-aichatagent-basics/src/index.ts
+  s_bcc3f85eada8a7::t_c8cfaaa569e6e9 53-55
+  s_bcc3f85eada8a7::t_7fe7028338b0b9 1-10,12-52,56-65,83-105,107-110,121-154
+  s_bcc3f85eada8a7::t_46b39ca0ad1e8d 11
+  s_bcc3f85eada8a7::t_707208c29fac5f 66-82
+  s_bcc3f85eada8a7::t_a84a893c136a72 106
+  s_bcc3f85eada8a7::t_48e5b9a1ba2ac8 111-120
+spikes/01-ai-gateway-dynamic-routing/README.md
+  s_29647b9619c7cd::t_f9d57d3202b2b8 1-73
+spikes/03-agent-skills-composability/src/index.ts
+  s_2a6cec43412496::t_8baa8105cc13d5 1-8,11-12,14,16-18,25,27-66,68-71,88-93,98-100,114,118-136,138-156
+  s_2a6cec43412496::t_0ea59fa1850de2 9-10,15,22-24,72-75,77-87,94-97,101-108,110-113,115-117
+  s_2a6cec43412496::t_64dc667bca41e7 13
+  s_2a6cec43412496::t_2e8f813a7fc9ee 19-21,26
+  s_2a6cec43412496::t_568bcb6e06d96c 67
+  s_2a6cec43412496::t_0219dae8d67f06 76,109
+  s_2a6cec43412496::t_d10d9e8ca85626 137
+spikes/04-ai-gateway-cost-reconciliation/package.json
+  s_40741d88d3dc27::t_e10d748f325ebd 1-26
+spikes/04-ai-gateway-cost-reconciliation/infra/main.tf
+  s_40741d88d3dc27::t_22e57a589bb7d1 1-174
+spikes/05-workers-ai-speech-to-text/README.md
+  s_fba09d5fabbab3::t_485fa58a79b305 1-88
+spikes/05-workers-ai-speech-to-text/wrangler.jsonc
+  s_fba09d5fabbab3::t_485fa58a79b305 1-21
+spikes/02-dynamic-workers-egress-control/.gitignore
+  s_a55d97e0f788dc::t_fb02fff80a4674 1-3
+spikes/02-dynamic-workers-egress-control/src/egress-gateway.ts
+  s_a55d97e0f788dc::t_79f77f805c9189 29-37,39
+  s_a55d97e0f788dc::t_5b0603a8ff892b 1-28,38,40-73
+spikes/04-ai-gateway-cost-reconciliation/scripts/probe.mjs
+  s_40741d88d3dc27::t_31e9941a8b841d 1-230
+docs/06-AGENTIC-CHAT.md
+  s_bcc3f85eada8a7::t_aaf6d54990a251 721-734
+  s_bcc3f85eada8a7::t_63f256ba488805 845-846,851-891,895-921
+  s_fba09d5fabbab3::t_33a086014b3d53 1094-1095,1103-1146
+  s_29647b9619c7cd::t_09c35131bee3a3 923-924
+  s_2a6cec43412496::t_9277c8bc55f996 1667-1675
+  s_40741d88d3dc27::t_48de9cf92c8383 682
+  s_2a6cec43412496::t_01e63c4cbd9b47 681
+  s_40741d88d3dc27::t_d1c63375c6b0c9 1428-1429,1433-1441,1446-1457,1459-1463,1465-1472,1477-1478
+  s_a55d97e0f788dc::t_6b68e46de57240 966,993-1034
+  s_fba09d5fabbab3::t_0c2ea8ac0a454a 1405-1410
+  s_29647b9619c7cd::t_ddfa074f13d547 1231-1248
+  s_40741d88d3dc27::t_bdd60386652df9 839-843
+  s_40741d88d3dc27::t_c7d3d92f0876cc 439-443,449-491,497-499,502,505-527
+  s_40741d88d3dc27::t_85b857eecedea0 410
+  s_40741d88d3dc27::t_fff0737a546d79 1825-1830
+  s_40741d88d3dc27::t_ccd42b1206fb35 961-963
+  s_40741d88d3dc27::t_74fdca3184c63f 1148-1149,1153-1155,1158,1161-1216
+  s_40741d88d3dc27::t_af650bbb20452d 1497-1518,1522
+  s_29647b9619c7cd::t_e8e04012602b21 390-403
+  s_29647b9619c7cd::t_94b1d68551186c 945-960,964
+  s_29647b9619c7cd::t_b4143bb222d4d2 1156-1157,1159-1160
+  s_40741d88d3dc27::t_540473dbb3f88c 1953,1956-1966
+  s_2a6cec43412496::t_e15cc5d0c70337 1036-1037,1056-1092
+spikes/00-aichatagent-basics/tsconfig.json
+  s_bcc3f85eada8a7::t_44dc3aa2ddb646 1-19
+spikes/01-ai-gateway-dynamic-routing/src/index.ts
+  s_29647b9619c7cd::t_4f503a09546df8 1-25,30-44,49-50,52-63,77,80,105-137
+  s_29647b9619c7cd::t_bb843211d1c07a 45-48,51
+  s_29647b9619c7cd::t_9c24e8259bc398 64-76,78-79,81-104
+  s_29647b9619c7cd::t_b059122534effc 26-29
+spikes/02-dynamic-workers-egress-control/vitest.config.ts
+  s_a55d97e0f788dc::t_460c9c53a7d74e 1-25
+spikes/00-aichatagent-basics/infra/main.tf
+  s_bcc3f85eada8a7::t_8f0c4e13bd0713 1-78
+spikes/00-aichatagent-basics/package-lock.json
+  s_bcc3f85eada8a7::t_1b140f27325498 1-4959
+spikes/01-ai-gateway-dynamic-routing/package-lock.json
+  s_29647b9619c7cd::t_6a38458be0bd31 1-1988
+spikes/02-dynamic-workers-egress-control/package-lock.json
+  s_a55d97e0f788dc::t_0b45cc213647c7 1-3421
+spikes/03-agent-skills-composability/package-lock.json
+  s_2a6cec43412496::t_a27bab68457765 1-5932
+spikes/04-ai-gateway-cost-reconciliation/package-lock.json
+  s_40741d88d3dc27::t_a35684ef0f215a 1-1988
+spikes/05-workers-ai-speech-to-text/package-lock.json
+  s_fba09d5fabbab3::t_146180d4e00b9d 1-2034
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b46441ff34915636b63bd5258cecb7e1698b2640",
+  "prompts": {},
+  "sessions": {
+    "s_29647b9619c7cd": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_039366c4bffeU0nIbmxOI6MK2s",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_2a6cec43412496": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_03922bd6cffe4c61BUBlKkj7s8",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_40741d88d3dc27": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0391d1518ffeJeeahOKbub31C6",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_a55d97e0f788dc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0392f2eb3ffe0T2VJoDumKwVEp",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_bcc3f85eada8a7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0395344edffepDntCrWViKlQQt",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_fba09d5fabbab3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0391e9dacffe6Tyt3PwzsU49l2",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
