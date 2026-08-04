@@ -1,0 +1,20 @@
+docs/06B-FLUE-CHAT.md
+  s_0345bc15899d5d::t_860527add6fe78 1-315,318-381
+  s_0345bc15899d5d::t_26f7bcbe84e650 316-317
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "84a0994f8299e863984377674d4332ba7008a3e8",
+  "prompts": {},
+  "sessions": {
+    "s_0345bc15899d5d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_032adb254ffeKReudhrnaYvCoL",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
