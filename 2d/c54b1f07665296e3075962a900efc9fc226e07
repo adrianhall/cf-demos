@@ -1,0 +1,56 @@
+demos/swapi-graphql/src/worker/index.ts
+  s_2e0c0bc3e8a5b9::t_32bf92b65bc069 10
+  s_2e0c0bc3e8a5b9::t_fe8ee0f4991992 1-9,11-17,21-22
+  s_2e0c0bc3e8a5b9::t_8a31cda28a56f4 18-20
+demos/swapi-graphql/package.json
+  s_2e0c0bc3e8a5b9::t_65d92bbafc5d18 52-53
+  s_2e0c0bc3e8a5b9::t_95e1712d557db9 54-58
+demos/swapi-graphql/src/worker/graphql/types/person.ts
+  s_2e0c0bc3e8a5b9::t_641155f1c01d03 7-14
+  s_2e0c0bc3e8a5b9::t_fe8ee0f4991992 1-6,15-30,32-35,37-40,42-44,46-48,50-53
+  s_2e0c0bc3e8a5b9::t_ba9b8afd4f475a 31,36,41,45,49
+demos/swapi-graphql/tsconfig.json
+  s_2e0c0bc3e8a5b9::t_ba9b8afd4f475a 10
+demos/swapi-graphql/src/worker/graphql/types/species.ts
+  s_2e0c0bc3e8a5b9::t_ba9b8afd4f475a 5,23,28,32
+  s_2e0c0bc3e8a5b9::t_fe8ee0f4991992 1-4,6-22,24-27,29-31,33-36
+demos/swapi-graphql/src/worker/graphql/types/starship.ts
+  s_2e0c0bc3e8a5b9::t_fe8ee0f4991992 1-3,5-25,29-30,34-36
+  s_2e0c0bc3e8a5b9::t_ba9b8afd4f475a 4,26-28,31
+  s_2e0c0bc3e8a5b9::t_641155f1c01d03 32-33
+demos/swapi-graphql/src/worker/graphql/types/vehicle.ts
+  s_2e0c0bc3e8a5b9::t_fe8ee0f4991992 1-3,5-23,25-27,29-32
+  s_2e0c0bc3e8a5b9::t_ba9b8afd4f475a 4,24,28
+demos/swapi-graphql/src/worker/graphql/builder.ts
+  s_2e0c0bc3e8a5b9::t_fe8ee0f4991992 1-23
+demos/swapi-graphql/src/worker/graphql/schema.ts
+  s_2e0c0bc3e8a5b9::t_fe8ee0f4991992 1-5,7-8,23-90
+  s_2e0c0bc3e8a5b9::t_ba9b8afd4f475a 6,9-22
+demos/swapi-graphql/src/worker/graphql/types/planet.ts
+  s_2e0c0bc3e8a5b9::t_fe8ee0f4991992 1-3,5-21,23-25,27-30
+  s_2e0c0bc3e8a5b9::t_ba9b8afd4f475a 4,22,26
+demos/swapi-graphql/src/worker/graphql/types/refs.ts
+  s_2e0c0bc3e8a5b9::t_ba9b8afd4f475a 1-26
+demos/swapi-graphql/src/worker/graphql/types/film.ts
+  s_2e0c0bc3e8a5b9::t_ba9b8afd4f475a 2,29,33,37,41,45
+  s_2e0c0bc3e8a5b9::t_fe8ee0f4991992 1,3-6,15-28,30-32,34-36,38-40,42-44,46-49
+  s_2e0c0bc3e8a5b9::t_641155f1c01d03 7-14
+demos/swapi-graphql/package-lock.json
+  s_2e0c0bc3e8a5b9::t_35bea3e9394418 10-16,634-674,1117-1296,1984-2008,2472-2552,2705-2716,2912-2952,3891,3965-3970
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2dc54b1f07665296e3075962a900efc9fc226e07",
+  "prompts": {},
+  "sessions": {
+    "s_2e0c0bc3e8a5b9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_032704bb6ffe6oPpWYlv2MjySQ",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
