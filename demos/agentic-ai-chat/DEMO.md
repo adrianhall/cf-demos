@@ -1,6 +1,6 @@
 # Agentic Chat Demo Script
 
-See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This checkout implements Phase 1 (Scaffolding), Phase 2 (Core Agentic Chat, US-1), Phase 3 (Chat Sidebar And Management, US-2), and Phase 4 (Governed Model Selection Via Dynamic Routes, US-3) — the authenticated shell, the D1 user directory, a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, a sidebar for creating, switching between, auto-titling, and deleting chats, and a "Basic"/"Reasoning" mode selector backed by governed AI Gateway dynamic routes rather than a client-visible model id. Later phases' demo scripts pick up from here for voice dictation, cost tracking, tools, skills, and the admin console.
+See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This checkout implements Phase 1 (Scaffolding), Phase 2 (Core Agentic Chat, US-1), Phase 3 (Chat Sidebar And Management, US-2), Phase 4 (Governed Model Selection Via Dynamic Routes, US-3), and Phase 5 (Voice-To-Prompt Dictation, US-4) — the authenticated shell, the D1 user directory, a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, a sidebar for creating, switching between, auto-titling, and deleting chats, a "Basic"/"Reasoning" mode selector backed by governed AI Gateway dynamic routes rather than a client-visible model id, and a microphone control that dictates a prompt via Workers AI speech-to-text. Later phases' demo scripts pick up from here for cost tracking, tools, skills, and the admin console.
 
 ## Demonstration Prerequisites
 
@@ -8,8 +8,9 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
 2. Confirm you can authenticate through the configured identity provider as at least two different identities: one matching this deployment's `ADMIN_EMAIL`, and one that does not.
 3. Open a second browser window or tab to the Cloudflare dashboard at **Zero Trust** > **Access controls** > **Applications**.
 4. Open a third browser window or tab to the Cloudflare dashboard's **D1** section, ready to open the `agentic-chat-db` database's console.
-5. Open a fourth browser window or tab to the Cloudflare dashboard's **AI Gateway** section, ready to open the `agentic-chat` gateway and its two dynamic routes (**basic**, **reasoning**).
+5. Open a fourth browser window or tab to the Cloudflare dashboard's **AI Gateway** section, ready to open the `agentic-chat` gateway and its two dynamic routes (**basic**, **reasoning**), and its overall request log.
 6. Sign out of, or use a private/incognito window for, the demo hostname so the first step shows the unauthenticated experience.
+7. Use a browser with a working microphone, and be prepared to grant microphone permission when prompted.
 
 ## Presentation Flow
 
@@ -32,17 +33,21 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
    Point out the new row: one D1 directory entry per chat, owned by the signed-in identity, now carrying the generated title, its `route` (`basic`), and a bumped `updated_at`.
 8. Switch to the AI Gateway tab. Open the **basic** dynamic route's request log and point out **two** requests from this turn: the chat turn itself, and the second, smaller title-generation call — both resolved through this route, not a hard-coded model.
 9. Back in the browser, send a second message in the same chat referencing the first (for example "Can you say that more simply?") and point out the response reflects the earlier turn, and that the chat's title did **not** change — it is only ever generated once.
-10. Click **+ New Chat** again. Before typing anything, change its "Mode" dropdown to **Reasoning** and point out the dropdown is still enabled at this point (no turn yet). Send a message (for example "Explain, step by step, why the sky is blue.") and point out the response still streams normally.
-11. Switch to the AI Gateway tab and open the **reasoning** dynamic route's request log instead of **basic**'s. Point out this turn's request appears here, resolved to a different, reasoning-capable model than the first chat's turns — the same "Mode" selector, two different governed routes, two different models, with no client-side difference in what the browser itself sent beyond the literal word "reasoning".
-12. Back in the browser, click back to the first chat in the sidebar and point out its own history and "Basic" mode still load correctly — each chat is its own `ChatAgent` Durable Object with its own persisted route, not a shared conversation or a shared setting.
-13. Attempt to change the first chat's "Mode" dropdown. Point out it remains disabled: a chat's route can only be changed before its first turn completes.
-14. **Reload the page.** Point out the same chat list and the currently open conversation — including each chat's own mode — reappear exactly as they were, loaded from D1 (the directory) and the `ChatAgent` Durable Object's own durable storage (the content), not replayed from anything kept in browser memory.
-15. Open a second browser tab to the same hostname, signed in as the same identity, and open the same chat that is open in the first tab. In the first tab, delete that chat from the sidebar. Point out the second tab is notified immediately (its view moves off the deleted chat) rather than being left silently connected to a chat that no longer exists.
-16. Back in the dashboard, open **Workers & Pages** > `agentic-chat` > **Logs** and show the `chat_created`, `chat_connected`, and `chat_deleted` log entries from this session.
-17. Optionally, open **Durable Objects** in the dashboard (under **Workers & Pages** > `agentic-chat` > **Bindings**, or the account-level Durable Objects view) and show the `ChatAgent` class with one live instance per remaining chat — the coordination atom for each conversation.
-18. Back in the browser, use the always-visible **Sign out** control.
-19. Sign in as the second, non-administrator identity and click **+ New Chat**. Point out this identity sees an empty sidebar of its own — chats are never shared across identities.
-20. Re-run the D1 query from step 7 and show every identity's chats coexisting in the same table, each still visible only to its own owner through the app.
+10. Click the microphone control on the composer. Grant microphone access when prompted, point out the control's own visual state changes (requesting access, then recording), dictate a short question (for example "What is the capital of France?"), then click the control again to stop. Point out:
+    - The control briefly shows a transcribing state before the text appears.
+    - The transcribed text populates the composer editable and **not submitted** — press Enter (or edit the text first) to actually send it.
+11. Switch to the AI Gateway tab and open its overall request log (not a specific dynamic route — dictation calls the model directly, not through either "Basic"/"Reasoning" route). Point out the `@cf/openai/whisper-large-v3-turbo` request from step 10.
+12. Click **+ New Chat** again. Before typing anything, change its "Mode" dropdown to **Reasoning** and point out the dropdown is still enabled at this point (no turn yet). Send a message (for example "Explain, step by step, why the sky is blue.") and point out the response still streams normally.
+13. Switch to the AI Gateway tab and open the **reasoning** dynamic route's request log instead of **basic**'s. Point out this turn's request appears here, resolved to a different, reasoning-capable model than the first chat's turns — the same "Mode" selector, two different governed routes, two different models, with no client-side difference in what the browser itself sent beyond the literal word "reasoning".
+14. Back in the browser, click back to the first chat in the sidebar and point out its own history and "Basic" mode still load correctly — each chat is its own `ChatAgent` Durable Object with its own persisted route, not a shared conversation or a shared setting.
+15. Attempt to change the first chat's "Mode" dropdown. Point out it remains disabled: a chat's route can only be changed before its first turn completes.
+16. **Reload the page.** Point out the same chat list and the currently open conversation — including each chat's own mode — reappear exactly as they were, loaded from D1 (the directory) and the `ChatAgent` Durable Object's own durable storage (the content), not replayed from anything kept in browser memory.
+17. Open a second browser tab to the same hostname, signed in as the same identity, and open the same chat that is open in the first tab. In the first tab, delete that chat from the sidebar. Point out the second tab is notified immediately (its view moves off the deleted chat) rather than being left silently connected to a chat that no longer exists.
+18. Back in the dashboard, open **Workers & Pages** > `agentic-chat` > **Logs** and show the `chat_created`, `chat_connected`, `chat_deleted`, and `transcription_completed` log entries from this session.
+19. Optionally, open **Durable Objects** in the dashboard (under **Workers & Pages** > `agentic-chat` > **Bindings**, or the account-level Durable Objects view) and show the `ChatAgent` class with one live instance per remaining chat — the coordination atom for each conversation.
+20. Back in the browser, use the always-visible **Sign out** control.
+21. Sign in as the second, non-administrator identity and click **+ New Chat**. Point out this identity sees an empty sidebar of its own — chats are never shared across identities.
+22. Re-run the D1 query from step 7 and show every identity's chats coexisting in the same table, each still visible only to its own owner through the app.
 
 ## Expected Results
 
@@ -56,14 +61,15 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
 - Two chats with different modes resolve to two different AI Gateway dynamic routes, and (per each route's currently configured model) two different underlying models — verified from the AI Gateway request logs, not just the app's own response text.
 - Deleting the open chat from another connected tab/device is reflected immediately, not left as a silently dead connection.
 - Reloading the page resumes the same chat list, conversations, and their own modes from durable storage.
+- Dictating a prompt produces editable composer text, never an auto-submitted message, backed by a real `@cf/openai/whisper-large-v3-turbo` call visible in the AI Gateway request log.
 
 ## Where To Observe State
 
-- **Worker logs:** Workers & Pages > `agentic-chat` > Logs (`chat_created`, `chat_connected`, `chat_route_changed`, `chat_deleted` entries).
+- **Worker logs:** Workers & Pages > `agentic-chat` > Logs (`chat_created`, `chat_connected`, `chat_route_changed`, `chat_deleted`, `transcription_completed` entries).
 - **Traces:** Workers & Pages > `agentic-chat` > Observability > Traces (10% sampling).
 - **D1 data:** D1 > `agentic-chat-db` > Console; query the `chats`/`users` tables as shown above (`route` is Phase 4's own column).
 - **Access application:** Zero Trust > Access controls > Applications > `agentic-chat`.
-- **AI Gateway:** AI Gateway > `agentic-chat` > **basic**/**reasoning** dynamic routes — each route's own request log entry (including the auto-title generation calls), resolved model, latency, and cost.
+- **AI Gateway:** AI Gateway > `agentic-chat` > **basic**/**reasoning** dynamic routes — each route's own request log entry (including the auto-title generation calls), resolved model, latency, and cost; the gateway's overall request log also shows each dictation's direct (non-routed) `@cf/openai/whisper-large-v3-turbo` call.
 - **Durable Objects:** the `ChatAgent` class and its live instances, one per chat.
 
 Run `npm run teardown` after the presentation; see README.md for details.

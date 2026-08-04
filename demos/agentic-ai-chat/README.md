@@ -2,7 +2,7 @@
 
 An authenticated enterprise AI chat agent based on Cloudflare Workers, D1, Cloudflare Access, Durable Objects, the Agents SDK, Workers AI, AI Gateway, and Dynamic Workers.
 
-> This demo ships in phases (see `docs/06-AGENTIC-CHAT.md`), each tagged in git so any two can be diffed. This checkout implements **Phase 1 (Scaffolding)**, **Phase 2 (Core Agentic Chat, US-1)**, **Phase 3 (Chat Sidebar And Management, US-2)**, and **Phase 4 (Governed Model Selection Via Dynamic Routes, US-3)**: a signed-in user can hold a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, persisted across reloads, manage more than one chat from a sidebar -- creating, switching between, and deleting chats, each auto-titled after its first exchange -- and choose between a "Basic" and a "Reasoning" mode per chat, each backed by a governed AI Gateway dynamic route rather than a client-visible model id. Later phases add voice dictation, cost tracking, tools, skills, and an admin console.
+> This demo ships in phases (see `docs/06-AGENTIC-CHAT.md`), each tagged in git so any two can be diffed. This checkout implements **Phase 1 (Scaffolding)**, **Phase 2 (Core Agentic Chat, US-1)**, **Phase 3 (Chat Sidebar And Management, US-2)**, **Phase 4 (Governed Model Selection Via Dynamic Routes, US-3)**, and **Phase 5 (Voice-To-Prompt Dictation, US-4)**: a signed-in user can hold a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, persisted across reloads, manage more than one chat from a sidebar -- creating, switching between, and deleting chats, each auto-titled after its first exchange -- choose between a "Basic" and a "Reasoning" mode per chat, each backed by a governed AI Gateway dynamic route rather than a client-visible model id, and dictate a prompt via microphone, transcribed by Workers AI into editable composer text. Later phases add cost tracking, tools, skills, and an admin console.
 
 ## Prerequisites
 
@@ -63,6 +63,8 @@ npm run build
 
 `tests/integration/dynamic-routes.test.ts` (Phase 4) substitutes a fake `env.AI` binding, like every other integration test in this checkout, and asserts on the exact `dynamic/<route-name>` model id string `ChatAgent` calls -- it never makes a real call against AI Gateway, so it passes identically against the local placeholder route names (`infra/local-outputs.json`) or a real, deployed gateway.
 
+`tests/integration/transcribe.test.ts` (Phase 5) substitutes a fake `env.AI` binding the same way, so `POST /api/transcribe` is exercised end to end with no real, billable Workers AI call. `src/client/composables/useVoiceDictation.test.ts` stubs the browser's `MediaRecorder`/`navigator.mediaDevices.getUserMedia` with deterministic doubles -- no real microphone or audio hardware is needed to run `npm test` in CI or on a fresh checkout.
+
 ## Deployment
 
 ```sh
@@ -83,10 +85,11 @@ npm run deploy
 7. Click back to the first chat in the sidebar and confirm its own history and "Basic" mode still load correctly.
 8. Reload the page and confirm the same chat list and conversations reappear (loaded from D1 and the `ChatAgent` Durable Object's own storage, not browser memory).
 9. Delete a chat from the sidebar and confirm it disappears from the list and the view falls back to a remaining chat (or the empty state if none remain).
-10. Sign out using the visible **Sign out** control.
-11. In the Cloudflare dashboard under **D1** > `<DEMO_NAME>-db` > Console, run `SELECT email, is_admin, created_at FROM users;` and confirm your identity was upserted with the expected `is_admin` value.
-12. Under **Workers & Pages** > `<DEMO_NAME>` > **Logs**, confirm requests are being logged, including `chat_created`, `chat_connected`, `chat_route_changed`, and `chat_deleted` entries.
-13. Under **AI Gateway** > `<DEMO_NAME>`, open the **Basic** and **Reasoning** dynamic routes and confirm each shows requests from the corresponding chat above, resolved to their own configured model.
+10. Click the microphone control on the composer, allow microphone access when prompted, dictate a short question, then click it again to stop. Confirm the transcribed text appears in the composer -- not submitted automatically -- and can be edited before sending.
+11. Sign out using the visible **Sign out** control.
+12. In the Cloudflare dashboard under **D1** > `<DEMO_NAME>-db` > Console, run `SELECT email, is_admin, created_at FROM users;` and confirm your identity was upserted with the expected `is_admin` value.
+13. Under **Workers & Pages** > `<DEMO_NAME>` > **Logs**, confirm requests are being logged, including `chat_created`, `chat_connected`, `chat_route_changed`, `chat_deleted`, and `transcription_completed` entries.
+14. Under **AI Gateway** > `<DEMO_NAME>`, open the **Basic** and **Reasoning** dynamic routes and confirm each shows requests from the corresponding chat above, resolved to their own configured model; open the gateway's overall request log and confirm a `@cf/openai/whisper-large-v3-turbo` entry from step 10's dictation.
 
 ## Provisioned Resources
 
@@ -114,6 +117,9 @@ npm run deploy
 | A chat never acquires a title | Auto-titling is a best-effort second Workers AI call after the first turn (docs/06-AGENTIC-CHAT.md Section 11); check Workers Logs for a `chat_title_failed` entry -- the conversation itself is unaffected either way. |
 | "Mode" dropdown is disabled and a route change returns `422` | Expected once a chat has a completed turn -- a chat's route can only be changed before its first turn finishes (docs/06-AGENTIC-CHAT.md Phase 4); start a new chat to pick a different mode. |
 | A chat turn fails with an AI Gateway error after changing the dynamic route's model in the dashboard | Not every Workers AI model works when called through a dynamic route's model node (`spikes/01-ai-gateway-dynamic-routing/REPORT.md` Section 4); pick a model confirmed there, or re-verify a new one before assigning it to the route. |
+| Clicking the microphone control shows "Voice dictation is not supported in this browser" | The browser lacks `MediaRecorder`/`navigator.mediaDevices.getUserMedia` (for example a very old browser, or a non-HTTPS context other than `localhost`); use a current browser over HTTPS. |
+| Clicking the microphone control shows "Microphone permission was denied" | Grant microphone access for this site in the browser's own site-permission settings, then click the control again -- the error clears the moment a new recording attempt starts. |
+| A dictation returns "Workers AI could not transcribe the submitted audio" | A transient Workers AI failure; try again. Check Workers Logs for the underlying error if it persists. |
 
 ## Teardown
 

@@ -180,6 +180,22 @@ export function createFakeAiWithTitle(
 }
 
 /**
+ * Build a fake `Ai` binding whose `run()` resolves to a Whisper-shaped transcription result
+ * (`{ text }`, Spike E's confirmed raw binding response, `spikes/05-workers-ai-speech-to-text/REPORT.md`
+ * §5) regardless of input -- used by `tests/integration/transcribe.test.ts` so
+ * `POST /api/transcribe` can be exercised end to end with no real, billable Workers AI call.
+ *
+ * @param text The transcript text the fake should resolve to.
+ * @returns A fake `Ai`-shaped object suitable for {@link withFakeAi}.
+ */
+export function createFakeTranscribeAi(text: string): Pick<Ai, "run"> {
+  return {
+    // biome-ignore lint/suspicious/noExplicitAny: matching env.AI.run()'s broad overloaded signature for a test fake is not worth reproducing.
+    run: (async () => ({ text })) as any,
+  };
+}
+
+/**
  * Open an authenticated chat WebSocket through the real Worker route, tracked in `openSockets`
  * for the calling test file's own `afterEach` teardown (per the `testing-durable-objects`
  * skill's lifecycle rules -- every socket a test opens must be tracked and force-closed).

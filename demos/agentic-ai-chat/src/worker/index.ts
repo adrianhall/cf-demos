@@ -8,6 +8,7 @@ import type { AppBindings } from "./bindings";
 import { accessMiddleware } from "./middleware/access";
 import { chatsRouter } from "./routes/chats";
 import { meRouter } from "./routes/me";
+import { transcribeRouter } from "./routes/transcribe";
 
 // The `CHAT_AGENT` durable_objects binding in `wrangler.jsonc.tpl` requires its class to be a
 // named export of this main module.
@@ -22,6 +23,7 @@ app.use(cloudflareLogger());
 app.use("/api/*", accessMiddleware);
 app.route("/api/me", meRouter);
 app.route("/api/chats", chatsRouter);
+app.route("/api/transcribe", transcribeRouter);
 
 app.onError(problemDetailsErrorHandler({ includeStack: import.meta.env.DEV }));
 app.notFound(notFoundHandler());
