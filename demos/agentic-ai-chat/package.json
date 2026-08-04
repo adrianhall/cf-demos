@@ -35,6 +35,8 @@
     "generate:wrangler:local": "generate-wrangler -c -l infra/local-outputs.json",
     "prestart": "run-s generate:wrangler:local generate:types db:migrate:local build",
     "start": "vite dev",
+    "preteardown": "npm run preteardown:r2",
+    "preteardown:r2": "empty-r2-bucket -t infra --env-file .env --yes",
     "teardown": "terraform -chdir=infra destroy -auto-approve",
     "postteardown": "shx rm -f wrangler.jsonc worker-configuration.d.ts",
     "pretest": "run-s generate:wrangler:local generate:types",

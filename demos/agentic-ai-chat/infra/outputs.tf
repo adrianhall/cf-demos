@@ -3,6 +3,11 @@ output "access_audience" {
   value       = cloudflare_zero_trust_access_application.demo.aud
 }
 
+output "account_id" {
+  description = "Cloudflare account identifier, read by the empty-r2-bucket preteardown CLI (distinct from cloudflare_account_id below, which is threaded into the Worker as a var -- this exact output name is what the CLI itself reads)."
+  value       = local.cloudflare_account_id
+}
+
 output "admin_email" {
   description = "Identity idempotently promoted to this demo's D1-flagged administrator role on every sign-in, regardless of prior D1 state (docs/06-AGENTIC-CHAT.md Section 6.5)."
   value       = local.admin_email
@@ -51,6 +56,11 @@ output "environment" {
 output "hostname" {
   description = "Public custom hostname for the agentic chat demo."
   value       = local.hostname
+}
+
+output "r2_bucket_name" {
+  description = "R2 bucket name bound to the Worker as FILES, holding agent-generated files (docs/06-AGENTIC-CHAT.md Phase 9, US-8) -- also read by the empty-r2-bucket preteardown CLI."
+  value       = cloudflare_r2_bucket.files.name
 }
 
 output "worker_name" {

@@ -409,7 +409,7 @@ attribute) that Phase 4/8 should reuse verbatim.
 | `chats` | Scaffolding | `id` (PK), `owner_email`, `title`, `route`, `created_at`, `updated_at` |
 | `chat_usage` | Phase 6 | `id`, `chat_id`, `model`, `prompt_tokens`, `completion_tokens`, `cost_usd`, `cost_source` (`estimated`\|`gateway`), `correlation_id` (the UUID minted before `env.AI.run()` and searched for during reconciliation — Section 6.6, Spike F), `gateway_log_id` (nullable; the real AI Gateway log id, populated only once reconciliation finds it), `reconcile_attempts`, `created_at`, `updated_at` |
 | `users.business` / `users.geo` | Phase 7 | added by an `ALTER TABLE` migration |
-| `chat_files` | Phase 9 | `id`, `chat_id`, `r2_key`, `filename`, `size_bytes`, `created_at` |
+| `chat_files` | Phase 9 | `id`, `chat_id`, `r2_key`, `filename`, `size_bytes`, `correlation_id` (the same per-turn UUID stamped on the `chat_usage` row this file's turn produced — Section 15's resolved open question, the exact join key for Phase 12's per-file export), `created_at` |
 | `skills` | Phase 11 | `id`, `owner_email` (`NULL` = enterprise), `name`, `source_type` (`upload`\|`url`), `source_ref`, `r2_key`, `created_at` |
 
 Every migration is a new numbered file under `migrations/`; none is ever
@@ -1964,7 +1964,14 @@ to.
   backoff~~ — **resolved by Spike F**: 267 ms–4,731 ms across 11 real
   trials (~2.2 s average); Phase 6 schedules the first reconciliation
   attempt at 10 s, then retries at +15 s twice.
-- **Exact correlation key between a `chat_files` row and the `chat_usage`
-  row(s) that produced it**, needed for Phase 12's per-file cost export —
-  Phase 9 should decide this when `chat_files` is designed, not defer it to
-  Phase 12.
+- ~~Exact correlation key between a `chat_files` row and the `chat_usage`
+  row(s) that produced it~~, needed for Phase 12's per-file cost export —
+  **resolved by Phase 9**: `chat_files` gains its own `correlation_id` column
+  (Section 6.4), stamped with the same per-turn UUID `onChatMessage()` already
+  mints and attaches to that turn's `chat_usage.correlation_id` (Section 6.6)
+  before ever calling `streamText()`. `ChatAgent` threads that same value into
+  `createWriteMarkdownTool()`'s deps, so every file a turn's tool call writes
+  carries the exact join key back to the one `chat_usage` row that turn
+  produced — an exact `chat_files.correlation_id = chat_usage.correlation_id`
+  join, not an approximation inferred from timestamps. Phase 12's per-file
+  export should join on this column directly.

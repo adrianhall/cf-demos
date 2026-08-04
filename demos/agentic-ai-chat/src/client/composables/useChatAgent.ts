@@ -21,6 +21,16 @@ export type ChatTurnRole = "user" | "assistant";
 /** Lifecycle of one turn as held in the browser tab. */
 export type ChatTurnStatus = "streaming" | "done" | "error";
 
+/** One file the `writeMarkdown` tool successfully attached to a turn (docs/06-AGENTIC-CHAT.md
+ * Phase 9, US-8) -- enough for the transcript to render a download link
+ * (`../../worker/routes/chats.ts`'s `GET /:id/files/:fileId`), never the file's own content. */
+export interface ChatFileAttachment {
+  /** Server-generated file id, path-segment of the download route. */
+  readonly fileId: string;
+  /** The sanitized filename to display and to hint the browser's own save-as dialog with. */
+  readonly filename: string;
+}
+
 /** One turn of the conversation, as rendered by the transcript. */
 export interface ChatTurn {
   /** Stable identifier for the life of this turn (the persisted message id once loaded from
@@ -34,6 +44,10 @@ export interface ChatTurn {
   readonly status: ChatTurnStatus;
   /** Problem detail for a turn that ended in `"error"`, otherwise `null`. */
   readonly errorDetail: string | null;
+  /** Files the `writeMarkdown` tool successfully attached to this turn (Phase 9, US-8), in the
+   * order the tool produced them. Always empty for a user turn, and for an assistant turn that
+   * never called the tool. */
+  readonly attachments: readonly ChatFileAttachment[];
 }
 
 /** A chat's running cost/token totals (docs/06-AGENTIC-CHAT.md Section 6.6a) -- mirrors
@@ -143,10 +157,14 @@ export interface UseChatAgentResult {
   send(text: string): void;
 }
 
-/** One part of a persisted `UIMessage`, as returned by the chat's `get-messages` REST endpoint. */
+/** One part of a persisted `UIMessage`, as returned by the chat's `get-messages` REST endpoint.
+ * `state`/`output` are only ever present on a persisted tool part (`type: "tool-writeMarkdown"`,
+ * per the `ai` SDK's own `ToolUIPart` shape) -- absent on a plain text part. */
 interface PersistedMessagePart {
   type: string;
   text?: string;
+  state?: string;
+  output?: unknown;
 }
 
 /** One persisted `UIMessage`, as returned by the chat's `get-messages` REST endpoint. */
@@ -164,6 +182,48 @@ function extractText(parts: readonly PersistedMessagePart[]): string {
     .join("");
 }
 
+/** Narrow an unknown tool `output` value to a successful `writeMarkdown` result shape
+ * (`../../worker/agent/tools/write-markdown.ts`'s `WriteMarkdownOutput`), without importing a
+ * Worker-only module into client code -- this composable's own convention of duplicating a
+ * small shared shape rather than importing across the Worker/client boundary (mirrors this
+ * file's own `ChatUsageSummary`). */
+function asSuccessfulWriteMarkdownOutput(
+  output: unknown,
+): { fileId: string; filename: string } | null {
+  if (typeof output !== "object" || output === null) {
+    return null;
+  }
+  const candidate = output as Record<string, unknown>;
+  return candidate.success === true &&
+    typeof candidate.fileId === "string" &&
+    typeof candidate.filename === "string"
+    ? { fileId: candidate.fileId, filename: candidate.filename }
+    : null;
+}
+
+/** Extract every successfully-attached `writeMarkdown` file from a persisted message's own
+ * tool parts (docs/06-AGENTIC-CHAT.md Phase 9, US-8) -- a page reload's own source of truth for
+ * a turn's attachments, mirroring how {@link extractText} already reconstructs a persisted
+ * turn's text from the same `parts` array. */
+function extractAttachments(
+  parts: readonly PersistedMessagePart[],
+): ChatFileAttachment[] {
+  const attachments: ChatFileAttachment[] = [];
+  for (const part of parts) {
+    if (
+      part.type !== "tool-writeMarkdown" ||
+      part.state !== "output-available"
+    ) {
+      continue;
+    }
+    const result = asSuccessfulWriteMarkdownOutput(part.output);
+    if (result !== null) {
+      attachments.push({ fileId: result.fileId, filename: result.filename });
+    }
+  }
+  return attachments;
+}
+
 /** Convert one persisted message into a `"done"` turn. */
 function toChatTurn(message: PersistedMessage): ChatTurn {
   return {
@@ -172,6 +232,7 @@ function toChatTurn(message: PersistedMessage): ChatTurn {
     content: extractText(message.parts),
     status: "done",
     errorDetail: null,
+    attachments: extractAttachments(message.parts),
   };
 }
 
@@ -256,6 +317,12 @@ export function useChatAgent(
 
   let client: AgentClient | null = null;
   const pendingRequests = new Map<string, PendingRequest>();
+  // Maps a tool call's own id to the tool it invoked, populated from `tool-input-available` and
+  // consumed by `tool-output-available`/`tool-output-error` (Phase 9, US-8) -- the wire
+  // protocol's output-related chunks carry only `toolCallId`, never `toolName`, so this is the
+  // only way to know a given output belongs to `writeMarkdown` specifically. Reset per chat
+  // connection in `connect()`, matching every other piece of this composable's per-chat state.
+  let toolNamesByCallId = new Map<string, string>();
 
   /** Replace one turn in {@link turns} with a shallow-merged patch, preserving array identity. */
   function patchTurn(id: string, patch: Partial<ChatTurn>): void {
@@ -271,6 +338,15 @@ export function useChatAgent(
     );
   }
 
+  /** Append one successfully-attached file to a turn's own {@link ChatTurn.attachments} list. */
+  function appendAttachment(id: string, attachment: ChatFileAttachment): void {
+    turns.value = turns.value.map((turn) =>
+      turn.id === id
+        ? { ...turn, attachments: [...turn.attachments, attachment] }
+        : turn,
+    );
+  }
+
   /** Apply one decoded UI-message-stream part to the turn its request produced. */
   function applyStreamPart(assistantTurnId: string, part: UiStreamPart): void {
     switch (part.type) {
@@ -280,6 +356,31 @@ export function useChatAgent(
         // exclude it -- an explicit cast is required even after this literal comparison.
         appendToTurn(assistantTurnId, (part as { delta: string }).delta);
         return;
+      case "tool-input-available": {
+        const { toolCallId, toolName } = part as {
+          toolCallId: string;
+          toolName: string;
+        };
+        toolNamesByCallId.set(toolCallId, toolName);
+        return;
+      }
+      case "tool-output-available": {
+        const { toolCallId, output } = part as {
+          toolCallId: string;
+          output: unknown;
+        };
+        if (toolNamesByCallId.get(toolCallId) !== "writeMarkdown") {
+          return;
+        }
+        const result = asSuccessfulWriteMarkdownOutput(output);
+        if (result !== null) {
+          appendAttachment(assistantTurnId, {
+            fileId: result.fileId,
+            filename: result.filename,
+          });
+        }
+        return;
+      }
       case "error":
         patchTurn(assistantTurnId, {
           status: "error",
@@ -388,6 +489,7 @@ export function useChatAgent(
     turns.value = [];
     usage.value = emptyUsageSummary();
     lastReconciliationEvent.value = null;
+    toolNamesByCallId = new Map();
 
     let history: ChatTurn[];
     try {
@@ -491,6 +593,7 @@ export function useChatAgent(
         content: trimmed,
         status: "done",
         errorDetail: null,
+        attachments: [],
       },
       {
         id: assistantTurnId,
@@ -498,6 +601,7 @@ export function useChatAgent(
         content: "",
         status: "streaming",
         errorDetail: null,
+        attachments: [],
       },
     ];
     pendingRequests.set(requestId, {

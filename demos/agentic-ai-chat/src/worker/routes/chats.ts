@@ -9,6 +9,8 @@ import type { ChatAgent, ChatAgentProps } from "../agent/chat-agent";
 import type { AppBindings } from "../bindings";
 import { CHAT_ROUTES, isChatRoute } from "../chats/route";
 import { ChatRepository } from "../chats/repository";
+import { ChatFilesRepository } from "../files/repository";
+import { contentDisposition, getChatFile } from "../files/storage";
 import { UsageRepository } from "../usage/repository";
 import { emptyUsageSummary } from "../usage/types";
 import { UserRepository } from "../users/repository";
@@ -200,4 +202,45 @@ chatsRouter.get("/:id/ws", async (context) => {
   const stub = await ownedAgentStub(context.env, id, ownerEmail);
   context.get("LOGGER").info("chat_connected", { chatId: id });
   return stub.fetch(context.req.raw);
+});
+
+/**
+ * Download a file the agent's `writeMarkdown` tool wrote to this chat (docs/06-AGENTIC-CHAT.md
+ * Phase 9, US-8). Two independent checks, both required, enforce "only the chat's owner can
+ * download it": {@link ChatRepository.findOwned} confirms the requesting identity owns `id`
+ * itself, and {@link ChatFilesRepository.findByChatAndId} confirms `fileId` actually belongs to
+ * that same chat -- either failing reports the same `404`, indistinguishable from each other or
+ * from a chat/file that never existed at all, mirroring `ownedAgentStub()`'s own rationale.
+ */
+chatsRouter.get("/:id/files/:fileId", async (context) => {
+  const chatId = context.req.param("id");
+  const fileId = context.req.param("fileId");
+  const ownerEmail = context.get("Cloudflare_Access_Identity").email;
+
+  const chat = await new ChatRepository(context.env.DB).findOwned(
+    chatId,
+    ownerEmail,
+  );
+  if (chat === null) {
+    throw notFound({ detail: "Chat not found." });
+  }
+  const file = await new ChatFilesRepository(context.env.DB).findByChatAndId(
+    chatId,
+    fileId,
+  );
+  if (file === null) {
+    throw notFound({ detail: "File not found." });
+  }
+  const object = await getChatFile(context.env.FILES, file.r2Key);
+  if (object === null) {
+    throw notFound({ detail: "File not found." });
+  }
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("Content-Disposition", contentDisposition(file.filename));
+  context
+    .get("LOGGER")
+    .info("chat_file_downloaded", { chatId, fileId, filename: file.filename });
+  return new Response(object.body, { headers });
 });

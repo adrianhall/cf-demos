@@ -8,5 +8,6 @@
   "d1_database_id": "00000000-0000-0000-0000-000000000000",
   "d1_database_name": "agentic-chat-local-db",
   "environment": "development",
+  "r2_bucket_name": "agentic-chat-local-files",
   "worker_name": "agentic-chat-local"
 }

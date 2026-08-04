@@ -287,6 +287,7 @@ describe("HomeView", () => {
                     content: "Hi",
                     status: "done",
                     errorDetail: null,
+                    attachments: [],
                   },
                 ],
               },

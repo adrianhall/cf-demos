@@ -107,7 +107,7 @@ watch(
               @change="onRouteChange"
             />
           </div>
-          <ChatTranscript :turns="chat.turns" />
+          <ChatTranscript :chat-id="chatsStore.selectedChatId" :turns="chat.turns" />
           <ChatComposer
             :disabled="chat.connectionStatus !== 'connected'"
             :is-streaming="chat.isStreaming"

@@ -25,12 +25,12 @@ resource "cloudflare_worker" "demo" {
   }
 
   # Terraform destroys resources in reverse dependency order. This edge forces the Worker (and
-  # its wrangler-managed D1 binding) to be destroyed before the database itself, since nothing
-  # in either resource's own arguments references the other. The AI Gateway/dynamic routes below
-  # need no equivalent edge -- they are reached at runtime via `gateway: { id }` in application
-  # code, not a wrangler.jsonc binding, so there is no Cloudflare API ordering constraint between
-  # them and the Worker (AGENTS.md, Resource Ownership).
-  depends_on = [cloudflare_d1_database.demo]
+  # its wrangler-managed D1/R2 bindings) to be destroyed before their backing resources, since
+  # nothing in either resource's own arguments references the other. The AI Gateway/dynamic
+  # routes below need no equivalent edge -- they are reached at runtime via `gateway: { id }` in
+  # application code, not a wrangler.jsonc binding, so there is no Cloudflare API ordering
+  # constraint between them and the Worker (AGENTS.md, Resource Ownership).
+  depends_on = [cloudflare_d1_database.demo, cloudflare_r2_bucket.files]
 }
 
 resource "cloudflare_d1_database" "demo" {
@@ -40,6 +40,15 @@ resource "cloudflare_d1_database" "demo" {
   read_replication = {
     mode = "disabled"
   }
+}
+
+# Agent-generated files (docs/06-AGENTIC-CHAT.md Phase 9, US-8) -- the first R2 use in this
+# demo. Bound to the Worker as FILES; `ChatAgent`'s `writeMarkdown` tool is the only writer
+# (AGENTS.md's R2 teardown convention -- `empty-r2-bucket` is wired into `package.json`'s
+# `preteardown` step now that this resource exists).
+resource "cloudflare_r2_bucket" "files" {
+  account_id = local.cloudflare_account_id
+  name       = "${local.demo_name}-files"
 }
 
 # The AI Gateway itself. Every field the API is known to server-side-default is pinned

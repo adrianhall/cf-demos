@@ -234,6 +234,87 @@ export function createFakeTranscribeAi(text: string): Pick<Ai, "run"> {
 }
 
 /**
+ * Build a fake `Ai` binding whose `run()` resolves a **different** streamed response on each
+ * successive call, cycling back to the last entry once exhausted -- needed for Phase 9's
+ * `writeMarkdown` tool test, where `streamText()`'s own multi-step tool-calling loop
+ * (`stepCountIs(MAX_TURN_STEPS)`, `chat-agent.ts`) calls `env.AI.run()` a **second** time (to
+ * let the model respond to the tool's result) after a first call whose response was a tool
+ * call, not text -- {@link createFakeAi}'s single fixed response would otherwise replay the
+ * same tool-call chunks forever, looping until `MAX_TURN_STEPS` is exhausted instead of
+ * producing the follow-up text a real turn would. Like {@link createFakeAiWithTitle}, a
+ * non-streaming call (`input.stream !== true`, Phase 3's auto-title `generateText()`) always
+ * answers with a fixed placeholder title, independent of the streamed-call sequence below.
+ *
+ * @param streamedResponses Each streamed call's own raw `data:` payload strings, in call order.
+ * @returns A fake `Ai`-shaped object suitable for {@link withFakeAi}.
+ */
+export function createSequencedFakeAi(
+  streamedResponses: readonly (readonly string[])[],
+): Pick<Ai, "run"> {
+  let call = 0;
+  return {
+    run: ((_modelId: string, input?: Record<string, unknown>) => {
+      if (input?.stream !== true) {
+        return Promise.resolve({ response: "Untitled" });
+      }
+      const payloads =
+        streamedResponses[Math.min(call, streamedResponses.length - 1)] ?? [];
+      call += 1;
+      const encoder = new TextEncoder();
+      const text = payloads.map((payload) => `data: ${payload}\n\n`).join("");
+      return Promise.resolve(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(text));
+            controller.close();
+          },
+        }),
+      );
+      // biome-ignore lint/suspicious/noExplicitAny: matching env.AI.run()'s broad overloaded signature for a test fake is not worth reproducing.
+    }) as any,
+  };
+}
+
+/**
+ * Raw Workers AI "native format" SSE payload strings (`data: {...}\n\n` framing, per
+ * {@link createFakeAi}'s own JSDoc) that make `workers-ai-provider` emit a single, complete
+ * `writeMarkdown` tool call for `filename`/`content`, followed by a `[DONE]` sentinel -- built
+ * from `workers-ai-provider`'s own documented streaming shape
+ * (`node_modules/workers-ai-provider/src/streaming.ts`'s `emitToolCallDeltas()` JSDoc): a start
+ * chunk carrying the call's `id`/`function.name`, one argument-delta chunk carrying the call's
+ * full JSON-encoded arguments, and a null-finalization chunk that closes it.
+ *
+ * @param filename The tool call's `filename` argument.
+ * @param content The tool call's `content` argument.
+ * @returns Raw SSE payload strings for {@link createSequencedFakeAi}'s first call.
+ */
+export function writeMarkdownToolCallPayloads(
+  filename: string,
+  content: string,
+): string[] {
+  const args = JSON.stringify({ filename, content });
+  return [
+    JSON.stringify({
+      tool_calls: [
+        {
+          id: "call_1",
+          type: "function",
+          index: 0,
+          function: { name: "writeMarkdown", arguments: "" },
+        },
+      ],
+    }),
+    JSON.stringify({
+      tool_calls: [{ index: 0, function: { arguments: args } }],
+    }),
+    JSON.stringify({
+      tool_calls: [{ id: null, type: null, function: { name: null } }],
+    }),
+    "[DONE]",
+  ];
+}
+
+/**
  * Open an authenticated chat WebSocket through the real Worker route, tracked in `openSockets`
  * for the calling test file's own `afterEach` teardown (per the `testing-durable-objects`
  * skill's lifecycle rules -- every socket a test opens must be tracked and force-closed).
@@ -484,6 +565,39 @@ export async function readChatUsageRows(
   )
     .bind(chatId)
     .all<RawChatUsageRow>();
+  return results;
+}
+
+/** One raw `chat_files` row, as read directly from D1 for test assertions (Phase 9, US-8; no
+ * route exposes this table's raw columns -- a client only ever downloads a file's content
+ * through `GET /api/chats/:id/files/:fileId`, never lists this table's metadata directly).
+ * `correlation_id` is the exact join key back to the `chat_usage` row the same turn produced
+ * (docs/06-AGENTIC-CHAT.md Section 6.6/15, {@link RawChatUsageRow}'s own field of the same
+ * name). */
+export interface RawChatFileRow {
+  id: string;
+  chat_id: string;
+  filename: string;
+  r2_key: string;
+  size_bytes: number;
+  correlation_id: string;
+}
+
+/**
+ * Read every `chat_files` row for one chat directly from D1, most recently created first.
+ *
+ * @param chatId Chat whose `chat_files` rows to read.
+ * @returns The chat's raw file rows.
+ */
+export async function readChatFileRows(
+  chatId: string,
+): Promise<RawChatFileRow[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, chat_id, filename, r2_key, size_bytes, correlation_id
+     FROM chat_files WHERE chat_id = ? ORDER BY created_at DESC`,
+  )
+    .bind(chatId)
+    .all<RawChatFileRow>();
   return results;
 }
 

@@ -126,6 +126,7 @@ describe("useChatAgent", () => {
         content: "hi",
         status: "done",
         errorDetail: null,
+        attachments: [],
       },
       {
         id: "m2",
@@ -133,6 +134,7 @@ describe("useChatAgent", () => {
         content: "hello",
         status: "done",
         errorDetail: null,
+        attachments: [],
       },
     ]);
     expect(result.connectionStatus.value).toBe("connecting");
@@ -198,6 +200,221 @@ describe("useChatAgent", () => {
       status: "done",
     });
     expect(result.isStreaming.value).toBe(false);
+  });
+
+  it("attaches a file to the turn once a writeMarkdown tool call's output-available part reports success (US-8)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+
+    result.send("Save this as a file");
+    const sentFrame = JSON.parse(socket.sent[0] ?? "{}") as { id: string };
+
+    socket.simulateMessage({
+      type: "cf_agent_use_chat_response",
+      id: sentFrame.id,
+      body: JSON.stringify({
+        type: "tool-input-available",
+        toolCallId: "call-1",
+        toolName: "writeMarkdown",
+        input: { filename: "notes", content: "hello" },
+      }),
+      done: false,
+    });
+    socket.simulateMessage({
+      type: "cf_agent_use_chat_response",
+      id: sentFrame.id,
+      body: JSON.stringify({
+        type: "tool-output-available",
+        toolCallId: "call-1",
+        output: { success: true, fileId: "file-1", filename: "notes.md" },
+      }),
+      done: true,
+    });
+
+    expect(result.turns.value[1]?.attachments).toEqual([
+      { fileId: "file-1", filename: "notes.md" },
+    ]);
+  });
+
+  it("does not attach a file for a tool-output-available part belonging to a tool other than writeMarkdown", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+
+    result.send("Look this up");
+    const sentFrame = JSON.parse(socket.sent[0] ?? "{}") as { id: string };
+
+    socket.simulateMessage({
+      type: "cf_agent_use_chat_response",
+      id: sentFrame.id,
+      body: JSON.stringify({
+        type: "tool-input-available",
+        toolCallId: "call-1",
+        toolName: "getUrl",
+        input: { url: "https://example.com" },
+      }),
+      done: false,
+    });
+    socket.simulateMessage({
+      type: "cf_agent_use_chat_response",
+      id: sentFrame.id,
+      body: JSON.stringify({
+        type: "tool-output-available",
+        toolCallId: "call-1",
+        output: { success: true, fileId: "file-1", filename: "notes.md" },
+      }),
+      done: true,
+    });
+
+    expect(result.turns.value[1]?.attachments).toEqual([]);
+  });
+
+  it("does not attach a file for a tool-output-available part whose output is not an object", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+
+    result.send("Save this as a file");
+    const sentFrame = JSON.parse(socket.sent[0] ?? "{}") as { id: string };
+
+    socket.simulateMessage({
+      type: "cf_agent_use_chat_response",
+      id: sentFrame.id,
+      body: JSON.stringify({
+        type: "tool-input-available",
+        toolCallId: "call-1",
+        toolName: "writeMarkdown",
+        input: { filename: "notes", content: "hello" },
+      }),
+      done: false,
+    });
+    socket.simulateMessage({
+      type: "cf_agent_use_chat_response",
+      id: sentFrame.id,
+      body: JSON.stringify({
+        type: "tool-output-available",
+        toolCallId: "call-1",
+        output: "not an object",
+      }),
+      done: true,
+    });
+
+    expect(result.turns.value[1]?.attachments).toEqual([]);
+  });
+
+  it("restores a turn's attachments from a persisted tool-writeMarkdown part on history reload (US-8)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify([
+            { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
+            {
+              id: "a1",
+              role: "assistant",
+              parts: [
+                { type: "text", text: "Saved it." },
+                {
+                  type: "tool-writeMarkdown",
+                  state: "output-available",
+                  output: {
+                    success: true,
+                    fileId: "file-1",
+                    filename: "notes.md",
+                  },
+                },
+              ],
+            },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+
+    await vi.waitFor(() => expect(result.turns.value).toHaveLength(2));
+    expect(result.turns.value[1]?.attachments).toEqual([
+      { fileId: "file-1", filename: "notes.md" },
+    ]);
+  });
+
+  it("restores no attachment from a persisted tool-writeMarkdown part whose own result reported failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify([
+            { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
+            {
+              id: "a1",
+              role: "assistant",
+              parts: [
+                { type: "text", text: "I could not save that." },
+                {
+                  type: "tool-writeMarkdown",
+                  state: "output-available",
+                  output: {
+                    success: false,
+                    error: "content must not be empty.",
+                  },
+                },
+              ],
+            },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+
+    await vi.waitFor(() => expect(result.turns.value).toHaveLength(2));
+    expect(result.turns.value[1]?.attachments).toEqual([]);
+  });
+
+  it("does not attach a file for a tool-output-available part whose own result reported failure", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+
+    result.send("Save this as a file");
+    const sentFrame = JSON.parse(socket.sent[0] ?? "{}") as { id: string };
+
+    socket.simulateMessage({
+      type: "cf_agent_use_chat_response",
+      id: sentFrame.id,
+      body: JSON.stringify({
+        type: "tool-input-available",
+        toolCallId: "call-1",
+        toolName: "writeMarkdown",
+        input: { filename: "notes", content: "" },
+      }),
+      done: false,
+    });
+    socket.simulateMessage({
+      type: "cf_agent_use_chat_response",
+      id: sentFrame.id,
+      body: JSON.stringify({
+        type: "tool-output-available",
+        toolCallId: "call-1",
+        output: { success: false, error: "content must not be empty." },
+      }),
+      done: true,
+    });
+
+    expect(result.turns.value[1]?.attachments).toEqual([]);
   });
 
   it("marks the assistant turn as errored on an in-band error part", async () => {
@@ -489,6 +706,7 @@ describe("useChatAgent", () => {
           content: "second chat",
           status: "done",
           errorDetail: null,
+          attachments: [],
         },
       ]),
     );
@@ -570,6 +788,7 @@ describe("useChatAgent", () => {
         content: "second",
         status: "done",
         errorDetail: null,
+        attachments: [],
       },
     ]);
     expect(result.connectionStatus.value).not.toBe("error");
@@ -651,6 +870,7 @@ describe("useChatAgent", () => {
         content: "hi",
         status: "done",
         errorDetail: null,
+        attachments: [],
       },
     ]);
   });
@@ -704,6 +924,7 @@ describe("useChatAgent", () => {
         content: "second",
         status: "done",
         errorDetail: null,
+        attachments: [],
       },
     ]);
     expect(MockWebSocket.instances).toHaveLength(1);

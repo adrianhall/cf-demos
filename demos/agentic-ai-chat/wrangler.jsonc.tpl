@@ -46,6 +46,14 @@
     "binding": "AI",
     "remote": true
   },
+  // Agent-generated files (docs/06-AGENTIC-CHAT.md Phase 9, US-8) -- `ChatAgent`'s
+  // `writeMarkdown` tool is the only writer.
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "{{r2_bucket_name}}"
+    }
+  ],
   // One Durable Object per chat (docs/06-AGENTIC-CHAT.md Section 6.2), addressed by
   // `getAgentByName()` rather than `routeAgentRequest()`'s default routing (Spike A).
   "durable_objects": {

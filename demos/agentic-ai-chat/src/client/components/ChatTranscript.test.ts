@@ -12,13 +12,16 @@ function buildTurn(overrides: Partial<ChatTurn> = {}): ChatTurn {
     content: "",
     status: "streaming",
     errorDetail: null,
+    attachments: [],
     ...overrides,
   };
 }
 
 describe("ChatTranscript", () => {
   it("shows an empty-state message when there are no turns", () => {
-    const wrapper = mount(ChatTranscript, { props: { turns: [] } });
+    const wrapper = mount(ChatTranscript, {
+      props: { chatId: null, turns: [] },
+    });
 
     expect(wrapper.text()).toContain("No messages yet");
   });
@@ -26,6 +29,7 @@ describe("ChatTranscript", () => {
   it("renders the user message and the streamed assistant content", () => {
     const wrapper = mount(ChatTranscript, {
       props: {
+        chatId: "chat-1",
         turns: [
           buildTurn({
             id: "u1",
@@ -51,7 +55,10 @@ describe("ChatTranscript", () => {
 
   it("shows the activity indicator only before the first token arrives", () => {
     const streamingBeforeToken = mount(ChatTranscript, {
-      props: { turns: [buildTurn({ status: "streaming", content: "" })] },
+      props: {
+        chatId: "chat-1",
+        turns: [buildTurn({ status: "streaming", content: "" })],
+      },
     });
     expect(streamingBeforeToken.get('[role="status"]').text()).toContain(
       "Waiting for the agent",
@@ -59,6 +66,7 @@ describe("ChatTranscript", () => {
 
     const streamingWithToken = mount(ChatTranscript, {
       props: {
+        chatId: "chat-1",
         turns: [buildTurn({ status: "streaming", content: "The capital" })],
       },
     });
@@ -72,6 +80,7 @@ describe("ChatTranscript", () => {
   it("shows the error detail for a failed turn", () => {
     const wrapper = mount(ChatTranscript, {
       props: {
+        chatId: "chat-1",
         turns: [
           buildTurn({
             status: "error",
@@ -88,7 +97,10 @@ describe("ChatTranscript", () => {
 
   it("falls back to a generic error message when no detail was reported", () => {
     const wrapper = mount(ChatTranscript, {
-      props: { turns: [buildTurn({ status: "error", errorDetail: null })] },
+      props: {
+        chatId: "chat-1",
+        turns: [buildTurn({ status: "error", errorDetail: null })],
+      },
     });
 
     expect(wrapper.get('[role="alert"]').text()).toContain(
@@ -97,7 +109,9 @@ describe("ChatTranscript", () => {
   });
 
   it("scrolls the transcript to its bottom edge when a new turn arrives", async () => {
-    const wrapper = mount(ChatTranscript, { props: { turns: [] } });
+    const wrapper = mount(ChatTranscript, {
+      props: { chatId: "chat-1", turns: [] },
+    });
     const region = wrapper.get(".chat-transcript").element;
     Object.defineProperty(region, "scrollHeight", {
       value: 640,
@@ -111,11 +125,61 @@ describe("ChatTranscript", () => {
   });
 
   it("does not throw when the component is unmounted before the scroll watcher resumes", async () => {
-    const wrapper = mount(ChatTranscript, { props: { turns: [] } });
+    const wrapper = mount(ChatTranscript, {
+      props: { chatId: "chat-1", turns: [] },
+    });
 
     const propsUpdated = wrapper.setProps({ turns: [buildTurn()] });
     wrapper.unmount();
 
     await expect(propsUpdated).resolves.not.toThrow();
+  });
+
+  it("renders an attachment chip linking to the file's ownership-checked download route (US-8)", () => {
+    const wrapper = mount(ChatTranscript, {
+      props: {
+        chatId: "chat-1",
+        turns: [
+          buildTurn({
+            status: "done",
+            content: "I saved that as trip-itinerary.md.",
+            attachments: [{ fileId: "file-1", filename: "trip-itinerary.md" }],
+          }),
+        ],
+      },
+    });
+
+    const chip = wrapper.get(".attachment-chip");
+    expect(chip.text()).toContain("trip-itinerary.md");
+    expect(chip.attributes("href")).toBe("/api/chats/chat-1/files/file-1");
+  });
+
+  it("still builds a download link when chatId is null (a defensive fallback, not a state this app ever reaches)", () => {
+    const wrapper = mount(ChatTranscript, {
+      props: {
+        chatId: null,
+        turns: [
+          buildTurn({
+            status: "done",
+            attachments: [{ fileId: "file-1", filename: "notes.md" }],
+          }),
+        ],
+      },
+    });
+
+    expect(wrapper.get(".attachment-chip").attributes("href")).toBe(
+      "/api/chats//files/file-1",
+    );
+  });
+
+  it("renders no attachment list when a turn has no attachments", () => {
+    const wrapper = mount(ChatTranscript, {
+      props: {
+        chatId: "chat-1",
+        turns: [buildTurn({ status: "done", content: "Hi." })],
+      },
+    });
+
+    expect(wrapper.find(".attachment-chip").exists()).toBe(false);
   });
 });

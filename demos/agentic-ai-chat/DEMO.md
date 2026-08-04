@@ -1,6 +1,6 @@
 # Agentic Chat Demo Script
 
-See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This checkout implements Phase 1 (Scaffolding) through Phase 8 (Metadata-Driven Model Routing, US-7) — the authenticated shell, the D1 user directory, a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, a sidebar for creating, switching between, auto-titling, and deleting chats, a "Basic"/"Reasoning" mode selector backed by governed AI Gateway dynamic routes rather than a client-visible model id, a microphone control that dictates a prompt via Workers AI speech-to-text, a per-chat cost/token readout that starts **Estimated** and upgrades in place to **AI Gateway**-confirmed once AI Gateway's own logged figures for that turn are found, an Admin Console ranking every user by total cost, editing any user's business/geo segment, and reporting cost by business and by geo, and each route's own conditional/rate-limit logic steering the caller's business segment to a different underlying model with zero client-side branching. Later phases' demo scripts pick up from here for tools and skills.
+See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This checkout implements Phase 1 (Scaffolding) through Phase 9 (Tool — Write A File To My Chat, US-8) — the authenticated shell, the D1 user directory, a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, a sidebar for creating, switching between, auto-titling, and deleting chats, a "Basic"/"Reasoning" mode selector backed by governed AI Gateway dynamic routes rather than a client-visible model id, a microphone control that dictates a prompt via Workers AI speech-to-text, a per-chat cost/token readout that starts **Estimated** and upgrades in place to **AI Gateway**-confirmed once AI Gateway's own logged figures for that turn are found, an Admin Console ranking every user by total cost, editing any user's business/geo segment, and reporting cost by business and by geo, each route's own conditional/rate-limit logic steering the caller's business segment to a different underlying model with zero client-side branching, and a `writeMarkdown` tool that lets the agent save a real, downloadable file to R2, attached to the chat and visible only to its owner. Later phases' demo scripts pick up from here for a second tool (safe URL fetching) and skills.
 
 ## Demonstration Prerequisites
 
@@ -9,9 +9,10 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
 3. Open a second browser window or tab to the Cloudflare dashboard at **Zero Trust** > **Access controls** > **Applications**.
 4. Open a third browser window or tab to the Cloudflare dashboard's **D1** section, ready to open the `agentic-chat-db` database's console.
 5. Open a fourth browser window or tab to the Cloudflare dashboard's **AI Gateway** section, ready to open the `agentic-chat` gateway and its two dynamic routes (**basic**, **reasoning**), and its overall request log.
-6. Sign out of, or use a private/incognito window for, the demo hostname so the first step shows the unauthenticated experience.
-7. Use a browser with a working microphone, and be prepared to grant microphone permission when prompted.
-8. Sign in as the non-administrator identity from step 2 at least once before starting the walkthrough below (opening the app and letting `GET /api/me` upsert its `users` row is enough), so it already appears in the Admin Console's ranked table when this script reaches it.
+6. Open a fifth browser window or tab to the Cloudflare dashboard's **R2** section, ready to open the `agentic-chat-files` bucket.
+7. Sign out of, or use a private/incognito window for, the demo hostname so the first step shows the unauthenticated experience.
+8. Use a browser with a working microphone, and be prepared to grant microphone permission when prompted.
+9. Sign in as the non-administrator identity from step 2 at least once before starting the walkthrough below (opening the app and letting `GET /api/me` upsert its `users` row is enough), so it already appears in the Admin Console's ranked table when this script reaches it.
 
 ## Presentation Flow
 
@@ -49,7 +50,7 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
 20. Back in the dashboard, open **Workers & Pages** > `agentic-chat` > **Logs** and show the `chat_created`, `chat_connected`, `chat_deleted`, and `transcription_completed` log entries from this session.
 21. Optionally, open **Durable Objects** in the dashboard (under **Workers & Pages** > `agentic-chat` > **Bindings**, or the account-level Durable Objects view) and show the `ChatAgent` class with one live instance per remaining chat — the coordination atom for each conversation.
 22. Still signed in as the administrator, point out the **Admin console** link in the header. Click it.
-23. Point out the ranked "Users by cost" table: your own identity (and the non-administrator identity from step 8 of Demonstration Prerequisites, already listed with a zeroed cost) both appear, ordered by total cost descending.
+23. Point out the ranked "Users by cost" table: your own identity (and the non-administrator identity from step 9 of Demonstration Prerequisites, already listed with a zeroed cost) both appear, ordered by total cost descending.
 24. In your own row, change **Business** to **Leadership** and **Geo** to **Americas**. Point out the row updates immediately, with no page reload.
 25. Point out the "Cost by business" and "Cost by geo" sections below now show a "Leadership"/"Americas" row matching your own cost figure from the table above.
 26. Switch to the D1 tab and run `SELECT email, is_admin, business, geo FROM users;`. Point out your own row's `business`/`geo` columns now hold the values just set from the browser.
@@ -60,6 +61,14 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
 31. Back in the browser, return to the Admin Console and change your own **Business** to **Field**. Go back to the **same chat** from step 30 (not a new one) and send one more message. Switch to the AI Gateway tab and point out this newest request in the **basic** route's log resolved back to the original, cheaper model — the exact same chat, the exact same "Basic" mode, a different model purely because your business segment changed between turns, re-read fresh from D1 on every request with no redeploy and no cache to invalidate.
 32. Still in the AI Gateway tab, open the **basic** dynamic route's own configuration view (not just its log) and point out the `business-check` conditional element, the `basic-rate-gate` rate-limit element beneath its "false" branch (scoped per business value, `key = metadata.business`), and the two model elements it can resolve to — the same shape visible in the **reasoning** route.
 33. Open the gateway's own settings and point out its **Spend limits** section: a $1/day cost budget, partitioned by the `business` metadata dimension, so each business segment gets its own independent budget pool rather than sharing one account-wide pool.
+34. Open (or return to) any chat and type "Please save a three-item packing list for a beach trip as a Markdown file." Point out:
+    - The response streams in as normal.
+    - Once it finishes, an attachment chip appears below the assistant's text, showing a generated filename ending in `.md`.
+35. Click the attachment chip. Point out it downloads a real Markdown file whose content is the packing list the assistant just described.
+36. Switch to the R2 tab, open the `agentic-chat-files` bucket, and point out an object under a `chats/<chat-id>/files/` prefix matching the chat from step 34 — the file the chip downloaded, stored for real, not just rendered from the transcript's own text.
+37. Switch to the D1 tab and run `SELECT chat_id, filename, size_bytes, correlation_id, created_at FROM chat_files ORDER BY created_at DESC;`. Point out the new row, its `filename` matching the chip, and that no route exposes this table directly — only `GET /api/chats/:id/files/:fileId` (step 35) ever reads it. Then run `SELECT correlation_id, cost_source, cost_usd FROM chat_usage WHERE correlation_id = '<the file row's correlation_id>';` and point out it returns the exact turn that produced the file — the same per-turn correlation id both tables share, an exact join key rather than one inferred from timestamps.
+38. Open a private/incognito window, sign in as the non-administrator identity, and attempt to open the exact same file URL from step 35 (copy it from the browser's address bar after step 35, or the network tab). Point out it returns an error, not the file — this identity does not own the chat that file belongs to, and the tool's write path never grants R2 access to anyone but this Worker's own routes.
+39. Back in the original browser, ask the agent to save another file with no content ("Please save an empty file with no text in it") — a request the tool's own validation rejects. Point out the assistant explains it could not save an empty document, rather than the turn failing outright, and that no new attachment chip or R2/D1 row appears for this attempt.
 
 ## Expected Results
 
@@ -78,14 +87,17 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
 - The **Admin console** link appears only for the identity matching `ADMIN_EMAIL`; a non-administrator identity never sees the link and receives `403` from every underlying `/api/admin/*` request if it navigates to `/admin` directly.
 - The ranked "Users by cost" table lists every signed-in identity, highest cost first; editing a user's business/geo segment updates that row immediately and is reflected in both segment reports without a page reload.
 - The same "Basic"/"Reasoning" mode selection resolves to a different underlying model depending on the caller's business segment (verified from the AI Gateway request log), including within the same chat across two turns whose caller's business segment changed in between — with zero difference in what the browser itself sent.
+- Asking the agent to produce a document reliably yields a real, downloadable file, attached to the chat as an inline attachment chip, visible only to that chat's owner.
+- Asking the agent to save invalid content (no text) is refused with a clear explanation in the assistant's reply, not a failed or silently truncated turn.
 
 ## Where To Observe State
 
-- **Worker logs:** Workers & Pages > `agentic-chat` > Logs (`chat_created`, `chat_connected`, `chat_route_changed`, `chat_deleted`, `transcription_completed`, `admin_user_metadata_updated` entries).
+- **Worker logs:** Workers & Pages > `agentic-chat` > Logs (`chat_created`, `chat_connected`, `chat_route_changed`, `chat_deleted`, `transcription_completed`, `admin_user_metadata_updated`, `chat_file_downloaded` entries).
 - **Traces:** Workers & Pages > `agentic-chat` > Observability > Traces (10% sampling).
-- **D1 data:** D1 > `agentic-chat-db` > Console; query the `chats`/`users` tables as shown above (`route` is Phase 4's own column; `business`/`geo` are Phase 7's own columns), and `chat_usage` (Phase 6's cost ledger — `cost_source`/`gateway_log_id` show whether a row is still estimated or already AI-Gateway-confirmed).
+- **D1 data:** D1 > `agentic-chat-db` > Console; query the `chats`/`users` tables as shown above (`route` is Phase 4's own column; `business`/`geo` are Phase 7's own columns), `chat_usage` (Phase 6's cost ledger — `cost_source`/`gateway_log_id` show whether a row is still estimated or already AI-Gateway-confirmed), and `chat_files` (Phase 9's agent-generated file metadata).
 - **Access application:** Zero Trust > Access controls > Applications > `agentic-chat`.
 - **AI Gateway:** AI Gateway > `agentic-chat` > **basic**/**reasoning** dynamic routes — each route's own request log entry (including the auto-title generation calls), resolved model, latency, and cost; each route's own `business-check` conditional/`rate-gate`/model elements (Phase 8); and the gateway's own **Spend limits** section (Phase 8, partitioned by `business`). The gateway's overall request log also shows each dictation's direct (non-routed) `@cf/openai/whisper-large-v3-turbo` call. Each request log entry's own logged cost/tokens is exactly what `chat_usage.cost_source = 'gateway'` rows are upgraded to.
 - **Durable Objects:** the `ChatAgent` class and its live instances, one per chat.
+- **R2 bucket:** R2 > `agentic-chat-files` — one object per file the `writeMarkdown` tool has written, under a `chats/<chat-id>/files/` prefix (Phase 9).
 
 Run `npm run teardown` after the presentation; see README.md for details.

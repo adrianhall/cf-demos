@@ -5,6 +5,7 @@ import {
   type GenerateTextOnFinishCallback,
   type LanguageModel,
   type LanguageModelUsage,
+  stepCountIs,
   streamText,
   type ToolSet,
 } from "ai";
@@ -28,6 +29,17 @@ import { estimateCostUsd, modelIdForRoute } from "../usage/pricing";
 import { UsageRepository } from "../usage/repository";
 import { type ChatUsageSummary, emptyUsageSummary } from "../usage/types";
 import type { Business } from "../users/business";
+import { createWriteMarkdownTool } from "./tools/write-markdown";
+
+/**
+ * Bound on how many `streamText()` steps one turn may take (docs/06-AGENTIC-CHAT.md Phase 9,
+ * US-8). `streamText()`'s own default (`stepCountIs(1)`) stops the instant the model emits a
+ * tool call, with no further step to let it respond to that tool's result -- which would leave
+ * a successful `writeMarkdown` call with no assistant text acknowledging it. `4` is generous
+ * headroom for "call a tool, then respond" (and, from Phase 10/11 onward, a second tool in the
+ * same turn) without letting a misbehaving model loop indefinitely.
+ */
+const MAX_TURN_STEPS = 4;
 
 /**
  * System prompt for Phase 3's auto-title generation (US-2): a second, non-streaming `env.AI`
@@ -213,9 +225,29 @@ export class ChatAgent extends AIChatAgent<
       model,
       system:
         `You are a helpful assistant embedded in a private, authenticated chat for ` +
-        `${this.ownerEmail ?? "the signed-in user"}. Answer directly and concisely.`,
+        `${this.ownerEmail ?? "the signed-in user"}. Answer directly and concisely. When you ` +
+        `use the writeMarkdown tool, briefly confirm what you saved in your reply.`,
       messages: await convertToModelMessages(this.messages),
       abortSignal: options?.abortSignal,
+      // `writeMarkdown` (docs/06-AGENTIC-CHAT.md Phase 9, US-8) -- bound to this chat's own R2/D1
+      // bindings and instance name, never a shared or cross-chat instance. Threading this same
+      // turn's `correlationId` in resolves the doc's own Section 15 open question ("exact
+      // correlation key between a chat_files row and the chat_usage row(s) that produced it"):
+      // every file this call writes is stamped with the turn's own correlation id, giving
+      // Phase 12's per-file export an exact `chat_files.correlation_id = chat_usage.correlation_id`
+      // join, rather than an approximate one inferred from timestamps.
+      tools: {
+        writeMarkdown: createWriteMarkdownTool({
+          bucket: this.env.FILES,
+          database: this.env.DB,
+          chatId: this.name,
+          correlationId,
+        }),
+      },
+      // See MAX_TURN_STEPS's own JSDoc: without this, a successful tool call would end the turn
+      // with no assistant text acknowledging it, since streamText()'s own default stops after
+      // exactly one step.
+      stopWhen: stepCountIs(MAX_TURN_STEPS),
       onFinish: async (event) => {
         await onFinish(event);
         await this.recordTurnUsage(correlationId, event.usage);

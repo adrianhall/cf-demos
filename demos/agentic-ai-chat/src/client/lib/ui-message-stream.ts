@@ -14,14 +14,27 @@
  * `body` deltas. `UiMessageStreamDecoder` buffers across both without assuming SSE framing.
  */
 
-/** One parsed AI SDK v5 UI-message-stream part. Only the fields this demo's Phase 2 transcript
- * actually reads are typed narrowly; every other part shape decodes as `UnknownStreamPart`. */
+/** One parsed AI SDK v5 UI-message-stream part. Only the fields this demo's transcript actually
+ * reads are typed narrowly; every other part shape decodes as `UnknownStreamPart`. The four
+ * `tool-*` variants (Phase 9/10 onward) are only ever partially consumed: `useChatAgent.ts`
+ * reads `toolName` off `tool-input-available` to remember which tool a later
+ * `tool-output-available`/`tool-output-error` (identified only by `toolCallId`, with no
+ * `toolName` of its own) belongs to. */
 export type UiStreamPart =
   | { type: "start" }
   | { type: "start-step" }
   | { type: "text-start"; id: string }
   | { type: "text-delta"; id: string; delta: string }
   | { type: "text-end"; id: string }
+  | { type: "tool-input-start"; toolCallId: string; toolName: string }
+  | {
+      type: "tool-input-available";
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+    }
+  | { type: "tool-output-available"; toolCallId: string; output: unknown }
+  | { type: "tool-output-error"; toolCallId: string; errorText: string }
   | { type: "finish-step" }
   | { type: "finish" }
   | { type: "error"; errorText: string }
