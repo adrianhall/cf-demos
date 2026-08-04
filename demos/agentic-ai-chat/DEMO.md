@@ -1,6 +1,6 @@
 # Agentic Chat Demo Script
 
-See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This checkout implements Phase 1 (Scaffolding) through Phase 12 (Export A Chat Or A File, US-11) — the authenticated shell, the D1 user directory, a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, a sidebar for creating, switching between, auto-titling, and deleting chats, a "Basic"/"Reasoning" mode selector backed by governed AI Gateway dynamic routes rather than a client-visible model id, a microphone control that dictates a prompt via Workers AI speech-to-text, a per-chat cost/token readout that starts **Estimated** and upgrades in place to **AI Gateway**-confirmed once AI Gateway's own logged figures for that turn are found, an Admin Console ranking every user by total cost, editing any user's business/geo segment, and reporting cost by business and by geo, each route's own conditional/rate-limit logic steering the caller's business segment to a different underlying model with zero client-side branching, a `writeMarkdown` tool that lets the agent save a real, downloadable file to R2, attached to the chat and visible only to its owner, a `getUrl` tool that fetches an allow-listed URL through a Dynamic Worker's egress-controlled `globalOutbound` gateway, refusing (and explaining the refusal for) anything else, personal/enterprise skills — a signed-in user's own Markdown instruction bundle, or an administrator's enterprise-wide one, that the agent activates automatically when a task matches — and exporting a whole chat, or a single generated file, as a standalone Markdown document carrying its own cost/token breakdown.
+See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 
 ## Demonstration Prerequisites
 
@@ -13,7 +13,7 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
 7. Sign out of, or use a private/incognito window for, the demo hostname so the first step shows the unauthenticated experience.
 8. Use a browser with a working microphone, and be prepared to grant microphone permission when prompted.
 9. Sign in as the non-administrator identity from step 2 at least once before starting the walkthrough below (opening the app and letting `GET /api/me` upsert its `users` row is enough), so it already appears in the Admin Console's ranked table when this script reaches it.
-10. Confirm the deployment's Cloudflare account is on a Workers Paid plan or above -- the `getUrl` tool's Dynamic Worker (Phase 10) requires it.
+10. Confirm the deployment's Cloudflare account is on a Workers Paid plan or above -- the `getUrl` tool's Dynamic Worker requires it.
 
 ## Presentation Flow
 
@@ -113,10 +113,10 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
 
 - **Worker logs:** Workers & Pages > `agentic-chat` > Logs (`chat_created`, `chat_connected`, `chat_route_changed`, `chat_deleted`, `transcription_completed`, `admin_user_metadata_updated`, `chat_file_downloaded`, `egress_gateway_decision`, `skill_created`, `skill_deleted`, `chat_exported`, `chat_file_exported` entries).
 - **Traces:** Workers & Pages > `agentic-chat` > Observability > Traces (10% sampling).
-- **D1 data:** D1 > `agentic-chat-db` > Console; query the `chats`/`users` tables as shown above (`route` is Phase 4's own column; `business`/`geo` are Phase 7's own columns), `chat_usage` (Phase 6's cost ledger — `cost_source`/`gateway_log_id` show whether a row is still estimated or already AI-Gateway-confirmed), and `chat_files` (Phase 9's agent-generated file metadata).
+- **D1 data:** D1 > `agentic-chat-db` > Console; query the `chats`/`users` tables as shown above (`chats.route`; `users.business`/`users.geo`), `chat_usage` (the cost ledger — `cost_source`/`gateway_log_id` show whether a row is still estimated or already AI-Gateway-confirmed), and `chat_files` (agent-generated file metadata).
 - **Access application:** Zero Trust > Access controls > Applications > `agentic-chat`.
-- **AI Gateway:** AI Gateway > `agentic-chat` > **basic**/**reasoning** dynamic routes — each route's own request log entry (including the auto-title generation calls), resolved model, latency, and cost; each route's own `business-check` conditional/`rate-gate`/model elements (Phase 8); and the gateway's own **Spend limits** section (Phase 8, partitioned by `business`). The gateway's overall request log also shows each dictation's direct (non-routed) `@cf/openai/whisper-large-v3-turbo` call. Each request log entry's own logged cost/tokens is exactly what `chat_usage.cost_source = 'gateway'` rows are upgraded to.
+- **AI Gateway:** AI Gateway > `agentic-chat` > **basic**/**reasoning** dynamic routes — each route's own request log entry (including the auto-title generation calls), resolved model, latency, and cost; each route's own `business-check` conditional/`rate-gate`/model elements; and the gateway's own **Spend limits** section (partitioned by `business`). The gateway's overall request log also shows each dictation's direct (non-routed) `@cf/openai/whisper-large-v3-turbo` call. Each request log entry's own logged cost/tokens is exactly what `chat_usage.cost_source = 'gateway'` rows are upgraded to.
 - **Durable Objects:** the `ChatAgent` class and its live instances, one per chat.
-- **R2 bucket:** R2 > `agentic-chat-files` — one object per file the `writeMarkdown` tool has written, under a `chats/<chat-id>/files/` prefix (Phase 9), and one `SKILL.md` per personal/enterprise skill, under `skills/personal/<owner>/<skill-id>/`/`skills/enterprise/<skill-id>/` (Phase 11).
+- **R2 bucket:** R2 > `agentic-chat-files` — one object per file the `writeMarkdown` tool has written, under a `chats/<chat-id>/files/` prefix, and one `SKILL.md` per personal/enterprise skill, under `skills/personal/<owner>/<skill-id>/`/`skills/enterprise/<skill-id>/`.
 
 Run `npm run teardown` after the presentation; see README.md for details.

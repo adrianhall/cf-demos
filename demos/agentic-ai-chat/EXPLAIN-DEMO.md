@@ -1,77 +1,70 @@
 # Agentic Chat — What This Demo Teaches
 
-This demo is the curriculum's introduction to the Agents SDK, built feature by feature rather than layer by layer. The full plan — every user story, design decision, spike, and phase — lives in [`docs/06-AGENTIC-CHAT.md`](../../docs/06-AGENTIC-CHAT.md); this file only covers what **this checkout** (Phase 1, Scaffolding; Phase 2, Core Agentic Chat; Phase 3, Chat Sidebar And Management; Phase 4, Governed Model Selection Via Dynamic Routes; Phase 5, Voice-To-Prompt Dictation; Phase 6, Per-Chat Cost And Token Visibility; Phase 7, Admin Cost/Metadata Console; Phase 8, Metadata-Driven Model Routing; Phase 9, Tool — Write A File To My Chat; Phase 10, Tool — Fetch A URL Safely; Phase 11, Personal And Enterprise Skills; and Phase 12, Export A Chat Or A File) actually implements. Later phases will extend this file as their own features ship.
+This demo is the curriculum's introduction to the Agents SDK: a scaled-down
+enterprise AI chat where a signed-in user holds a persistent, multi-turn
+conversation with a Durable Object-backed agent, selects between governed AI
+Gateway routes, calls tools, and extends the agent's behavior with skills —
+all with per-user cost attribution and an admin console. The full design
+rationale, requirements, and data flow live in
+[`docs/06-AGENTIC-CHAT.md`](../../docs/06-AGENTIC-CHAT.md); this file covers
+what the checkout in this directory actually implements.
 
-## What Phase 1 (Scaffolding) Demonstrates
+## What This Demonstrates
 
-- **A demo built and tagged in independently reviewable phases.** Unlike every earlier demo in this curriculum, `docs/06-AGENTIC-CHAT.md` breaks this build into one user story per phase, each tagged in git (`agentic-chat/phase-01-scaffolding`, `agentic-chat/phase-02-core-chat`, …) so any two phases can be diffed directly. This phase's job is to prove the baseline — deployable, Access-gated, tested, and empty of the actual chat feature — so every later phase's diff is pure feature work, not scaffolding noise.
-- **Spikes before features.** Six spikes (`spikes/00`–`spikes/05`) answered the platform's riskiest open questions — whether `AIChatAgent` composes with a hand-built Vue client, which Workers AI models survive a dynamic route's model node, how Dynamic Workers' `globalOutbound` gateway actually wires up, whether the Agents SDK's skills mechanism is `AIChatAgent`-agnostic, the real speech-to-text input contract, and how to correlate a dynamic-route call back to its AI Gateway log row — *before* any feature code assumed an answer. This phase's Terraform and Wrangler configuration is written against those confirmed findings, not assumptions; see each spike's own `REPORT.md`.
-- **Cloudflare Access pinning `audience`, and why that is not always the default.** Every demo in this repo requires the whole hostname to sit behind Cloudflare Access, but not every demo pins the Access application's `audience` claim. This one does, because every chat this demo will hold is sensitive, billable AI conversation history — accepting a token minted for *any other* Access application in the same Zero Trust team (every application in a team shares the same JWKS) is not an acceptable trade-off here, unlike `demos/todo-app`'s deliberately simpler posture. Because `cloudflareAccess()` reads its `audience` option once at Worker module-load time — before any request-scoped `env` binding exists — the real Access application's AUD tag cannot be threaded in as an ordinary `wrangler.jsonc` var the way `CLOUDFLARE_TEAM_DOMAIN` is. It is threaded in as a Vite build-time define instead (`VITE_ACCESS_AUDIENCE`, read from the `access_audience` Terraform output only at `npm run deploy` time — see `package.json`'s `deploy:worker:publish` script and `src/worker/middleware/access.ts`).
-- **A D1-flagged application role, kept separate from Cloudflare Access.** "Administrator" is a `users.is_admin` column, not a second Access application or policy — Access has no concept of this demo's business role, and role-based authorization is correctly an application-layer concern (AGENTS.md, "Admin Authorization Is An Application Concern"). `UserRepository.ensureUser()` is the one place this is decided: every verified sign-in idempotently upserts a `users` row, and the identity matching the Worker's `ADMIN_EMAIL` variable is always re-forced to `is_admin = 1`, regardless of prior D1 state — so the role survives a redeploy or a partial teardown that left a stale row behind, without needing a separate bootstrap script or manual dashboard step.
-- **Infrastructure provisioned ahead of the code that uses it.** This phase's Terraform already provisions the full AI Gateway and both of its dynamic routes (`agentic-chat-basic`, `agentic-chat-reasoning`), confirmed fully Terraform-manageable by Spike B — even though no Worker route calls them yet. Provisioning them now means a later phase's diff is application code only, not a second infrastructure change.
-
-## What Phase 2 (Core Agentic Chat, US-1) Demonstrates
-
-- **The Agents SDK's `AIChatAgent` as the mechanism for a persistent, resumable, per-entity AI conversation.** `src/worker/agent/chat-agent.ts`'s `ChatAgent extends AIChatAgent<Env, unknown, ChatAgentProps>` gets message persistence, resumable streaming, and WebSocket sync for free — the class only has to implement `onStart()` (capture the routed owner identity) and `onChatMessage()` (answer one turn). This is deliberately not a hand-rolled Durable Object the way `demos/chat`'s `ChatRoom` is: that demo's lesson was Durable Object fundamentals; this one's is the SDK built on top of them (AGENTS.md's "Why `AIChatAgent`, Not A Hand-Rolled Durable Object", `docs/06-AGENTIC-CHAT.md` Section 6.2).
-- **Per-chat instancing via `getAgentByName()`, not `routeAgentRequest()`'s URL convention.** `src/worker/routes/chats.ts` extracts a chat id from `/api/chats/:id/...`, confirms in D1 that the verified Access identity owns it, and only then calls `getAgentByName(env.CHAT_AGENT, id, { props: { ownerEmail } })` — the same custom-routing shape Spike A proved out. The owner identity reaches the Durable Object exclusively through this `props` argument, delivered to `onStart()`; it is never read from anything the client's own request body or WebSocket frames could set.
-- **A vue-only client speaking the Agent WebSocket protocol directly, through `agents/client`'s framework-agnostic `AgentClient`, not the React-only `agents/react` hooks.** `src/client/composables/useChatAgent.ts` is the **one** place this demo builds the `cf_agent_use_chat_request`/`cf_agent_use_chat_response` wire frames by hand (reverse-engineered by Spike A, since no framework-agnostic helper is exported for it) and decodes the streamed body's bare, back-to-back UI-message-stream JSON objects (`src/client/lib/ui-message-stream.ts` — this is *not* classic SSE `data:` framing, a real surprise Spike A had to correct). Every Pinia store and component consumes this composable's reactive surface (`turns`, `connectionStatus`, `isStreaming`, `send()`); nothing else in the client ever touches `AgentClient` or a raw `WebSocket`.
-- **A chat's history survives a page reload because it lives in the Durable Object's own SQLite storage, not browser memory.** `useChatAgent`'s `connect()` first calls `GET /api/chats/:id/get-messages` — forwarded straight to the Durable Object's own built-in `onRequest` handler (`@cloudflare/ai-chat`'s `AIChatAgent` answers any GET request whose path ends in `get-messages` with `this._loadMessagesFromDb()`; see `docs/DECISIONS.md` #18) — before ever opening the live WebSocket. Reloading the page re-runs this same fetch, so the transcript reappears from durable storage every time, exactly matching US-1's acceptance criterion.
-- **Ownership rejection is `404`, not `403`, to avoid confirming another user's chat id exists.** `ChatRepository.findOwned()` scopes the `owner_email` predicate *inside* the same `SELECT` rather than checking it afterward, so "this chat doesn't exist" and "this chat exists but isn't yours" are structurally the same result — `src/worker/routes/chats.ts` can't leak the distinction even if it wanted to.
-- **A model call routed through AI Gateway, deliberately not yet through a dynamic route.** `chat-agent.ts` calls a single hard-coded catalog model (`@cf/ibm-granite/granite-4.0-h-micro`, reused from `demos/ai-chat`'s verified catalog) via `workers-ai-provider`'s `gateway: { id: this.env.AI_GATEWAY_ID }` option — proving the `AIChatAgent` + `streamText()` + AI Gateway chain end to end with the simplest possible model wiring. Phase 4 replaces this literal model ID with a client-selected `"basic"`/`"reasoning"` AI Gateway *dynamic route* name (the two routes Phase 1's Terraform already provisions, unused until then) — a deliberately separate concern from proving the mechanism itself.
-- **Faking a binding a Durable Object reads, not just one a Worker's `fetch()` handler reads.** `tests/integration/chat.test.ts` drives a real WebSocket chat turn against the real `ChatAgent` Durable Object with no real Workers AI call, by substituting `env.AI` (imported from `cloudflare:workers`) for the duration of one test — confirmed to reach `this.env.AI` inside the Durable Object itself, since `@cloudflare/vitest-pool-workers` runs the whole test file's Worker script and every Durable Object it creates in one shared in-process `workerd` instance (`docs/DECISIONS.md` #17). This extends `demos/ai-chat`'s "inject a fake `Ai`" pattern to a Durable Object for the first time in this repo.
-
-## What Phase 3 (Chat Sidebar And Management, US-2) Demonstrates
-
-- **A second, best-effort Workers AI call issued from inside the same turn's completion handler.** `ChatAgent.afterTurnCompleted()` (`src/worker/agent/chat-agent.ts`) runs immediately after `AIChatAgent`'s own message-persistence `onFinish` callback, in the same awaited chain. The first time a chat's `title` column is still `null`, it issues a second, non-streaming `env.AI` call (via `generateText()`, not `streamText()`) asking the model for a short summary of the first exchange — proving Section 11's "two `env.AI` calls in flight on the same `ChatAgent` instance need no special handling" finding (Spike F) in a real feature, not just a spike.
-- **A side effect that must never fail the turn it rides along with.** By the time `afterTurnCompleted()` runs, the model's own answer has already fully streamed back to the client — so a D1 write failure (the recency touch) or a title-generation failure (a flaky model call, or a model that returns nothing usable after sanitization) is caught, logged, and swallowed, never surfaced as a failed turn. `tests/integration/chat-management.test.ts` proves this directly with a fake D1 binding that fails only `ChatAgent`'s own internal, unscoped queries.
-- **A genuinely wrong initial assumption, caught by a real user reporting the resulting bug.** This phase originally assumed being in the same awaited `onFinish` chain as message persistence meant the client couldn't observe a turn as `"done"` until `afterTurnCompleted()`'s own D1 writes had landed — the same guarantee Phase 2's reload test relies on for persistence. **That assumption is false.** A timestamped diagnostic proved the AI SDK's `toUIMessageStreamResponse()` enqueues the client-visible `{"type":"finish"}` part as soon as the model itself finishes generating — independent of whether `onFinish` has resolved — while only the wire's own trailing `done: true` frame, which nothing on the client reacts to directly, is actually gated behind it. The fix is `afterTurnCompleted()` broadcasting its own explicit `chat_metadata_updated` completion signal (`src/agent-protocol.ts`), mirroring Section 6.6a's already-established `usage_reconciled` broadcast pattern, rather than the sidebar inferring readiness from the turn's own streaming status. See `docs/DECISIONS.md` #20 for the full timing evidence.
-- **The Agents SDK's own `Agent.destroy()`, not a hand-rolled equivalent.** Unlike `demos/chat`'s `ChatRoom`, which had to hand-roll dropping its own SQLite tables and reinitializing its schema, `ChatAgent` gets a working `destroy()` — dropping every internal table, clearing the alarm, and aborting the isolate — directly from the `agents` package's base `Agent` class. `src/worker/routes/chats.ts`'s `DELETE /:id` route calls it after confirming ownership; `ChatAgent` only overrides it to notify connected clients first (see below), then delegates to `super.destroy()`.
-- **A second real, reported bug: that RPC call's own promise settling cleanly is not a safe assumption, even though the SDK's source comments say it is.** A user hit "An unexpected error occurred" deleting a chat, and the chat was not removed — reopening it even showed an empty transcript, as if it had partly been torn down anyway. Reproduced directly by patching `ChatAgent.prototype.destroy` in a test to throw: the route had no error handling around `await stub.destroy()`, so a rejected RPC call aborted the whole route *before* the D1 row was ever removed. The fix — catch and log that one call's failure, then unconditionally remove the D1 row regardless — is the same "a side effect's failure must not block the route's actual success criterion" principle this phase already applies to `afterTurnCompleted()`'s own D1 writes, applied here to a different Durable Object RPC call. See `docs/DECISIONS.md` #21.
-- **A close code distinguishing "this chat was deleted" from "the connection dropped."** `ChatAgent.destroy()`'s override sends every currently connected client a `chat_removed` frame and closes with a dedicated close code (`src/agent-protocol.ts`) before tearing down its own storage — mirroring `demos/chat`'s `ChatRoom.destroy()` notification pattern, applied to the Agents SDK's own `getConnections()`/`Connection.close()` API instead of a hand-rolled Durable Object's raw WebSocket set. `useChatAgent.ts`'s composable is the one place the client acts on this: it marks the connection `"removed"` (a status distinct from `"error"`) and deliberately does not let the connection auto-reconnect, since there is nothing left to reconnect to.
-- **The `chats` Pinia store, not the live agent connection, owns which chat is open.** `useChatsStore` (`src/client/stores/chats.ts`) owns the directory, the current selection, and every mutation's own fallback selection logic (creating selects the new chat; deleting the open chat falls back to a remaining one, or `null`). `useChatStore` (`src/client/stores/chat.ts`) — the live `useChatAgent` connection from Phase 2 — is now nothing more than a thin `computed()` reading that selection: switching `chatsStore.selectedChatId` is the single action that both updates the sidebar's highlighted entry and reconnects the conversation view, with no separate bookkeeping to keep in sync.
-- **A genuinely new Durable-Object testing gotcha, not just a feature.** `evictAllDurableObjects()` — this repo's own standard WebSocket-test cleanup (`testing-durable-objects` skill) — hangs indefinitely the first time it runs after a test calls `.destroy()` on an Agents-SDK `Agent`, because the base `Agent.destroy()`'s deferred `ctx.abort()` permanently breaks that instance's output gate before eviction's own graceful drain-and-wait can complete. `abortAllDurableObjects()` performs the same cleanup job without that graceful wait, and does not hang on an already-aborted actor — now folded into the skill as its seventh rule, and `docs/DECISIONS.md` #19.
-
-## What Phase 4 (Governed Model Selection Via Dynamic Routes, US-3) Demonstrates
-
-- **A client-visible "mode," never a model id.** The "Mode" dropdown (`RouteSelector.vue`) offers exactly two options, "Basic" and "Reasoning" — the browser never learns, sends, or stores a real Workers AI model id. `src/worker/chats/route.ts`'s `ChatRoute` type (`"basic" | "reasoning"`) is the only vocabulary that crosses the wire; `resolveDynamicRouteModelId()` is the **one** place either literal is turned into the real `dynamic/<name>` model id `workers-ai-provider` calls, reading the real route names from Terraform-sourced Worker vars (`AI_GATEWAY_ROUTE_BASIC`/`AI_GATEWAY_ROUTE_REASONING`) rather than a hard-coded string — mirrors demo 5's own "the Worker resolves by exact match, never interpolates client input into a model id" rule, applied to route names instead of model IDs (AGENTS.md; `docs/06-AGENTIC-CHAT.md` Section 6.3).
-- **The two dynamic routes were already provisioned in Phase 1, deliberately unused until now.** `infra/agentic-ai-chat.tf`'s `cloudflare_ai_gateway_dynamic_routing.basic`/`.reasoning` resources, and their confirmed-working model choices (Spike B's live sweep), predate any application code that calls them by three phases — this phase's entire diff is application code, not a second infrastructure change.
-- **`workers-ai-provider` forwards a `"dynamic/<name>"` model id straight to `env.AI.run()`'s run path, with zero adapter code.** Reading the installed package's own source (`workers-ai-provider/src/index.ts`) confirms `buildChat()` special-cases any model id starting with `"dynamic/"`, routing it through the same non-catalog "run path" `@cf/...` ids use — so `chat-agent.ts`'s existing `workersai(modelId, { gateway: { id } })` call site needed no new code path, only a different `modelId` string. `streamText()`'s own streaming decoder already handles both Workers AI's "native" (`{ response }`) and a dynamic route's OpenAI-compatible (`{ choices: [{ delta }] }`) wire shapes transparently (`@cloudflare/gateway-core`'s shared `processText()`/streaming parser), so switching from a literal model id to a dynamic route needed no changes to how a turn's response is parsed either.
-- **A route is fixed once a chat's first turn completes, not editable forever.** `ChatRepository.setRouteIfUnstarted()` reuses Phase 3's existing `title IS NULL` signal ("this chat has no completed turn yet") as the same guard, rather than adding a second, separate "has this chat started" column — a chat's title and its route both become immutable at exactly the same moment, for the same reason. This is a deliberate design choice, not the only one Phase 4's plan allowed (it explicitly permits "or allow mid-chat switching if simpler" instead): locking is closer to how a real product's model picker behaves ("can't switch models mid-thread"), and reusing an existing column beats introducing a new migration for a signal Phase 3 already tracks.
-- **Defense in depth: the client disables the dropdown before the server would ever reject the request.** `RouteSelector`'s `disabled` prop is driven by `chat.turns.length > 0` — true the instant a turn is submitted, well before the server's own `title IS NULL` guard would even see a completed turn — so a `PATCH` rejection (`422`) should be rare in ordinary use, not the normal way a user discovers the rule. The server-side guard is still what actually enforces it: `PATCH /api/chats/:id` never trusts the client to have disabled anything.
-- **Testing without a real network call, and why.** Every earlier phase already established the pattern of substituting a fake `env.AI` binding in this Worker's integration tests; Phase 4 keeps that pattern rather than making `tests/integration/dynamic-routes.test.ts` the first test in this checkout to call a real, deployed AI Gateway. Each test instead asserts the **exact** `dynamic/<route-name>` model id string `ChatAgent` calls `env.AI.run()` with, reading the real route names back from the Worker's own `AI_GATEWAY_ROUTE_BASIC`/`AI_GATEWAY_ROUTE_REASONING` vars — so the assertion is correct whether the suite runs against the committed local placeholder route names or a real, Terraform-generated `wrangler.jsonc` from an actual deployment, and the suite never depends on real infrastructure existing to pass. Actually exercising both real dynamic routes against a live AI Gateway is a manual step in this README's Post-Deploy Verification instead.
-
-## What Phase 5 (Voice-To-Prompt Dictation, US-4) Demonstrates
-
-- **A stateless Workers AI call sitting entirely outside the Agent WebSocket protocol.** Unlike every earlier phase's chat turn, `POST /api/transcribe` (`src/worker/routes/transcribe.ts`) is an ordinary Hono REST route with no `ChatAgent`, no Durable Object, and no D1 write at all — it exists to prove that not every Workers AI call in this demo needs to flow through the agent; a one-shot, request/response tool like speech-to-text is a better fit for a plain route than a WebSocket round trip.
-- **Calling the binding directly instead of the `ai` SDK's own transcription helper, and why.** Spike E found `ai@7.0.48`'s `experimental_transcribe()` has no `mediaType` parameter at all (media type is derived by sniffing the raw bytes) and drops Whisper's per-word timestamps from its normalized result. `src/worker/transcribe/transcription.ts` calls `env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: base64 }, { gateway: { id } })` directly instead — the same call shape Spike E's own probe confirmed live, and the one that keeps the door open for a later phase wanting word-level highlighting from the raw response's `segments[].words[]`.
-- **A browser's raw `MediaRecorder` output posted through with zero client-side re-encoding.** Spike E proved a browser's actual default capture format (`audio/webm;codecs=opus` on Chromium, `audio/ogg;codecs=opus` on Firefox) transcribes exactly as accurately as a client-side-converted WAV of the same utterance — so `useVoiceDictation.ts` never touches the recorded `Blob`'s bytes, and the Worker's own `validateContentType()` only checks for an `audio/*` prefix, not one specific container.
-- **A second composable-owned browser API seam, mirroring `useChatAgent`'s own rule.** `src/client/composables/useVoiceDictation.ts` is the **one** place this demo speaks `MediaRecorder`/`navigator.mediaDevices` — `ChatComposer.vue` only reacts to its reactive `state`/`errorMessage` and calls `start()`/`stop()`, the same "one seam" discipline Phase 2 established for the Agent WebSocket protocol (Section 6.2a), applied here to a different browser API surface entirely.
-- **A five-state lifecycle that keeps a pending permission prompt distinct from active recording.** `DictationState` (`"idle" | "requesting-permission" | "recording" | "transcribing" | "error"`) lets the mic button show a different icon and label for "waiting on the browser's own permission dialog" versus "actually capturing audio" — a real UX distinction a two-state `recording: boolean` would have collapsed.
-- **A denied permission and a failed transcription both produce a clear, recoverable error, never a silent no-op** (US-4's own acceptance criterion). Both set `state.value = "error"` with a specific, human-readable `errorMessage`; calling `start()` again immediately clears it, so the mic button is always the way back to a working state, with no separate "dismiss" control needed.
-- **A transcription never auto-submits.** `ChatComposer.vue`'s `onTranscribed()` callback appends the transcribed text to (never replaces, and never sends) whatever the composer already holds — dictating is strictly an alternative way to fill the same `<textarea>` a user would otherwise type into, satisfying US-4's "populates, never submits" requirement without ever risking a typed draft the user had not yet sent.
-- **Coarse and specific size limits, defense in depth.** `transcribeRequestBodyLimit` (`src/worker/middleware/transcribe-body-limit.ts`) rejects an oversized `Content-Length` (or streamed-byte count with none) before the route handler runs at all; `validateAudioBytes()` re-checks the same bound afterward and separately rejects an empty body — the same "coarse outer bound + specific inner check" pairing `demos/ai-chat`'s `chatRequestBodyLimit` already established, applied to a raw audio upload instead of JSON.
-- **An effect-scope-safe async permission request.** Requesting microphone access is a real async gap (the browser's own permission UI) that a `stop()` or a component unmount can race. `useVoiceDictation.ts` tracks a private `disposed` flag, checked after every `await`, so a permission grant or a transcription response that arrives after the composable's owning effect scope has already been torn down is discarded instead of mutating state nothing is listening to anymore, or leaving the microphone indicator active for a component that no longer exists.
-
-## What Phase 6 (Per-Chat Cost And Token Visibility, US-5) Demonstrates
-
-- **AI Gateway's own logged cost is the source of truth; a local pricing-table computation is only ever a clearly-labeled, immediately-available placeholder.** Every `chat_usage` row starts `cost_source = 'estimated'`, written the instant `onFinish` fires from `estimateCostUsd()` (`src/worker/usage/pricing.ts`)'s per-model rate table — before AI Gateway has necessarily even logged the call. `ChatAgent.reconcileUsage()` later upgrades the same row in place to `cost_source = 'gateway'` once it finds AI Gateway's own logged figures. The UI never blends the two or presents one as if it were the other — every readout renders an explicit **Estimated**/**AI Gateway** badge (`UsageBadge.vue`), plus a "N of M turns confirmed" ratio once a chat has more than one.
-- **`env.AI.aiGatewayLogId` is unusable for a dynamic-route call, so a per-turn correlation UUID is the only way to find a specific call's own log row.** Spike B/F found this binding property is always `null` when the model argument is a `dynamic/<name>` route — every real turn from Phase 4 onward. `onChatMessage()` mints `crypto.randomUUID()` *before* calling `streamText()` and attaches it as `gateway.metadata.correlationId`; `src/worker/ai-gateway/logs.ts`'s `findLogByCorrelationId()` is the **sole** place this demo calls the Cloudflare REST API directly instead of a binding — the `AiGateway` binding class exposes only `getLog(id)`/`patchLog(id)`/`getUrl()`, none of which can *list* logs by metadata. This is why Phase 6 is also the first phase in this repo to introduce a Wrangler secret: the REST call needs a real account API token (`CLOUDFLARE_API_TOKEN`), which `AI` alone does not provide.
-- **A bounded retry budget, not an indefinite poll.** Spike F measured 267ms–4,731ms (~2.2s average) of real lag between a call completing and its log row becoming queryable. `ChatAgent.recordTurnUsage()` schedules the first `reconcileUsage()` attempt at **+10s** via `this.schedule()` (the Agents SDK's own durable, DO-eviction-safe scheduling primitive — deliberately not `ctx.waitUntil()`, whose lifetime is tied to the now-finished request), then two more at **+15s** each if the log still has not appeared — three attempts total, ~40s worst case. A row that is still unreconciled after that is left `"estimated"` **permanently**, on purpose: docs/06-AGENTIC-CHAT.md Section 6.6 calls this "a legitimate, visible outcome, not a bug to hide," and this phase's own `UsageBadge.vue` renders it exactly the same way it renders any other estimated row — no separate "gave up" state.
-- **A failed-but-logged turn reconciles exactly like a successful one, with no special case.** Spike F confirmed AI Gateway still logs a row (`cost: 0, success: false`) for a call that itself failed (for example the `AiGatewayError 2002` flakiness Spike B flagged for some catalog models) — `reconcileWithGatewayLog()` upgrades that row the same way it upgrades a healthy one; only a call AI Gateway never logs *at all* (a genuine network failure before the request arrived) ever reaches the exhausted-retries path.
-- **`setState()` for the durable number, `broadcast()` for the ephemeral transition.** `ChatAgent.State.usage` (a `ChatUsageSummary` aggregate, never independently mutated — always re-derived from D1 via `UsageRepository.aggregateForChat()`) is what a client sees on connect and on every later push; a `usage_reconciled`/`usage_reconcile_exhausted` broadcast (`src/agent-protocol.ts`) exists purely so `UsageBadge.vue` can play a one-time flip animation for *this specific* transition, since a client cannot otherwise tell "the number changed because a new turn happened" from "the number changed because an estimate was just confirmed" by diffing `state` alone (docs/06-AGENTIC-CHAT.md Section 6.6a).
-- **A deliberate asymmetry between the open chat's live push and the sidebar's REST pull.** The currently open chat already has a live WebSocket connection, so its cost readout is `ChatAgent.State.usage` itself, kept current automatically. The sidebar lists potentially many chats at once with no live connection to any of them, so its per-chat figures come from `GET /api/chats`'s own `UsageRepository.aggregateForOwner()` call — one query aggregating every chat this identity owns, refreshed the same way Phase 3 already refreshes titles (after each mutation, or a `chat_metadata_updated`/turn-completion signal). This is Section 6.6a's own documented choice, not an inconsistency: pushing state over N WebSocket connections just to populate a list would be the wrong tool.
-- **The reconciliation logic is tested by calling the real method directly, not by re-implementing `Agent` as a mock.** `agents`/`@cloudflare/ai-chat` import `cloudflare:workers` at module scope, so `ChatAgent` cannot be loaded into the `worker` Vitest project's plain Node environment at all — there is no way to unit-test it outside `workerd`. `tests/integration/usage.test.ts` instead calls `instance.reconcileUsage(payload)` directly via `runInDurableObject()` against the same Durable Object instance a real turn already woke, substituting only the one REST call (`withFakeFetch()`, mirroring `withFakeAi()`/`withThrowingDb()`'s own `env`-substitution pattern) — exercising every branch (a match found, none found yet, the retry budget exhausted, a REST failure, a row that has disappeared) without waiting on the method's own real 10s/+15s/+15s schedule delays, and without a mocked `Agent` base that could silently drift from the real one's behavior.
+- **The Agents SDK's `AIChatAgent` as the mechanism for a persistent,
+  resumable, per-entity AI conversation.** One Durable Object per chat gets
+  message persistence, resumable streaming, and WebSocket sync for free — the
+  application code only implements `onStart()` and `onChatMessage()`. This is
+  deliberately not a hand-rolled Durable Object the way `demos/chat`'s
+  `ChatRoom` is: that demo's lesson is Durable Object fundamentals; this one's
+  is the SDK built on top of them.
+- **A Vue client speaking the Agent WebSocket protocol directly**, through
+  `agents/client`'s framework-agnostic `AgentClient`, rather than the
+  React-only `agents/react` hooks the SDK documents. One composable is the
+  single seam between the wire protocol and the rest of the client.
+- **AI Gateway dynamic routing as a way to move model selection out of
+  application code.** The browser only ever sends a "Basic"/"Reasoning" mode,
+  never a model ID; the platform-side route configuration — editable without
+  a redeploy — decides the real model, including per-segment conditionals,
+  rate limits, and spend limits.
+- **Metadata-driven governance with zero client-side branching.** The same
+  two-option mode selection resolves to different underlying models depending
+  on the caller's business segment, entirely through AI Gateway's own
+  conditional and rate-limit route elements and a metadata-partitioned spend
+  limit — the browser's request never changes.
+- **Tool calling with two qualitatively different security postures.** A
+  `writeMarkdown` tool writes to a binding this Worker already trusts; a
+  `getUrl` tool runs inside a sandboxed Dynamic Worker whose outbound network
+  access is intercepted and allow-listed by an `EgressGateway`
+  `WorkerEntrypoint` — "deny by default, permit deliberately" enforced at the
+  platform layer, not only in application code.
+- **Skills that extend agent behavior without redeploying the Worker.** A
+  personal or enterprise Markdown instruction bundle changes what the agent
+  does only when a task matches it, at zero cost to every other prompt.
+- **A cost ledger that prefers the platform's own authoritative figure over a
+  local estimate**, upgraded in place once AI Gateway's own logged cost for a
+  turn is found, and pushed to connected clients via the agent's own `state`
+  and `broadcast()` rather than a poll.
+- **Role-based authorization as an application concern, not an Access
+  concept.** "Administrator" is a D1 flag checked by Hono middleware; Access
+  gates the whole hostname on identity alone.
+- **Exporting durable, server-side state as a portable document.** A chat's
+  transcript and cost ledger both live server-side (Durable Object storage
+  and D1), so the Markdown export is built server-side too, not from
+  whatever the browser currently has in memory.
 
 ## How It Works
 
 ### Data model
 
-`migrations/0001_create_users_and_chats.sql` defines two tables:
+Five migrations build up the schema:
 
 ```sql
 CREATE TABLE users (
   email TEXT PRIMARY KEY,
   is_admin INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0, 1)),
+  business TEXT,   -- added by migration 0003; validated in application code
+  geo TEXT,        -- added by migration 0003; validated in application code
   created_at TEXT NOT NULL
 );
 
@@ -79,215 +72,397 @@ CREATE TABLE chats (
   id TEXT PRIMARY KEY,
   owner_email TEXT NOT NULL,
   title TEXT,
-  route TEXT,
+  route TEXT,       -- "basic" | "reasoning", validated in application code
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
-CREATE INDEX chats_owner_email_idx ON chats (owner_email);
+CREATE TABLE chat_usage (   -- migration 0002
+  id TEXT PRIMARY KEY,
+  chat_id TEXT NOT NULL,
+  correlation_id TEXT NOT NULL UNIQUE,
+  model TEXT NOT NULL,
+  prompt_tokens INTEGER, completion_tokens INTEGER, cost_usd REAL,
+  cost_source TEXT NOT NULL,  -- "estimated" | "gateway"
+  gateway_log_id TEXT,
+  reconcile_attempts INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+
+CREATE TABLE chat_files (    -- migration 0004
+  id TEXT PRIMARY KEY, chat_id TEXT NOT NULL, r2_key TEXT NOT NULL,
+  filename TEXT NOT NULL, size_bytes INTEGER NOT NULL,
+  correlation_id TEXT NOT NULL, created_at TEXT NOT NULL
+);
+
+CREATE TABLE skills (        -- migration 0005
+  id TEXT PRIMARY KEY, owner_email TEXT,  -- NULL = enterprise
+  name TEXT NOT NULL, source_type TEXT NOT NULL, source_ref TEXT,
+  r2_key TEXT NOT NULL, created_at TEXT NOT NULL
+);
 ```
 
-`chats` is indexed on `owner_email` and is what `ChatRepository` (`src/worker/chats/repository.ts`) reads and writes to instance a `ChatAgent` Durable Object per row, enforce ownership, list a user's own chats, persist an auto-generated `title` and bump `updated_at` after every completed turn, and (as of this phase) persist the chat's selected `route`. `route` is a plain `TEXT` column with no `CHECK` constraint at the schema level — validity is enforced entirely in application code (`src/worker/chats/route.ts`'s `isChatRoute()`), and `ChatRepository`'s own row-mapping function defensively coerces anything that is not exactly `"basic"`/`"reasoning"` (a pre-Phase-4 `NULL` row, for example) back to the default rather than ever surfacing an invalid value to a caller. `ChatRepository` deliberately exposes two different lookup methods rather than one: `findOwned()` (used by every client-facing route) scopes its `SELECT` by `owner_email` in the same query as the id lookup; `findById()` (used only by `ChatAgent`'s own internal bookkeeping) has no such scoping, because the calling Durable Object's own instance name already *is* the chat id and is never client-supplied input needing re-validation.
-
-Phase 6 adds a second table, `chat_usage` (`migrations/0002_create_chat_usage.sql`) — see "The cost ledger (Phase 6)" below.
+`business`/`geo` and `route` are plain, unconstrained `TEXT` columns:
+validity is enforced entirely in application code (`isBusiness()`/`isGeo()`
+in `src/worker/users/business.ts`, `isChatRoute()` in
+`src/worker/chats/route.ts`), and each repository's own row-mapping function
+defensively coerces an unrecognized stored value back to a safe default
+rather than ever surfacing it to a caller. `chat_files.correlation_id` and
+`chat_usage.correlation_id` share the same per-turn UUID, giving an exact
+join key between a generated file and the turn that produced it — used
+directly by the per-file export route.
 
 ### Routing and the Access model
 
-Every path on this hostname requires authentication — there is no public route (`src/access-policies.ts`), matching `demos/todo-app`/`demos/chat`'s whole-hostname pattern rather than `demos/url-shortener`'s mixed public/admin one. `src/worker/index.ts` applies `accessMiddleware` (`src/worker/middleware/access.ts`) to every `/api/*` route before mounting `/api/me`; page routes are served directly by the `ASSETS` binding's `single-page-application` fallback, with Access enforcing authentication at the edge before the request ever reaches the Worker or that fallback.
+Every path on this hostname requires authentication (`src/access-policies.ts`)
+— there is no public route. `src/worker/index.ts` applies `accessMiddleware`
+(`src/worker/middleware/access.ts`) to every `/api/*` route; page routes are
+served directly by the `ASSETS` binding's single-page-application fallback,
+with Access enforcing authentication at the edge before the request reaches
+the Worker or that fallback. Because every chat this demo holds is sensitive,
+billable conversation history, the Access application pins its `audience`
+claim rather than accepting any valid token from the same Zero Trust team.
+That claim is threaded in as a Vite build-time define (`VITE_ACCESS_AUDIENCE`,
+read from the `access_audience` Terraform output at deploy time), since
+`cloudflareAccess()` reads it once at Worker module-load time, before any
+request-scoped `env` binding exists.
 
-### The `/api/me` route is also the admin-bootstrap path
-
-`src/worker/routes/me.ts` is deliberately the *only* place `UserRepository.ensureUser()` (`src/worker/users/repository.ts`) runs. There is no separate registration endpoint and no one-time bootstrap script: every call to `GET /api/me` — which the client always makes once on load (`src/client/stores/session.ts`) — upserts the verified identity's D1 row and idempotently corrects its `is_admin` flag to match whether that identity is the configured `ADMIN_EMAIL`. The repository issues two structurally different SQL statements for this, not one parameterized branch, so the intent is legible directly from the SQL text: an ordinary identity's statement only ever inserts a fresh row (`ON CONFLICT (email) DO NOTHING`, never touching an existing row's flag — preserving a manual promotion a future admin console might make to someone else), while the administrator identity's statement always re-applies `is_admin = 1` (`ON CONFLICT (email) DO UPDATE SET is_admin = 1`) no matter what was there before.
+"Administrator" is a `users.is_admin` column, never a second Access
+application — Access has no concept of this demo's business role.
+`GET /api/me` (`src/worker/routes/me.ts`) is the only place
+`UserRepository.ensureUser()` runs: every sign-in idempotently upserts the
+identity's D1 row and re-forces `is_admin = 1` for the identity matching the
+Worker's `ADMIN_EMAIL` variable, regardless of prior D1 state, so the role
+survives a redeploy or a partial teardown. `requireAdmin()`
+(`src/worker/middleware/require-admin.ts`) reads the same column in front of
+every `/api/admin/*` route, returning `403` for a non-administrator. The
+client's "Admin console" nav link is gated on the same flag purely as a UX
+convenience — `AdminView.vue` has no client-side route guard, so a
+non-administrator who navigates to `/admin` directly still loads the page
+(there is only one Access application on this hostname), but every
+underlying admin fetch comes back `403` and renders as an error instead of a
+table.
 
 ### The `ChatAgent` Durable Object and its Worker-side routing
 
-`src/worker/routes/chats.ts` exposes six routes mounted at `/api/chats`:
+`src/worker/routes/chats.ts` mounts six routes under `/api/chats`:
 
-- `POST /` creates a chat: a server-generated UUID, a D1 directory row defaulted to the `"basic"` route, and nothing else — the `ChatAgent` Durable Object for that id does not need to exist yet; it is created lazily by `getAgentByName()` the first time anything addresses it.
-- `GET /` lists the signed-in identity's own chat directory, most recently updated first (`ChatRepository.listOwned()`) — the sidebar's data source. Conversation content is never part of this response; a client fetches a specific chat's history separately.
-- `PATCH /:id` changes a chat's route (Phase 4, US-3): validates the request body's `route` field is exactly `"basic"`/`"reasoning"` (`isChatRoute()`, `422` otherwise, before any D1 write), confirms ownership (`404` for a foreign/missing chat), then calls `ChatRepository.setRouteIfUnstarted()` — a `422` if the chat's first turn has already completed. This is the **only** place this Worker ever writes a client-supplied string into the `route` column, and it is validated by exact match, never trusted or interpolated further.
-- `DELETE /:id` calls `ownedAgentStub()` (rejecting a foreign or nonexistent chat id with `404` before anything else runs), then `stub.destroy()`, then removes the D1 row — destroying the live coordination state before the row that lets anyone find it again, the same order `demos/chat`'s `ChatRoom.destroy()`/directory-removal pair uses. `stub.destroy()` itself is wrapped in its own `try`/`catch` (logging `chat_destroy_failed`, never re-throwing): a real reported bug proved that RPC call rejecting must not be allowed to skip the D1 row's own removal (`docs/DECISIONS.md` #21).
-- `GET /:id/get-messages` and `GET /:id/ws` both first call `ownedAgentStub()`, which does a single ownership-scoped D1 lookup (`ChatRepository.findOwned()`) and only then resolves the Durable Object stub, threading the verified identity **and the chat's currently persisted route** in as `props`. Both routes forward the original request to that stub's `fetch()` unchanged — `AIChatAgent` itself decides, from the request shape, whether to answer the message-history GET or perform the WebSocket upgrade.
+- `POST /` creates a chat: a generated ID and a D1 directory row defaulted to
+  the `"basic"` route. The `ChatAgent` Durable Object for that ID does not
+  need to exist yet — it is created lazily by `getAgentByName()` the first
+  time anything addresses it.
+- `GET /` lists the signed-in identity's own chats, most recently updated
+  first, each entry carrying its own cost/token summary (see the cost ledger,
+  below).
+- `PATCH /:id` changes a chat's route: validated by exact match
+  (`isChatRoute()`), rejected `422` once the chat's first turn has already
+  completed (`ChatRepository.setRouteIfUnstarted()` reuses the same
+  "`title IS NULL`" signal auto-titling already tracks as "has this chat
+  started"). The client disables the mode dropdown the instant a
+  turn is submitted as defense in depth, but the server-side guard is what
+  actually enforces the rule.
+- `DELETE /:id` calls the Durable Object's own `destroy()` — wrapped in its
+  own `try`/`catch`, logged but never re-thrown — then unconditionally
+  removes the D1 row, so an RPC failure never leaves a chat undeletable.
+- `GET /:id/get-messages` and `GET /:id/ws` both resolve an ownership-scoped
+  Durable Object stub (confirming the identity owns the chat before ever
+  addressing it) and forward the original request unchanged; `AIChatAgent`
+  itself decides from the request shape whether to answer the message-history
+  `GET` or perform the WebSocket upgrade.
 
-`ChatAgent` (`src/worker/agent/chat-agent.ts`) itself stays close to minimal by design: `onStart()` captures the owner email and the routed `route` prop; `onChatMessage()` builds a `streamText()` call with `resolveDynamicRouteModelId(this.route, this.env)`'s resolved dynamic-route model id (Phase 4 — see below), this chat's persisted `this.messages` (via `convertToModelMessages()`), and the turn's `abortSignal`, wraps its `onFinish` callback to also run `afterTurnCompleted()` (the recency touch and auto-titling, described above), then returns `result.toUIMessageStreamResponse()`. `afterTurnCompleted()` finishes by calling `this.broadcast()` with a `chat_metadata_updated` frame — the signal a connected sidebar actually needs, since the turn's own streaming status flips well before this method's writes land (`docs/DECISIONS.md` #20). `destroy()` is the one other method this class overrides — notifying connected clients before delegating to the SDK's own teardown. Everything else — message persistence, resumable streaming, WebSocket framing, MCP-server bookkeeping — is `AIChatAgent`'s own responsibility.
+Every route resolving a stub re-reads the chat's current `route` and the
+owner's current `business` segment from D1 on **every** request and threads
+both into `getAgentByName()`'s `props`, delivered fresh to `onStart()` each
+time the Durable Object wakes — there is no cache to invalidate when either
+value changes between turns. Ownership checks scope the `owner_email`
+predicate inside the same `SELECT` as the ID lookup, so "this chat doesn't
+exist" and "this chat exists but isn't yours" are structurally the same
+`404` result.
 
-### Governed model routing (Phase 4)
+`ChatAgent` (`src/worker/agent/chat-agent.ts`) itself stays close to minimal:
+`onStart()` captures the owner identity, route, and business segment;
+`onChatMessage()` builds a `streamText()` call against
+`resolveDynamicRouteModelId(this.route, this.env)`'s resolved model ID, this
+chat's persisted messages, and the registered tools and skills (below), then
+wraps its `onFinish` callback to also record usage and touch the chat's
+recency/title. `destroy()` is the one other method it overrides — notifying
+connected clients with a `chat_removed` frame and a dedicated close code
+before delegating to the SDK's own teardown.
 
-`ChatAgent` never caches which route a chat uses across requests: `src/worker/routes/chats.ts`'s `ownedAgentStub()` re-reads the chat's current `route` from D1 on **every** request (`ownedAgentStub()`'s own `ChatRepository.findOwned()` call) and threads it into `getAgentByName()`'s `props`, delivered fresh to `onStart()` each time the Durable Object wakes for that request. A route changed via `PATCH /api/chats/:id` therefore reaches the very next turn with no separate cache-invalidation step — there is no cache to invalidate. `resolveDynamicRouteModelId()` (`src/worker/chats/route.ts`) is the single function that turns a validated `ChatRoute` literal into the real `dynamic/<route-name>` model id, reading the real route names from `env.AI_GATEWAY_ROUTE_BASIC`/`env.AI_GATEWAY_ROUTE_REASONING` — Worker vars sourced from Terraform outputs (`infra/outputs.tf`'s `ai_gateway_route_basic`/`ai_gateway_route_reasoning`), never a literal hard-coded in application code, so renaming a route in Terraform needs no corresponding code change.
+### Governed model selection and metadata-driven routing
 
-### Voice-to-prompt dictation (Phase 5)
+`resolveDynamicRouteModelId()` (`src/worker/chats/route.ts`) is the single
+function that turns a validated `"basic"`/`"reasoning"` literal into the real
+`dynamic/<route-name>` model ID, read from `env.AI_GATEWAY_ROUTE_BASIC`/
+`env.AI_GATEWAY_ROUTE_REASONING` — Worker vars sourced from Terraform outputs,
+never hard-coded, so renaming a route in Terraform needs no code change.
+`workers-ai-provider` forwards any model ID starting with `"dynamic/"`
+straight to `env.AI.run()`'s run path with no adapter code; `streamText()`'s
+own streaming decoder already handles both Workers AI's native and a dynamic
+route's OpenAI-compatible wire shapes transparently.
 
-`POST /api/transcribe` (`src/worker/routes/transcribe.ts`) is a plain Hono route, mounted alongside `/api/chats`/`/api/me` and covered by the same blanket `/api/*` Access policy — no dedicated policy entry or ownership check is needed, since the route never touches D1 or a chat's own state. Its handler runs three steps in order, each failing fast before the next: `transcribeRequestBodyLimit` (a `bodyLimit()` Hono middleware) rejects an oversized request by `Content-Length` or streamed byte count before any bytes are read; `validateContentType()`/`validateAudioBytes()` (`src/worker/transcribe/validation.ts`) reject a non-`audio/*` Content-Type or an empty/still-oversized body; `transcribeAudio()` (`src/worker/transcribe/transcription.ts`) base64-encodes the bytes (chunked, to avoid overflowing the call stack on a large clip) and calls `env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio }, { gateway: { id: env.AI_GATEWAY_ID } })` — the same AI Gateway every chat turn already uses, so a dictation call appears in its overall request log (not either dynamic route, since this call passes a literal model id, not a `dynamic/<name>` route). A thrown error or an unexpected response shape (no `text` field) maps to a `502` RFC 9457 problem; a successful call returns `{ text }`.
+Each of the two dynamic routes (Terraform: `cloudflare_ai_gateway_dynamic_routing.basic`/
+`.reasoning`) carries a `business-check` conditional element: a caller whose
+segment is exactly `"field"` resolves to that route's normal model; every
+other caller (a different segment, or none assigned yet) is routed through a
+`rate` element (`key = "metadata.business"`, keyed per segment rather than
+per user) to a stronger, pricier model, falling back to the cheap model if
+that segment's own bucket is briefly exhausted. The gateway itself carries a
+spend limit partitioned the same way (`metadata.business`), so each segment
+gets its own independent budget pool. `business` reaches AI Gateway as
+`gateway.metadata.business`, attached in `onChatMessage()` right alongside a
+fresh per-turn `correlationId` (below) — AI Gateway accepts at most five
+metadata entries per request.
 
-`src/client/composables/useVoiceDictation.ts` is the client-side counterpart: `start()` requests microphone access (`navigator.mediaDevices.getUserMedia({ audio: true })`), then records with a plain `MediaRecorder` and no explicit `mimeType` option, so the browser's own default container is used unmodified; `stop()` stops the recorder, whose own `"stop"` event handler posts the accumulated `Blob` straight to `/api/transcribe` with no re-encoding. `ChatComposer.vue` owns the only consumer of this composable's `state`/`errorMessage`/`start()`/`stop()` surface: a mic button whose icon and accessible label change across the five lifecycle states, and an `onTranscribed()` callback that appends the result to whatever the composer already holds, never submitting it.
+Because a route can resolve to one of two models depending on the caller's
+segment, the immediate local cost estimate (`src/worker/usage/pricing.ts`'s
+`tierForBusiness()`) mirrors the same `business === "field"` branch the
+Terraform conditional encodes, so a turn's pre-reconciliation estimate is
+priced against the model the route will actually resolve to for that caller.
+This is an explicit snapshot of the routes' current configuration, kept in
+sync by hand — `reconcileUsage()`'s later upgrade to AI Gateway's own logged
+model/cost is always correct regardless of drift.
 
-### The cost ledger (Phase 6)
+### Voice-to-prompt dictation
 
-`migrations/0002_create_chat_usage.sql` adds `chat_usage`: one row per completed turn, keyed by a `UNIQUE` `correlation_id` (the UUID minted before `env.AI.run()`), carrying `model`/`prompt_tokens`/`completion_tokens`/`cost_usd`, a `cost_source` (`'estimated'`/`'gateway'`), a nullable `gateway_log_id`, and `reconcile_attempts`. `src/worker/usage/repository.ts`'s `UsageRepository` exposes five single-purpose operations rather than one generic upsert: `insertEstimated()` (the immediate write), `reconcileWithGatewayLog()` (the upgrade), `incrementReconcileAttempts()` (an `UPDATE ... RETURNING` in one round trip, so the caller learns the new count with no separate `SELECT`), `aggregateForChat()` (one chat's own totals, re-derived every time — never independently incremented), and `aggregateForOwner()` (every chat an identity owns, aggregated in one `JOIN`-based query for the sidebar).
+`POST /api/transcribe` (`src/worker/routes/transcribe.ts`) is a plain Hono
+route with no Durable Object and no D1 write — a one-shot, request/response
+call is a better fit for speech-to-text than a WebSocket round trip.
+`transcribeRequestBodyLimit` rejects an oversized request before any bytes
+are read; `validateContentType()`/`validateAudioBytes()`
+(`src/worker/transcribe/validation.ts`) reject a non-`audio/*` or empty body;
+`transcribeAudio()` (`src/worker/transcribe/transcription.ts`) base64-encodes
+the bytes and calls `env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio },
+{ gateway: { id } })` directly — the same AI Gateway every chat turn uses, so
+a dictation call appears in its overall request log rather than either
+dynamic route, since this call passes a literal model ID.
 
-`ChatAgent.onChatMessage()` mints `correlationId` before building the model, attaches it as `gateway.metadata.correlationId`, and wraps `onFinish` to call the new `recordTurnUsage()` (writes the estimate, refreshes `state.usage`, schedules the first reconciliation attempt) immediately before the existing `afterTurnCompleted()` call. `reconcileUsage()` — an ordinary public method, callable both by the Agents SDK's own scheduler and directly by a test — calls `findLogByCorrelationId()` (`src/worker/ai-gateway/logs.ts`), then branches: a match upgrades the row and broadcasts `usage_reconciled`; no match increments the attempt count and either reschedules (`this.schedule(15, "reconcileUsage", payload)`) or, once exhausted, broadcasts `usage_reconcile_exhausted`; a `null` from `incrementReconcileAttempts()`/`false` from `reconcileWithGatewayLog()` (the row's target has disappeared) exits cleanly with no broadcast. A REST lookup failure is caught and logged, then folded into the same "not yet available" branch — a scheduled task must never throw, since there is no request left to surface the failure to.
+`src/client/composables/useVoiceDictation.ts` is the one place this demo
+speaks `MediaRecorder`/`navigator.mediaDevices`: `start()` requests
+microphone access and records with no explicit `mimeType`, so the browser's
+own default capture container is used unmodified — Workers AI transcribes it
+exactly as accurately as a client-side-converted file of the same utterance,
+so no re-encoding step exists. A five-state lifecycle
+(`"idle" | "requesting-permission" | "recording" | "transcribing" | "error"`)
+distinguishes a pending permission prompt from active recording; a denied
+permission or a failed transcription both set a specific, human-readable
+error, and calling `start()` again clears it. `ChatComposer.vue`'s
+`onTranscribed()` callback appends the transcript to whatever the composer
+already holds — dictation never replaces a typed draft and never auto-submits.
 
-`GET /api/chats` (Phase 3's route) now also calls `UsageRepository.aggregateForOwner()` and attaches each chat's `usage` summary to its own directory entry — one additional query, not one per chat.
+### The cost ledger
 
-### The wire protocol `useChatAgent.ts` speaks
+`env.AI.aiGatewayLogId` — the binding's own "log ID of the most recent call"
+property — is only populated when the model argument is a literal model ID;
+it is `null` for every dynamic-route call, which is every real turn in this
+demo. So `onChatMessage()` mints a fresh `crypto.randomUUID()` as
+`correlationId` before calling `streamText()`, attaches it as
+`gateway.metadata.correlationId`, and `findLogByCorrelationId()`
+(`src/worker/ai-gateway/logs.ts`) later queries AI Gateway's logs-list REST
+endpoint by that value — the sole place this demo calls the Cloudflare REST
+API directly instead of a binding, since the `AiGateway` binding class
+exposes only `getLog(id)`/`patchLog(id)`/`getUrl()`, none of which can list
+logs by metadata. This is also why the Worker needs a `CLOUDFLARE_API_TOKEN`
+secret at runtime, not just the `AI` binding.
 
-A client sends one frame per turn and receives one or more response frames back, correlated by a request id:
+The write is two-phase and asynchronously reconciled:
 
-```json
-// client -> server
-{ "type": "cf_agent_use_chat_request", "id": "<uuid>", "init": { "method": "POST", "body": "{\"messages\":[...],\"trigger\":\"submit-message\"}" } }
+1. **Immediate write.** The moment `onFinish` fires, `recordTurnUsage()`
+   inserts a `chat_usage` row from a local per-model pricing-table estimate,
+   `cost_source = 'estimated'`, and schedules the first reconciliation attempt
+   via `this.schedule(10, "reconcileUsage", payload)` — the Agents SDK's own
+   durable, Durable-Object-eviction-safe scheduling primitive, not
+   `ctx.waitUntil()`, whose lifetime is tied to the now-finished request.
+2. **Reconciliation.** `reconcileUsage()` queries the logs-list endpoint by
+   `correlationId`. A match upgrades the row in place to
+   `cost_source = 'gateway'` with the real logged tokens/cost and the row's
+   own log ID. No match increments a bounded attempt counter and reschedules
+   at +15s, up to three attempts total (~40s worst case); once exhausted, the
+   row is left `"estimated"` permanently — a legitimate, visibly labeled
+   outcome, not an error state. A failed-but-logged turn (a genuine AI
+   Gateway error) still produces a correlatable log row and reconciles the
+   same way as a healthy one.
+3. **Safe against a deleted target.** A scheduled reconciliation whose chat
+   was deleted in the meantime detects the missing row and exits cleanly
+   rather than throwing.
 
-// server -> client, one or more times, then a final done:true
-{ "type": "cf_agent_use_chat_response", "id": "<same uuid>", "body": "<raw chunk text>", "done": false }
-```
+`ChatAgent.State.usage` is an aggregate projection — always re-derived from
+D1 (`UsageRepository.aggregateForChat()`), never independently mutated — so a
+connected client's cost readout updates automatically via `setState()`, and a
+client that connects later gets the current number on connect with no extra
+fetch. A `usage_reconciled`/`usage_reconcile_exhausted` broadcast rides
+alongside the `setState()` call purely so the UI can play a one-time
+"Estimated → AI Gateway" transition animation, since a client cannot
+otherwise tell "a new turn happened" from "an estimate was just confirmed" by
+diffing `state` alone. The sidebar, which has no live connection to every
+listed chat, instead reads the same aggregate over `GET /api/chats`.
 
-The crucial, easy-to-miss detail (Spike A, `docs/06-AGENTIC-CHAT.md` Section 9): `body` is **not** `data: {...}\n\n` SSE framing. It is the AI SDK's `toUIMessageStreamResponse()` body text forwarded byte-for-byte — bare, back-to-back JSON objects with no separator guaranteed, and a JSON object can straddle two separate `body` deltas. `UiMessageStreamDecoder` (`src/client/lib/ui-message-stream.ts`) buffers across chunks and scans for balanced `{`/`}` pairs (tracking string literals so a brace inside a quoted value is never mistaken for structural JSON) to recover each complete part as it becomes available.
+### Tools: `writeMarkdown` and `getUrl`
 
-This phase adds two custom frames to that protocol, both defined in `src/agent-protocol.ts` (a module deliberately outside both `src/worker/` and `src/client/`, so either side can import it without depending on the other's tree, mirroring `demos/chat`'s `chat-protocol.ts`):
+Both tools are ordinary `ai`-SDK `tool()` definitions (a Zod input schema and
+an `execute()` function) passed into `streamText()`'s `tools` option — no
+hand-rolled function-calling loop. `stopWhen: stepCountIs(4)` lets a
+successful tool call be followed by the model actually responding to its
+result, rather than the SDK's own one-step default silently stopping the
+instant a tool call is emitted.
 
-- `{ "type": "chat_removed" }`, sent by `ChatAgent.destroy()` to every connected client immediately before it closes the connection with a dedicated close code. `useChatAgent.ts` checks for both the frame and the close code — whichever arrives first is enough to mark the connection `"removed"` and stop it from auto-reconnecting.
-- `{ "type": "chat_metadata_updated" }`, sent by `ChatAgent.afterTurnCompleted()` once its own D1 writes have actually landed — the fix for the timing bug `docs/DECISIONS.md` #20 describes. `useChatAgent.ts` exposes this as a `metadataUpdatedAt` timestamp; `HomeView.vue` watches it to know when to reload the sidebar's chat directory, rather than watching the turn's own streaming status.
-- `{ "type": "usage_reconciled", "chatUsageId": "...", "costSource": "gateway" }` and `{ "type": "usage_reconcile_exhausted", "chatUsageId": "..." }` (Phase 6), broadcast by `ChatAgent.reconcileUsage()`. Neither carries the actual updated numbers — those already arrived via the Agent WebSocket protocol's own `cf_agent_state` frame (`AgentClient`'s built-in `onStateUpdate` hook, wired straight into `useChatAgent.ts`'s composable options, not hand-parsed like the other frames here) — these two exist purely so `UsageBadge.vue` can animate the specific badge transition.
+`createWriteMarkdownTool()` (`src/worker/agent/tools/write-markdown.ts`) is
+called with the chat's own bucket/database/ID/correlation-ID collaborators
+rather than reading a global binding — the underlying `writeMarkdownFile()`
+never imports a Cloudflare binding type, so it is unit-tested with plain
+in-memory fakes. It writes to R2 before inserting the `chat_files` row, and
+deletes the object it just wrote if the D1 insert fails, so a partial failure
+never leaves an orphaned, undownloadable-looking row or a downloadable-looking
+row with no backing content. Every failure path — an unusable filename,
+empty/oversized content, an R2 or D1 error — returns a structured
+`{ success: false, error }` result instead of throwing, so the model's next
+step can explain the failure in its own reply rather than the turn aborting.
 
-### The chat directory and the sidebar
+`getUrl` has a genuine security boundary `writeMarkdown` does not: reaching
+arbitrary destinations on the public Internet. Its `execute()` calls
+`env.LOADER.get("get-url-tool", ...)` (the `worker_loaders` binding) to run a
+fixed sandboxed module inside a cached Dynamic Worker — cached by name, since
+the sandboxed code never changes — whose `globalOutbound` is bound to
+`EgressGateway` (`src/worker/egress/gateway.ts`), a `WorkerEntrypoint`
+intercepting every outbound request the sandbox attempts. `EgressGateway`
+checks the destination hostname against a small, exact-match allow-list
+(`src/worker/egress/allowlist.ts`) and only forwards an allowed request to
+the real network — this is the actual enforcement point; `validateUrlFloor()`
+(scheme must be http/https, hostname must not look internal) is a
+defense-in-depth floor checked earlier, not the primary control. The
+sandboxed Dynamic Worker receives no bindings beyond `globalOutbound`, so it
+cannot reach D1, R2, or anything else this Worker can. A blocked destination
+surfaces to the sandboxed module as a thrown exception (not a non-2xx
+response), which it catches and re-encodes as an ordinary `403` so the outer
+tool — and, in turn, the model — can explain the refusal instead of the
+stream crashing; the tool distinguishes "blocked" from "genuinely failed" by
+checking for exactly that status code, not by matching an error string.
 
-`useChatsStore` (`src/client/stores/chats.ts`) is the sidebar's entire data source: it loads `GET /api/chats`, and every mutation (`create()`, `remove()`) reloads the directory afterward rather than optimistically guessing the server's resulting order or title — mirroring `demos/chat`'s own `useChannelsStore` convention. It also owns the current selection (`selectedChatId`) and its own fallback logic: loading with no valid prior selection, or a selection whose chat no longer exists in the freshly loaded list, selects the most recently updated chat instead (or `null` if the directory is empty) — this one rule covers both "nothing was ever selected" on first load and "the currently open chat was just deleted, possibly from another tab" with no special-casing.
+`ChatAgent.onChatMessage()` reaches the gateway stub directly from inside the
+Durable Object via `this.ctx.exports.EgressGateway({ props })` — no top-level
+Worker `fetch()` handler needs to know this tool exists.
 
-`useChatStore` (`src/client/stores/chat.ts`, the Phase 2 store) is now just a thin adapter: `chatId` is a `computed()` reading `chatsStore.selectedChatId`, fed straight into `useChatAgent()`. Changing the selection in `useChatsStore` is the only action needed to switch the whole conversation view — there is no separate state to keep in sync between the two stores.
+### Skills
 
-### Testing this phase without a real model call
+`buildSkillRegistry()` (`src/worker/skills/registry.ts`) is the entire
+integration with the Agents SDK's released `agents/skills` mechanism: one
+shared `r2(bucket, { prefix: "skills/enterprise/" })` source plus, when the
+calling chat's owner is known, a second `r2(bucket, { prefix:
+"skills/personal/<owner>/" })` source scoped to that one owner — a personal
+source can structurally never see another owner's directory, so isolation
+needs no application-level filter. `ChatAgent.onChatMessage()` awaits
+`registry.systemPrompt()` to completion before calling `registry.tools()`:
+only `systemPrompt()`'s own snapshot triggers the registry's R2 listing, so
+calling both concurrently would race `tools()` ahead of the load and
+silently return no tools at all. The catalog costs nothing in the prompt
+until a task matches it — `systemPrompt()` returns only each skill's
+name/description, never its full instruction body, which only reaches a
+prompt once the model actually calls `activate_skill` for that one skill.
 
-Every worker-side test that exercises a real turn substitutes a fake `Ai` binding rather than calling the real Workers AI model — following `demos/ai-chat`'s own pattern, extended here to a Durable Object (`docs/DECISIONS.md` #17). `tests/integration/fixtures.ts`'s `withFakeAi()` swaps `env.AI` for the duration of one test and restores it afterward; the fake still returns the same raw Workers AI SSE stream shape `workers-ai-provider` expects, so the real `AIChatAgent` + `streamText()` + `workers-ai-provider` chain runs unmodified end to end, with only the model itself faked. The client-side composable's own tests (`useChatAgent.test.ts`) go one level further down: they stub the global `WebSocket` constructor with a small, controllable double, so `AgentClient` (which falls back to the global `WebSocket` when given no override) drives its real reconnect/state machinery against a socket the test can open, message, and close on command — no real network, and no need to mock `agents/client` itself.
+A skill's D1 row (`src/worker/skills/repository.ts`) exists only so
+`GET`/`DELETE /api/skills` and `/api/admin/skills` can list and remove a
+skill and clean up its R2 object; `ChatAgent` never reads that table at turn
+time — the model-visible catalog is `agents/skills`'s own R2 listing.
+`buildSkillMarkdown()` (`src/worker/skills/validation.ts`) always generates
+the `SKILL.md` frontmatter from the request body's own validated fields
+rather than trusting an uploaded file's embedded frontmatter. Adding a skill
+from a URL reuses `getUrl`'s own `validateUrlFloor()` but fetches directly
+from the Worker, not through the Dynamic Worker sandbox: ingesting a skill is
+a single, authenticated, owner/admin-initiated action, not a repeatable,
+model-chosen destination inside every turn — structurally closer to
+`writeMarkdown`'s "no untrusted egress to control" than to `getUrl`'s.
 
-This phase's auto-titling needed the same fake to also answer a second, non-streaming call correctly: `createFakeAiWithTitle()` branches on the input's own `stream` flag, returning the same SSE shape for the streamed turn and a plain `{ response: "..." }` object (Workers AI's "native format", matching `workers-ai-provider`'s own non-streaming response handling) for the title-generation call. `withThrowingDb()` proves the "never fail the turn" resilience claim directly: it proxies the real D1 binding, throwing only for `ChatAgent`'s own internal, unscoped queries (recognizable by the absence of `owner_email` in their SQL text) while every ownership-checked, client-facing query keeps working normally — letting a test drive a real turn end to end while D1 is unavailable for exactly the two writes that must be allowed to fail silently.
+### Export
 
-Storage isolation in `@cloudflare/vitest-pool-workers` is per test **file**, not per test (Vitest 4's own isolation model) — `GET /api/chats` is inherently a "list everything this identity owns" endpoint, so `tests/integration/chat-management.test.ts` generates a fresh, unique identity per test rather than reusing a shared one, so one test's chats can never leak into another's directory assertions within the same file.
+`GET /api/chats/:id/export` and `GET /api/chats/:id/files/:fileId/export`
+(`src/worker/routes/chats.ts`) build a Markdown document server-side, because
+both sources of truth — the transcript and the cost ledger — are already
+server-side: the transcript lives in the Durable Object's own SQLite
+storage, and the browser only ever sees rendered turns, never raw message
+parts. The chat export forwards a synthetic request ending in
+`get-messages` to the same Durable Object stub the ordinary history route
+already uses — one transcript-reading mechanism, exercised for two purposes.
+Two pure functions, `src/worker/export/chat-markdown.ts` and
+`file-markdown.ts`, take already-fetched data and return a string with no
+binding involved, so they are unit-tested independently of any HTTP route.
+`resolveToolName()`/`formatToolPart()` render every tool call the same way
+except `activate_skill`, which gets a distinct "Skill activated" label. The
+per-file export reads `UsageRepository.findByCorrelationId(file.correlationId)`
+— an exact-match lookup, not a timestamp guess — so its "cost context of the
+producing turn" section always names the literal turn that wrote that file.
+Both export routes are `<a href>` elements relying on the browser's existing
+Access session cookie, with a server-set `Content-Disposition` header naming
+the download, exactly like the underlying file-download route.
 
-A genuinely new gotcha surfaced building this phase's own removal test: evicting a Durable Object that just called the Agents SDK's `Agent.destroy()` (which itself calls `ctx.abort()`) hangs `evictAllDurableObjects()` indefinitely. `abortAllDurableObjects()` is the fix — see `docs/DECISIONS.md` #19 and the `testing-durable-objects` skill's seventh rule for the full mechanism.
+### Testing approach
 
-`tests/integration/chat-management.test.ts`'s "broadcasts `chat_metadata_updated` only once the generated title has actually landed in D1" test is a direct regression test for the reported sidebar-title bug (`docs/DECISIONS.md` #20): it registers a listener for the broadcast frame *before* sending the turn, awaits it, and only then reads the chat directory back — proving the ordering the fix depends on, not just that the title eventually appears.
-
-The delete-resilience regression test (`docs/DECISIONS.md` #21) needed a way to force `stub.destroy()`'s own RPC call to reject without depending on whatever real, hard-to-reproduce condition triggers it in production. Since `getAgentByName()` returns a stub backed by the real, exported `ChatAgent` class, temporarily reassigning `ChatAgent.prototype.destroy` to a throwing function for the duration of one test — restored in a `finally` block — reliably exercises the exact failure path a live RPC rejection would, with no need to actually race a Durable Object's own internals.
-
-`tests/integration/dynamic-routes.test.ts` (Phase 4) reuses `createCapturingFakeAi()` (already added in Phase 2 for the identity-in-system-prompt test) to assert on the **exact model id string** each route resolves to, rather than making a real call against AI Gateway. This is a deliberate choice, not an oversight relative to `docs/06-AGENTIC-CHAT.md`'s own Phase 4 plan text (which describes exercising "both real dynamic routes... against the deployed AI Gateway"): every earlier phase in this checkout already established "fake `env.AI`, assert on shape/content" as this demo's own testing convention, and a test that could only pass against a real, already-deployed AI Gateway would make `npm test` behave differently for a contributor with no deployed infrastructure versus one with a live account — undesirable for a suite meant to run identically from a fresh checkout. The two real route names it asserts against (`env.AI_GATEWAY_ROUTE_BASIC`/`env.AI_GATEWAY_ROUTE_REASONING`) are read from the Worker's own vars rather than hard-coded, so the same assertion is correct whether the suite runs against the committed local placeholder values or a real Terraform-generated `wrangler.jsonc`. Actually observing both routes resolve to their real, configured models against a live AI Gateway is a manual step in `README.md`'s Post-Deploy Verification instead.
-
-`tests/integration/usage.test.ts` (Phase 6) cannot unit-test `ChatAgent.reconcileUsage()` the way `dynamic-routes.test.ts` unit-tests pure route-resolution logic: `agents`/`@cloudflare/ai-chat` import `cloudflare:workers` at module scope, so the class cannot be loaded into the `worker` project's plain-Node environment at all (`docs/DECISIONS.md` #22). Instead it calls the real, unmodified method directly against the same Durable Object instance a real turn already woke, via `runInDurableObject()` — the same seam `chat.test.ts`'s pre-existing "no props" test already uses to reach `onStart()` directly — substituting only the one collaborator that would otherwise make a real network call: `withFakeFetch()` temporarily reassigns `globalThis.fetch` for the duration of one test (mirroring `withFakeAi()`/`withThrowingDb()`'s own `env`-substitution pattern, applied to a global instead of a binding) to simulate AI Gateway's logs-list endpoint. Calling the method directly, rather than through `this.schedule()`, also means every test runs in milliseconds instead of waiting on the method's own real 10s/+15s/+15s delays.
+Every test that exercises a real turn substitutes a fake `env.AI` binding
+rather than calling a real Workers AI model, extending this repository's
+`demos/ai-chat` pattern to a Durable Object: `agents`/`@cloudflare/ai-chat`
+import `cloudflare:workers` at module scope, so `ChatAgent` cannot be loaded
+into the plain-Node unit-test project at all — every test exercising it is an
+integration test against the real `workerd` runtime, calling internal
+methods directly via `runInDurableObject()` where a real 10s/15s schedule
+delay would otherwise make a test slow. The cost-reconciliation REST call and
+the browser's `MediaRecorder`/microphone APIs are substituted with
+deterministic fakes the same way. Two binding-adjacent surfaces are
+deliberately **not** faked: `worker_loaders`/`EgressGateway` has no
+account-level proxy step at all, so its allow-listed test case makes one
+genuine outbound HTTPS request to a stable, real Cloudflare-owned hostname —
+correct whether or not this demo has ever been deployed; a dynamic AI Gateway
+route, by contrast, does not exist in a fresh, undeployed checkout, so every
+model-routing test asserts on the exact `dynamic/<route-name>` model ID
+string sent to the fake binding instead of calling a real, deployed gateway.
+Observing both real AI Gateway routes resolve to their configured models
+against a live account is a manual step in `README.md`'s Post-Deploy
+Verification.
 
 ### Observability
 
-`cloudflareLogger()` provides request-scoped structured logging on every request, including `chat_created` (chat creation), `chat_connected` (every WebSocket upgrade), `chat_route_changed` (a chat's route selection changing), `chat_deleted` (chat removal), and `transcription_completed` (a successful dictation, Phase 5) entries. `ChatAgent.afterTurnCompleted()`'s own failure paths (`chat_touch_failed`, `chat_title_failed`) log outside the Hono request context, matching `demos/chat`'s `ChatRoom`'s own precedent for structured logging from inside a Durable Object. Terraform enables Workers Logs at 100% sampling and traces at 10% sampling on the Worker resource — the same defaults every demo in this repo uses.
-
-## What Phase 7 (Admin Cost/Metadata Console, US-6) Demonstrates
-
-- **"Administrator" is a D1 flag checked by application middleware, never a second Cloudflare Access application.** `requireAdmin()` (`src/worker/middleware/require-admin.ts`) reads the same `users.is_admin` column `GET /api/me`'s `ensureUser()` already maintains, mounted in front of every `/api/admin/*` route (`src/worker/index.ts`). This is a direct continuation of Phase 1's own choice (Section 6.5, "Admin Authorization Is An Application Concern") applied to real enforcement for the first time: an identity with no `users` row at all -- one that has never signed in -- is correctly treated as non-administrator by `UserRepository.isAdmin()`, with no special-case branch needed.
-- **An admin-settable enum is an application-level concern, not a D1 `CHECK` constraint.** `users.business`/`users.geo` (`migrations/0003_add_users_business_geo.sql`) are plain, unconstrained `TEXT` columns; `src/worker/users/business.ts`'s `isBusiness()`/`isGeo()` are the only place a value is ever validated, mirroring `src/worker/chats/route.ts`'s existing `isChatRoute()` "resolve by exact match" discipline. The trade-off this buys, per Section 6.4's own reasoning: a future added segment value needs only a code change, never a second migration -- and `UserRepository`'s own row mapping defensively coerces an unrecognized stored value back to `null` rather than ever surfacing it, the same defensive-coercion pattern `ChatRepository.toChat()` already established for `route`.
-- **Reusing Phase 6's cost ledger for a cross-user view, not a second source of truth.** `UsageRepository.aggregateForAllUsers()`/`aggregateByBusiness()`/`aggregateByGeo()` are three new, single-purpose aggregate queries over the same `chat_usage` table Phase 6 already writes -- summed "regardless of `cost_source`" per Section 6.6's own "always the best available number" rule, so an admin's ranked table and segment reports carry the identical `ChatUsageSummary` shape (and so the identical "AI Gateway"/"Estimated" confirmation-ratio badge, `UsageBadge.vue`) a single chat's own header already renders. Nothing about the admin console computes a cost figure independently; it only re-aggregates rows that already exist.
-- **A join through `users`, not a second copy of segment data.** `aggregateGroupedByUserColumn()` (`src/worker/usage/repository.ts`) joins `chat_usage` → `chats` → `users` and groups on a caller-chosen `users` column (`business` or `geo`) -- a `null` group key is a real, distinct result ("unspecified segment"), not an absent one, so a user who has not yet been segmented still shows up in a report rather than silently vanishing from the total.
-- **The client-hidden nav link is a UX convenience, not the enforcement boundary.** `App.vue`'s "Admin console" link is gated on `session.isAdmin` (from `GET /api/me`), exactly like the existing **Administrator** badge -- but `AdminView.vue` itself has no client-side route guard at all. A non-administrator identity that navigates to `/admin` directly still loads the page (there is only one Cloudflare Access application on this hostname, so Access itself has nothing to block); `useAdminStore.load()`'s own three fetches all come back `403` from `requireAdmin()`, and the view renders that as an ordinary error message. This is a deliberate demonstration of Section 6.5's "never trust the client-hidden nav item alone" rule with a real, clickable failure path, not just a code comment.
-- **Both PATCH fields are always required together, not a partial-update shorthand.** `PATCH /api/admin/users/:email` rejects a request that omits either `business` or `geo` (each must be a valid enum literal or explicit `null`) rather than guessing that an absent field means "leave unchanged." `AdminUserTable.vue`'s own `onBusinessChange()`/`onGeoChange()` handlers always forward the row's *other*, unchanged field alongside the one that actually changed, so the client never has to ask the user to pick both values at once just to update one.
-- **A `404`, not a silent no-op, for a metadata edit naming an identity that has never signed in.** `UserRepository.updateMetadata()`'s `UPDATE ... WHERE email = ?` reports zero changed rows for an email with no `users` row at all, and the route surfaces that as `404` -- the same "the caller must be able to tell a real update happened" principle Phase 6's `reconcileWithGatewayLog()`/`incrementReconcileAttempts()` already established for a `chat_usage` row that disappeared mid-reconciliation, applied here to a row that never existed in the first place.
-
-## What Phase 8 (Metadata-Driven Model Routing, US-7) Demonstrates
-
-- **The client sends the same two-option "Mode" selection either way; the underlying model now also depends on who is asking, entirely platform-side.** Phase 4 already kept a raw model id out of the browser (Section 6.3); Phase 8 goes one step further and takes the *business-segment* decision out of application code too. `infra/agentic-ai-chat.tf`'s `business-check` conditional element, added to both `.basic`/`.reasoning` routes, branches on `metadata.business` -- a caller whose segment is exactly `"field"` keeps resolving to the same model the route always used; every other caller (`"product"`, `"leadership"`, or no segment assigned yet) is routed to a stronger, pricier model instead. Nothing about the client's own request changes between the two cases -- the browser still only ever sends `"basic"`/`"reasoning"`.
-- **`business` reaches AI Gateway the same way `route` already did: re-read from D1 at routing time, threaded in as Durable Object `props`, never trusted from a client message.** `src/worker/routes/chats.ts`'s `ownedAgentStub()` now reads the chat owner's own `users.business` column (`UserRepository.findByEmail()`) alongside `chats.route`, on every request, and passes both into `getAgentByName()`'s `props`. `ChatAgent.onStart()` captures it into a private field exactly like `route`; `onChatMessage()` attaches it as `gateway.metadata.business` right alongside the existing `correlationId` (Phase 6). An admin changing a colleague's business segment (`PATCH /api/admin/users/:email`, Phase 7) therefore reaches that colleague's very next turn with no separate invalidation step -- the identical "no cache to invalidate" property Phase 4 already established for `route`, now covering a second, independently-changeable input to the same routing decision.
-- **A rate-limit node reused for a genuinely different purpose than a naive per-user quota.** Both routes' non-`"field"` branch passes through a `rate` element (`key = "metadata.business"`, `limit = 3`, `window = 60`) before reaching the stronger model, falling back to the cheap model if that specific business value's own bucket is currently exhausted. This buckets *per business segment*, not per individual user -- ten "leadership" users sharing one 60-second window is a deliberate demonstration of AI Gateway's own metadata-partitioned rate limiting (the same `key` mechanism Spike B's `spike-governed-route` proved live), not a per-seat throttle this Worker would otherwise have to implement itself.
-- **A gateway-level spend limit, partitioned the same way, closes the loop between "governed routing" and "cost controls."** `cloudflare_ai_gateway.demo`'s `spend_limits` (a $1/day cost budget, `metadata = { business = { mode = "partition" } }`) gives each distinct business segment its own budget pool rather than one account-wide pool -- enforced by AI Gateway against the exact same authoritative per-request cost `getLog()` reports, the same figure Phase 6's ledger and Phase 7's admin reports already display. There is only ever one number; this phase adds a second thing (a hard budget) that reads and bounds it, not a second, independently-computed one.
-- **The immediate local cost estimate has to mirror AI Gateway's own conditional, or it prices the wrong model.** Before this phase, `pricing.ts`'s `modelIdForRoute(route)` returned one fixed model id per route. Now that a route resolves to one of *two* models depending on the caller's business segment, `src/worker/usage/pricing.ts`'s `tierForBusiness()` reimplements -- deliberately, in application code, not read back live from AI Gateway -- the exact same `business === "field" ? field-tier : strong-tier` branch the Terraform conditional encodes, so `ChatAgent.recordTurnUsage()`'s immediate, pre-reconciliation estimate (Phase 6, Section 6.6) is priced against the model the route will actually resolve to for this caller. This is explicitly a snapshot of the routes' *current* configuration kept in sync by hand, exactly like the pre-Phase-8 version already was for `route` alone (see that function's own JSDoc) -- an operator changing either route's models or its conditional in the dashboard makes this mapping stale for the *estimate* only; `reconcileUsage()`'s later upgrade to AI Gateway's own logged `model`/`cost` is always correct regardless.
-- **Testing the Worker's own responsibility, not re-proving AI Gateway's.** `tests/integration/metadata-routing.test.ts` substitutes a fake `env.AI` binding and asserts on the exact `gateway.metadata` object `ChatAgent` calls it with -- the same "fake gateway double" convention `dynamic-routes.test.ts` established for Phase 4, and explicitly the mechanism docs/06-AGENTIC-CHAT.md's own Phase 8 plan sanctions. It proves the one thing this Worker's own code controls (the correct, D1-sourced `business` value reaches AI Gateway, for the correct caller, re-read fresh on every request) without re-testing whether AI Gateway's conditional node actually steers to a different model -- that mechanism was already confirmed live by Spike B (`spikes/01-ai-gateway-dynamic-routing/REPORT.md` Section 3) and is not re-verified by this demo's own automated suite, the same "necessarily touches the real account for this one behavior" boundary Phase 4 already drew for exercising the routes themselves.
-
-## What Phase 9 (Tool — Write A File To My Chat, US-8) Demonstrates
-
-- **Tool calling with a `streamText()`-driven agent, not a hand-rolled function-calling loop.** `src/worker/agent/tools/write-markdown.ts`'s `createWriteMarkdownTool()` builds a plain `ai`-SDK `tool()` -- a Zod `inputSchema` plus an `execute()` function -- and `ChatAgent.onChatMessage()` (`src/worker/agent/chat-agent.ts`) passes it straight into `streamText()`'s own `tools` option, exactly like `system`/`messages`. Nothing about `AIChatAgent`'s own message persistence, resumable streaming, or WebSocket sync (Phase 2) needed to change for the agent to gain a real capability -- the SDK's own multi-step tool-calling loop is what decides when to call the tool and when to let the model respond to its result.
-- **`streamText()`'s own default step limit would silently produce a tool call with no follow-up text.** The AI SDK's documented default (`stopWhen: isStepCount(1)`) stops generation the instant the model emits a tool call, before a second step ever lets it respond to that tool's result. `chat-agent.ts`'s `MAX_TURN_STEPS` (`stopWhen: stepCountIs(4)`) is what lets a successful `writeMarkdown` call be followed by the model actually acknowledging it in its reply -- discovered by reading the SDK's own type declarations for `streamText()`'s `stopWhen` option before writing this phase's own integration test, not by observing the bug first.
-- **A tool's `execute()` function is threaded collaborators, not global bindings, so it stays testable with plain fakes.** `createWriteMarkdownTool({ bucket, database, chatId, correlationId })` is called fresh inside `onChatMessage()` with `this.env.FILES`/`this.env.DB`/`this.name`/the turn's own minted `correlationId` -- the underlying `writeMarkdownFile()` function itself never imports a Cloudflare binding type at module scope, so `src/worker/agent/tools/write-markdown.test.ts` unit-tests every branch (success, an unusable filename, empty/oversized content, an R2 write failure, a D1 insert failure) with plain in-memory fakes in the fast `worker` Vitest project, with no real R2/D1 binding and no `workerd` runtime needed at all.
-- **`docs/06-AGENTIC-CHAT.md`'s own Section 15 open question, resolved by this phase's own schema design, not deferred to Phase 12.** The plan explicitly asked Phase 9 to decide the exact correlation key between a `chat_files` row and the `chat_usage` row that produced it. `migrations/0004_create_chat_files.sql` adds `chat_files.correlation_id`, stamped with the exact same per-turn UUID `onChatMessage()` already mints and attaches to that turn's own `chat_usage.correlation_id` (Phase 6, Section 6.6) -- threaded straight through `createWriteMarkdownTool()`'s deps, never separately generated. `tests/integration/files.test.ts` proves the join directly: a file's `correlation_id` and its turn's `chat_usage.correlation_id` are read back as the identical value, an exact join key for Phase 12's future per-file export rather than one inferred from timestamps.
-- **A tool failure is a value, never a thrown exception -- Section 11's "never let a tool failure abort the whole turn" rule, exercised for real.** Every failure path inside `writeMarkdownFile()` -- a filename that sanitizes to nothing usable, empty/oversized content, an R2 write error, a D1 insert error -- returns a structured `{ success: false, error }` result instead of throwing. The AI SDK delivers that value back to the model as an ordinary tool result (a `tool-output-available` wire chunk, not `tool-output-error`, since the tool itself never threw), so the model's own next step explains the failure in its reply -- confirmed directly by `tests/integration/files.test.ts`'s own "rejects content that fails validation" test, which asserts the turn completes normally with the model's explanation in its text, not an aborted stream.
-- **R2-write-then-D1-insert ordering, with the D1 failure path actively cleaning up after itself.** `writeMarkdownFile()` writes to R2 (`putChatFile()`) before ever inserting the `chat_files` row -- so a D1 failure leaves an orphaned R2 object, not a downloadable-looking database row with no backing content (the strictly worse failure mode, since nothing else would ever notice it). On that specific failure, the function deletes the object it just wrote (`deleteChatFile()`, best-effort -- its own failure is logged, never allowed to mask the original D1 error as the reported reason). `write-markdown.test.ts` proves this compensation runs, and separately proves it happening a second time (the delete itself also failing) still reports the original D1 failure, not a confusing "cleanup failed" message.
-- **Faking a real Workers AI tool-calling response, not a mocked tool result.** `tests/integration/files.test.ts` needed a fake `env.AI` whose streamed response looks exactly like Workers AI's own native tool-calling wire shape (`{ tool_calls: [{ id, function: { name } }] }`, then an arguments-delta chunk, then a null-finalization chunk -- reverse-engineered from `workers-ai-provider`'s own installed source, `streaming.ts`'s `emitToolCallDeltas()` JSDoc) so the same `workers-ai-provider` decoding path a real model's tool call takes is what the test exercises, not a shortcut that assumes the wiring works. `fixtures.ts`'s new `createSequencedFakeAi()` extends this demo's existing single-fixed-response fake to answer a **second**, different streamed call -- required because `MAX_TURN_STEPS` means a successful tool call triggers a real second `env.AI.run()` call for the model's follow-up text, which a single fixed fake response would otherwise answer with the same tool call again, looping instead of completing.
-- **Two independent ownership checks compose into one enforcement rule, mirroring `ownedAgentStub()`'s own pattern.** `GET /api/chats/:id/files/:fileId` (`src/worker/routes/chats.ts`) confirms the requesting identity owns the chat (`ChatRepository.findOwned()`) *and* that the file actually belongs to that chat (`ChatFilesRepository.findByChatAndId()`, scoped by `chat_id` in the same query, never checked afterward) -- either failing reports the identical `404`, so neither check can be used to confirm the other half's existence. `tests/integration/files.test.ts` proves all three ways this can fail: a nonexistent file id, a foreign identity's chat, and the owner's own file id requested under a *different* chat id.
-- **A `chat_files` row surviving its own object's deletion is tolerated, not a broken link.** `GET /api/chats/:id/files/:fileId` treats a `null` result from `getChatFile()` (Section 11: the object was removed some other way) the same as a missing row -- `404`, not a `500` from an unhandled `null` body. `files.test.ts` reproduces this directly by deleting the R2 object out from under an already-created row.
-
-## What Phase 10 (Tool — Fetch A URL Safely, US-9) Demonstrates
-
-- **Dynamic Workers as a lightweight, isolate-level sandbox for one tool's outbound `fetch()` — not the Sandbox SDK, not a Workers VPC egress binding.** `src/worker/egress/sandboxed-fetch-worker.ts`'s fixed module is loaded through `env.LOADER` (the `worker_loaders` binding) and run inside its own Dynamic Worker, whose `globalOutbound` is bound to `EgressGateway`. Unlike `writeMarkdown` (Phase 9), which writes to a binding this Worker already trusts, `getUrl` has a genuine security boundary to enforce -- reaching arbitrary destinations on the public Internet -- so it, and only it, earns the extra sandboxing mechanism (`docs/06-AGENTIC-CHAT.md` Section 6.7's deliberate asymmetry).
-- **`globalOutbound` is "deny by default, permit deliberately," enforced at the platform layer, never only in application code.** `src/worker/egress/gateway.ts`'s `EgressGateway` -- a `WorkerEntrypoint`, not a plain function -- intercepts *every* outbound request the sandboxed Dynamic Worker attempts, checks the destination hostname against `src/worker/egress/allowlist.ts`'s small, exact-match `ALLOWED_HOSTS` set, and only forwards an allowed one to the real network. `src/worker/egress/url-validation.ts`'s `validateUrlFloor()` (scheme must be http/https, hostname must not look obviously internal/private) runs *before* any of that, but is explicitly a defense-in-depth floor, not the real enforcement -- AGENTS.md's "Least privilege" is direct about this, and this phase's own tests prove the allow-list is what actually decides, not the floor.
-- **`ctx.exports.EgressGateway({ props })`, called directly from inside a Durable Object method, with no threading through the Worker's own `fetch()` call site.** Spike C's own design threaded the gateway stub in as an RPC parameter from `src/index.ts`'s top-level handler, but also found -- as a genuine open question, since `DurableObjectState`'s documented API surface never mentions it -- that `ctx.exports` is directly reachable from inside a Durable Object method too. `ChatAgent.onChatMessage()` (`src/worker/agent/chat-agent.ts`) takes that simpler path: `createGetUrlTool()`'s `createGlobalOutboundGateway` deps callback is `(props) => this.ctx.exports.EgressGateway({ props })`, called with `{ chatId: this.name }` -- no Worker-side `fetch()` handler ever needs to know this tool exists.
-- **`env.LOADER.get()`, not `.load()`, because the sandboxed module's own code never changes.** `createGetUrlTool()`'s `execute()` calls `deps.loader.get("get-url-tool", () => ({...}))` every time the tool runs; the Dynamic Workers platform caches the loaded worker by that literal name within the calling isolate, so a chat that calls `getUrl` several times across a conversation does not reload and recompile the same fixed module each time.
-- **A blocked `globalOutbound` call surfaces to the sandboxed Worker's own code as a thrown exception, not a non-2xx `Response` -- a real, non-obvious platform behavior Spike C found and this phase's own sandboxed module (`src/worker/egress/sandboxed-fetch-worker.ts`) has to work around.** The sandboxed module's `fetch(target)` call is wrapped in its own `try`/`catch`; the caught error's message is `EgressGateway`'s exact blocked-response text (`Egress blocked: "<host>" is not allow-listed.`), which the sandboxed module re-encodes as an ordinary `403` response rather than letting the exception propagate -- without this, a blocked destination would crash the Dynamic Worker's own `fetch()` handler instead of producing a result the outer `getUrl` tool (and, in turn, the model) can explain.
-- **A platform-specific `this` gotcha, worth knowing before it bites a different feature.** `EgressGateway`'s own `networkFetch` seam (`{ impl: (request) => fetch(request) }`) exists so a test can inject a fake `fetch` with zero real network traffic -- but the *shape* of that seam matters: assigning the bare `fetch` function reference to a plain object field (`{ impl: fetch }`) and calling it later throws `Illegal invocation` inside `workerd`, because the native `fetch` implementation requires the global scope as its receiver, which a bare extracted reference loses. Wrapping it in a closure preserves the correct receiver at the call site. This is the exact bug Spike C hit live and fixed; `gateway.ts`'s own JSDoc calls it out for the next feature that reaches for the same "injectable global" pattern.
-- **A status code, not a string match, is what tells the model "this was refused" apart from "this genuinely failed."** `createGetUrlTool()`'s `GetUrlOutput` carries a `blocked: boolean` field, set by checking the sandboxed Worker's response `status === 403` -- the one status code `EgressGateway`'s own blocked response (relayed verbatim by the sandboxed module) and nothing else in this chain ever produces. Every other non-2xx status (a genuine upstream failure, a malformed target) reports `blocked: false` instead. This is a small design choice, but a deliberate one: string-matching an error message for something this consequential (whether the model tells the user "I'm not allowed to" versus "that failed") would be one text change away from silently breaking.
-- **Testing this phase's real network boundary required touching the real Internet, for the first time in this demo's own automated suite -- and that is fine, not a compromise.** Every earlier phase that needed a real Cloudflare account resource (a deployed AI Gateway and its dynamic routes, Phase 4) deliberately faked it instead, because that resource does not exist in a fresh, undeployed checkout. `worker_loaders`/`EgressGateway` are different: Spike C found this primitive has **no** account-level proxy step at all, so `tests/integration/get-url.test.ts`'s allow-listed case makes one genuine outbound HTTPS request to a real, stable Cloudflare-owned hostname from inside `@cloudflare/vitest-pool-workers`' own real `workerd` instance -- correct and identical whether or not this demo has ever been deployed. The blocked case, by contrast, is asserted with zero real network traffic (`tests/integration/egress-gateway.test.ts`'s own unit-style test, mirroring Spike C's), since `EgressGateway` denies it before any `fetch()` call happens at all.
-
-## What Phase 11 (Personal And Enterprise Skills, US-10) Demonstrates
-
-- **The released Agents SDK Agent Skills mechanism (`agents/skills`), not a hand-rolled catalog — and not `@cloudflare/think`'s, either.** `docs/06-AGENTIC-CHAT.md`'s own Alternatives table originally assumed a hand-rolled fallback would be needed; Spike D (`spikes/03-agent-skills-composability/REPORT.md`) found the *released* mechanism — `SkillRegistry`, `r2()` — lives in the `agents` package's own `agents/skills` subpath, composes with `AIChatAgent` directly with zero adapter code, and is unrelated to the Vite-plugin-only `agents:skills` virtual module the plan's own aim had named. `src/worker/skills/registry.ts`'s `buildSkillRegistry()` is the entire integration: two `r2()` sources wrapped in one `SkillRegistry`, nothing else.
-- **A real, load-bearing ordering bug, carried forward from the spike into the real feature.** `SkillRegistry.tools()` reads its descriptor map **synchronously** and never itself awaits `.load()` — only `.systemPrompt()` (via `.snapshot()`) triggers that load. Calling both concurrently (`Promise.all([registry.systemPrompt(), registry.tools()])`) races `.tools()` ahead of the load, silently returning `{}` with no error — the model then narrates the catalog's own "use activate_skill" instruction as plain text, because no such tool was actually offered to it. `ChatAgent.onChatMessage()` awaits `systemPrompt()` to completion *first*, then calls `tools()` — the exact fix Spike D found, re-applied verbatim rather than rediscovered.
-- **Per-owner R2 prefixes are the actual isolation mechanism, not an application-level filter.** `buildSkillRegistry()` always includes one shared `r2(bucket, { prefix: "skills/enterprise/" })` source, plus — only when the calling chat's owner identity is known — a second `r2(bucket, { prefix: "skills/personal/<owner>/" })` source scoped to that one owner. A personal source can *structurally* never see another owner's directory; there is no shared listing this demo then has to remember to filter, which is exactly why `tests/integration/skills.test.ts` tests this by calling `buildSkillRegistry()` directly for two different owners rather than only through a chat turn.
-- **The catalog costs nothing in the prompt until a task actually matches.** `SkillRegistry.systemPrompt()` returns `null` (folded away entirely, `chat-agent.ts`'s own `.filter(Boolean).join()`) when no skill is registered, or a short, fixed-shape block naming only each skill's `name`/`description` — never its full instruction body — satisfying US-10's "must not bloat every prompt" acceptance criterion structurally, independent of how many skills exist or how long their content is. The full body only ever reaches a prompt once the model actually calls `activate_skill` for that one skill.
-- **A generated `SKILL.md`, never a user-authored one, so this demo's own frontmatter shape is the only one ever written.** `src/worker/skills/validation.ts`'s `buildSkillMarkdown()` always builds the YAML frontmatter (`name`/`description`) from the request body's own separately-validated fields, rather than trusting an uploaded file's embedded frontmatter — a user only ever supplies a name, a description, and an instruction body (pasted or fetched from a URL); this demo decides the rest.
-- **Reusing the same R2 bucket, under a disjoint prefix, rather than provisioning a second one.** `docs/06-AGENTIC-CHAT.md` Section 6.1 lists agent-generated files and skill content as one R2 use, not two — `src/worker/skills/storage.ts`'s `skillDirectoryKey()` namespaces every skill under `skills/enterprise/<id>` or `skills/personal/<owner>/<id>`, entirely disjoint from `../files/storage.ts`'s `chats/<chat-id>/files/` prefix, so this phase needed no new Terraform resource and no new R2 teardown step.
-- **A URL-sourced skill's ingestion fetch is a trusted, one-time, caller-initiated action — not the `getUrl` tool's threat model, and so it does not earn `getUrl`'s Dynamic Worker sandbox.** `src/worker/skills/source.ts`'s `fetchSkillSourceBody()` reuses `getUrl`'s own `validateUrlFloor()` (the same http(s)-only, no-internal-address floor), then calls `fetch()` directly from the Worker. The distinction that matters (documented in that module's own JSDoc): `getUrl` is a *repeatable, model-chosen* destination inside every turn, which is exactly why Phase 10 gave it a real security boundary; adding a skill is a *single, authenticated, admin/owner-initiated* action, structurally closer to `writeMarkdown`'s "no untrusted egress to control" than to `getUrl`'s.
-- **A real cost, accepted deliberately, not discovered as a surprise.** `agents/skills` unconditionally imports `@cloudflare/codemode` and `just-bash` at module top level — used only by the `runner()` factory (`run_skill_script`, never wired up in this demo) but bundled regardless. Spike D measured +58% raw / +71% gzip against an otherwise-identical build; this phase's own production build stays well under either Workers plan's compressed-size ceiling, so the trade is accepted for the released mechanism's zero-adapter-code composability rather than paying a smaller bundle for a hand-rolled equivalent that duplicates an existing feature.
-- **A management catalog in D1, a model-visible catalog in R2 — deliberately two different sources of truth for two different jobs.** The `skills` D1 table (`src/worker/skills/repository.ts`) exists only so `GET`/`DELETE /api/skills`/`/api/admin/skills` can list and remove a skill and clean up its R2 object; `ChatAgent` never reads this table at turn time. This mirrors `chat_files`/R2's own split for agent-generated files, applied to a second, independently-discovered R2 source instead.
-- **Testing a real R2-backed catalog needs a real R2 binding, so this phase's own composition test lives in the integration project, not a mocked unit test.** `agents/skills`'s `r2()` source calls `bucket.list()`/`bucket.get()` for real; `tests/integration/skills.test.ts` calls `buildSkillRegistry()` directly against the real `FILES` binding (available under `@cloudflare/vitest-pool-workers`) to prove exact catalog composition, the same reason `../files/storage.ts`'s own R2 write/read behavior is only ever integration-tested. `agents/skills` also imports `cloudflare:workers` (via `SkillRegistry`'s `RpcTarget` dependency in `runner()`), which the plain-Node `worker` Vitest project cannot resolve at all — one more reason `src/worker/skills/registry.ts` has no colocated unit test, mirroring `ChatAgent`'s/`EgressGateway`'s own precedent.
-
-## What Phase 12 (Export A Chat Or A File, US-11) Demonstrates
-
-- **Server-side export, because the data being exported is server-side state — unlike demo 5's client-side one.** `demos/ai-chat/src/client/lib/transcript.ts` builds its Markdown transcript in the browser because that demo's whole conversation already lives in a Pinia store's memory. This demo's transcript lives in `ChatAgent`'s own Durable Object SQLite storage, and its cost ledger lives in D1 — neither is fully present in the browser at any point (the client only ever sees rendered `ChatTurn`s, never raw `UIMessage` parts) — so `GET /api/chats/:id/export`/`GET /api/chats/:id/files/:fileId/export` (`src/worker/routes/chats.ts`) build the document server-side from those same two sources of truth, and the client is just an anchor tag pointing at the route (`ChatExportButton.vue`), exactly like `ChatTranscript.vue`'s existing attachment-download links (Phase 9) — no `fetch()`/`Blob` plumbing needed on either side.
-- **Reusing `AIChatAgent`'s own `get-messages` endpoint from inside another route, not a second way to read the transcript.** `GET /:id/export` does not add a new RPC method to `ChatAgent` to read its messages back out — it forwards a synthetic `Request` whose path ends in `get-messages` to the same Durable Object stub `GET /:id/get-messages` already forwards the real client request to (`@cloudflare/ai-chat`'s own `onRequest` override matches on the URL's last path segment alone, regardless of host or method, `docs/DECISIONS.md` #18). One transcript-reading mechanism, exercised by two different Worker routes for two different purposes.
-- **Two pure Markdown builders, tested independently of the HTTP routes that call them.** `src/worker/export/chat-markdown.ts`/`file-markdown.ts` take already-fetched data (a chat's directory row, its persisted messages, its usage aggregate; a file's content and its producing turn's usage row) and return a string, with no binding, no D1, no R2 — mirroring `demos/ai-chat`'s own pure-transcript-function split, applied here as the *Worker's* formatting layer instead of the client's. `chat-markdown.test.ts`/`file-markdown.test.ts` reach 100% coverage with plain fixture objects; `tests/integration/export.test.ts` is left to prove the two routes actually wire real data into them correctly, not to re-test the formatting itself.
-- **One tool-call rendering shape covers every tool this demo has, and any future one, without an exporter change.** `resolveToolName()`/`formatToolPart()` handle both a statically-named `tool-<name>` part (`writeMarkdown`, `getUrl`, `activate_skill`, `read_skill_resource` — every tool this demo actually ships) and a `dynamic-tool` part (the AI SDK's shape for a tool discovered only at runtime, which this demo never produces but `agents/skills`'s own `runner()`/`run_skill_script` could in a later extension) through the same generic code path — `activate_skill` alone gets a distinct "**Skill activated:**" label per US-11's own acceptance criterion; everything else renders as "**Tool call: `<name>`**" plus its input/output/error, so a tool added later exports legibly with zero changes to this module.
-- **The exact per-turn correlation join Phase 9 deliberately set up for this moment, used verbatim.** `docs/06-AGENTIC-CHAT.md` Section 15 named "the exact correlation key between a `chat_files` row and the `chat_usage` row(s) that produced it" as an open question Phase 9 would resolve for this phase to use — `chat_files.correlation_id`. `GET /:id/files/:fileId/export` does exactly that: `UsageRepository.findByCorrelationId(file.correlationId)` is an exact-match `SELECT ... WHERE correlation_id = ?`, not a timestamp-proximity guess, so the per-file export's own "Cost Context Of The Producing Turn" section is always the literal turn that wrote that file, even if other turns completed before or after it in the same chat.
-- **A real, pre-existing gap this phase's own need surfaced and fixed.** `ChatFilesRepository.findByChatAndId()` (Phase 9) had never actually selected `correlation_id` in its `SELECT` column list, even though `ChatFile.correlationId`'s own type was always non-optional `string` — every existing caller (the file-download route) never read that field, so the gap went unnoticed until this phase's per-file export needed it. Fixed by adding the column to the `SELECT` (`src/worker/files/repository.ts`) and a regression assertion on the SQL text itself, not only on the fake test double's already-lenient mapped output — the same class of gap `docs/DECISIONS.md`'s own testing entries exist to catch earlier next time.
-- **A plain anchor with a server-set `Content-Disposition`, not a client-side `Blob` download, for both export controls.** `ChatExportButton.vue` (the chat header) and the small export icon added to each attachment chip (`ChatTranscript.vue`) are both `<a href="...">` elements with no click handler beyond a defensive `disabled`-state guard; the browser's own already-authenticated Access session cookie carries the request, and the route's `contentDisposition()` header (reused verbatim from Phase 9's file-download route, `src/worker/files/storage.ts`) names the download — the same "reuse the browser's session, no JS-side fetch" pattern this demo already established for a raw file download, applied to a generated document instead.
+`cloudflareLogger()` provides request-scoped structured logging on every
+request: `chat_created`, `chat_connected`, `chat_route_changed`,
+`chat_deleted`, `transcription_completed`, `admin_user_metadata_updated`,
+`chat_file_downloaded`, `egress_gateway_decision`, `skill_created`,
+`skill_deleted`, `chat_exported`, and `chat_file_exported`, among others.
+`ChatAgent`'s own background failure paths (a failed recency touch, a failed
+title generation) log outside the Hono request context, the same way a
+Durable Object logs in `demos/chat`. AI Gateway's own dashboard — per-route
+request volume, cost analytics, and rate/spend-limit hits — is the
+operator-facing cross-check for the cost ledger and metadata-driven routing.
+Terraform enables Workers Logs at 100% sampling and traces at 10% sampling.
 
 ## Further Reading
 
-- `docs/06-AGENTIC-CHAT.md` — the full feature-by-feature implementation plan this demo follows (Sections 6.4/6.5 for Phase 7's D1 schema and admin-authorization design specifically).
-- `demos/url-shortener/src/worker/middleware/require-admin.ts` — this repo's own prior `requireAdmin()` pattern (checking a single hard-coded `ADMIN_EMAIL` identity directly); Phase 7's own version checks a D1 `is_admin` flag instead, since this demo already tracks that role for every signed-in identity, not only one configured administrator.
-- `spikes/00-aichatagent-basics/REPORT.md` through `spikes/05-workers-ai-speech-to-text/REPORT.md` — the platform findings this and every later phase are built against.
-- `docs/DECISIONS.md` #17/#18 — Phase 2's own new platform findings (faking a binding a Durable Object reads; `AIChatAgent`'s built-in history endpoint).
-- `docs/DECISIONS.md` #19 — this phase's own new testing finding (`abortAllDurableObjects()` in place of `evictAllDurableObjects()` after an Agents-SDK `Agent.destroy()`).
-- `docs/DECISIONS.md` #20 — a real reported bug and its root cause (a `streamText()` turn's client-visible "done" arrives before its own `onFinish` side effects land) and fix (the `chat_metadata_updated` broadcast).
-- `docs/DECISIONS.md` #21 — a second real, reported bug: `Agent.destroy()`'s own RPC call is not guaranteed to resolve cleanly for its caller, and why the delete route must not let that failure skip removing the D1 row.
-- `docs/DECISIONS.md` #22 — Phase 6's own three new findings: why an `Agent`/`AIChatAgent` subclass can only be tested via `runInDurableObject()`, not a mocked `this`; Wrangler's `secrets.required` config field for typing a secret with no committed value; and D1's `UPDATE ... RETURNING` support.
-- `.opencode/skills/testing-durable-objects/SKILL.md` — the repo skill this phase's finding was folded into, as rule 7.
-- `spikes/01-ai-gateway-dynamic-routing/REPORT.md` — the confirmed dynamic-route provisioning mechanism, the model-compatibility sweep behind Phase 4's chosen models, and the `env.AI.aiGatewayLogId` finding Phase 6's own reconciliation logic is built against.
-- `spikes/04-ai-gateway-cost-reconciliation/REPORT.md` — the confirmed per-turn correlation UUID mechanism, the logs-list REST endpoint's exact filter syntax and gotchas, the measured reconciliation lag (267ms–4,731ms) Phase 6's own 10s/+15s/+15s schedule is set from, and the confirmed `tokens_in`/`tokens_out`/`cost` field names.
-- `spikes/05-workers-ai-speech-to-text/REPORT.md` — the confirmed `env.AI.run()` call shape for `@cf/openai/whisper-large-v3-turbo`, the finding that a browser's raw `MediaRecorder` output needs no client-side conversion, and why `@cf/deepgram/nova-3`'s documented binding shape is live-rejected by the platform — the findings Phase 5's `src/worker/transcribe/transcription.ts` is built against.
-- `demos/media-drop/src/worker/media/storage.ts`/`upload.ts` — this repo's own prior R2-write-then-D1-insert-with-compensation pattern; Phase 9's `writeMarkdownFile()` (`src/worker/agent/tools/write-markdown.ts`) applies the same ordering and cleanup discipline to a tool-generated file instead of a browser upload.
-- `spikes/02-dynamic-workers-egress-control/REPORT.md` — the confirmed `worker_loaders`/`ctx.exports`/`globalOutbound` wiring Phase 10's `EgressGateway`/`getUrl` tool is built against, including the `Illegal invocation` gotcha, the "a blocked gateway throws inside the sandboxed worker" finding, and both testability confirmations.
-- [Dynamic Workers](https://developers.cloudflare.com/dynamic-workers/) and [Dynamic Workers: getting started](https://developers.cloudflare.com/dynamic-workers/getting-started/) — the `worker_loaders` binding, `env.LOADER.get()`/`.load()`, and the "lightweight alternative to containers" framing Section 6.7 cites.
-- [Dynamic Workers: egress control](https://developers.cloudflare.com/dynamic-workers/usage/egress-control/) — the `globalOutbound`/`ctx.exports.<Name>()` pattern `EgressGateway`/`ChatAgent.onChatMessage()` implement directly.
-- [Dynamic Workers pricing](https://developers.cloudflare.com/dynamic-workers/pricing/) — the Workers Paid plan requirement this demo's `README.md` flags in Prerequisites.
-- [Workers RPC](https://developers.cloudflare.com/workers/runtime-apis/rpc/) — the capability-based stub mechanism that lets a `Fetcher`/`WorkerEntrypoint` stub be passed as an ordinary function argument (`createGlobalOutboundGateway`'s own return value), the same model underlying `ctx.exports`.
-- [AI SDK: tools](https://ai-sdk.dev/docs/foundations/tools) and [AI SDK: tool calling](https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling) — the `tool()`/`inputSchema`/`execute()` shape `createWriteMarkdownTool()` is built on, and the multi-step tool-calling loop `stopWhen`/`stepCountIs()` (`MAX_TURN_STEPS`) controls.
-- [Cloudflare R2](https://developers.cloudflare.com/r2/) — the object storage this phase's `FILES` binding writes to, first used in this demo in Phase 9, and reused under a disjoint prefix for Phase 11's skills.
-- `spikes/03-agent-skills-composability/REPORT.md` — the confirmed decision to adopt `agents/skills`'s released `SkillRegistry`/`r2()` mechanism over a hand-rolled catalog, the real `Promise.all` load-ordering bug and its fix, the exact `activate_skill`/`read_skill_resource` tool shapes, and the measured `@cloudflare/codemode`/`just-bash` bundle-size cost Phase 11 is built against.
-- [Agents SDK: skills](https://developers.cloudflare.com/agents/api-reference/skills/) — `SkillRegistry`, `r2()`, `activate_skill`/`read_skill_resource`, and the "catalog in the prompt, content on demand" design Phase 11's `buildSkillRegistry()` implements directly.
-- [AI SDK: UI message persistence](https://ai-sdk.dev/docs/ai-sdk-ui/message-persistence) — `UIMessage`'s `parts` array, and the `ToolUIPart`/`DynamicToolUIPart` shapes (`type: "tool-<name>"` vs. `type: "dynamic-tool"`) `src/worker/export/chat-markdown.ts`'s `resolveToolName()` reads directly from the same persisted messages `AIChatAgent`'s own `get-messages` endpoint returns.
-- [MDN: Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) — the response header `contentDisposition()` (Phase 9, reused verbatim by Phase 12's two export routes) sets to name a server-generated document's download filename.
+- [`docs/06-AGENTIC-CHAT.md`](../../docs/06-AGENTIC-CHAT.md) — the full
+  design, requirements, and data flow this demo implements.
+- [Agents SDK](https://developers.cloudflare.com/agents/)
+- [Agents SDK: chat agents](https://developers.cloudflare.com/agents/communication-channels/chat/chat-agents/)
+- [Agents SDK: schedule tasks](https://developers.cloudflare.com/agents/api-reference/schedule-tasks/)
+- [Agents SDK: skills](https://developers.cloudflare.com/agents/api-reference/skills/)
+- [AI Gateway dynamic routing](https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/)
+- [AI Gateway rate limiting](https://developers.cloudflare.com/ai-gateway/features/rate-limiting/)
+- [AI Gateway spend limits](https://developers.cloudflare.com/ai-gateway/features/spend-limits/)
+- [AI Gateway custom metadata](https://developers.cloudflare.com/ai-gateway/observability/custom-metadata/)
+- [AI Gateway logs](https://developers.cloudflare.com/ai-gateway/observability/logging/) and the [logs-list API reference](https://developers.cloudflare.com/api/resources/ai_gateway/subresources/logs/methods/list/)
+- [Dynamic Workers](https://developers.cloudflare.com/dynamic-workers/) and [getting started](https://developers.cloudflare.com/dynamic-workers/getting-started/)
+- [Dynamic Workers: egress control](https://developers.cloudflare.com/dynamic-workers/usage/egress-control/)
+- [Dynamic Workers pricing](https://developers.cloudflare.com/dynamic-workers/pricing/)
+- [Workers RPC](https://developers.cloudflare.com/workers/runtime-apis/rpc/)
+- [AI SDK: tools](https://ai-sdk.dev/docs/foundations/tools) and [tool calling](https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling)
+- [AI SDK: UI message persistence](https://ai-sdk.dev/docs/ai-sdk-ui/message-persistence)
+- [Vercel AI SDK: streamText](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text)
+- [Workers AI](https://developers.cloudflare.com/workers-ai/)
 - [Workers AI: speech-to-text models](https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/)
+- [Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/)
 - [MediaRecorder API (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder)
-- [Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/) — the per-model USD rates `src/worker/usage/pricing.ts`'s estimate table is drawn from.
-- [AI Gateway: logs](https://developers.cloudflare.com/ai-gateway/observability/logging/) and the [AI Gateway logs-list API reference](https://developers.cloudflare.com/api/resources/ai_gateway/subresources/logs/methods/list/) — the REST endpoint `findLogByCorrelationId()` calls.
-- [Agents SDK: schedule tasks](https://developers.cloudflare.com/agents/api-reference/schedule-tasks/) — the `this.schedule()` primitive `recordTurnUsage()`/`reconcileUsage()` use.
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/)
 - [Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/)
 - [Workers static assets](https://developers.cloudflare.com/workers/static-assets/)
 - [Durable Objects](https://developers.cloudflare.com/durable-objects/)
-- [D1](https://developers.cloudflare.com/d1/)
-- [D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)
+- [D1](https://developers.cloudflare.com/d1/) and [D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)
+- [Cloudflare R2](https://developers.cloudflare.com/r2/)
 - [Cloudflare Access applications](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/)
 - [Cloudflare Access policies](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/)
-- [AI Gateway dynamic routing](https://developers.cloudflare.com/ai-gateway/features/dynamic-routing/) -- the conditional/rate node shapes Phase 8's `business-check`/rate-gate elements are built from.
-- [AI Gateway rate limiting](https://developers.cloudflare.com/ai-gateway/features/rate-limiting/) and [AI Gateway spend limits](https://developers.cloudflare.com/ai-gateway/features/spend-limits/) -- the two "cost controls" mechanisms Phase 8's rate-gate element and gateway-level `spend_limits` demonstrate.
-- [AI Gateway custom metadata](https://developers.cloudflare.com/ai-gateway/observability/custom-metadata/) -- the `metadata.business` dimension both the conditional/rate elements and the spend limit partition on.
-- [Agents SDK](https://developers.cloudflare.com/agents/)
-- [Agents SDK: chat agents](https://developers.cloudflare.com/agents/communication-channels/chat/chat-agents/)
-- [Workers AI](https://developers.cloudflare.com/workers-ai/)
-- [Vercel AI SDK: streamText](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text)
 - [Workers observability](https://developers.cloudflare.com/workers/observability/)
 - [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/)
 - [RFC 9457 — Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457)
