@@ -245,4 +245,95 @@ export class UsageRepository {
       .all<UsageAggregateDbRow & { chat_id: string }>();
     return new Map(results.map((row) => [row.chat_id, toSummary(row)]));
   }
+
+  /**
+   * Re-aggregate every user's own chats in a single query -- the admin console's ranked
+   * user-cost table (docs/06-AGENTIC-CHAT.md Phase 7, US-6, `GET /api/admin/users`). Deliberately
+   * a separate method from {@link aggregateForOwner} rather than that method with an optional
+   * "no filter" mode: this repository's own Phase 6 convention is one single-purpose operation
+   * per read/write path (this class's own top-level JSDoc), and this query's caller (an admin
+   * route, never an ordinary user-facing one) is different enough to warrant its own name.
+   *
+   * @returns A map from owner email to that owner's current totals across every one of their
+   * chats. An owner with zero `chat_usage` rows is simply absent from the map -- callers should
+   * treat a missing entry the same as {@link emptyUsageSummary}.
+   */
+  async aggregateForAllUsers(): Promise<Map<string, ChatUsageSummary>> {
+    const { results } = await this.database
+      .prepare(
+        `SELECT
+           chats.owner_email AS owner_email,
+           COALESCE(SUM(chat_usage.cost_usd), 0) AS total_cost_usd,
+           COALESCE(SUM(chat_usage.prompt_tokens), 0) AS total_prompt_tokens,
+           COALESCE(SUM(chat_usage.completion_tokens), 0) AS total_completion_tokens,
+           COUNT(*) AS turn_count,
+           COALESCE(
+             SUM(CASE WHEN chat_usage.cost_source = 'gateway' THEN 1 ELSE 0 END), 0
+           ) AS confirmed_turn_count,
+           MAX(chat_usage.updated_at) AS last_updated_at
+         FROM chat_usage
+         JOIN chats ON chats.id = chat_usage.chat_id
+         GROUP BY chats.owner_email`,
+      )
+      .all<UsageAggregateDbRow & { owner_email: string }>();
+    return new Map(results.map((row) => [row.owner_email, toSummary(row)]));
+  }
+
+  /**
+   * Re-aggregate cost grouped by every owner's admin-assigned `users.business`/`users.geo`
+   * segment (docs/06-AGENTIC-CHAT.md Phase 7, US-6/Section 6.4) -- the admin console's two
+   * segment reports (`GET /api/admin/reports/by-business`/`by-geo`). Shared by
+   * {@link aggregateByBusiness}/{@link aggregateByGeo}, parameterized only by which `users`
+   * column to group on -- `column` is always one of this module's own two hard-coded literals,
+   * never request input, so interpolating it directly into the query text (D1/SQLite cannot
+   * parameter-bind a column name) carries no injection risk.
+   *
+   * @param column Which `users` column to group by.
+   * @returns A map from that column's value (`null` for a user with no segment assigned yet) to
+   * the summed totals of every chat owned by a user in that segment.
+   */
+  private async aggregateGroupedByUserColumn(
+    column: "business" | "geo",
+  ): Promise<Map<string | null, ChatUsageSummary>> {
+    const { results } = await this.database
+      .prepare(
+        `SELECT
+           users.${column} AS segment,
+           COALESCE(SUM(chat_usage.cost_usd), 0) AS total_cost_usd,
+           COALESCE(SUM(chat_usage.prompt_tokens), 0) AS total_prompt_tokens,
+           COALESCE(SUM(chat_usage.completion_tokens), 0) AS total_completion_tokens,
+           COUNT(*) AS turn_count,
+           COALESCE(
+             SUM(CASE WHEN chat_usage.cost_source = 'gateway' THEN 1 ELSE 0 END), 0
+           ) AS confirmed_turn_count,
+           MAX(chat_usage.updated_at) AS last_updated_at
+         FROM chat_usage
+         JOIN chats ON chats.id = chat_usage.chat_id
+         JOIN users ON users.email = chats.owner_email
+         GROUP BY users.${column}`,
+      )
+      .all<UsageAggregateDbRow & { segment: string | null }>();
+    return new Map(results.map((row) => [row.segment, toSummary(row)]));
+  }
+
+  /**
+   * Cost aggregated by business segment (docs/06-AGENTIC-CHAT.md Phase 7, US-6,
+   * `GET /api/admin/reports/by-business`).
+   *
+   * @returns A map from business segment (`null` for "unspecified") to that segment's summed
+   * totals.
+   */
+  async aggregateByBusiness(): Promise<Map<string | null, ChatUsageSummary>> {
+    return this.aggregateGroupedByUserColumn("business");
+  }
+
+  /**
+   * Cost aggregated by geo segment (docs/06-AGENTIC-CHAT.md Phase 7, US-6,
+   * `GET /api/admin/reports/by-geo`).
+   *
+   * @returns A map from geo segment (`null` for "unspecified") to that segment's summed totals.
+   */
+  async aggregateByGeo(): Promise<Map<string | null, ChatUsageSummary>> {
+    return this.aggregateGroupedByUserColumn("geo");
+  }
 }

@@ -12,6 +12,7 @@ import {
   VMain,
 } from "vuetify/components";
 import App from "./App.vue";
+import AdminView from "./views/AdminView.vue";
 import HomeView from "./views/HomeView.vue";
 
 /**
@@ -24,7 +25,14 @@ import HomeView from "./views/HomeView.vue";
 export function startClient(): void {
   const router = createRouter({
     history: createWebHistory(),
-    routes: [{ component: HomeView, path: "/" }],
+    routes: [
+      { component: HomeView, path: "/" },
+      // Docs/06-AGENTIC-CHAT.md Phase 7, US-6: the admin console's own nav entry point
+      // (`App.vue`'s "Admin console" link) is only ever hidden for a non-administrator
+      // identity, never a route guard here -- `requireAdmin()` on the Worker is the real
+      // enforcement (Section 6.5's "never trust the client-hidden nav item alone" rule).
+      { component: AdminView, path: "/admin" },
+    ],
   });
   const app = createApp(App);
   app.use(createPinia());

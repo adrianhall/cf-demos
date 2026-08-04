@@ -6,6 +6,8 @@ import {
 import { Hono } from "hono";
 import type { AppBindings } from "./bindings";
 import { accessMiddleware } from "./middleware/access";
+import { requireAdmin } from "./middleware/require-admin";
+import { adminRouter } from "./routes/admin";
 import { chatsRouter } from "./routes/chats";
 import { meRouter } from "./routes/me";
 import { transcribeRouter } from "./routes/transcribe";
@@ -21,6 +23,8 @@ const app = new Hono<AppBindings>();
 
 app.use(cloudflareLogger());
 app.use("/api/*", accessMiddleware);
+app.use("/api/admin/*", requireAdmin);
+app.route("/api/admin", adminRouter);
 app.route("/api/me", meRouter);
 app.route("/api/chats", chatsRouter);
 app.route("/api/transcribe", transcribeRouter);

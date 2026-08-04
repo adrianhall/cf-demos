@@ -3,8 +3,10 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import App from "./App.vue";
 
-/** Shared Vuetify component stubs so these tests exercise real markup, not Vuetify internals. */
+/** Shared Vuetify/Vue Router component stubs so these tests exercise real markup, not Vuetify or
+ * Vue Router internals. */
 const stubs = {
+  RouterLink: { template: '<a v-bind="$attrs"><slot /></a>' },
   RouterView: { template: '<div data-testid="router-view">Chat</div>' },
   VApp: { template: "<div><slot /></div>" },
   VBtn: { template: '<a v-bind="$attrs"><slot /></a>' },
@@ -60,6 +62,42 @@ describe("App", () => {
 
     expect(wrapper.text()).toContain("admin@example.com");
     expect(wrapper.text()).toContain("Administrator");
+  });
+
+  it("shows no Admin console link for an ordinary, non-administrator identity", () => {
+    const wrapper = mount(App, {
+      global: {
+        plugins: [
+          createTestingPinia({
+            createSpy: vi.fn,
+            initialState: { session: { email: "alice@example.com" } },
+          }),
+        ],
+        stubs: { ...stubs, RouterView: true },
+      },
+    });
+
+    expect(wrapper.find(".admin-link").exists()).toBe(false);
+  });
+
+  it("shows an Admin console link only for the D1-flagged administrator role", () => {
+    const wrapper = mount(App, {
+      global: {
+        plugins: [
+          createTestingPinia({
+            createSpy: vi.fn,
+            initialState: {
+              session: { email: "admin@example.com", isAdmin: true },
+            },
+          }),
+        ],
+        stubs: { ...stubs, RouterView: true },
+      },
+    });
+
+    const link = wrapper.get(".admin-link");
+    expect(link.text()).toBe("Admin console");
+    expect(link.attributes("to")).toBe("/admin");
   });
 
   it("shows identity verification while the session is loading", () => {

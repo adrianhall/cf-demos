@@ -1,6 +1,6 @@
 # Agentic Chat Demo Script
 
-See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This checkout implements Phase 1 (Scaffolding) through Phase 6 (Per-Chat Cost And Token Visibility, US-5) — the authenticated shell, the D1 user directory, a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, a sidebar for creating, switching between, auto-titling, and deleting chats, a "Basic"/"Reasoning" mode selector backed by governed AI Gateway dynamic routes rather than a client-visible model id, a microphone control that dictates a prompt via Workers AI speech-to-text, and a per-chat cost/token readout that starts **Estimated** and upgrades in place to **AI Gateway**-confirmed once AI Gateway's own logged figures for that turn are found. Later phases' demo scripts pick up from here for tools, skills, and the admin console.
+See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This checkout implements Phase 1 (Scaffolding) through Phase 7 (Admin Cost/Metadata Console, US-6) — the authenticated shell, the D1 user directory, a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, a sidebar for creating, switching between, auto-titling, and deleting chats, a "Basic"/"Reasoning" mode selector backed by governed AI Gateway dynamic routes rather than a client-visible model id, a microphone control that dictates a prompt via Workers AI speech-to-text, a per-chat cost/token readout that starts **Estimated** and upgrades in place to **AI Gateway**-confirmed once AI Gateway's own logged figures for that turn are found, and an Admin Console ranking every user by total cost, editing any user's business/geo segment, and reporting cost by business and by geo. Later phases' demo scripts pick up from here for tools and skills.
 
 ## Demonstration Prerequisites
 
@@ -11,6 +11,7 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
 5. Open a fourth browser window or tab to the Cloudflare dashboard's **AI Gateway** section, ready to open the `agentic-chat` gateway and its two dynamic routes (**basic**, **reasoning**), and its overall request log.
 6. Sign out of, or use a private/incognito window for, the demo hostname so the first step shows the unauthenticated experience.
 7. Use a browser with a working microphone, and be prepared to grant microphone permission when prompted.
+8. Sign in as the non-administrator identity from step 2 at least once before starting the walkthrough below (opening the app and letting `GET /api/me` upsert its `users` row is enough), so it already appears in the Admin Console's ranked table when this script reaches it.
 
 ## Presentation Flow
 
@@ -47,9 +48,14 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
 19. Open a second browser tab to the same hostname, signed in as the same identity, and open the same chat that is open in the first tab. In the first tab, delete that chat from the sidebar. Point out the second tab is notified immediately (its view moves off the deleted chat) rather than being left silently connected to a chat that no longer exists.
 20. Back in the dashboard, open **Workers & Pages** > `agentic-chat` > **Logs** and show the `chat_created`, `chat_connected`, `chat_deleted`, and `transcription_completed` log entries from this session.
 21. Optionally, open **Durable Objects** in the dashboard (under **Workers & Pages** > `agentic-chat` > **Bindings**, or the account-level Durable Objects view) and show the `ChatAgent` class with one live instance per remaining chat — the coordination atom for each conversation.
-22. Back in the browser, use the always-visible **Sign out** control.
-23. Sign in as the second, non-administrator identity and click **+ New Chat**. Point out this identity sees an empty sidebar of its own — chats are never shared across identities.
-24. Re-run the D1 queries from step 9 and show every identity's chats and `chat_usage` rows coexisting in the same tables, each still visible only to its own owner through the app.
+22. Still signed in as the administrator, point out the **Admin console** link in the header. Click it.
+23. Point out the ranked "Users by cost" table: your own identity (and the non-administrator identity from step 8 of Demonstration Prerequisites, already listed with a zeroed cost) both appear, ordered by total cost descending.
+24. In your own row, change **Business** to **Leadership** and **Geo** to **Americas**. Point out the row updates immediately, with no page reload.
+25. Point out the "Cost by business" and "Cost by geo" sections below now show a "Leadership"/"Americas" row matching your own cost figure from the table above.
+26. Switch to the D1 tab and run `SELECT email, is_admin, business, geo FROM users;`. Point out your own row's `business`/`geo` columns now hold the values just set from the browser.
+27. Back in the browser, use the always-visible **Sign out** control, then sign in as the second, non-administrator identity. Point out no **Admin console** link appears in the header for this identity, then click **+ New Chat** and point out this identity sees an empty sidebar of its own — chats are never shared across identities.
+28. Attempt to navigate directly to `https://agentic-chat.cfapps.uk/admin` as this identity. Point out the page itself loads (Cloudflare Access does not block it — there is only one Access application on this hostname) but every section shows an error message instead of a table, since `requireAdmin()` rejects the underlying `/api/admin/*` requests with `403`.
+29. Re-run the D1 queries from step 9 and show every identity's chats and `chat_usage` rows coexisting in the same tables, each still visible only to its own owner through the app.
 
 ## Expected Results
 
@@ -65,12 +71,14 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches. This chec
 - Reloading the page resumes the same chat list, conversations, and their own modes from durable storage.
 - Dictating a prompt produces editable composer text, never an auto-submitted message, backed by a real `@cf/openai/whisper-large-v3-turbo` call visible in the AI Gateway request log.
 - A completed turn's cost/token readout is visible immediately (labeled **Estimated**) and upgrades in place to **AI Gateway**-confirmed figures within roughly 10–40 seconds, without a page reload, in both the chat header and the sidebar.
+- The **Admin console** link appears only for the identity matching `ADMIN_EMAIL`; a non-administrator identity never sees the link and receives `403` from every underlying `/api/admin/*` request if it navigates to `/admin` directly.
+- The ranked "Users by cost" table lists every signed-in identity, highest cost first; editing a user's business/geo segment updates that row immediately and is reflected in both segment reports without a page reload.
 
 ## Where To Observe State
 
-- **Worker logs:** Workers & Pages > `agentic-chat` > Logs (`chat_created`, `chat_connected`, `chat_route_changed`, `chat_deleted`, `transcription_completed` entries).
+- **Worker logs:** Workers & Pages > `agentic-chat` > Logs (`chat_created`, `chat_connected`, `chat_route_changed`, `chat_deleted`, `transcription_completed`, `admin_user_metadata_updated` entries).
 - **Traces:** Workers & Pages > `agentic-chat` > Observability > Traces (10% sampling).
-- **D1 data:** D1 > `agentic-chat-db` > Console; query the `chats`/`users` tables as shown above (`route` is Phase 4's own column), and `chat_usage` (Phase 6's cost ledger — `cost_source`/`gateway_log_id` show whether a row is still estimated or already AI-Gateway-confirmed).
+- **D1 data:** D1 > `agentic-chat-db` > Console; query the `chats`/`users` tables as shown above (`route` is Phase 4's own column; `business`/`geo` are Phase 7's own columns), and `chat_usage` (Phase 6's cost ledger — `cost_source`/`gateway_log_id` show whether a row is still estimated or already AI-Gateway-confirmed).
 - **Access application:** Zero Trust > Access controls > Applications > `agentic-chat`.
 - **AI Gateway:** AI Gateway > `agentic-chat` > **basic**/**reasoning** dynamic routes — each route's own request log entry (including the auto-title generation calls), resolved model, latency, and cost; the gateway's overall request log also shows each dictation's direct (non-routed) `@cf/openai/whisper-large-v3-turbo` call. Each request log entry's own logged cost/tokens is exactly what `chat_usage.cost_source = 'gateway'` rows are upgraded to.
 - **Durable Objects:** the `ChatAgent` class and its live instances, one per chat.

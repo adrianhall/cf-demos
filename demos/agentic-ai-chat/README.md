@@ -2,7 +2,7 @@
 
 An authenticated enterprise AI chat agent based on Cloudflare Workers, D1, Cloudflare Access, Durable Objects, the Agents SDK, Workers AI, AI Gateway, and Dynamic Workers.
 
-> This demo ships in phases (see `docs/06-AGENTIC-CHAT.md`), each tagged in git so any two can be diffed. This checkout implements **Phase 1 (Scaffolding)** through **Phase 6 (Per-Chat Cost And Token Visibility, US-5)**: a signed-in user can hold a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, persisted across reloads, manage more than one chat from a sidebar -- creating, switching between, and deleting chats, each auto-titled after its first exchange -- choose between a "Basic" and a "Reasoning" mode per chat, each backed by a governed AI Gateway dynamic route rather than a client-visible model id, dictate a prompt via microphone, transcribed by Workers AI into editable composer text, and see each chat's running cost/token totals, immediately labeled **Estimated** and later upgraded in place to **AI Gateway**-confirmed figures once AI Gateway's own logged cost/tokens for that turn are found. Later phases add tools, skills, and an admin console.
+> This demo ships in phases (see `docs/06-AGENTIC-CHAT.md`), each tagged in git so any two can be diffed. This checkout implements **Phase 1 (Scaffolding)** through **Phase 7 (Admin Cost/Metadata Console, US-6)**: a signed-in user can hold a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, persisted across reloads, manage more than one chat from a sidebar -- creating, switching between, and deleting chats, each auto-titled after its first exchange -- choose between a "Basic" and a "Reasoning" mode per chat, each backed by a governed AI Gateway dynamic route rather than a client-visible model id, dictate a prompt via microphone, transcribed by Workers AI into editable composer text, see each chat's running cost/token totals, immediately labeled **Estimated** and later upgraded in place to **AI Gateway**-confirmed figures once AI Gateway's own logged cost/tokens for that turn are found, and -- for the identity matching `ADMIN_EMAIL` -- open an Admin Console ranking every user by total cost, editing any user's business/geo segment, and viewing cost broken down by business and by geo. Later phases add tools and skills.
 
 ## Prerequisites
 
@@ -69,6 +69,8 @@ npm run build
 
 `tests/integration/usage.test.ts` (Phase 6) substitutes the global `fetch` (`withFakeFetch`) to simulate AI Gateway's logs-list REST endpoint, so every branch of `ChatAgent.reconcileUsage()` -- a matching log found, none found yet, the bounded retry budget exhausted, a REST failure, and a row that has disappeared -- is exercised with no real network call, by invoking the real method directly via `runInDurableObject()` rather than waiting on its own real 10s/+15s schedule delays. A local `vite dev`/`vitest` run has no real `CLOUDFLARE_API_TOKEN` secret configured (see Troubleshooting), so a real local turn's reconciliation permanently stays `estimated` -- a legitimate, visible outcome this demo's own design already expects, not a bug.
 
+`tests/integration/admin.test.ts` (Phase 7) drives real turns the same way `usage.test.ts` does to produce real `chat_usage` rows for several identities, then exercises `requireAdmin()`'s enforcement (unauthenticated `401`, non-administrator `403`) and every `/api/admin/*` route -- the ranked user-cost table, business/geo metadata mutation (including validation and a nonexistent-email `404`), and both segment reports, checking a report's total against the sum of its constituent users' own figures.
+
 ## Deployment
 
 ```sh
@@ -91,16 +93,22 @@ npm run deploy
 9. Delete a chat from the sidebar and confirm it disappears from the list and the view falls back to a remaining chat (or the empty state if none remain).
 10. Click the microphone control on the composer, allow microphone access when prompted, dictate a short question, then click it again to stop. Confirm the transcribed text appears in the composer -- not submitted automatically -- and can be edited before sending.
 11. Confirm the chat header shows a cost/token readout immediately after step 4's response, labeled **Estimated**; within roughly 10-40 seconds (reload the page if needed to observe the push), confirm it flips to **AI Gateway** with a "1 of 1 turn confirmed by AI Gateway" ratio, and that the sidebar entry for the same chat shows a matching figure.
-12. Sign out using the visible **Sign out** control.
-13. In the Cloudflare dashboard under **D1** > `<DEMO_NAME>-db` > Console, run `SELECT email, is_admin, created_at FROM users;` and confirm your identity was upserted with the expected `is_admin` value; run `SELECT chat_id, cost_source, cost_usd, gateway_log_id FROM chat_usage;` and confirm step 11's turn shows `cost_source = 'gateway'` with a non-null `gateway_log_id`.
-14. Under **Workers & Pages** > `<DEMO_NAME>` > **Logs**, confirm requests are being logged, including `chat_created`, `chat_connected`, `chat_route_changed`, `chat_deleted`, and `transcription_completed` entries.
-15. Under **AI Gateway** > `<DEMO_NAME>`, open the **Basic** and **Reasoning** dynamic routes and confirm each shows requests from the corresponding chat above, resolved to their own configured model; open the gateway's overall request log and confirm a `@cf/openai/whisper-large-v3-turbo` entry from step 10's dictation, and that the logged cost for step 4's turn matches step 13's D1 row.
+12. Confirm the header shows an **Admin console** link (you should still be signed in as `ADMIN_EMAIL` from step 1). Click it.
+13. Confirm the ranked "Users by cost" table shows your own identity with the cost from step 11, and that a non-administrator identity you have signed in as previously (if any) also appears, ranked below if its cost is lower.
+14. In your own row, change the **Business** dropdown to any value other than "Unspecified" and confirm the row updates without a page reload; do the same for **Geo**.
+15. Confirm the "Cost by business" and "Cost by geo" sections now show a row for the segment you just picked, with a cost figure matching your own row in the users table.
+16. Sign out using the visible **Sign out** control, sign back in as a non-administrator identity, and confirm no **Admin console** link appears in the header.
+17. Attempt to open `https://<DEMO_NAME>.<DEMO_DOMAIN>/admin` directly as that non-administrator identity. Confirm the page loads (Cloudflare Access itself does not block it -- there is only one Access application on this hostname) but shows an error message instead of any table, since `requireAdmin()` rejects every `/api/admin/*` request with `403`.
+18. Sign back in as `ADMIN_EMAIL`.
+19. In the Cloudflare dashboard under **D1** > `<DEMO_NAME>-db` > Console, run `SELECT email, is_admin, business, geo, created_at FROM users;` and confirm your identity was upserted with the expected `is_admin` value and step 14's business/geo selections; run `SELECT chat_id, cost_source, cost_usd, gateway_log_id FROM chat_usage;` and confirm step 11's turn shows `cost_source = 'gateway'` with a non-null `gateway_log_id`.
+20. Under **Workers & Pages** > `<DEMO_NAME>` > **Logs**, confirm requests are being logged, including `chat_created`, `chat_connected`, `chat_route_changed`, `chat_deleted`, `transcription_completed`, and `admin_user_metadata_updated` entries.
+21. Under **AI Gateway** > `<DEMO_NAME>`, open the **Basic** and **Reasoning** dynamic routes and confirm each shows requests from the corresponding chat above, resolved to their own configured model; open the gateway's overall request log and confirm a `@cf/openai/whisper-large-v3-turbo` entry from step 10's dictation, and that the logged cost for step 4's turn matches step 19's D1 row.
 
 ## Provisioned Resources
 
 - Worker (`<DEMO_NAME>`) serving the Vue shell as static assets and a Hono API.
 - `CHAT_AGENT` Durable Object binding (`ChatAgent`, one instance per chat, `new_sqlite_classes` migration `v1`) -- created by Wrangler on first deploy, not Terraform (AGENTS.md, Resource Ownership).
-- D1 database `<DEMO_NAME>-db`, bound as `DB`, holding the `users`, `chats`, and `chat_usage` tables (the last is this demo's per-turn cost ledger, Phase 6).
+- D1 database `<DEMO_NAME>-db`, bound as `DB`, holding the `users` table (its `business`/`geo` columns, Phase 7, are nullable application-level enums with no `CHECK` constraint), `chats`, and `chat_usage` (this demo's per-turn cost ledger, Phase 6).
 - AI Gateway `<DEMO_NAME>`, bound to the Worker as the `AI_GATEWAY_ID` var. Its two dynamic routes (`<DEMO_NAME>-basic`, `<DEMO_NAME>-reasoning`, bound as `AI_GATEWAY_ROUTE_BASIC`/`AI_GATEWAY_ROUTE_REASONING`) are what every chat turn now actually calls, selected per chat by the "Mode" dropdown ("Basic"/"Reasoning") rather than a raw model id.
 - `CLOUDFLARE_API_TOKEN` Worker secret and `CLOUDFLARE_ACCOUNT_ID` var, used only by `ChatAgent.reconcileUsage()`'s one direct REST call to AI Gateway's logs-list endpoint (no binding lists logs) to read back a turn's authoritative logged cost.
 - Custom domain `<DEMO_NAME>.<DEMO_DOMAIN>`.
@@ -127,6 +135,10 @@ npm run deploy
 | Clicking the microphone control shows "Microphone permission was denied" | Grant microphone access for this site in the browser's own site-permission settings, then click the control again -- the error clears the moment a new recording attempt starts. |
 | A dictation returns "Workers AI could not transcribe the submitted audio" | A transient Workers AI failure; try again. Check Workers Logs for the underlying error if it persists. |
 | A chat's cost badge stays "Estimated" forever | Expected in local development: the committed `.dev.vars` deliberately holds no secrets, so `CLOUDFLARE_API_TOKEN` is unset locally and `reconcileUsage()`'s REST call to AI Gateway's logs-list endpoint fails every attempt, exhausting its bounded retry budget (`docs/06-AGENTIC-CHAT.md` Section 6.6). Deployed, this should flip to "AI Gateway" within about 10-40 seconds of the turn completing; if it does not, confirm `npm run deploy:worker:secrets` actually ran (check Workers Logs for a `usage_reconcile_lookup_failed` entry) and that the token has `AI Gateway : Edit`. |
+| No "Admin console" link in the header | Confirm you signed in with the identity matching this deployment's `ADMIN_EMAIL` -- the link is only ever hidden for a non-administrator identity, never a route guard (docs/06-AGENTIC-CHAT.md Section 6.5). |
+| `/admin` loads but every section shows an error instead of a table | Expected for a non-administrator identity: Cloudflare Access itself does not block the page (there is only one Access application on this hostname), but `requireAdmin()` rejects every `/api/admin/*` request with `403` -- sign in as `ADMIN_EMAIL` instead. |
+| `PATCH /api/admin/users/:email` returns `404` | The target email has never signed in, so it has no `users` row yet -- ask that user to sign in once first. |
+| `PATCH /api/admin/users/:email` returns `400` | `business`/`geo` must each be one of their valid enum literals (`field`/`product`/`leadership`; `emea`/`apac`/`americas`) or explicit `null` -- both fields are always required together, per `docs/06-AGENTIC-CHAT.md` Phase 7. |
 
 ## Teardown
 

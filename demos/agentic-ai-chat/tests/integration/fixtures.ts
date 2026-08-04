@@ -46,6 +46,31 @@ export async function unauthenticatedRequest(
 }
 
 /**
+ * Verify one identity through the real `GET /api/me` route, upserting its `users` row --
+ * mirrors what the browser's own `session.load()` does on every page load. Needed before any
+ * fixture that depends on a `users` row already existing (for example the admin console's
+ * `GET /api/admin/users`, which lists directly from that table, `tests/integration/admin.test.ts`)
+ * -- `createChat()` alone never creates one, since Cloudflare Access verification and the
+ * `users` upsert are two separate steps in this Worker (`ensureUser()` runs only from
+ * `GET /api/me`).
+ *
+ * @param email Verified identity to sign in as.
+ * @returns Whether this identity holds this demo's D1-flagged administrator role.
+ * @throws {Error} When the request does not succeed, so a broken fixture fails fast at the call
+ * site instead of surfacing as a confusing later assertion failure.
+ */
+export async function ensureSignedIn(email: string): Promise<boolean> {
+  const response = await authenticatedRequest("/api/me", {}, email);
+  if (response.status !== 200) {
+    throw new Error(
+      `Fixture failed to sign in ${email}: HTTP ${response.status}`,
+    );
+  }
+  const body = (await response.json()) as { isAdmin: boolean };
+  return body.isAdmin;
+}
+
+/**
  * Create a chat through the real `POST /api/chats` route, matching how a signed-in user creates
  * one in production, so integration tests never insert directory rows directly.
  *

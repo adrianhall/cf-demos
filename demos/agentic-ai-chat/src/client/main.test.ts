@@ -54,7 +54,10 @@ describe("startClient", () => {
 
     expect(mocks.createRouter).toHaveBeenCalledWith({
       history: "history",
-      routes: [expect.objectContaining({ path: "/" })],
+      routes: [
+        expect.objectContaining({ path: "/" }),
+        expect.objectContaining({ path: "/admin" }),
+      ],
     });
     expect(mocks.app.use).toHaveBeenNthCalledWith(1, "pinia");
     expect(mocks.app.use).toHaveBeenNthCalledWith(2, "router");

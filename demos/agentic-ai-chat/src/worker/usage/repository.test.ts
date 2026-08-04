@@ -338,4 +338,138 @@ describe("UsageRepository", () => {
       expect(summaries.size).toBe(0);
     });
   });
+
+  describe("aggregateForAllUsers", () => {
+    it("returns a map keyed by owner email, across every user in a single query", async () => {
+      const { database, statements } = databaseFor({
+        selectRows: [
+          {
+            owner_email: "alice@example.com",
+            total_cost_usd: 0.1,
+            total_prompt_tokens: 10,
+            total_completion_tokens: 20,
+            turn_count: 1,
+            confirmed_turn_count: 0,
+            last_updated_at: "2026-08-03T00:00:00.000Z",
+          },
+          {
+            owner_email: "bob@example.com",
+            total_cost_usd: 0.5,
+            total_prompt_tokens: 100,
+            total_completion_tokens: 200,
+            turn_count: 3,
+            confirmed_turn_count: 3,
+            last_updated_at: "2026-08-03T01:00:00.000Z",
+          },
+        ],
+      });
+
+      const summaries = await new UsageRepository(
+        database,
+      ).aggregateForAllUsers();
+
+      expect(summaries.get("alice@example.com")).toEqual({
+        totalCostUsd: 0.1,
+        totalPromptTokens: 10,
+        totalCompletionTokens: 20,
+        turnCount: 1,
+        confirmedTurnCount: 0,
+        lastUpdatedAt: "2026-08-03T00:00:00.000Z",
+      });
+      expect(summaries.get("bob@example.com")).toMatchObject({
+        totalCostUsd: 0.5,
+        confirmedTurnCount: 3,
+      });
+      // Deliberately no `WHERE` clause -- this is what distinguishes it from
+      // `aggregateForOwner()`.
+      expect(statements[0]?.sql).not.toContain("WHERE");
+    });
+
+    it("returns an empty map when no chat_usage rows exist at all", async () => {
+      const { database } = databaseFor({ selectRows: [] });
+
+      const summaries = await new UsageRepository(
+        database,
+      ).aggregateForAllUsers();
+
+      expect(summaries.size).toBe(0);
+    });
+  });
+
+  describe("aggregateByBusiness", () => {
+    it("returns a map keyed by business segment, joined through users", async () => {
+      const { database, statements } = databaseFor({
+        selectRows: [
+          {
+            segment: "field",
+            total_cost_usd: 0.3,
+            total_prompt_tokens: 30,
+            total_completion_tokens: 60,
+            turn_count: 2,
+            confirmed_turn_count: 1,
+            last_updated_at: "2026-08-03T00:00:00.000Z",
+          },
+          {
+            segment: null,
+            total_cost_usd: 0.05,
+            total_prompt_tokens: 5,
+            total_completion_tokens: 10,
+            turn_count: 1,
+            confirmed_turn_count: 0,
+            last_updated_at: "2026-08-03T00:00:00.000Z",
+          },
+        ],
+      });
+
+      const summaries = await new UsageRepository(
+        database,
+      ).aggregateByBusiness();
+
+      expect(summaries.get("field")).toMatchObject({ totalCostUsd: 0.3 });
+      // `null` is a real, distinct key -- "unspecified business," not "missing entry."
+      expect(summaries.has(null)).toBe(true);
+      expect(summaries.get(null)).toMatchObject({ totalCostUsd: 0.05 });
+      expect(statements[0]).toMatchObject({
+        sql: expect.stringContaining("users.business AS segment"),
+      });
+      expect(statements[0]?.sql).toContain("GROUP BY users.business");
+    });
+  });
+
+  describe("aggregateByGeo", () => {
+    it("returns a map keyed by geo segment, joined through users", async () => {
+      const { database, statements } = databaseFor({
+        selectRows: [
+          {
+            segment: "emea",
+            total_cost_usd: 0.4,
+            total_prompt_tokens: 40,
+            total_completion_tokens: 80,
+            turn_count: 2,
+            confirmed_turn_count: 2,
+            last_updated_at: "2026-08-03T00:00:00.000Z",
+          },
+        ],
+      });
+
+      const summaries = await new UsageRepository(database).aggregateByGeo();
+
+      expect(summaries.get("emea")).toMatchObject({
+        totalCostUsd: 0.4,
+        confirmedTurnCount: 2,
+      });
+      expect(statements[0]).toMatchObject({
+        sql: expect.stringContaining("users.geo AS segment"),
+      });
+      expect(statements[0]?.sql).toContain("GROUP BY users.geo");
+    });
+
+    it("returns an empty map when no chat_usage rows exist at all", async () => {
+      const { database } = databaseFor({ selectRows: [] });
+
+      const summaries = await new UsageRepository(database).aggregateByGeo();
+
+      expect(summaries.size).toBe(0);
+    });
+  });
 });

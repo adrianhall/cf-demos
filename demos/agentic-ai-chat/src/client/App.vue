@@ -18,6 +18,9 @@ onMounted(() => void session.load());
           <span v-if="session.isAdmin" class="admin-badge">Administrator</span>
         </span>
         <span v-else-if="session.loading" class="identity">Verifying identity…</span>
+        <router-link v-if="session.isAdmin" class="admin-link" to="/admin">
+          Admin console
+        </router-link>
         <v-btn class="logout-button" href="/cdn-cgi/access/logout" variant="outlined">
           Sign out
         </v-btn>
@@ -60,6 +63,18 @@ onMounted(() => void session.load());
   margin-left: 0.5rem;
   padding: 0.1rem 0.5rem;
   text-transform: uppercase;
+}
+
+.admin-link {
+  color: rgb(var(--v-theme-secondary));
+  flex: 0 0 auto;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.admin-link:hover,
+.admin-link:focus-visible {
+  text-decoration: underline;
 }
 
 @media (max-width: 600px) {
