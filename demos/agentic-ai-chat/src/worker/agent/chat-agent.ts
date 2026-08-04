@@ -1,4 +1,5 @@
 import { AIChatAgent, type OnChatMessageOptions } from "@cloudflare/ai-chat";
+import { valueOrDefault } from "@adrianhall/cloudflare-toolkit";
 import type { SkillRegistry } from "agents/skills";
 import {
   convertToModelMessages,
@@ -352,8 +353,8 @@ export class ChatAgent extends AIChatAgent<
     // numeric value for this demo's own fake/real models, so this fallback is defensive against
     // a provider that does not, not something this demo's own test fixtures can force `??` to
     // actually branch on.
-    const promptTokens = usage.inputTokens ?? 0;
-    const completionTokens = usage.outputTokens ?? 0;
+    const promptTokens = valueOrDefault(usage.inputTokens, 0);
+    const completionTokens = valueOrDefault(usage.outputTokens, 0);
     const costUsd = estimateCostUsd(model, promptTokens, completionTokens);
 
     try {
