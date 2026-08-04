@@ -59,6 +59,11 @@
   "durable_objects": {
     "bindings": [{ "name": "CHAT_AGENT", "class_name": "ChatAgent" }]
   },
+  // The `getUrl` tool's sandboxed fetch Worker (docs/06-AGENTIC-CHAT.md Phase 10, US-9, Section
+  // 6.7) -- unlike every other binding in this file, this one is a pure `workerd` runtime
+  // primitive with no account-level proxy step (Spike C), so it needs no `remote` option and
+  // needs no Terraform resource either.
+  "worker_loaders": [{ "binding": "LOADER" }],
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChatAgent"] }],
   "assets": {
     "directory": "./dist",

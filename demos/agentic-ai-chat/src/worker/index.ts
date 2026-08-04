@@ -15,6 +15,10 @@ import { transcribeRouter } from "./routes/transcribe";
 // The `CHAT_AGENT` durable_objects binding in `wrangler.jsonc.tpl` requires its class to be a
 // named export of this main module.
 export { ChatAgent } from "./agent/chat-agent";
+// `ctx.exports.EgressGateway()` (docs/06-AGENTIC-CHAT.md Phase 10, US-9, Section 6.7) only
+// resolves a class that is a top-level export of this script -- `Cloudflare.Exports`, the type
+// of `ctx.exports`, is generated from `GlobalProps.mainModule`'s own exports (`wrangler types`).
+export { EgressGateway } from "./egress/gateway";
 
 // Only `/api/*` is routed to this Worker (see `wrangler.jsonc.tpl`'s `run_worker_first`); every
 // other path is served directly by the `ASSETS` binding's single-page-application fallback, with

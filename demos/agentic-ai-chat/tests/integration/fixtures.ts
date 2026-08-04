@@ -315,6 +315,39 @@ export function writeMarkdownToolCallPayloads(
 }
 
 /**
+ * Raw Workers AI "native format" SSE payload strings (`data: {...}\n\n` framing, per
+ * {@link createFakeAi}'s own JSDoc) that make `workers-ai-provider` emit a single, complete
+ * `getUrl` tool call for `url`, followed by a `[DONE]` sentinel -- the same three-chunk shape
+ * (start/argument-delta/finalization) {@link writeMarkdownToolCallPayloads} already builds for
+ * `writeMarkdown`, reused here for a different tool name/argument.
+ *
+ * @param url The tool call's `url` argument.
+ * @returns Raw SSE payload strings for {@link createSequencedFakeAi}'s first call.
+ */
+export function getUrlToolCallPayloads(url: string): string[] {
+  const args = JSON.stringify({ url });
+  return [
+    JSON.stringify({
+      tool_calls: [
+        {
+          id: "call_1",
+          type: "function",
+          index: 0,
+          function: { name: "getUrl", arguments: "" },
+        },
+      ],
+    }),
+    JSON.stringify({
+      tool_calls: [{ index: 0, function: { arguments: args } }],
+    }),
+    JSON.stringify({
+      tool_calls: [{ id: null, type: null, function: { name: null } }],
+    }),
+    "[DONE]",
+  ];
+}
+
+/**
  * Open an authenticated chat WebSocket through the real Worker route, tracked in `openSockets`
  * for the calling test file's own `afterEach` teardown (per the `testing-durable-objects`
  * skill's lifecycle rules -- every socket a test opens must be tracked and force-closed).

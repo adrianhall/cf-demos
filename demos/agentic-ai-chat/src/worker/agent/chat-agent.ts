@@ -1,8 +1,8 @@
 import { AIChatAgent, type OnChatMessageOptions } from "@cloudflare/ai-chat";
 import {
   convertToModelMessages,
-  generateText,
   type GenerateTextOnFinishCallback,
+  generateText,
   type LanguageModel,
   type LanguageModelUsage,
   stepCountIs,
@@ -14,8 +14,8 @@ import {
   CHAT_REMOVED_CLOSE_CODE,
   type ChatMetadataUpdatedFrame,
   type ChatRemovedFrame,
-  type UsageReconcileExhaustedFrame,
   type UsageReconciledFrame,
+  type UsageReconcileExhaustedFrame,
 } from "../../agent-protocol";
 import { findLogByCorrelationId } from "../ai-gateway/logs";
 import { ChatRepository } from "../chats/repository";
@@ -29,15 +29,16 @@ import { estimateCostUsd, modelIdForRoute } from "../usage/pricing";
 import { UsageRepository } from "../usage/repository";
 import { type ChatUsageSummary, emptyUsageSummary } from "../usage/types";
 import type { Business } from "../users/business";
+import { createGetUrlTool } from "./tools/get-url";
 import { createWriteMarkdownTool } from "./tools/write-markdown";
 
 /**
  * Bound on how many `streamText()` steps one turn may take (docs/06-AGENTIC-CHAT.md Phase 9,
  * US-8). `streamText()`'s own default (`stepCountIs(1)`) stops the instant the model emits a
  * tool call, with no further step to let it respond to that tool's result -- which would leave
- * a successful `writeMarkdown` call with no assistant text acknowledging it. `4` is generous
- * headroom for "call a tool, then respond" (and, from Phase 10/11 onward, a second tool in the
- * same turn) without letting a misbehaving model loop indefinitely.
+ * a successful `writeMarkdown`/`getUrl` call with no assistant text acknowledging it. `4` is
+ * generous headroom for "call a tool, then respond" (and, from Phase 11 onward, a second tool
+ * in the same turn) without letting a misbehaving model loop indefinitely.
  */
 const MAX_TURN_STEPS = 4;
 
@@ -186,7 +187,8 @@ export class ChatAgent extends AIChatAgent<
    * Phase 6 extends this same wrapper for the cost ledger.
    * @param options Carries the turn's `abortSignal` (propagated to `streamText()` so a client
    * cancellation actually stops upstream generation, not just the visible response) and any
-   * client-supplied tool schemas (unused until Phase 9/10's tools).
+   * client-supplied tool schemas (unused -- this class's own `writeMarkdown`/`getUrl` tools are
+   * always built server-side, per Phase 9/10).
    * @returns The AI SDK's UI-message-stream `Response`, forwarded verbatim over the chat
    * WebSocket connection by `AIChatAgent`'s own wire protocol.
    */
@@ -226,7 +228,9 @@ export class ChatAgent extends AIChatAgent<
       system:
         `You are a helpful assistant embedded in a private, authenticated chat for ` +
         `${this.ownerEmail ?? "the signed-in user"}. Answer directly and concisely. When you ` +
-        `use the writeMarkdown tool, briefly confirm what you saved in your reply.`,
+        `use the writeMarkdown tool, briefly confirm what you saved in your reply. When a ` +
+        `getUrl call is refused, explain to the user that the destination is not allowed by ` +
+        `this demo's egress policy rather than treating it as an error.`,
       messages: await convertToModelMessages(this.messages),
       abortSignal: options?.abortSignal,
       // `writeMarkdown` (docs/06-AGENTIC-CHAT.md Phase 9, US-8) -- bound to this chat's own R2/D1
@@ -236,12 +240,23 @@ export class ChatAgent extends AIChatAgent<
       // every file this call writes is stamped with the turn's own correlation id, giving
       // Phase 12's per-file export an exact `chat_files.correlation_id = chat_usage.correlation_id`
       // join, rather than an approximate one inferred from timestamps.
+      //
+      // `getUrl` (docs/06-AGENTIC-CHAT.md Phase 10, US-9) -- the gateway factory calls
+      // `this.ctx.exports.EgressGateway({ props })` directly from inside this Durable Object
+      // method, per Spike C's confirmed finding that `ctx.exports` needs no threading through
+      // the Worker's own `fetch()` call site to be reachable here.
       tools: {
         writeMarkdown: createWriteMarkdownTool({
           bucket: this.env.FILES,
           database: this.env.DB,
           chatId: this.name,
           correlationId,
+        }),
+        getUrl: createGetUrlTool({
+          loader: this.env.LOADER,
+          chatId: this.name,
+          createGlobalOutboundGateway: (props) =>
+            this.ctx.exports.EgressGateway({ props }),
         }),
       },
       // See MAX_TURN_STEPS's own JSDoc: without this, a successful tool call would end the turn
