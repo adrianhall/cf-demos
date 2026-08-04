@@ -1,0 +1,28 @@
+demos/swapi-graphql/package.json
+  s_1e123feb214a0d::t_18fcf3ae69208c 22-23,28,31-33,35,43-46,56
+  s_1e123feb214a0d::t_da7720b65e3567 34
+demos/swapi-graphql/DEMO.md
+  s_1e123feb214a0d::t_18fcf3ae69208c 3-39
+demos/swapi-graphql/README.md
+  s_1e123feb214a0d::t_18fcf3ae69208c 3-81
+demos/swapi-graphql/EXPLAIN-DEMO.md
+  s_1e123feb214a0d::t_18fcf3ae69208c 3-46
+demos/swapi-graphql/package-lock.json
+  s_1e123feb214a0d::t_ccb0961745042b 25,2597-2603,2624-2634,2730-2736,2843-2852,2950-2956,2972-2981,2992-3013,3065-3077,3094-3138,3609-3631,3745-3764,3775-3781,3872-3905,4043-4077,4122-4134,4521-4527
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7b3026f6145caa2b957a8226f1b98eb5fbb95c45",
+  "prompts": {},
+  "sessions": {
+    "s_1e123feb214a0d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_03266120effeUnoecWiQGFZ6c6",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
