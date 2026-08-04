@@ -1,0 +1,76 @@
+demos/agentic-ai-chat/tests/integration/fixtures.ts
+  s_4bc168fb999a50::t_0c3270c7e6b8ef 318-349
+  s_4bc168fb999a50::t_928f4bf60dbe9f 317
+demos/agentic-ai-chat/src/worker/agent/tools/get-url.test.ts
+  s_4bc168fb999a50::t_5b482aaa46234a 17
+  s_4bc168fb999a50::t_d904d60b9ddb6b 28
+  s_4bc168fb999a50::t_71b06f1a9a04a0 48-66,70-73
+  s_4bc168fb999a50::t_f22154b5acdc61 1-6,11-16,18-27,29-47,67-69,74-144
+  s_4bc168fb999a50::t_4c6a2e9ec4a924 7-10
+demos/agentic-ai-chat/src/worker/egress/allowlist.ts
+  s_4bc168fb999a50::t_3fbcf4f2ffb016 1-36
+demos/agentic-ai-chat/src/worker/egress/sandboxed-fetch-worker.ts
+  s_4bc168fb999a50::t_1fc28145d17b35 1-69
+demos/agentic-ai-chat/tests/integration/egress-gateway.test.ts
+  s_4bc168fb999a50::t_bd06e8594db2cd 1-33,37-66,70-73
+  s_4bc168fb999a50::t_bba604271e476b 34-36,67-69
+demos/agentic-ai-chat/src/worker/agent/tools/get-url.ts
+  s_4bc168fb999a50::t_04f94818ec026a 1-23,25-37,43-114,120-157
+  s_4bc168fb999a50::t_18bbb08de9ec07 24,38-42,115-119
+demos/agentic-ai-chat/src/worker/agent/chat-agent.ts
+  s_4bc168fb999a50::t_deade3ecb9d856 39-41
+  s_4bc168fb999a50::t_c1a4504dbb81cd 231-233
+  s_4bc168fb999a50::t_18bbb08de9ec07 5,18
+  s_4bc168fb999a50::t_7e9299f769d57a 243-247,255-259
+  s_4bc168fb999a50::t_13e21548b53693 32
+  s_4bc168fb999a50::t_715c04c0d7b351 190-191
+  s_4bc168fb999a50::t_9aed0039a3d37f 260
+demos/agentic-ai-chat/src/worker/egress/gateway.ts
+  s_4bc168fb999a50::t_18bbb08de9ec07 81-86
+  s_4bc168fb999a50::t_d1e972863e2a85 60-64
+  s_4bc168fb999a50::t_1492ab4e9e9c87 1-59,65-80,87-91
+demos/agentic-ai-chat/EXPLAIN-DEMO.md
+  s_4bc168fb999a50::t_788a8c85a4952d 237-241
+  s_4bc168fb999a50::t_5a9d3f9323f1d9 211-221
+  s_4bc168fb999a50::t_a6f219d78d5612 3
+demos/agentic-ai-chat/tests/integration/get-url.test.ts
+  s_4bc168fb999a50::t_740832c79d30d1 1-120
+demos/agentic-ai-chat/DEMO.md
+  s_4bc168fb999a50::t_3bbd3cc54a9f72 3
+  s_4bc168fb999a50::t_a7c653f58d1543 96
+  s_4bc168fb999a50::t_97270e0187fa05 100
+  s_4bc168fb999a50::t_df8549465e633c 16
+  s_4bc168fb999a50::t_21890a22768859 73-75
+demos/agentic-ai-chat/README.md
+  s_4bc168fb999a50::t_53a69d303abb8f 5
+  s_4bc168fb999a50::t_b598c94a8eec5e 120-122
+  s_4bc168fb999a50::t_24e33fa2667db9 80-81
+  s_4bc168fb999a50::t_af43f011aa0cf6 166-167
+  s_4bc168fb999a50::t_0c0446b76cd674 12
+  s_4bc168fb999a50::t_4ba055fa3eedee 132
+demos/agentic-ai-chat/src/worker/index.ts
+  s_4bc168fb999a50::t_54c6f7466a2334 18-21
+demos/agentic-ai-chat/src/worker/egress/url-validation.ts
+  s_4bc168fb999a50::t_18bbb08de9ec07 1-79
+demos/agentic-ai-chat/src/worker/egress/url-validation.test.ts
+  s_4bc168fb999a50::t_19c9d66d96a3cf 1-5,9-73
+  s_4bc168fb999a50::t_d904d60b9ddb6b 6-8
+demos/agentic-ai-chat/wrangler.jsonc.tpl
+  s_4bc168fb999a50::t_4989acff7265f6 62-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b087598974a9a97aaf03f9e1c2d92b071615b718",
+  "prompts": {},
+  "sessions": {
+    "s_4bc168fb999a50": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_033aaa895ffeoCi8bqz5rxfZr5",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
