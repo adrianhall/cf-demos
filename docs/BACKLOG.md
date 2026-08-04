@@ -529,6 +529,16 @@ This is an advanced capstone for the AI curriculum even though it remains a
 focused application. Avoid adding an AI conversational persona; translation
 between modalities is the lesson.
 
+### 20. Cloudflare Docs RAG
+
+Demo site: docs.cfapps.uk
+
+Directory: demos/docs-rag
+
+**Goal:**
+
+Produce a RAG chat app that allows us to chat with the Cloudflare Docs as a source.  This demonstrates AI Search primarily.  Whenever an answer is given, the links to the source material (in this case on the docs site) is provided.
+
 ## Customer Solution Capstones
 
 Capstones intentionally combine previously introduced products. They should be
