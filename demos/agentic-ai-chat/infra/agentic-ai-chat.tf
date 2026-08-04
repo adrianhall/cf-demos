@@ -47,9 +47,14 @@ resource "cloudflare_d1_database" "demo" {
 # `log_management`/`log_management_strategy`/`zdr`/`logpush`/`authentication` unset lets the API
 # silently fill in its own defaults, which this provider version's `Read` then reads back and
 # proposes removing on every subsequent `plan` -- a real, previously-confirmed drift class, not
-# hypothetical caution. `spend_limits` is left unset here (optional *and* computed, so it does
-# not drift) -- Phase 8 adds a real spend limit once metadata-driven routing exists to scope it
-# by (docs/06-AGENTIC-CHAT.md, Phase 8).
+# hypothetical caution. `spend_limits` (Phase 8, US-7) partitions a $1/day cost budget by the same
+# `business` metadata the two routes' conditional nodes below branch on -- each distinct business
+# segment gets its own budget pool rather than one shared pool, the exact "cost controls" half of
+# metadata-driven routing the backlog names (docs/06-AGENTIC-CHAT.md Section 6.6a, Phase 8 step
+# 3): this limit is enforced against the very same authoritative per-request cost AI Gateway
+# reports through `getLog()` that `chat_usage`/the admin console already display, not a second,
+# independently-derived number. Shape confirmed live and Terraform-manageable by Spike B
+# (`spikes/01-ai-gateway-dynamic-routing/infra/main.tf`).
 resource "cloudflare_ai_gateway" "demo" {
   account_id                 = local.cloudflare_account_id
   id                         = local.demo_name
@@ -63,16 +68,36 @@ resource "cloudflare_ai_gateway" "demo" {
   zdr                        = false
   rate_limiting_interval     = 0
   rate_limiting_limit        = 0
+
+  spend_limits = {
+    enabled = true
+    rules = [{
+      limit_type = "cost"
+      limit      = 1
+      window     = 86400
+      metadata = {
+        business = {
+          mode = "partition"
+        }
+      }
+    }]
+  }
 }
 
-# The "basic" governed route (docs/06-AGENTIC-CHAT.md Section 6.3/6.1, US-3). A single model
-# node for now -- Phase 4 wires the client's route selector to call this route by name (its real
-# name is threaded to the Worker as AI_GATEWAY_ROUTE_BASIC via outputs.tf/wrangler.jsonc.tpl,
-# never hard-coded in application code); Phase 8 extends this same route with a
-# business-metadata conditional node. The model is one of the four confirmed working through a
-# dynamic route's model node by Spike B's live sweep
-# (spikes/01-ai-gateway-dynamic-routing/REPORT.md Section 4) -- most of demo 5's own
-# verified-for-direct-calling catalog, including its usual non-reasoning pick
+# The "basic" governed route (docs/06-AGENTIC-CHAT.md Section 6.3/6.1, US-3), extended by Phase 8
+# (US-7) with a `business-check` conditional node: a caller whose `metadata.business` is exactly
+# `"field"` resolves to the same cheap model this route always used; every other caller
+# (`"product"`, `"leadership"`, or no business assigned yet) is gated by a rate-limit node keyed
+# on `metadata.business` before reaching a stronger, more expensive model, falling back to the
+# cheap model if that per-business-value rate limit is currently exceeded -- exactly the
+# conditional -> rate -> model shape Spike B's own `spike-governed-route` proved live
+# (`spikes/01-ai-gateway-dynamic-routing/REPORT.md` Section 3). `AI_GATEWAY_ROUTE_BASIC` (this
+# route's real Cloudflare-assigned name, threaded to the Worker via outputs.tf/wrangler.jsonc.tpl)
+# never changes shape from this restructuring -- only what happens *inside* the route does, so no
+# application code outside `pricing.ts`'s own tier-aware estimate (Phase 8) needs to change.
+# Every model below is one of the four confirmed working through a dynamic route's model node by
+# Spike B's live sweep (spikes/01-ai-gateway-dynamic-routing/REPORT.md Section 4) -- most of demo
+# 5's own verified-for-direct-calling catalog, including its usual non-reasoning pick
 # (`@cf/ibm-granite/granite-4.0-h-micro`), fails every call routed through this element type with
 # `AiGatewayError 2002: Failed to parse model output`.
 resource "cloudflare_ai_gateway_dynamic_routing" "basic" {
@@ -85,11 +110,45 @@ resource "cloudflare_ai_gateway_dynamic_routing" "basic" {
       id   = "start"
       type = "start"
       outputs = {
-        next = { element_id = "basic-model" }
+        next = { element_id = "business-check" }
       }
     },
     {
-      id   = "basic-model"
+      id   = "business-check"
+      type = "conditional"
+      properties = {
+        # `conditions` is a plain string attribute in this resource's HCL schema; the real
+        # syntax underneath is a Mongo-style query object keyed by dotted metadata path, so HCL
+        # must `jsonencode()` it itself (Spike B, Gotcha 2 -- confirmed live to actually steer
+        # the resolved model, not just accepted by `apply`).
+        conditions = jsonencode({
+          "metadata.business" = { "$eq" = "field" }
+        })
+      }
+      outputs = {
+        true  = { element_id = "basic-field-model" }
+        false = { element_id = "basic-rate-gate" }
+      }
+    },
+    {
+      id   = "basic-rate-gate"
+      type = "rate"
+      properties = {
+        # Buckets the rate limit per distinct `business` value, exactly like Spike B's own
+        # `leadership-rate-gate` element -- a burst on one business segment's strong-tier usage
+        # falls back to the cheap model without affecting another segment's own budget.
+        key        = "metadata.business"
+        limit      = 3
+        limit_type = "count"
+        window     = 60
+      }
+      outputs = {
+        success  = { element_id = "basic-strong-model" }
+        fallback = { element_id = "basic-field-model" }
+      }
+    },
+    {
+      id   = "basic-field-model"
       type = "model"
       properties = {
         model = "@cf/google/gemma-4-26b-a4b-it"
@@ -97,6 +156,20 @@ resource "cloudflare_ai_gateway_dynamic_routing" "basic" {
         # schema -- using the plain `provider` name is silently dropped by `terraform plan` and
         # only fails later, at `apply`, with a confusing "provider is Required" API error. Spike
         # B, Gotcha 1.
+        ai_gateway_dynamic_routing_provider = "workers-ai"
+        timeout                             = 60000
+        retries                             = 1
+      }
+      outputs = {
+        success  = { element_id = "end" }
+        fallback = { element_id = "end" }
+      }
+    },
+    {
+      id   = "basic-strong-model"
+      type = "model"
+      properties = {
+        model                               = "@cf/zai-org/glm-5.2"
         ai_gateway_dynamic_routing_provider = "workers-ai"
         timeout                             = 60000
         retries                             = 1
@@ -117,13 +190,21 @@ resource "cloudflare_ai_gateway_dynamic_routing" "basic" {
   # `elements` attribute from the API at all (the read response nests the same data one level
   # down, under `version.data`) -- every `terraform plan` after the first `apply` otherwise
   # proposes destroying and recreating the route with zero config changes. A deliberate
-  # `-replace` is required to actually change a route's shape later. Spike B, Gotcha 4.
+  # `-replace` is required to actually change a route's shape later -- Spike B, Gotcha 4, and
+  # exactly why this route's Phase 8 restructuring (adding `business-check`/`basic-rate-gate`/
+  # `basic-strong-model`) needs `terraform apply
+  # -replace=cloudflare_ai_gateway_dynamic_routing.basic` rather than a plain `apply` to actually
+  # land against a previously-applied Phase 4 state.
   lifecycle {
     ignore_changes = [elements]
   }
 }
 
-# The "reasoning" governed route (US-3). Same shape as `.basic` above, reasoning model.
+# The "reasoning" governed route (US-3), extended by Phase 8 (US-7) with the same
+# `business-check` -> rate-gate -> model shape as `.basic` above -- see that resource's comments
+# for the full rationale, not repeated here. A `"field"` caller keeps resolving to a cheaper
+# reasoning-adjacent model; every other caller is rate-gated (per business value) before reaching
+# the stronger, pricier reasoning model this route always used.
 resource "cloudflare_ai_gateway_dynamic_routing" "reasoning" {
   account_id = local.cloudflare_account_id
   gateway_id = cloudflare_ai_gateway.demo.id
@@ -134,11 +215,52 @@ resource "cloudflare_ai_gateway_dynamic_routing" "reasoning" {
       id   = "start"
       type = "start"
       outputs = {
-        next = { element_id = "reasoning-model" }
+        next = { element_id = "business-check" }
       }
     },
     {
-      id   = "reasoning-model"
+      id   = "business-check"
+      type = "conditional"
+      properties = {
+        conditions = jsonencode({
+          "metadata.business" = { "$eq" = "field" }
+        })
+      }
+      outputs = {
+        true  = { element_id = "reasoning-field-model" }
+        false = { element_id = "reasoning-rate-gate" }
+      }
+    },
+    {
+      id   = "reasoning-rate-gate"
+      type = "rate"
+      properties = {
+        key        = "metadata.business"
+        limit      = 3
+        limit_type = "count"
+        window     = 60
+      }
+      outputs = {
+        success  = { element_id = "reasoning-strong-model" }
+        fallback = { element_id = "reasoning-field-model" }
+      }
+    },
+    {
+      id   = "reasoning-field-model"
+      type = "model"
+      properties = {
+        model                               = "@cf/qwen/qwen2.5-coder-32b-instruct"
+        ai_gateway_dynamic_routing_provider = "workers-ai"
+        timeout                             = 60000
+        retries                             = 1
+      }
+      outputs = {
+        success  = { element_id = "end" }
+        fallback = { element_id = "end" }
+      }
+    },
+    {
+      id   = "reasoning-strong-model"
       type = "model"
       properties = {
         model                               = "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b"

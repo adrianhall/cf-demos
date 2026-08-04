@@ -27,6 +27,7 @@ import { sanitizeTitle } from "../chats/title";
 import { estimateCostUsd, modelIdForRoute } from "../usage/pricing";
 import { UsageRepository } from "../usage/repository";
 import { type ChatUsageSummary, emptyUsageSummary } from "../usage/types";
+import type { Business } from "../users/business";
 
 /**
  * System prompt for Phase 3's auto-title generation (US-2): a second, non-streaming `env.AI`
@@ -93,6 +94,15 @@ export interface ChatAgentProps extends Record<string, unknown> {
   ownerEmail: string;
   /** This chat's currently persisted governed model route. */
   route: ChatRoute;
+  /**
+   * This chat owner's admin-assigned business segment (docs/06-AGENTIC-CHAT.md Phase 8, US-7),
+   * `null` until an admin sets one (`PATCH /api/admin/users/:email`, Phase 7). Re-read from D1
+   * alongside `route` by `../routes/chats.ts`'s `ownedAgentStub()` on every request, so an
+   * admin's metadata change reaches the very next turn with no separate invalidation step,
+   * mirroring `route`'s own re-derivation -- never a value the client's own message body could
+   * set.
+   */
+  business: Business | null;
 }
 
 /**
@@ -122,6 +132,13 @@ export class ChatAgent extends AIChatAgent<
    * this class already has for that case). */
   private route: ChatRoute = DEFAULT_CHAT_ROUTE;
 
+  /** Captured from `props` on first start; this chat owner's admin-assigned business segment
+   * at the moment this instance was last routed to, re-derived from D1 by
+   * `src/worker/routes/chats.ts`'s `ownedAgentStub()` on every request, exactly like
+   * {@link route} (docs/06-AGENTIC-CHAT.md Phase 8, US-7). `null` until an admin assigns one, or
+   * if a wake ever occurs with no props at all. */
+  private business: Business | null = null;
+
   /**
    * `partyserver`'s `Server.onStart()` lifecycle hook, called once per wake with the `props`
    * passed to `getAgentByName()` at routing time (Spike A, Section 7) -- this is how the
@@ -131,6 +148,7 @@ export class ChatAgent extends AIChatAgent<
   override async onStart(props?: ChatAgentProps): Promise<void> {
     this.ownerEmail = props?.ownerEmail;
     this.route = props?.route ?? DEFAULT_CHAT_ROUTE;
+    this.business = props?.business ?? null;
   }
 
   /**
@@ -177,7 +195,18 @@ export class ChatAgent extends AIChatAgent<
     // model that route actually resolves to is editable in the AI Gateway dashboard without a
     // Worker redeploy.
     const model = workersai(resolveDynamicRouteModelId(this.route, this.env), {
-      gateway: { id: this.env.AI_GATEWAY_ID, metadata: { correlationId } },
+      gateway: {
+        id: this.env.AI_GATEWAY_ID,
+        // `business` steers AI Gateway's own conditional model-node branching on both routes
+        // (docs/06-AGENTIC-CHAT.md Phase 8, US-7; `infra/agentic-ai-chat.tf`'s `business-check`
+        // element) -- read from D1 at routing time (`../routes/chats.ts`'s `ownedAgentStub()`),
+        // never anything the client's own message body could set, so "different business
+        // segments get different models" is governed entirely platform-side (Section 6.3's
+        // whole point), with zero client-visible branching. `null` (no business assigned yet)
+        // is a valid AI Gateway metadata value and simply never matches the conditional's
+        // `"field"` check, falling through to the same branch as any other non-"field" value.
+        metadata: { correlationId, business: this.business },
+      },
     });
 
     const result = streamText({
@@ -219,7 +248,12 @@ export class ChatAgent extends AIChatAgent<
   ): Promise<void> {
     const chatId = this.name;
     const repository = new UsageRepository(this.env.DB);
-    const model = modelIdForRoute(this.route);
+    // Mirrors the same business-tier resolution AI Gateway's own conditional node applies
+    // (docs/06-AGENTIC-CHAT.md Phase 8, US-7) so this immediate local estimate is priced
+    // against the model the route actually resolves to for this caller, not always the
+    // "field"-tier model -- see `modelIdForRoute()`'s own JSDoc for the caveat that this is a
+    // snapshot of the routes' current configuration, not a live lookup.
+    const model = modelIdForRoute(this.route, this.business);
     // `inputTokens`/`outputTokens` are typed `number | undefined` by the `ai` SDK itself (some
     // providers never report usage at all) -- `workers-ai-provider` always synthesizes a
     // numeric value for this demo's own fake/real models, so this fallback is defensive against

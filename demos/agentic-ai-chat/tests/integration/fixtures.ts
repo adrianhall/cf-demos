@@ -126,13 +126,22 @@ export interface CapturedAiCall {
   readonly modelId: string;
   /** The exact input object `workers-ai-provider` built, before any streaming/parsing. */
   readonly input: Record<string, unknown>;
+  /** The exact AI Gateway metadata object `env.AI.run()`'s third (options) argument carried,
+   * for example `{ correlationId, business }` (docs/06-AGENTIC-CHAT.md Phase 6/8) -- used to
+   * prove `business` is attached server-side from D1, never anything the client's own request
+   * could set (`tests/integration/metadata-routing.test.ts`), without asserting on the model
+   * AI Gateway's own conditional node would actually resolve to (that behavior is AI Gateway's,
+   * already confirmed live by Spike B, not re-tested by this fake). `undefined` if this call
+   * carried no `gateway.metadata` at all. */
+  readonly metadata?: Record<string, unknown>;
 }
 
 /**
  * Build a fake `Ai` binding identical to {@link createFakeAi}, but that also records the model
- * ID and input object of the **first** call it receives into `capture` -- used to prove
- * `ChatAgent`'s system prompt actually carries the identity `onStart()` captured, something
- * only an end-to-end request through the real Worker and Durable Object can prove.
+ * ID, input object, and AI Gateway metadata of the **first** call it receives into `capture` --
+ * used to prove `ChatAgent`'s system prompt actually carries the identity `onStart()` captured,
+ * and (Phase 8) that the caller's business segment reaches AI Gateway as request metadata,
+ * something only an end-to-end request through the real Worker and Durable Object can prove.
  *
  * Deliberately captures only the first call: since Phase 3, a completed turn's `onFinish`
  * handler can issue a second, non-streaming `env.AI` call of its own (auto-title generation,
@@ -148,8 +157,12 @@ export function createCapturingFakeAi(
   capture: { call?: CapturedAiCall },
 ): Pick<Ai, "run"> {
   return {
-    run: ((modelId: string, input: Record<string, unknown>) => {
-      capture.call ??= { modelId, input };
+    run: ((
+      modelId: string,
+      input: Record<string, unknown>,
+      options?: { gateway?: { metadata?: Record<string, unknown> } },
+    ) => {
+      capture.call ??= { input, metadata: options?.gateway?.metadata, modelId };
       const encoder = new TextEncoder();
       const text = payloads.map((payload) => `data: ${payload}\n\n`).join("");
       return Promise.resolve(

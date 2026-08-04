@@ -11,6 +11,7 @@ import { CHAT_ROUTES, isChatRoute } from "../chats/route";
 import { ChatRepository } from "../chats/repository";
 import { UsageRepository } from "../usage/repository";
 import { emptyUsageSummary } from "../usage/types";
+import { UserRepository } from "../users/repository";
 
 /** Authenticated chat directory and agent-routing API mounted at `/api/chats`. */
 export const chatsRouter = new Hono<AppBindings>();
@@ -39,12 +40,24 @@ async function ownedAgentStub(
   if (chat === null) {
     throw notFound({ detail: "Chat not found." });
   }
-  // Threading this chat's currently persisted route in as props (docs/06-AGENTIC-CHAT.md Phase
-  // 4, US-3) re-derives it from D1 on every request that reaches the Durable Object, rather than
-  // caching it anywhere -- so a route changed via `PATCH /:id` (below) always reaches the next
-  // `onChatMessage()` call with no separate invalidation step needed.
+  // Read alongside `chat.route`, for the same reason: this owner's admin-assigned business
+  // segment (docs/06-AGENTIC-CHAT.md Phase 8, US-7) steers AI Gateway's own metadata-driven
+  // model routing, so it must come from D1 here -- never from anything the client's own
+  // message body could set -- and be re-read on every request, exactly like `route`, so a
+  // `PATCH /api/admin/users/:email` change reaches this owner's very next turn with no
+  // separate invalidation step.
+  const owner = await new UserRepository(env.DB).findByEmail(ownerEmail);
+  // Threading this chat's currently persisted route (and this owner's business segment) in as
+  // props (docs/06-AGENTIC-CHAT.md Phase 4/8, US-3/US-7) re-derives both from D1 on every
+  // request that reaches the Durable Object, rather than caching either anywhere -- so a route
+  // changed via `PATCH /:id` (below), or a business segment changed by an admin, always reaches
+  // the next `onChatMessage()` call with no separate invalidation step needed.
   return getAgentByName<Env, ChatAgent, ChatAgentProps>(env.CHAT_AGENT, id, {
-    props: { ownerEmail, route: chat.route },
+    props: {
+      business: owner?.business ?? null,
+      ownerEmail,
+      route: chat.route,
+    },
   });
 }
 
