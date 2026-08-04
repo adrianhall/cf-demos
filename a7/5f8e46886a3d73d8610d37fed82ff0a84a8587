@@ -1,0 +1,85 @@
+demos/swapi-graphql/src/worker/bindings.ts
+  s_3c709a119afba8::t_eb5fdf7c141be1 1-7
+demos/swapi-graphql/src/worker/data/queries/person.ts
+  s_3c709a119afba8::t_4aba24bd149152 1,4
+  s_3c709a119afba8::t_a01f58e03e93d1 2,5-15
+  s_3c709a119afba8::t_5c45faa7fca733 3
+demos/swapi-graphql/src/worker/data/repositories/starship.ts
+  s_3c709a119afba8::t_a10c3d32af8f49 1-6,12-13,18,28,38
+  s_3c709a119afba8::t_1669e86095ce18 7-11,14-17,19-27,29-37,39-47
+demos/swapi-graphql/src/worker/data/repositories/species.ts
+  s_3c709a119afba8::t_1669e86095ce18 10-13,15-23,25-33,35-43
+  s_3c709a119afba8::t_a10c3d32af8f49 1-9,14,24,34
+demos/swapi-graphql/src/worker/data/queries/planet.ts
+  s_3c709a119afba8::t_4aba24bd149152 1,4
+  s_3c709a119afba8::t_5c45faa7fca733 3
+  s_3c709a119afba8::t_a01f58e03e93d1 2,5-13
+demos/swapi-graphql/src/worker/data/tables/person.ts
+  s_3c709a119afba8::t_4aba24bd149152 2
+  s_3c709a119afba8::t_eb5fdf7c141be1 1,18-20,35-38,53-56,73
+  s_3c709a119afba8::t_1669e86095ce18 3-17,21-34,39-52,57-72
+demos/swapi-graphql/src/worker/data/queries/film.ts
+  s_3c709a119afba8::t_a01f58e03e93d1 2,5-15
+  s_3c709a119afba8::t_4aba24bd149152 1,4
+  s_3c709a119afba8::t_5c45faa7fca733 3
+demos/swapi-graphql/src/worker/data/repositories/person.ts
+  s_3c709a119afba8::t_a10c3d32af8f49 1-9,14,24,34,44,54,64
+  s_3c709a119afba8::t_1669e86095ce18 10-13,15-23,25-33,35-43,45-53,55-63,65-73
+demos/swapi-graphql/src/worker/data/queries/species.ts
+  s_3c709a119afba8::t_4aba24bd149152 1,4
+  s_3c709a119afba8::t_a01f58e03e93d1 2,5-12
+  s_3c709a119afba8::t_5c45faa7fca733 3
+demos/swapi-graphql/src/worker/data/tables/vehicle.ts
+  s_3c709a119afba8::t_1669e86095ce18 3-18,22-36,41-55,60-76
+  s_3c709a119afba8::t_4aba24bd149152 2
+  s_3c709a119afba8::t_eb5fdf7c141be1 1,19-21,37-40,56-59,77
+demos/swapi-graphql/src/worker/data/tables/species.ts
+  s_3c709a119afba8::t_4aba24bd149152 2
+  s_3c709a119afba8::t_1669e86095ce18 3-17,21-34,39-52,57-72
+  s_3c709a119afba8::t_eb5fdf7c141be1 1,18-20,35-38,53-56,73
+demos/swapi-graphql/src/worker/data/queries/vehicle.ts
+  s_3c709a119afba8::t_5c45faa7fca733 3
+  s_3c709a119afba8::t_a01f58e03e93d1 2,5-12
+  s_3c709a119afba8::t_4aba24bd149152 1,4
+demos/swapi-graphql/src/worker/data/queries/starship.ts
+  s_3c709a119afba8::t_a01f58e03e93d1 2,5-12
+  s_3c709a119afba8::t_4aba24bd149152 1,4
+  s_3c709a119afba8::t_5c45faa7fca733 3
+demos/swapi-graphql/src/worker/data/tables/film.ts
+  s_3c709a119afba8::t_eb5fdf7c141be1 1,14-44,57
+  s_3c709a119afba8::t_4aba24bd149152 2
+  s_3c709a119afba8::t_1669e86095ce18 3-13,45-56
+demos/swapi-graphql/src/worker/data/repositories/planet.ts
+  s_3c709a119afba8::t_a10c3d32af8f49 1-9,14,24,34,44
+  s_3c709a119afba8::t_1669e86095ce18 10-13,15-23,25-33,35-43,45-53
+demos/swapi-graphql/src/worker/data/tables/starship.ts
+  s_3c709a119afba8::t_4aba24bd149152 2
+  s_3c709a119afba8::t_1669e86095ce18 3-20,24-40,45-61,66-84
+  s_3c709a119afba8::t_eb5fdf7c141be1 1,21-23,41-44,62-65,85
+demos/swapi-graphql/src/worker/data/repositories/vehicle.ts
+  s_3c709a119afba8::t_1669e86095ce18 10-13,15-23,25-33,35-43
+  s_3c709a119afba8::t_a10c3d32af8f49 1-9,14,24,34
+demos/swapi-graphql/src/worker/data/repositories/film.ts
+  s_3c709a119afba8::t_1669e86095ce18 10-13,15-21,23-31,33-41,43-51,53-61,63-71
+  s_3c709a119afba8::t_a10c3d32af8f49 1-9,14,22,32,42,52,62
+demos/swapi-graphql/src/worker/data/tables/planet.ts
+  s_3c709a119afba8::t_4aba24bd149152 2
+  s_3c709a119afba8::t_1669e86095ce18 3-16,20-32,37-49,54-68
+  s_3c709a119afba8::t_eb5fdf7c141be1 1,17-19,33-36,50-53,69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a75f8e46886a3d73d8610d37fed82ff0a84a8587",
+  "prompts": {},
+  "sessions": {
+    "s_3c709a119afba8": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_03272d2e9ffefuJuFGstOUA7J6",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
