@@ -1,0 +1,19 @@
+demos/swapi-graphql/infra/access.tf
+  s_7aa7fbdf06b270::t_d6a2944955d74b 1-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9e3da6ad465811d9bc8a84744cf68ec8940e31a2",
+  "prompts": {},
+  "sessions": {
+    "s_7aa7fbdf06b270": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_032790563ffemneWAzRZJmKxuD",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
