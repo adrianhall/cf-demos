@@ -1,0 +1,22 @@
+docs/08-SWAPI-GRAPHQL.md
+  s_aee9ec4e65af97::t_46355a582a0ed6 249-258
+  s_aee9ec4e65af97::t_423bdc161a9e1c 239-240
+  s_aee9ec4e65af97::t_ad98688b9047f9 7,9,11,13-26,28,30-32,34-136,141-238,241-248,259-310
+  s_aee9ec4e65af97::t_09544446976537 137-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "239f56c450998950920ed51c3f687eb456e2ddff",
+  "prompts": {},
+  "sessions": {
+    "s_aee9ec4e65af97": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0330fe7d8ffeIAF7xX0rjsoqTg",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
