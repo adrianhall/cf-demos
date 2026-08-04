@@ -42,7 +42,7 @@
     "pretest:integration": "run-s generate:wrangler:local generate:types",
     "test:integration": "vitest run --project integration --passWithNoTests",
     "teardown": "run-s teardown:worker infra:destroy teardown:generated",
-    "teardown:generated": "shx rm -f wrangler.jsonc worker-configuration.d.ts",
+    "teardown:generated": "rm -f wrangler.jsonc worker-configuration.d.ts",
     "teardown:worker": "wrangler delete --force --config wrangler.jsonc"
   },
   "devDependencies": {
@@ -53,7 +53,6 @@
     "@types/node": "^24.13.3",
     "@vitest/coverage-istanbul": "^4.1.10",
     "npm-run-all2": "9.0.3",
-    "shx": "0.3.4",
     "typescript": "^6.0.3",
     "vitest": "4.1.10",
     "wrangler": "4.118.0"
