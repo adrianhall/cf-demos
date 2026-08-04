@@ -5,3 +5,7 @@
  * never duplicated in authored source.
  */
 export type AppBindings = Pick<Env, "DB">;
+
+/** Hono variables supplied by cross-cutting Worker middleware. */
+export type AppVariables =
+  import("@adrianhall/cloudflare-toolkit/hono").LoggerVariables;
