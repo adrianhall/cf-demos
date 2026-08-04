@@ -3,6 +3,8 @@ import { computed, watch } from "vue";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import ChatComposer from "../components/ChatComposer.vue";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
+import ChatExportButton from "../components/ChatExportButton.vue";
+// biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import ChatSidebar from "../components/ChatSidebar.vue";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import ChatTranscript from "../components/ChatTranscript.vue";
@@ -10,8 +12,8 @@ import ChatTranscript from "../components/ChatTranscript.vue";
 import RouteSelector from "../components/RouteSelector.vue";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import UsageBadge from "../components/UsageBadge.vue";
-import type { ChatRoute } from "../stores/chats";
 import { useChatStore } from "../stores/chat";
+import type { ChatRoute } from "../stores/chats";
 import { useChatsStore } from "../stores/chats";
 import { useSessionStore } from "../stores/session";
 
@@ -101,11 +103,14 @@ watch(
               :last-reconciliation-event="chat.lastReconciliationEvent"
               :usage="chat.usage"
             />
-            <RouteSelector
-              :disabled="chat.turns.length > 0"
-              :route="selectedChat.route"
-              @change="onRouteChange"
-            />
+            <div class="conversation-header-actions">
+              <RouteSelector
+                :disabled="chat.turns.length > 0"
+                :route="selectedChat.route"
+                @change="onRouteChange"
+              />
+              <ChatExportButton :chat-id="chatsStore.selectedChatId" />
+            </div>
           </div>
           <ChatTranscript :chat-id="chatsStore.selectedChatId" :turns="chat.turns" />
           <ChatComposer
@@ -155,6 +160,12 @@ watch(
   gap: 0.75rem;
   justify-content: space-between;
   padding: 0.75rem 1rem;
+}
+
+.conversation-header-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
 }
 
 .notice-error {

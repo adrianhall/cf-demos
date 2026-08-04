@@ -155,6 +155,25 @@ describe("ChatTranscript", () => {
     expect(chip.attributes("href")).toBe("/api/chats/chat-1/files/file-1");
   });
 
+  it("renders an export link alongside the attachment chip, wrapping the file with its cost context (US-11)", () => {
+    const wrapper = mount(ChatTranscript, {
+      props: {
+        chatId: "chat-1",
+        turns: [
+          buildTurn({
+            status: "done",
+            content: "I saved that as trip-itinerary.md.",
+            attachments: [{ fileId: "file-1", filename: "trip-itinerary.md" }],
+          }),
+        ],
+      },
+    });
+
+    expect(wrapper.get(".attachment-export-link").attributes("href")).toBe(
+      "/api/chats/chat-1/files/file-1/export",
+    );
+  });
+
   it("still builds a download link when chatId is null (a defensive fallback, not a state this app ever reaches)", () => {
     const wrapper = mount(ChatTranscript, {
       props: {

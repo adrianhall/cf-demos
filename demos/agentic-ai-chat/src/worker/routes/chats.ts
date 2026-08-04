@@ -7,10 +7,14 @@ import { getAgentByName } from "agents";
 import { Hono } from "hono";
 import type { ChatAgent, ChatAgentProps } from "../agent/chat-agent";
 import type { AppBindings } from "../bindings";
-import { CHAT_ROUTES, isChatRoute } from "../chats/route";
 import { ChatRepository } from "../chats/repository";
+import { CHAT_ROUTES, isChatRoute } from "../chats/route";
+import { buildChatExportMarkdown } from "../export/chat-markdown";
+import { buildFileExportMarkdown } from "../export/file-markdown";
+import type { ExportMessage } from "../export/types";
 import { ChatFilesRepository } from "../files/repository";
 import { contentDisposition, getChatFile } from "../files/storage";
+import { sanitizeFilename } from "../files/validation";
 import { UsageRepository } from "../usage/repository";
 import { emptyUsageSummary } from "../usage/types";
 import { UserRepository } from "../users/repository";
@@ -243,4 +247,99 @@ chatsRouter.get("/:id/files/:fileId", async (context) => {
     .get("LOGGER")
     .info("chat_file_downloaded", { chatId, fileId, filename: file.filename });
   return new Response(object.body, { headers });
+});
+
+/**
+ * Export a whole chat as a standalone Markdown document carrying its own cost/token summary
+ * (docs/06-AGENTIC-CHAT.md Phase 12, US-11) -- built server-side, unlike demo 5's pure
+ * client-side export: this chat's transcript and cost ledger are both durable server-side
+ * state, not something already sitting in the browser's memory to format (`../export/chat-
+ * markdown.ts`'s own JSDoc). Fetches the chat's full persisted transcript by forwarding a
+ * synthetic request whose path ends in `get-messages` to its own `ChatAgent` -- the same
+ * built-in endpoint `GET /:id/get-messages` above forwards the real client request to, matched
+ * here by constructing a request with that literal path suffix rather than by reusing the
+ * incoming request (whose own path ends in `export`, not `get-messages`).
+ */
+chatsRouter.get("/:id/export", async (context) => {
+  const id = context.req.param("id");
+  const ownerEmail = context.get("Cloudflare_Access_Identity").email;
+
+  const chat = await new ChatRepository(context.env.DB).findOwned(
+    id,
+    ownerEmail,
+  );
+  if (chat === null) {
+    throw notFound({ detail: "Chat not found." });
+  }
+  const stub = await ownedAgentStub(context.env, id, ownerEmail);
+  const messagesResponse = await stub.fetch(
+    new Request("https://chat-agent.invalid/get-messages"),
+  );
+  const messages = (await messagesResponse.json()) as ExportMessage[];
+  const usage = await new UsageRepository(context.env.DB).aggregateForChat(id);
+  const markdown = buildChatExportMarkdown({ chat, messages, usage });
+  const filename = sanitizeFilename(chat.title ?? chat.id) ?? "chat-export.md";
+
+  context.get("LOGGER").info("chat_exported", { chatId: id });
+  return new Response(markdown, {
+    headers: {
+      "content-disposition": contentDisposition(filename),
+      "content-type": "text/markdown; charset=utf-8",
+    },
+  });
+});
+
+/**
+ * Export one agent-generated file as a standalone Markdown document carrying the cost/token
+ * context of the turn that produced it (docs/06-AGENTIC-CHAT.md Phase 12, US-11) -- joining
+ * `chat_files.correlation_id` back to the exact `chat_usage` row that same turn produced
+ * (Section 6.4/15's resolved open question), not an approximation inferred from timestamps.
+ * Ownership-checked identically to `GET /:id/files/:fileId` above (the same two independent
+ * checks, for the same reason -- see that route's own JSDoc).
+ */
+chatsRouter.get("/:id/files/:fileId/export", async (context) => {
+  const chatId = context.req.param("id");
+  const fileId = context.req.param("fileId");
+  const ownerEmail = context.get("Cloudflare_Access_Identity").email;
+
+  const chat = await new ChatRepository(context.env.DB).findOwned(
+    chatId,
+    ownerEmail,
+  );
+  if (chat === null) {
+    throw notFound({ detail: "Chat not found." });
+  }
+  const file = await new ChatFilesRepository(context.env.DB).findByChatAndId(
+    chatId,
+    fileId,
+  );
+  if (file === null) {
+    throw notFound({ detail: "File not found." });
+  }
+  const object = await getChatFile(context.env.FILES, file.r2Key);
+  if (object === null) {
+    throw notFound({ detail: "File not found." });
+  }
+  const content = await object.text();
+  const usage = await new UsageRepository(context.env.DB).findByCorrelationId(
+    file.correlationId,
+  );
+  const markdown = buildFileExportMarkdown({
+    chatId,
+    chatTitle: chat.title,
+    content,
+    filename: file.filename,
+    usage,
+  });
+  const filename = `${file.filename.replace(/\.md$/u, "")}-export.md`;
+
+  context
+    .get("LOGGER")
+    .info("chat_file_exported", { chatId, fileId, filename: file.filename });
+  return new Response(markdown, {
+    headers: {
+      "content-disposition": contentDisposition(filename),
+      "content-type": "text/markdown; charset=utf-8",
+    },
+  });
 });

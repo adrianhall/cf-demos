@@ -208,6 +208,60 @@ describe("UsageRepository", () => {
     });
   });
 
+  describe("findByCorrelationId", () => {
+    it("maps a matching row into a ChatUsageRow, for Phase 12's per-file export join", async () => {
+      const { database, statements } = databaseFor({
+        firstRow: {
+          id: "usage-1",
+          chat_id: "chat-1",
+          model: "@cf/google/gemma-4-26b-a4b-it",
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          cost_usd: 0.000_006,
+          cost_source: "gateway",
+          correlation_id: "corr-1",
+          gateway_log_id: "log-1",
+          reconcile_attempts: 1,
+          created_at: "2026-08-03T00:00:00.000Z",
+          updated_at: "2026-08-03T00:00:10.000Z",
+        },
+      });
+
+      const row = await new UsageRepository(database).findByCorrelationId(
+        "corr-1",
+      );
+
+      expect(row).toEqual({
+        id: "usage-1",
+        chatId: "chat-1",
+        model: "@cf/google/gemma-4-26b-a4b-it",
+        promptTokens: 10,
+        completionTokens: 20,
+        costUsd: 0.000_006,
+        costSource: "gateway",
+        correlationId: "corr-1",
+        gatewayLogId: "log-1",
+        reconcileAttempts: 1,
+        createdAt: "2026-08-03T00:00:00.000Z",
+        updatedAt: "2026-08-03T00:00:10.000Z",
+      });
+      expect(statements[0]).toMatchObject({
+        parameters: ["corr-1"],
+        sql: expect.stringContaining("WHERE correlation_id = ?"),
+      });
+    });
+
+    it("returns null when no row carries this correlation id", async () => {
+      const { database } = databaseFor({ firstRow: null });
+
+      const row = await new UsageRepository(database).findByCorrelationId(
+        "corr-missing",
+      );
+
+      expect(row).toBeNull();
+    });
+  });
+
   describe("aggregateForChat", () => {
     it("maps a populated aggregate row into a ChatUsageSummary", async () => {
       const { database, statements } = databaseFor({

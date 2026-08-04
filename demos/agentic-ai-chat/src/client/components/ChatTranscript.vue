@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { nextTick, useTemplateRef, watch } from "vue";
+// biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
+import FeatherIcon from "vue-feather";
 import type { ChatTurn } from "../composables/useChatAgent";
 import { scrollToBottom } from "../lib/scroll";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import ActivityIndicator from "./ActivityIndicator.vue";
-// biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
-import FeatherIcon from "vue-feather";
 
 /** Properties supplied to the conversation transcript. */
 interface Props {
@@ -37,6 +37,14 @@ watch(
 function fileUrl(fileId: string): string {
   return `/api/chats/${encodeURIComponent(props.chatId ?? "")}/files/${encodeURIComponent(fileId)}`;
 }
+
+/** Build the ownership-checked export URL for one attachment (docs/06-AGENTIC-CHAT.md Phase 12,
+ * US-11, `../../worker/routes/chats.ts`'s `GET /:id/files/:fileId/export`) -- wraps the same
+ * file's content with the cost/token context of the turn that produced it, unlike
+ * {@link fileUrl}'s raw download. */
+function fileExportUrl(fileId: string): string {
+  return `${fileUrl(fileId)}/export`;
+}
 </script>
 
 <template>
@@ -63,7 +71,7 @@ function fileUrl(fileId: string): string {
         </p>
 
         <ul v-if="turn.attachments.length > 0" class="attachment-list" aria-label="Attached files">
-          <li v-for="attachment in turn.attachments" :key="attachment.fileId">
+          <li v-for="attachment in turn.attachments" :key="attachment.fileId" class="attachment-item">
             <a
               class="attachment-chip"
               :href="fileUrl(attachment.fileId)"
@@ -71,6 +79,14 @@ function fileUrl(fileId: string): string {
             >
               <FeatherIcon aria-hidden="true" size="14" type="file-text" />
               <span>{{ attachment.filename }}</span>
+            </a>
+            <a
+              :aria-label="`Export ${attachment.filename} with its cost context`"
+              class="attachment-export-link"
+              :href="fileExportUrl(attachment.fileId)"
+              title="Export with cost context"
+            >
+              <FeatherIcon aria-hidden="true" size="14" type="download" />
             </a>
           </li>
         </ul>
@@ -180,6 +196,25 @@ function fileUrl(fileId: string): string {
 .attachment-chip:hover,
 .attachment-chip:focus-visible {
   border-color: rgb(var(--v-theme-primary));
+}
+
+.attachment-item {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.attachment-export-link {
+  align-items: center;
+  border-radius: 999px;
+  color: rgb(var(--v-theme-on-surface-variant));
+  display: inline-flex;
+  padding: 0.375rem;
+}
+
+.attachment-export-link:hover,
+.attachment-export-link:focus-visible {
+  color: rgb(var(--v-theme-primary));
 }
 
 .skill-list {

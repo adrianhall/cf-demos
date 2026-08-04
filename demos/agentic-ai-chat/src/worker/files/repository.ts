@@ -92,7 +92,10 @@ export class ChatFilesRepository {
    *
    * @param chatId The chat this file must belong to.
    * @param fileId The file id from the request path.
-   * @returns The file if it exists and belongs to `chatId`, otherwise `null`.
+   * @returns The file if it exists and belongs to `chatId`, otherwise `null`. Its
+   * {@link ChatFile.correlationId} is always populated -- needed by Phase 12's per-file export
+   * (`../routes/chats.ts`'s `GET /:id/files/:fileId/export`) to join this file back to the
+   * exact `chat_usage` row the same turn produced (Section 6.6/15).
    */
   async findByChatAndId(
     chatId: string,
@@ -100,7 +103,7 @@ export class ChatFilesRepository {
   ): Promise<ChatFile | null> {
     const row = await this.database
       .prepare(
-        `SELECT id, chat_id, filename, r2_key, size_bytes, created_at
+        `SELECT id, chat_id, filename, r2_key, size_bytes, correlation_id, created_at
          FROM chat_files WHERE id = ? AND chat_id = ? LIMIT 1`,
       )
       .bind(fileId, chatId)

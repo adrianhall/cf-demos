@@ -125,6 +125,13 @@ describe("ChatFilesRepository", () => {
       parameters: ["file-1", "chat-1"],
       sql: expect.stringContaining("WHERE id = ? AND chat_id = ?"),
     });
+    // Phase 12's per-file export (`../routes/chats.ts`'s `GET /:id/files/:fileId/export`) joins
+    // this file back to its originating `chat_usage` row via `correlation_id` -- the SELECT
+    // itself must actually project that column, not only `toChatFile()`'s mapping of it, or a
+    // real D1 read (which -- unlike this fake -- only returns projected columns) would silently
+    // leave `correlationId` `undefined` despite this test's own `selectRow` fixture above
+    // carrying a `correlation_id` value.
+    expect(statements[0]?.sql).toContain("correlation_id");
   });
 
   it("returns null for a file that does not exist or belongs to a different chat", async () => {

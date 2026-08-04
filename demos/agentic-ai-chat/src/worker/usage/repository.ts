@@ -34,6 +34,47 @@ export interface GatewayLogMatch {
   readonly costUsd: number;
 }
 
+/** Raw snake-cased `chat_usage` row returned by D1 -- the shape
+ * {@link UsageRepository.findByCorrelationId} reads back, as opposed to the write-only shape
+ * {@link UsageRepository.insertEstimated} builds locally without ever reading a row back. */
+interface ChatUsageDbRow {
+  id: string;
+  chat_id: string;
+  model: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cost_usd: number;
+  cost_source: string;
+  correlation_id: string;
+  gateway_log_id: string | null;
+  reconcile_attempts: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Convert D1's storage shape into {@link ChatUsageRow}. `cost_source` is cast, not validated --
+ * this repository's own `CHECK` constraint (`migrations/0002_create_chat_usage.sql`) and its
+ * only two writers ({@link UsageRepository.insertEstimated}/{@link
+ * UsageRepository.reconcileWithGatewayLog}) already guarantee it is always `"estimated"` or
+ * `"gateway"`, mirroring `../chats/repository.ts`'s `toChat()`'s own "trust the schema, don't
+ * re-validate on every read" convention. */
+function toChatUsageRow(row: ChatUsageDbRow): ChatUsageRow {
+  return {
+    id: row.id,
+    chatId: row.chat_id,
+    model: row.model,
+    promptTokens: row.prompt_tokens,
+    completionTokens: row.completion_tokens,
+    costUsd: row.cost_usd,
+    costSource: row.cost_source as ChatUsageRow["costSource"],
+    correlationId: row.correlation_id,
+    gatewayLogId: row.gateway_log_id,
+    reconcileAttempts: row.reconcile_attempts,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 /** Raw aggregate row shape shared by {@link UsageRepository.aggregateForChat} and
  * {@link UsageRepository.aggregateForOwner}. */
 interface UsageAggregateDbRow {
@@ -182,6 +223,33 @@ export class UsageRepository {
       .bind(new Date().toISOString(), correlationId)
       .run<{ reconcile_attempts: number }>();
     return result.results[0]?.reconcile_attempts ?? null;
+  }
+
+  /**
+   * Look up one turn's own `chat_usage` row by its correlation id -- the exact join key a
+   * `chat_files` row carries back to the turn that produced it (docs/06-AGENTIC-CHAT.md
+   * Section 6.4/15's resolved open question), read by Phase 12's per-file export
+   * (`../routes/chats.ts`'s `GET /:id/files/:fileId/export`) to show that file's own cost/token
+   * context rather than the whole chat's aggregate.
+   *
+   * @param correlationId The turn's correlation id (`chat_files.correlation_id`, stamped by the
+   * same turn that wrote both rows -- `../agent/tools/write-markdown.ts`'s `WriteMarkdownDeps`).
+   * @returns The row, or `null` if no `chat_usage` row carries this correlation id -- tolerated
+   * the same way a disappeared reconciliation target is tolerated elsewhere in this demo
+   * (Section 11); the caller must treat this as "no cost context available," not an error.
+   */
+  async findByCorrelationId(
+    correlationId: string,
+  ): Promise<ChatUsageRow | null> {
+    const row = await this.database
+      .prepare(
+        `SELECT id, chat_id, model, prompt_tokens, completion_tokens, cost_usd, cost_source,
+                correlation_id, gateway_log_id, reconcile_attempts, created_at, updated_at
+         FROM chat_usage WHERE correlation_id = ? LIMIT 1`,
+      )
+      .bind(correlationId)
+      .first<ChatUsageDbRow>();
+    return row === null ? null : toChatUsageRow(row);
   }
 
   /**
