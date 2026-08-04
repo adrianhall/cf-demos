@@ -1,0 +1,141 @@
+demos/agentic-ai-chat/tests/integration/fixtures.ts
+  s_746e5def32a3f0::t_163d28819c601d 358-359,390-477
+  s_746e5def32a3f0::t_e8e0a1e3003310 360-389
+demos/agentic-ai-chat/src/worker/usage/pricing.ts
+  s_746e5def32a3f0::t_9ad72ebbde3b40 1-76
+demos/agentic-ai-chat/wrangler.jsonc.tpl
+  s_746e5def32a3f0::t_1ad48b17e72b45 30-34
+  s_746e5def32a3f0::t_3937ef6c719f12 20-23,27-29
+demos/agentic-ai-chat/src/client/views/HomeView.vue
+  s_746e5def32a3f0::t_86ef3de843162f 11-12
+  s_746e5def32a3f0::t_f4bb95c33d42bb 154-156
+  s_746e5def32a3f0::t_75439c6b568c85 100-103
+demos/agentic-ai-chat/src/worker/ai-gateway/logs.test.ts
+  s_746e5def32a3f0::t_2a23271a48d2f7 1-92,106-156
+  s_746e5def32a3f0::t_0404f522155512 93-105
+demos/agentic-ai-chat/README.md
+  s_746e5def32a3f0::t_d11969440f004d 103,105
+  s_746e5def32a3f0::t_c115440da29865 129
+  s_746e5def32a3f0::t_023f347e82c902 17
+  s_746e5def32a3f0::t_476da108c4908d 43-44
+  s_746e5def32a3f0::t_f8a2f33b700ec2 93-97
+  s_746e5def32a3f0::t_e6318df39b885e 70-71
+  s_746e5def32a3f0::t_3e04af2d3afcda 5
+demos/agentic-ai-chat/src/client/components/ChatSidebar.vue
+  s_746e5def32a3f0::t_8102e5c12fc0ac 154-160,167-169
+  s_746e5def32a3f0::t_2f63fe666abb86 5-6
+  s_746e5def32a3f0::t_13fbd0dce9e110 63-66
+  s_746e5def32a3f0::t_73f5ac97aadb36 170
+demos/agentic-ai-chat/EXPLAIN-DEMO.md
+  s_746e5def32a3f0::t_f83f8bd12b0de4 188,190-191,195-197
+  s_746e5def32a3f0::t_e4e85e679057af 124-131
+  s_746e5def32a3f0::t_86d7a8b08e850c 3
+  s_746e5def32a3f0::t_3047b2ec525f65 92-93
+  s_746e5def32a3f0::t_5e83a553ff2fb6 55-64
+  s_746e5def32a3f0::t_f78cde529e1a12 150
+  s_746e5def32a3f0::t_1eef7256e574b6 174-175
+demos/agentic-ai-chat/package.json
+  s_746e5def32a3f0::t_37e6eea4e07d69 27-28
+demos/agentic-ai-chat/.env.example
+  s_746e5def32a3f0::t_64ecc3717854f3 22-26
+demos/agentic-ai-chat/src/client/stores/chat.ts
+  s_746e5def32a3f0::t_514cfd86ba5288 24,27
+demos/agentic-ai-chat/src/client/views/HomeView.test.ts
+  s_746e5def32a3f0::t_63c0e87334f442 6
+  s_746e5def32a3f0::t_8d574d9dd825c5 183-200,202-221,224-225
+  s_746e5def32a3f0::t_2113c2b1c9d44f 222-223
+  s_746e5def32a3f0::t_15921b958a7744 169,201,244,278
+  s_746e5def32a3f0::t_944454aa72b8fc 316,343
+demos/agentic-ai-chat/src/client/components/ChatSidebar.test.ts
+  s_746e5def32a3f0::t_b7449ca9099286 3,16
+  s_746e5def32a3f0::t_b9ef839e7dba2f 106-133
+docs/DECISIONS.md
+  s_746e5def32a3f0::t_4f089d9e72a3b2 926-977
+demos/agentic-ai-chat/src/worker/agent/chat-agent.ts
+  s_746e5def32a3f0::t_1cf82ccc1812ca 223-227
+  s_746e5def32a3f0::t_bb21442de1a718 110-113
+  s_746e5def32a3f0::t_94d0903cdb07b4 105-109
+  s_746e5def32a3f0::t_064e3a742645fd 7,16-17,19,27-29,41-80
+  s_746e5def32a3f0::t_b44dac171aa97b 168-171,180,192,200-222,228-352
+  s_746e5def32a3f0::t_cde1e2efb2ec61 81,353
+demos/agentic-ai-chat/migrations/0002_create_chat_usage.sql
+  s_746e5def32a3f0::t_da682cb1a27a13 1-24
+demos/agentic-ai-chat/src/worker/usage/repository.test.ts
+  s_746e5def32a3f0::t_94d0903cdb07b4 124-132,152-160,168-176
+  s_746e5def32a3f0::t_fa777c123d9b4c 1-123,133-151,161-167,177-266,284-341
+  s_746e5def32a3f0::t_2ae014c875248f 267-283
+demos/agentic-ai-chat/src/client/composables/useChatAgent.ts
+  s_746e5def32a3f0::t_274fed137be3ef 39-88
+  s_746e5def32a3f0::t_59344688a40cda 119-136
+  s_746e5def32a3f0::t_8105f89860c0cb 252-255
+  s_746e5def32a3f0::t_03a68de9518b0e 389-390,410-420
+  s_746e5def32a3f0::t_b06ce125b90cbe 529-537
+  s_746e5def32a3f0::t_daffc4d49a5b6a 348-360
+demos/agentic-ai-chat/src/client/composables/useChatAgent.test.ts
+  s_746e5def32a3f0::t_c1150974800ea2 327-452
+demos/agentic-ai-chat/src/worker/usage/types.ts
+  s_746e5def32a3f0::t_daac1495245a74 1-91
+demos/agentic-ai-chat/src/client/stores/chat.test.ts
+  s_746e5def32a3f0::t_e58ff64d8fff4d 108-121
+demos/agentic-ai-chat/src/client/components/UsageBadge.test.ts
+  s_746e5def32a3f0::t_3906902eb19459 31
+  s_746e5def32a3f0::t_47b093bc807775 1-30,32-122,178-202
+  s_746e5def32a3f0::t_d9b42cc1a37325 123-139
+  s_746e5def32a3f0::t_e55752b68ddde0 140-177
+demos/agentic-ai-chat/src/client/stores/chats.test.ts
+  s_746e5def32a3f0::t_2e56bd99cd4a3a 3,15
+demos/agentic-ai-chat/DEMO.md
+  s_746e5def32a3f0::t_42f296a321c856 67
+  s_746e5def32a3f0::t_2b8a0a51f317cb 52
+  s_746e5def32a3f0::t_e0b5a937e19f27 27-29,35-38,42-51
+  s_746e5def32a3f0::t_9b797cd352363d 73,75
+  s_746e5def32a3f0::t_e3e1499d9deba5 3
+  s_746e5def32a3f0::t_5d65513577ae3a 41
+demos/agentic-ai-chat/src/worker/usage/repository.ts
+  s_746e5def32a3f0::t_94d0903cdb07b4 172-174
+  s_746e5def32a3f0::t_070580bd62749f 1-171,175-248
+demos/agentic-ai-chat/src/worker/usage/pricing.test.ts
+  s_746e5def32a3f0::t_3556a106dc90a1 1-50
+demos/agentic-ai-chat/infra/outputs.tf
+  s_746e5def32a3f0::t_a302a494add4bb 26-30
+demos/agentic-ai-chat/infra/local-outputs.json
+  s_746e5def32a3f0::t_dcf31bded31686 6
+demos/agentic-ai-chat/src/worker/ai-gateway/logs.ts
+  s_746e5def32a3f0::t_3a9e8acc2b2e63 1-131
+demos/agentic-ai-chat/src/client/components/UsageBadge.vue
+  s_746e5def32a3f0::t_94d0903cdb07b4 49-52
+  s_746e5def32a3f0::t_487c23c9def0a1 1-48,53-184
+demos/agentic-ai-chat/tests/integration/usage.test.ts
+  s_746e5def32a3f0::t_c36195fb2933d4 96-100
+  s_746e5def32a3f0::t_22a7144e61b1e9 138-141
+  s_746e5def32a3f0::t_988909567e1a71 380-385,387,389-392,394-402
+  s_746e5def32a3f0::t_94d0903cdb07b4 31-32,162-164,260-265
+  s_746e5def32a3f0::t_c7e968989b9fd4 20
+  s_746e5def32a3f0::t_a0177698b693e4 341-358
+  s_746e5def32a3f0::t_ff869fc9781761 276,295-337
+  s_746e5def32a3f0::t_14255bfde7987f 1-19,21-30,33-95,101-137,142-161,165-259,266-275,277-294,338-340,359-379,386,388,393,403-404
+demos/agentic-ai-chat/src/worker/routes/chats.ts
+  s_746e5def32a3f0::t_a19475c3ee3f15 101-107,112-121
+  s_746e5def32a3f0::t_c672d5740527a9 12-13
+demos/agentic-ai-chat/src/agent-protocol.ts
+  s_746e5def32a3f0::t_b9581361588849 54-86
+demos/agentic-ai-chat/src/client/stores/chats.ts
+  s_746e5def32a3f0::t_e8d5909920a0af 3
+  s_746e5def32a3f0::t_6dce93599fd4e1 31-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0a8349d35fc51d4b2be1dc1b546e24f4c6b297f7",
+  "prompts": {},
+  "sessions": {
+    "s_746e5def32a3f0": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_03464e6c5ffes5ekvh0ORAPqlo",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
