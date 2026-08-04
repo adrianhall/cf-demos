@@ -355,3 +355,123 @@ export async function withThrowingDb<T>(
     (env as unknown as { DB: D1Database }).DB = original;
   }
 }
+
+/**
+ * Run `callback` with `env.DB` substituted for a proxy that throws only for writes to
+ * `chat_usage` (`UsageRepository.insertEstimated()`), delegating every other query to the real
+ * D1 binding unchanged -- the same `withThrowingDb()` substitution pattern, scoped to a
+ * different table, used to prove `ChatAgent.recordTurnUsage()`'s own write is best-effort: a
+ * turn must still complete successfully for the client even when this write fails
+ * (docs/06-AGENTIC-CHAT.md Section 11), and must never leave behind a partially-written row.
+ *
+ * @param callback Work to run with the partially-throwing binding installed.
+ * @returns Whatever `callback` resolves to.
+ */
+export async function withThrowingChatUsageDb<T>(
+  callback: () => Promise<T>,
+): Promise<T> {
+  const original = env.DB;
+  (env as unknown as { DB: Pick<D1Database, "prepare"> }).DB = {
+    prepare(sql: string) {
+      if (sql.includes("chat_usage")) {
+        throw new Error("simulated D1 outage");
+      }
+      return original.prepare(sql);
+    },
+  };
+  try {
+    return await callback();
+  } finally {
+    (env as unknown as { DB: D1Database }).DB = original;
+  }
+}
+
+/**
+ * Run `callback` with the global `fetch` substituted for `fakeFetch`, restoring the real
+ * implementation afterward regardless of outcome -- the same `env`-substitution spirit as
+ * {@link withFakeAi}/{@link withThrowingDb}, applied to the one *global* (not binding-backed)
+ * capability `ChatAgent.reconcileUsage()` calls directly:
+ * `src/worker/ai-gateway/logs.ts`'s `findLogByCorrelationId()`, simulating AI Gateway's
+ * logs-list REST endpoint with no real network call (docs/06-AGENTIC-CHAT.md Section 6.6,
+ * Phase 6).
+ *
+ * @param fakeFetch A minimal `fetch`-shaped fake.
+ * @param callback Work to run with the fake `fetch` installed.
+ * @returns Whatever `callback` resolves to.
+ */
+export async function withFakeFetch<T>(
+  fakeFetch: typeof fetch,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const original = globalThis.fetch;
+  globalThis.fetch = fakeFetch;
+  try {
+    return await callback();
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+/** One raw `chat_usage` row, as read directly from D1 for test assertions (bypassing every
+ * application-level repository/route, since no route exposes this table's raw columns). */
+export interface RawChatUsageRow {
+  id: string;
+  chat_id: string;
+  model: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cost_usd: number;
+  cost_source: string;
+  correlation_id: string;
+  gateway_log_id: string | null;
+  reconcile_attempts: number;
+}
+
+/**
+ * Read every `chat_usage` row for one chat directly from D1, most recently created first --
+ * used by `tests/integration/usage.test.ts` to assert on ledger rows no route exposes raw
+ * (`GET /api/chats` only ever returns the aggregated summary, per docs/06-AGENTIC-CHAT.md
+ * Section 6.6a).
+ *
+ * @param chatId Chat whose `chat_usage` rows to read.
+ * @returns The chat's raw ledger rows.
+ */
+export async function readChatUsageRows(
+  chatId: string,
+): Promise<RawChatUsageRow[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, chat_id, model, prompt_tokens, completion_tokens, cost_usd, cost_source,
+            correlation_id, gateway_log_id, reconcile_attempts
+     FROM chat_usage WHERE chat_id = ? ORDER BY created_at DESC`,
+  )
+    .bind(chatId)
+    .all<RawChatUsageRow>();
+  return results;
+}
+
+/**
+ * Register a `"message"` listener that resolves the first time it observes a frame whose
+ * `type` matches, silently ignoring every other frame -- shared by every integration test file
+ * that must wait for one specific frame among several a turn/action can produce. Always call
+ * this **before** performing the action expected to trigger the frame (the
+ * `testing-durable-objects` skill's rule 5).
+ *
+ * @param socket An accepted `ChatAgent` WebSocket.
+ * @param type The frame `type` to wait for.
+ * @returns The first matching frame, parsed.
+ */
+export function nextMessageOfType<T = Record<string, unknown>>(
+  socket: WebSocket,
+  type: string,
+): Promise<T> {
+  return new Promise((resolve) => {
+    function handler(event: MessageEvent): void {
+      const parsed = JSON.parse(String(event.data)) as { type?: string };
+      if (parsed.type === type) {
+        socket.removeEventListener("message", handler);
+        resolve(parsed as T);
+      }
+    }
+    socket.addEventListener("message", handler);
+  });
+}

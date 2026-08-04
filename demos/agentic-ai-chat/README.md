@@ -2,7 +2,7 @@
 
 An authenticated enterprise AI chat agent based on Cloudflare Workers, D1, Cloudflare Access, Durable Objects, the Agents SDK, Workers AI, AI Gateway, and Dynamic Workers.
 
-> This demo ships in phases (see `docs/06-AGENTIC-CHAT.md`), each tagged in git so any two can be diffed. This checkout implements **Phase 1 (Scaffolding)**, **Phase 2 (Core Agentic Chat, US-1)**, **Phase 3 (Chat Sidebar And Management, US-2)**, **Phase 4 (Governed Model Selection Via Dynamic Routes, US-3)**, and **Phase 5 (Voice-To-Prompt Dictation, US-4)**: a signed-in user can hold a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, persisted across reloads, manage more than one chat from a sidebar -- creating, switching between, and deleting chats, each auto-titled after its first exchange -- choose between a "Basic" and a "Reasoning" mode per chat, each backed by a governed AI Gateway dynamic route rather than a client-visible model id, and dictate a prompt via microphone, transcribed by Workers AI into editable composer text. Later phases add cost tracking, tools, skills, and an admin console.
+> This demo ships in phases (see `docs/06-AGENTIC-CHAT.md`), each tagged in git so any two can be diffed. This checkout implements **Phase 1 (Scaffolding)** through **Phase 6 (Per-Chat Cost And Token Visibility, US-5)**: a signed-in user can hold a real, streamed, multi-turn conversation with a Durable Object-backed `ChatAgent`, persisted across reloads, manage more than one chat from a sidebar -- creating, switching between, and deleting chats, each auto-titled after its first exchange -- choose between a "Basic" and a "Reasoning" mode per chat, each backed by a governed AI Gateway dynamic route rather than a client-visible model id, dictate a prompt via microphone, transcribed by Workers AI into editable composer text, and see each chat's running cost/token totals, immediately labeled **Estimated** and later upgraded in place to **AI Gateway**-confirmed figures once AI Gateway's own logged cost/tokens for that turn are found. Later phases add tools, skills, and an admin console.
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@ An authenticated enterprise AI chat agent based on Cloudflare Workers, D1, Cloud
   - Entire Account > Developer Platform > Workers Scripts: Edit
   - Entire Account > Developer Platform > D1: Edit
   - Entire Account > Developer Platform > Workers AI: Edit (also required for local development — see Troubleshooting)
-  - Entire Account > Developer Platform > AI Gateway: Edit
+  - Entire Account > Developer Platform > AI Gateway: Edit (also covers the one runtime REST call the cost ledger makes directly to read back a turn's logged cost -- see Provisioned Resources)
   - Entire Account > Cloudflare One / Zero Trust > Access: Edit
   - Entire Account > Cloudflare One / Zero Trust > Access: Identity Providers: Read
   - `<your-domain>` > DNS & Zones > DNS: Write
@@ -39,6 +39,8 @@ Set every value in `.env`:
 | `ADMIN_EMAIL` | Identity idempotently promoted to this demo's D1-flagged administrator role on every sign-in. |
 
 Do not commit `.env`, Terraform state, the generated `wrangler.jsonc`, or generated binding types (`worker-configuration.d.ts`).
+
+`CLOUDFLARE_API_TOKEN` is also pushed as the deployed Worker's own `CLOUDFLARE_API_TOKEN` secret (`npm run deploy:worker:secrets`, part of `npm run deploy`) -- the cost ledger's `reconcileUsage()` step needs it at runtime to read back a turn's logged cost via the one REST call this demo makes outside a binding (`docs/06-AGENTIC-CHAT.md` Section 6.6). `CLOUDFLARE_ACCOUNT_ID` is threaded to the Worker as an ordinary `vars` entry (Terraform output `cloudflare_account_id`) for the same call.
 
 ## Local Development
 
@@ -65,6 +67,8 @@ npm run build
 
 `tests/integration/transcribe.test.ts` (Phase 5) substitutes a fake `env.AI` binding the same way, so `POST /api/transcribe` is exercised end to end with no real, billable Workers AI call. `src/client/composables/useVoiceDictation.test.ts` stubs the browser's `MediaRecorder`/`navigator.mediaDevices.getUserMedia` with deterministic doubles -- no real microphone or audio hardware is needed to run `npm test` in CI or on a fresh checkout.
 
+`tests/integration/usage.test.ts` (Phase 6) substitutes the global `fetch` (`withFakeFetch`) to simulate AI Gateway's logs-list REST endpoint, so every branch of `ChatAgent.reconcileUsage()` -- a matching log found, none found yet, the bounded retry budget exhausted, a REST failure, and a row that has disappeared -- is exercised with no real network call, by invoking the real method directly via `runInDurableObject()` rather than waiting on its own real 10s/+15s schedule delays. A local `vite dev`/`vitest` run has no real `CLOUDFLARE_API_TOKEN` secret configured (see Troubleshooting), so a real local turn's reconciliation permanently stays `estimated` -- a legitimate, visible outcome this demo's own design already expects, not a bug.
+
 ## Deployment
 
 ```sh
@@ -86,17 +90,19 @@ npm run deploy
 8. Reload the page and confirm the same chat list and conversations reappear (loaded from D1 and the `ChatAgent` Durable Object's own storage, not browser memory).
 9. Delete a chat from the sidebar and confirm it disappears from the list and the view falls back to a remaining chat (or the empty state if none remain).
 10. Click the microphone control on the composer, allow microphone access when prompted, dictate a short question, then click it again to stop. Confirm the transcribed text appears in the composer -- not submitted automatically -- and can be edited before sending.
-11. Sign out using the visible **Sign out** control.
-12. In the Cloudflare dashboard under **D1** > `<DEMO_NAME>-db` > Console, run `SELECT email, is_admin, created_at FROM users;` and confirm your identity was upserted with the expected `is_admin` value.
-13. Under **Workers & Pages** > `<DEMO_NAME>` > **Logs**, confirm requests are being logged, including `chat_created`, `chat_connected`, `chat_route_changed`, `chat_deleted`, and `transcription_completed` entries.
-14. Under **AI Gateway** > `<DEMO_NAME>`, open the **Basic** and **Reasoning** dynamic routes and confirm each shows requests from the corresponding chat above, resolved to their own configured model; open the gateway's overall request log and confirm a `@cf/openai/whisper-large-v3-turbo` entry from step 10's dictation.
+11. Confirm the chat header shows a cost/token readout immediately after step 4's response, labeled **Estimated**; within roughly 10-40 seconds (reload the page if needed to observe the push), confirm it flips to **AI Gateway** with a "1 of 1 turn confirmed by AI Gateway" ratio, and that the sidebar entry for the same chat shows a matching figure.
+12. Sign out using the visible **Sign out** control.
+13. In the Cloudflare dashboard under **D1** > `<DEMO_NAME>-db` > Console, run `SELECT email, is_admin, created_at FROM users;` and confirm your identity was upserted with the expected `is_admin` value; run `SELECT chat_id, cost_source, cost_usd, gateway_log_id FROM chat_usage;` and confirm step 11's turn shows `cost_source = 'gateway'` with a non-null `gateway_log_id`.
+14. Under **Workers & Pages** > `<DEMO_NAME>` > **Logs**, confirm requests are being logged, including `chat_created`, `chat_connected`, `chat_route_changed`, `chat_deleted`, and `transcription_completed` entries.
+15. Under **AI Gateway** > `<DEMO_NAME>`, open the **Basic** and **Reasoning** dynamic routes and confirm each shows requests from the corresponding chat above, resolved to their own configured model; open the gateway's overall request log and confirm a `@cf/openai/whisper-large-v3-turbo` entry from step 10's dictation, and that the logged cost for step 4's turn matches step 13's D1 row.
 
 ## Provisioned Resources
 
 - Worker (`<DEMO_NAME>`) serving the Vue shell as static assets and a Hono API.
 - `CHAT_AGENT` Durable Object binding (`ChatAgent`, one instance per chat, `new_sqlite_classes` migration `v1`) -- created by Wrangler on first deploy, not Terraform (AGENTS.md, Resource Ownership).
-- D1 database `<DEMO_NAME>-db`, bound as `DB`, holding the `users` and `chats` tables.
+- D1 database `<DEMO_NAME>-db`, bound as `DB`, holding the `users`, `chats`, and `chat_usage` tables (the last is this demo's per-turn cost ledger, Phase 6).
 - AI Gateway `<DEMO_NAME>`, bound to the Worker as the `AI_GATEWAY_ID` var. Its two dynamic routes (`<DEMO_NAME>-basic`, `<DEMO_NAME>-reasoning`, bound as `AI_GATEWAY_ROUTE_BASIC`/`AI_GATEWAY_ROUTE_REASONING`) are what every chat turn now actually calls, selected per chat by the "Mode" dropdown ("Basic"/"Reasoning") rather than a raw model id.
+- `CLOUDFLARE_API_TOKEN` Worker secret and `CLOUDFLARE_ACCOUNT_ID` var, used only by `ChatAgent.reconcileUsage()`'s one direct REST call to AI Gateway's logs-list endpoint (no binding lists logs) to read back a turn's authoritative logged cost.
 - Custom domain `<DEMO_NAME>.<DEMO_DOMAIN>`.
 - Access application + allow policy requiring authentication for the whole hostname, with `audience` pinned.
 - Workers Logs (100% sampling) and traces (10% sampling).
@@ -120,6 +126,7 @@ npm run deploy
 | Clicking the microphone control shows "Voice dictation is not supported in this browser" | The browser lacks `MediaRecorder`/`navigator.mediaDevices.getUserMedia` (for example a very old browser, or a non-HTTPS context other than `localhost`); use a current browser over HTTPS. |
 | Clicking the microphone control shows "Microphone permission was denied" | Grant microphone access for this site in the browser's own site-permission settings, then click the control again -- the error clears the moment a new recording attempt starts. |
 | A dictation returns "Workers AI could not transcribe the submitted audio" | A transient Workers AI failure; try again. Check Workers Logs for the underlying error if it persists. |
+| A chat's cost badge stays "Estimated" forever | Expected in local development: the committed `.dev.vars` deliberately holds no secrets, so `CLOUDFLARE_API_TOKEN` is unset locally and `reconcileUsage()`'s REST call to AI Gateway's logs-list endpoint fails every attempt, exhausting its bounded retry budget (`docs/06-AGENTIC-CHAT.md` Section 6.6). Deployed, this should flip to "AI Gateway" within about 10-40 seconds of the turn completing; if it does not, confirm `npm run deploy:worker:secrets` actually ran (check Workers Logs for a `usage_reconcile_lookup_failed` entry) and that the token has `AI Gateway : Edit`. |
 
 ## Teardown
 

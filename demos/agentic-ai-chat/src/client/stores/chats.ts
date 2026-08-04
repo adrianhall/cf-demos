@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { shallowRef } from "vue";
+import type { ChatUsageSummary } from "../composables/useChatAgent";
 
 /**
  * A chat's governed AI Gateway dynamic route selection (docs/06-AGENTIC-CHAT.md Phase 4, US-3)
@@ -27,6 +28,11 @@ export interface Chat {
   createdAt: string;
   /** ISO 8601 timestamp of the chat's most recent activity. */
   updatedAt: string;
+  /** This chat's running cost/token totals (docs/06-AGENTIC-CHAT.md Section 6.6a, Phase 6,
+   * US-5) -- the sidebar's own REST-driven figure, deliberately distinct from the currently-open
+   * chat's live-pushed `useChatStore.usage` (Section 6.6a's documented asymmetry: a live
+   * connection already exists for the open chat, but not for every entry in this list). */
+  usage: ChatUsageSummary;
 }
 
 /** RFC 9457 error response shape used for safe client error messages. */

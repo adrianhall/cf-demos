@@ -23,6 +23,11 @@ output "ai_gateway_route_reasoning" {
   value       = cloudflare_ai_gateway_dynamic_routing.reasoning.name
 }
 
+output "cloudflare_account_id" {
+  description = "Cloudflare account id, bound to the Worker as the CLOUDFLARE_ACCOUNT_ID var -- needed to build the AI Gateway logs-list REST URL ChatAgent.reconcileUsage() calls (docs/06-AGENTIC-CHAT.md Section 6.6; no binding lists logs). Not a secret on its own -- paired with the CLOUDFLARE_API_TOKEN Wrangler secret (see package.json's deploy:worker:secrets script), which is."
+  value       = local.cloudflare_account_id
+}
+
 output "cloudflare_team_domain" {
   description = "Cloudflare Access team domain for Worker JWT validation."
   value       = local.cloudflare_team_domain

@@ -9,6 +9,8 @@ import type { ChatAgent, ChatAgentProps } from "../agent/chat-agent";
 import type { AppBindings } from "../bindings";
 import { CHAT_ROUTES, isChatRoute } from "../chats/route";
 import { ChatRepository } from "../chats/repository";
+import { UsageRepository } from "../usage/repository";
+import { emptyUsageSummary } from "../usage/types";
 
 /** Authenticated chat directory and agent-routing API mounted at `/api/chats`. */
 export const chatsRouter = new Hono<AppBindings>();
@@ -96,15 +98,27 @@ chatsRouter.patch("/:id", async (context) => {
 
 /**
  * List the signed-in identity's own chat directory, most recently updated first -- the
- * sidebar's listing (docs/06-AGENTIC-CHAT.md Phase 3, US-2). Conversation content itself is
- * never included here; a client loads a specific chat's history separately via
- * `GET /api/chats/:id/get-messages`.
+ * sidebar's listing (docs/06-AGENTIC-CHAT.md Phase 3, US-2), each entry now also carrying its
+ * running cost/token summary and estimated/gateway confirmation mix (Phase 6, US-5). Reads
+ * `aggregateForOwner()` in one query for every chat this identity owns, rather than waking each
+ * chat's own `ChatAgent` Durable Object to read `state.usage` -- Section 6.6a's documented,
+ * deliberate REST-driven path for the sidebar, distinct from the currently-open chat's own
+ * live-pushed total. Conversation content itself is never included here; a client loads a
+ * specific chat's history separately via `GET /api/chats/:id/get-messages`.
  */
 chatsRouter.get("/", async (context) => {
   const ownerEmail = context.get("Cloudflare_Access_Identity").email;
   const repository = new ChatRepository(context.env.DB);
-  const chats = await repository.listOwned(ownerEmail);
-  return context.json({ chats });
+  const [chats, usageByChat] = await Promise.all([
+    repository.listOwned(ownerEmail),
+    new UsageRepository(context.env.DB).aggregateForOwner(ownerEmail),
+  ]);
+  return context.json({
+    chats: chats.map((chat) => ({
+      ...chat,
+      usage: usageByChat.get(chat.id) ?? emptyUsageSummary(),
+    })),
+  });
 });
 
 /**

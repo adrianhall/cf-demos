@@ -21,7 +21,9 @@ export const useChatStore = defineStore("chat", () => {
     connectionStatus: agent.connectionStatus,
     isStreaming: agent.isStreaming,
     metadataUpdatedAt: agent.metadataUpdatedAt,
+    lastReconciliationEvent: agent.lastReconciliationEvent,
     send: agent.send,
     turns: agent.turns,
+    usage: agent.usage,
   };
 });

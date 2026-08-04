@@ -3,6 +3,7 @@
   "ai_gateway_id": "default",
   "ai_gateway_route_basic": "agentic-chat-local-basic",
   "ai_gateway_route_reasoning": "agentic-chat-local-reasoning",
+  "cloudflare_account_id": "00000000000000000000000000000000",
   "cloudflare_team_domain": "local.cloudflareaccess.com",
   "d1_database_id": "00000000-0000-0000-0000-000000000000",
   "d1_database_name": "agentic-chat-local-db",

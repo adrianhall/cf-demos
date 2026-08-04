@@ -1,5 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
+import { emptyUsageSummary } from "../composables/useChatAgent";
 import type { Chat } from "../stores/chats";
 import ChatSidebar from "./ChatSidebar.vue";
 
@@ -12,6 +13,7 @@ function chat(overrides: Partial<Chat> = {}): Chat {
     route: "basic",
     createdAt: "2026-08-01T00:00:00.000Z",
     updatedAt: "2026-08-01T00:00:00.000Z",
+    usage: emptyUsageSummary(),
     ...overrides,
   };
 }
@@ -99,6 +101,34 @@ describe("ChatSidebar", () => {
 
     expect(wrapper.emitted("remove")).toEqual([["a"]]);
     expect(wrapper.emitted("select")).toBeUndefined();
+  });
+
+  it("renders each chat's own cost/token summary badge", () => {
+    const wrapper = mount(ChatSidebar, {
+      props: {
+        chats: [
+          chat({
+            id: "a",
+            usage: {
+              totalCostUsd: 0.002,
+              totalPromptTokens: 30,
+              totalCompletionTokens: 60,
+              turnCount: 2,
+              confirmedTurnCount: 2,
+              lastUpdatedAt: "2026-08-01T00:00:00.000Z",
+            },
+          }),
+        ],
+        loading: false,
+        selectedId: null,
+      },
+    });
+
+    const badge = wrapper.get(".usage-badge");
+    expect(badge.classes()).toContain("compact");
+    expect(badge.get(".source-label").text()).toBe("AI Gateway");
+    // Compact mode omits the per-token breakdown and confirmation ratio.
+    expect(badge.find(".tokens").exists()).toBe(false);
   });
 
   it("labels the remove button with the chat's own title for accessibility", () => {

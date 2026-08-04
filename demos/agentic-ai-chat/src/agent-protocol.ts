@@ -51,3 +51,36 @@ export interface ChatRemovedFrame {
 export interface ChatMetadataUpdatedFrame {
   readonly type: "chat_metadata_updated";
 }
+
+/**
+ * Frame `ChatAgent.reconcileUsage()` broadcasts immediately after successfully upgrading a
+ * `chat_usage` row from a local estimate to AI Gateway's own authoritative logged figures
+ * (docs/06-AGENTIC-CHAT.md Section 6.6a, Phase 6, US-5). `setState()`'s own broadcast already
+ * delivers the corrected number to every connected client -- this frame exists purely so the UI
+ * can animate *this specific* badge flip (Estimated -> AI Gateway) instead of a generic
+ * re-render, since a client cannot otherwise tell "the number changed because a new turn
+ * happened" from "the number changed because an estimate was just confirmed" by diffing `state`
+ * alone.
+ */
+export interface UsageReconciledFrame {
+  readonly type: "usage_reconciled";
+  /** The `chat_usage` row that was just upgraded. */
+  readonly chatUsageId: string;
+  /** Always `"gateway"` -- included so the client-side handler's payload shape mirrors
+   * {@link UsageReconcileExhaustedFrame}'s, even though this frame's `type` alone already
+   * implies it. */
+  readonly costSource: "gateway";
+}
+
+/**
+ * Frame `ChatAgent.reconcileUsage()` broadcasts once its bounded retry budget (Section 6.6: an
+ * initial attempt plus two backoff retries, ~40s worst case) is exhausted with no matching AI
+ * Gateway log row ever found. The row is left `"estimated"` permanently -- a legitimate, visible
+ * outcome, not a bug to hide -- and this frame lets a connected client settle any "still
+ * checking" UI state instead of waiting indefinitely for a reconciliation that will not arrive.
+ */
+export interface UsageReconcileExhaustedFrame {
+  readonly type: "usage_reconcile_exhausted";
+  /** The `chat_usage` row whose reconciliation gave up. */
+  readonly chatUsageId: string;
+}

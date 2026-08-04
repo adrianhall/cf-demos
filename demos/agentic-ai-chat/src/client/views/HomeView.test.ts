@@ -3,6 +3,7 @@ import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it, vi } from "vitest";
 import RouteSelector from "../components/RouteSelector.vue";
+import { emptyUsageSummary } from "../composables/useChatAgent";
 import { useChatStore } from "../stores/chat";
 import { useChatsStore } from "../stores/chats";
 import { useSessionStore } from "../stores/session";
@@ -165,6 +166,7 @@ describe("HomeView", () => {
                     route: "basic",
                     createdAt: "2026-08-01T00:00:00.000Z",
                     updatedAt: "2026-08-01T00:00:00.000Z",
+                    usage: emptyUsageSummary(),
                   },
                 ],
               },
@@ -176,6 +178,49 @@ describe("HomeView", () => {
     });
 
     expect(wrapper.text()).toContain("Trip Planning");
+  });
+
+  it("renders the usage badge for the currently open chat", () => {
+    const wrapper = mount(HomeView, {
+      global: {
+        plugins: [
+          createTestingPinia({
+            createSpy: vi.fn,
+            initialState: {
+              session: { email: "alice@example.com" },
+              chats: {
+                selectedChatId: "chat-1",
+                chats: [
+                  {
+                    id: "chat-1",
+                    ownerEmail: "alice@example.com",
+                    title: null,
+                    route: "basic",
+                    createdAt: "2026-08-01T00:00:00.000Z",
+                    updatedAt: "2026-08-01T00:00:00.000Z",
+                    usage: emptyUsageSummary(),
+                  },
+                ],
+              },
+              chat: {
+                usage: {
+                  totalCostUsd: 0.001,
+                  totalPromptTokens: 10,
+                  totalCompletionTokens: 20,
+                  turnCount: 1,
+                  confirmedTurnCount: 0,
+                  lastUpdatedAt: "2026-08-01T00:00:00.000Z",
+                },
+              },
+            },
+          }),
+        ],
+        stubs,
+      },
+    });
+
+    const headerBadge = wrapper.get(".conversation-header .usage-badge");
+    expect(headerBadge.get(".source-label").text()).toBe("Estimated");
   });
 
   it("renders the route selector for the currently open chat, reflecting its persisted route", () => {
@@ -196,6 +241,7 @@ describe("HomeView", () => {
                     route: "reasoning",
                     createdAt: "2026-08-01T00:00:00.000Z",
                     updatedAt: "2026-08-01T00:00:00.000Z",
+                    usage: emptyUsageSummary(),
                   },
                 ],
               },
@@ -229,6 +275,7 @@ describe("HomeView", () => {
                     route: "basic",
                     createdAt: "2026-08-01T00:00:00.000Z",
                     updatedAt: "2026-08-01T00:00:00.000Z",
+                    usage: emptyUsageSummary(),
                   },
                 ],
               },
@@ -266,6 +313,7 @@ describe("HomeView", () => {
         route: "basic",
         createdAt: "2026-08-01T00:00:00.000Z",
         updatedAt: "2026-08-01T00:00:00.000Z",
+        usage: emptyUsageSummary(),
       },
     ];
     chatsStore.select("chat-1");
@@ -292,6 +340,7 @@ describe("HomeView", () => {
         route: "basic",
         createdAt: "2026-08-01T00:00:00.000Z",
         updatedAt: "2026-08-01T00:00:00.000Z",
+        usage: emptyUsageSummary(),
       },
     ];
     chatsStore.select("chat-1");

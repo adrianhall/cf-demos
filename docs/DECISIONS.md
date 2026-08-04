@@ -923,3 +923,55 @@ cleanly, but the directory entry — the actual thing this route promises — is
 failure must not be allowed to abort an operation with its own separate, more important
 success criterion) should assume the same: a Durable Object RPC call's own promise settling
 cleanly is not a load-bearing assumption, even when the SDK's own source comments say it is.
+
+## NEW DECISIONS
+
+## 22. Testing an Agents-SDK `Agent` subclass's own logic, a Wrangler-native way to type a
+    secret with no committed value, and D1's `UPDATE ... RETURNING` — three findings from
+    `demos/agentic-ai-chat`'s Phase 6 cost ledger
+
+**An `Agent`/`AIChatAgent` subclass cannot be imported into a plain-Node Vitest project at
+all, let alone unit-tested with a mocked `this`.** Attempting a `chat-agent.test.ts` under this
+demo's `worker` project (`environment: "node"`) failed immediately with `Error: Only URLs with
+a scheme in: file, data, and node are supported by the default ESM loader. Received protocol
+'cloudflare:'` — both `agents` and `@cloudflare/ai-chat` import `cloudflare:workers`/
+`cloudflare:email` at module top level, so the class cannot even be loaded outside a real
+`workerd` runtime, independent of what a test does with it afterward. **The working
+alternative:** call the real, unmodified method directly against the real, already-running
+Durable Object instance via `runInDurableObject()` (`cloudflare:test`), obtained the same way
+`chat.test.ts`'s own pre-existing "no props" test already does
+(`env.CHAT_AGENT.getByName(id)`) — no mocked `Agent` base is needed, and every branch
+(`ChatAgent.reconcileUsage()`'s success/not-yet-available/exhausted-retries/target-disappeared
+paths) is exercised by substituting only the one collaborator that would otherwise make a real
+network call (the AI Gateway logs-list REST endpoint), via a `withFakeFetch()` helper that
+temporarily reassigns `globalThis.fetch` — the same `env`-substitution spirit
+`withFakeAi()`/`withThrowingDb()` (item 17) already established, applied to a global rather
+than a binding. This sidesteps waiting on the method's own real 10s/+15s/+15s schedule delays
+entirely, since it is called directly rather than through `this.schedule()`.
+
+**A Wrangler secret can be typed on the generated `Env` with no literal value ever written to
+`wrangler.jsonc`, via the config schema's `secrets.required` array** — confirmed against the
+pinned `wrangler@4.115.0`'s own `config-schema.json`. Declaring
+`"secrets": { "required": ["CLOUDFLARE_API_TOKEN"] }` alongside `vars` in `wrangler.jsonc.tpl`
+is what makes `generate-wrangler-types`/`wrangler types` emit `CLOUDFLARE_API_TOKEN: string;`
+on `Env` at all; the field's own real value is pushed separately and only at deploy time via
+`wrangler secret put`, reading this repo's own `.env` (`node --env-file=../.env -e
+"process.stdout.write(process.env.CLOUDFLARE_API_TOKEN)" | wrangler secret put
+CLOUDFLARE_API_TOKEN` — an inline `package.json` script, per AGENTS.md's "only add a custom
+script when the task cannot be expressed atomically" rule; piping the value through `node
+--env-file` rather than `echo` avoids ever placing the secret literally in a shell command).
+Without this field, Wrangler otherwise infers a Worker's secrets from `.dev.vars`/`.env`/
+`process.env` for type-generation purposes — but this repo's own committed `.dev.vars`
+deliberately holds no secrets, so that inference would never see this one at all. Documented
+here since this is the first Wrangler secret introduced anywhere in this repo.
+
+**D1 supports `UPDATE ... RETURNING`, and the returned row surfaces through the ordinary
+`run()` method's existing `results` array — no separate `SELECT` needed.**
+`UsageRepository.incrementReconcileAttempts()` needs the row's *new* attempt count in the same
+round trip as the increment itself (to decide, in the caller, whether the bounded retry budget
+is now exhausted); `UPDATE chat_usage SET reconcile_attempts = reconcile_attempts + 1 ...
+RETURNING reconcile_attempts`, called via `.bind(...).run<{ reconcile_attempts: number }>()`,
+returns that row in `result.results[0]` exactly like a `SELECT` would, alongside the usual
+`meta.changes`. A future demo needing "update and read back the new value atomically" should
+reach for this instead of a separate `UPDATE` followed by `SELECT` (two round trips, and a
+window — however small — for another write to land in between).

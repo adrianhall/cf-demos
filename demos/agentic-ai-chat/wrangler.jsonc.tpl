@@ -17,8 +17,20 @@
     // id (Section 6.3's "resolve by exact match" rule).
     "AI_GATEWAY_ROUTE_BASIC": "{{ai_gateway_route_basic}}",
     "AI_GATEWAY_ROUTE_REASONING": "{{ai_gateway_route_reasoning}}",
+    // Needed to build the AI Gateway logs-list REST URL ChatAgent.reconcileUsage() calls
+    // (docs/06-AGENTIC-CHAT.md Section 6.6 -- no binding lists logs). Not a secret on its own;
+    // paired with the CLOUDFLARE_API_TOKEN Wrangler secret below, which is.
+    "CLOUDFLARE_ACCOUNT_ID": "{{cloudflare_account_id}}",
     "CLOUDFLARE_TEAM_DOMAIN": "{{cloudflare_team_domain}}",
     "ENVIRONMENT": "{{environment}}"
+  },
+  // CLOUDFLARE_API_TOKEN itself is a Wrangler secret, not a var -- pushed by
+  // `npm run deploy:worker:secrets` from this repo's own .env, never committed here (see
+  // AGENTS.md's "Observability And Security" section and package.json's deploy:worker chain).
+  // Declaring it as `required` here (rather than leaving Wrangler to infer it from `.dev.vars`)
+  // is what makes `generate-wrangler-types` emit it on the generated `Env` type at all.
+  "secrets": {
+    "required": ["CLOUDFLARE_API_TOKEN"]
   },
   "d1_databases": [
     {

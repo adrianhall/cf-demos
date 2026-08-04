@@ -2,6 +2,8 @@
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import FeatherIcon from "vue-feather";
 import type { Chat } from "../stores/chats";
+// biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
+import UsageBadge from "./UsageBadge.vue";
 
 /** Properties supplied to the chat sidebar (docs/06-AGENTIC-CHAT.md Phase 3, US-2). */
 interface Props {
@@ -58,7 +60,10 @@ function chatLabel(chat: Chat): string {
           @click="emit('select', item.id)"
         >
           <FeatherIcon aria-hidden="true" size="16" type="message-square" />
-          <span class="chat-title">{{ chatLabel(item) }}</span>
+          <span class="chat-title-group">
+            <span class="chat-title">{{ chatLabel(item) }}</span>
+            <UsageBadge class="chat-usage" compact :usage="item.usage" />
+          </span>
         </button>
         <button
           class="remove-button"
@@ -146,10 +151,21 @@ function chatLabel(chat: Chat): string {
   font-weight: 600;
 }
 
+.chat-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
 .chat-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-usage {
+  overflow: hidden;
 }
 
 .remove-button {

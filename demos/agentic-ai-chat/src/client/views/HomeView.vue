@@ -8,6 +8,8 @@ import ChatSidebar from "../components/ChatSidebar.vue";
 import ChatTranscript from "../components/ChatTranscript.vue";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import RouteSelector from "../components/RouteSelector.vue";
+// biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
+import UsageBadge from "../components/UsageBadge.vue";
 import type { ChatRoute } from "../stores/chats";
 import { useChatStore } from "../stores/chat";
 import { useChatsStore } from "../stores/chats";
@@ -95,6 +97,10 @@ watch(
           v-if="chatsStore.selectedChatId && chat.connectionStatus !== 'removed'"
         >
           <div v-if="selectedChat" class="conversation-header">
+            <UsageBadge
+              :last-reconciliation-event="chat.lastReconciliationEvent"
+              :usage="chat.usage"
+            />
             <RouteSelector
               :disabled="chat.turns.length > 0"
               :route="selectedChat.route"
@@ -145,7 +151,9 @@ watch(
   align-items: center;
   border-bottom: 1px solid rgb(var(--v-theme-outline-variant));
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
   padding: 0.75rem 1rem;
 }
 

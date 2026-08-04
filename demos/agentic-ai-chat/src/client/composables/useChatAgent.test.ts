@@ -324,6 +324,132 @@ describe("useChatAgent", () => {
     expect(result.metadataUpdatedAt.value).toBeGreaterThan(0);
   });
 
+  it("starts with a zeroed usage summary and updates it from a cf_agent_state frame", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    expect(result.usage.value).toEqual({
+      totalCostUsd: 0,
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+      turnCount: 0,
+      confirmedTurnCount: 0,
+      lastUpdatedAt: null,
+    });
+    const socket = await latestSocket();
+    socket.simulateOpen();
+
+    socket.simulateMessage({
+      type: "cf_agent_state",
+      state: {
+        usage: {
+          totalCostUsd: 0.001,
+          totalPromptTokens: 10,
+          totalCompletionTokens: 20,
+          turnCount: 1,
+          confirmedTurnCount: 0,
+          lastUpdatedAt: "2026-08-03T00:00:00.000Z",
+        },
+      },
+    });
+
+    expect(result.usage.value).toEqual({
+      totalCostUsd: 0.001,
+      totalPromptTokens: 10,
+      totalCompletionTokens: 20,
+      turnCount: 1,
+      confirmedTurnCount: 0,
+      lastUpdatedAt: "2026-08-03T00:00:00.000Z",
+    });
+  });
+
+  it("captures a usage_reconciled broadcast into lastReconciliationEvent", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+    expect(result.lastReconciliationEvent.value).toBeNull();
+
+    socket.simulateMessage({
+      type: "usage_reconciled",
+      chatUsageId: "usage-1",
+      costSource: "gateway",
+    });
+
+    expect(result.lastReconciliationEvent.value).toMatchObject({
+      type: "usage_reconciled",
+      chatUsageId: "usage-1",
+    });
+    expect(result.lastReconciliationEvent.value?.receivedAt).toBeGreaterThan(0);
+  });
+
+  it("captures a usage_reconcile_exhausted broadcast into lastReconciliationEvent", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+
+    socket.simulateMessage({
+      type: "usage_reconcile_exhausted",
+      chatUsageId: "usage-2",
+    });
+
+    expect(result.lastReconciliationEvent.value).toMatchObject({
+      type: "usage_reconcile_exhausted",
+      chatUsageId: "usage-2",
+    });
+  });
+
+  it("resets usage and lastReconciliationEvent when switching to a different chat", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(historyResponse([]))
+        .mockResolvedValueOnce(historyResponse([])),
+    );
+    const chatId = ref("chat-1");
+    const result = scope.run(() => useChatAgent(chatId));
+    if (!result) throw new Error("effectScope did not run");
+    const firstSocket = await latestSocket();
+    firstSocket.simulateOpen();
+    firstSocket.simulateMessage({
+      type: "cf_agent_state",
+      state: {
+        usage: {
+          totalCostUsd: 1,
+          totalPromptTokens: 1,
+          totalCompletionTokens: 1,
+          turnCount: 1,
+          confirmedTurnCount: 1,
+          lastUpdatedAt: "2026-08-03T00:00:00.000Z",
+        },
+      },
+    });
+    firstSocket.simulateMessage({
+      type: "usage_reconciled",
+      chatUsageId: "usage-1",
+      costSource: "gateway",
+    });
+    expect(result.usage.value.turnCount).toBe(1);
+    expect(result.lastReconciliationEvent.value).not.toBeNull();
+
+    chatId.value = "chat-2";
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(2));
+
+    expect(result.usage.value).toEqual({
+      totalCostUsd: 0,
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+      turnCount: 0,
+      confirmedTurnCount: 0,
+      lastUpdatedAt: null,
+    });
+    expect(result.lastReconciliationEvent.value).toBeNull();
+  });
+
   it("stays idle and opens no socket when chatId is null", async () => {
     vi.stubGlobal("fetch", vi.fn());
 

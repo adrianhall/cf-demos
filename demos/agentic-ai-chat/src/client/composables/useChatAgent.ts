@@ -36,6 +36,56 @@ export interface ChatTurn {
   readonly errorDetail: string | null;
 }
 
+/** A chat's running cost/token totals (docs/06-AGENTIC-CHAT.md Section 6.6a) -- mirrors
+ * `src/worker/usage/types.ts`'s `ChatUsageSummary` (duplicated here, not imported, matching
+ * `../stores/chats.ts`'s existing convention of defining its own client-side shape rather than
+ * importing the Worker's). This is `ChatAgent.State`'s own shape, synced automatically to every
+ * connected client -- never fetched separately. */
+export interface ChatUsageSummary {
+  /** Sum of every completed turn's cost, regardless of whether it is still an estimate. */
+  readonly totalCostUsd: number;
+  /** Sum of every completed turn's prompt (input) tokens. */
+  readonly totalPromptTokens: number;
+  /** Sum of every completed turn's completion (output) tokens. */
+  readonly totalCompletionTokens: number;
+  /** Total number of completed turns contributing to this total. */
+  readonly turnCount: number;
+  /** How many of those turns' figures are AI-Gateway-confirmed rather than estimated. */
+  readonly confirmedTurnCount: number;
+  /** The most recent contributing turn's timestamp, or `null` before any turn completes. */
+  readonly lastUpdatedAt: string | null;
+}
+
+/** A {@link ChatUsageSummary} with every figure zeroed -- the value this composable exposes
+ * before a chat's first `cf_agent_state` frame ever arrives. */
+export function emptyUsageSummary(): ChatUsageSummary {
+  return {
+    totalCostUsd: 0,
+    totalPromptTokens: 0,
+    totalCompletionTokens: 0,
+    turnCount: 0,
+    confirmedTurnCount: 0,
+    lastUpdatedAt: null,
+  };
+}
+
+/**
+ * One reconciliation transition event (docs/06-AGENTIC-CHAT.md Section 6.6a) -- mirrors
+ * `../../agent-protocol.ts`'s `UsageReconciledFrame`/`UsageReconcileExhaustedFrame`, plus a
+ * `receivedAt` timestamp so a watcher can distinguish two structurally-identical events (for
+ * example two different turns both eventually exhausting) as genuinely separate occurrences to
+ * animate, rather than a no-op re-render of an unchanged value.
+ */
+export interface UsageReconciliationEvent {
+  /** Which transition occurred -- a successful upgrade, or the bounded retry budget spent with
+   * nothing found. */
+  readonly type: "usage_reconciled" | "usage_reconcile_exhausted";
+  /** The `chat_usage` row this event is about. */
+  readonly chatUsageId: string;
+  /** When this composable observed the event (`Date.now()`), for watcher dedup/animation. */
+  readonly receivedAt: number;
+}
+
 /** Lifecycle of the composable's live connection to one chat's `ChatAgent` Durable Object.
  * `"removed"` is distinct from `"error"`: it means the chat itself was deleted (its
  * `ChatAgent.destroy()` notified this connection, docs/06-AGENTIC-CHAT.md Section 11), not that
@@ -66,6 +116,24 @@ export interface UseChatAgentResult {
    * this method's writes land, confirmed live (`docs/06-AGENTIC-CHAT.md` Section 11).
    */
   readonly metadataUpdatedAt: Readonly<ShallowRef<number>>;
+  /**
+   * This chat's current cost/token totals (docs/06-AGENTIC-CHAT.md Section 6.6a, Phase 6,
+   * US-5) -- `ChatAgent.State.usage`, kept current automatically via the Agent WebSocket
+   * protocol's own `cf_agent_state` frame (both on every push and on initial connect
+   * hydration), never fetched separately. Zeroed ({@link emptyUsageSummary}) before the first
+   * such frame arrives for this chat.
+   */
+  readonly usage: Readonly<ShallowRef<ChatUsageSummary>>;
+  /**
+   * The most recent reconciliation transition this chat has observed (Section 6.6a) --
+   * `null` until the first one arrives for the current chat. A component should watch this
+   * (rather than diffing {@link usage} itself) to know *when* to play a badge-flip animation,
+   * since a change in `usage`'s numbers alone cannot distinguish "a new turn happened" from "an
+   * estimate was just confirmed."
+   */
+  readonly lastReconciliationEvent: Readonly<
+    ShallowRef<UsageReconciliationEvent | null>
+  >;
   /**
    * Submit one new user turn. A no-op when `text` trims to empty, no chat is connected, or a
    * turn is already streaming (mirrors demo 5's `useChatStore.submit()` guard).
@@ -181,6 +249,10 @@ export function useChatAgent(
     turns.value.some((turn) => turn.status === "streaming"),
   );
   const metadataUpdatedAt = shallowRef(0);
+  const usage = shallowRef<ChatUsageSummary>(emptyUsageSummary());
+  const lastReconciliationEvent = shallowRef<UsageReconciliationEvent | null>(
+    null,
+  );
 
   let client: AgentClient | null = null;
   const pendingRequests = new Map<string, PendingRequest>();
@@ -273,6 +345,19 @@ export function useChatAgent(
       handleRemoval();
     } else if (parsed.type === "chat_metadata_updated") {
       metadataUpdatedAt.value = Date.now();
+    } else if (
+      parsed.type === "usage_reconciled" ||
+      parsed.type === "usage_reconcile_exhausted"
+    ) {
+      // `usage` itself is already current by the time either of these arrives -- the server
+      // always calls `setState()` before `broadcast()` for the same transition
+      // (`ChatAgent.reconcileUsage()`) -- this event exists purely so a badge can animate the
+      // specific Estimated -> AI Gateway (or -> exhausted) transition (Section 6.6a).
+      lastReconciliationEvent.value = {
+        type: parsed.type,
+        chatUsageId: (parsed as { chatUsageId: string }).chatUsageId,
+        receivedAt: Date.now(),
+      };
     }
   }
 
@@ -301,6 +386,8 @@ export function useChatAgent(
   async function connect(id: string, isStale: () => boolean): Promise<void> {
     connectionStatus.value = "connecting";
     turns.value = [];
+    usage.value = emptyUsageSummary();
+    lastReconciliationEvent.value = null;
 
     let history: ChatTurn[];
     try {
@@ -320,6 +407,17 @@ export function useChatAgent(
       agent: "ChatAgent",
       basePath: `api/chats/${encodeURIComponent(id)}/ws`,
       host: window.location.host,
+      // The Agent WebSocket protocol's own `cf_agent_state` frame -- delivered both on initial
+      // connect (hydrating whatever this chat's state already is) and on every later
+      // `setState()` push (docs/06-AGENTIC-CHAT.md Section 6.6a). This is `AgentClient`'s own
+      // documented hook for exactly this, rather than re-parsing the frame in `handleMessage`
+      // (which never sees it as a distinct case to act on -- `AgentClient`'s own internal
+      // "message" listener already updates `socket.state` and fires this callback for it,
+      // independent of and in addition to this composable's own listener, per Spike A Section
+      // 8; both listeners see every frame, since neither stops propagation).
+      onStateUpdate: (state) => {
+        usage.value = (state as { usage: ChatUsageSummary }).usage;
+      },
     });
     client = socket;
 
@@ -428,5 +526,13 @@ export function useChatAgent(
     );
   }
 
-  return { turns, connectionStatus, isStreaming, metadataUpdatedAt, send };
+  return {
+    turns,
+    connectionStatus,
+    isStreaming,
+    metadataUpdatedAt,
+    usage,
+    lastReconciliationEvent,
+    send,
+  };
 }

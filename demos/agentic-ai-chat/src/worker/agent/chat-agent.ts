@@ -4,6 +4,7 @@ import {
   generateText,
   type GenerateTextOnFinishCallback,
   type LanguageModel,
+  type LanguageModelUsage,
   streamText,
   type ToolSet,
 } from "ai";
@@ -12,7 +13,10 @@ import {
   CHAT_REMOVED_CLOSE_CODE,
   type ChatMetadataUpdatedFrame,
   type ChatRemovedFrame,
+  type UsageReconcileExhaustedFrame,
+  type UsageReconciledFrame,
 } from "../../agent-protocol";
+import { findLogByCorrelationId } from "../ai-gateway/logs";
 import { ChatRepository } from "../chats/repository";
 import {
   type ChatRoute,
@@ -20,6 +24,9 @@ import {
   resolveDynamicRouteModelId,
 } from "../chats/route";
 import { sanitizeTitle } from "../chats/title";
+import { estimateCostUsd, modelIdForRoute } from "../usage/pricing";
+import { UsageRepository } from "../usage/repository";
+import { type ChatUsageSummary, emptyUsageSummary } from "../usage/types";
 
 /**
  * System prompt for Phase 3's auto-title generation (US-2): a second, non-streaming `env.AI`
@@ -30,6 +37,47 @@ const TITLE_SYSTEM_PROMPT =
   "Generate a short chat title (four words or fewer) summarizing the conversation below. " +
   "Respond with only the title text -- no quotation marks, no trailing punctuation, no " +
   "preamble.";
+
+/**
+ * Delay (seconds) before `reconcileUsage()`'s first attempt, scheduled from `onFinish` the
+ * moment a turn's estimated `chat_usage` row is written. Spike F measured 267ms-4,731ms
+ * (~2.2s average) of real lag between a call completing and its log row becoming queryable via
+ * the logs-list endpoint on a freshly created, otherwise-idle dedicated gateway -- 10s gives
+ * comfortable headroom above that on this demo's own shared gateway (docs/06-AGENTIC-CHAT.md
+ * Section 6.6).
+ */
+const INITIAL_RECONCILE_DELAY_SECONDS = 10;
+
+/** Backoff (seconds) applied to each retry after the first reconciliation attempt finds nothing
+ * yet (Section 6.6). */
+const RECONCILE_BACKOFF_SECONDS = 15;
+
+/** Bounded retry budget: the initial attempt plus this many more before a still-unreconciled
+ * row is left `"estimated"` permanently (Section 6.6 -- "a legitimate, visible outcome, not a
+ * bug to hide"). Three attempts total, ~40s worst case (10s + 15s + 15s). */
+const MAX_RECONCILE_ATTEMPTS = 3;
+
+/**
+ * Payload `reconcileUsage()`'s own scheduled task carries (docs/06-AGENTIC-CHAT.md Section 6.6,
+ * Phase 6). Serialized to the Agents SDK's own schedule storage, so every field must be a plain,
+ * structured-clone-friendly value.
+ */
+export interface ReconcileUsagePayload {
+  /** The `chat_usage` row this task is trying to reconcile. */
+  readonly chatUsageId: string;
+  /** The same turn's correlation id -- the only key `findLogByCorrelationId()` can look up. */
+  readonly correlationId: string;
+}
+
+/** State this class's `AIChatAgent`/`Agent` base persists and syncs to every connected client
+ * (docs/06-AGENTIC-CHAT.md Section 6.6a). Spike A confirmed `AIChatAgent` occupies no part of
+ * this generic for message history (that lives entirely in its own dedicated SQLite tables), so
+ * this shape is free to hold only this demo's own aggregate projection. */
+export interface ChatAgentState {
+  /** This chat's current cost/token totals, always re-derived from D1's `chat_usage` table
+   * (`UsageRepository.aggregateForChat()`) -- never independently mutated. */
+  readonly usage: ChatUsageSummary;
+}
 
 /**
  * Props threaded into a `ChatAgent` instance by `getAgentByName()` at routing time (delivered to
@@ -54,7 +102,15 @@ export interface ChatAgentProps extends Record<string, unknown> {
  * subclass's only job is to answer each turn by calling `streamText()` against Workers AI,
  * routed through AI Gateway.
  */
-export class ChatAgent extends AIChatAgent<Env, unknown, ChatAgentProps> {
+export class ChatAgent extends AIChatAgent<
+  Env,
+  ChatAgentState,
+  ChatAgentProps
+> {
+  /** This chat's initial, pre-first-turn cost/token state (docs/06-AGENTIC-CHAT.md Section
+   * 6.6a) -- overridden per Agent's own "override to provide default state values" contract. */
+  override initialState: ChatAgentState = { usage: emptyUsageSummary() };
+
   /** Captured from `props` on first start; never trusted from client-supplied message data. */
   private ownerEmail: string | undefined;
 
@@ -109,6 +165,10 @@ export class ChatAgent extends AIChatAgent<Env, unknown, ChatAgentProps> {
     options?: OnChatMessageOptions,
   ): Promise<Response | undefined> {
     const workersai = createWorkersAI({ binding: this.env.AI });
+    // Minted before the call, per docs/06-AGENTIC-CHAT.md Section 6.6/Spike F: this is the
+    // *only* way to later find this turn's own AI Gateway log row. `env.AI.aiGatewayLogId` is
+    // always `null` for a dynamic-route call, so it cannot be used for this instead.
+    const correlationId = crypto.randomUUID();
     // Governed model selection (docs/06-AGENTIC-CHAT.md Phase 4, US-3): `this.route` is never a
     // client-supplied model id -- it is one of exactly two literal strings, resolved here to the
     // real AI Gateway dynamic route name via Terraform-sourced Worker vars
@@ -117,7 +177,7 @@ export class ChatAgent extends AIChatAgent<Env, unknown, ChatAgentProps> {
     // model that route actually resolves to is editable in the AI Gateway dashboard without a
     // Worker redeploy.
     const model = workersai(resolveDynamicRouteModelId(this.route, this.env), {
-      gateway: { id: this.env.AI_GATEWAY_ID },
+      gateway: { id: this.env.AI_GATEWAY_ID, metadata: { correlationId } },
     });
 
     const result = streamText({
@@ -129,11 +189,166 @@ export class ChatAgent extends AIChatAgent<Env, unknown, ChatAgentProps> {
       abortSignal: options?.abortSignal,
       onFinish: async (event) => {
         await onFinish(event);
+        await this.recordTurnUsage(correlationId, event.usage);
         await this.afterTurnCompleted(model);
       },
     });
 
     return result.toUIMessageStreamResponse();
+  }
+
+  /**
+   * Write this turn's immediately-available local cost/token estimate (docs/06-AGENTIC-CHAT.md
+   * Section 6.6, Phase 6, US-5), push the refreshed running total to every connected client, and
+   * schedule the first attempt to upgrade it to AI Gateway's own authoritative figure. Called
+   * only from `onChatMessage()`'s `onFinish` wrapper -- a turn that never reaches `onFinish`
+   * (aborted, errored before first token) correctly never calls this at all, so it can never
+   * write a row or push a stale total for a turn the client never saw complete.
+   *
+   * Best-effort and independently guarded, matching {@link afterTurnCompleted}'s own resilience
+   * principle: the model's answer has already fully streamed back to the client by the time
+   * this runs, so a D1/scheduling failure here must never surface as a failed turn.
+   *
+   * @param correlationId This turn's correlation id, minted by `onChatMessage()` before the
+   * model call.
+   * @param usage `streamText()`'s own reported token usage for the completed turn.
+   */
+  private async recordTurnUsage(
+    correlationId: string,
+    usage: LanguageModelUsage,
+  ): Promise<void> {
+    const chatId = this.name;
+    const repository = new UsageRepository(this.env.DB);
+    const model = modelIdForRoute(this.route);
+    // `inputTokens`/`outputTokens` are typed `number | undefined` by the `ai` SDK itself (some
+    // providers never report usage at all) -- `workers-ai-provider` always synthesizes a
+    // numeric value for this demo's own fake/real models, so this fallback is defensive against
+    // a provider that does not, not something this demo's own test fixtures can force `??` to
+    // actually branch on.
+    const promptTokens = usage.inputTokens ?? 0;
+    const completionTokens = usage.outputTokens ?? 0;
+    const costUsd = estimateCostUsd(model, promptTokens, completionTokens);
+
+    try {
+      const row = await repository.insertEstimated({
+        chatId,
+        model,
+        promptTokens,
+        completionTokens,
+        costUsd,
+        correlationId,
+      });
+      await this.refreshUsageState();
+      await this.schedule<ReconcileUsagePayload>(
+        INITIAL_RECONCILE_DELAY_SECONDS,
+        "reconcileUsage",
+        { chatUsageId: row.id, correlationId },
+      );
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "usage_record_failed",
+          chatId,
+          correlationId,
+          error: String(error),
+        }),
+      );
+    }
+  }
+
+  /**
+   * Re-aggregate this chat's own `chat_usage` rows and push the fresh total via `setState()`
+   * (docs/06-AGENTIC-CHAT.md Section 6.6a). Called after every write to the ledger --
+   * {@link recordTurnUsage}'s initial insert and {@link reconcileUsage}'s successful upgrade --
+   * so `state.usage` is always derived from D1, never independently incremented in two places.
+   * `setState()` is a full state replacement (Spike A), so this always passes a complete
+   * {@link ChatAgentState}.
+   */
+  private async refreshUsageState(): Promise<void> {
+    const summary = await new UsageRepository(this.env.DB).aggregateForChat(
+      this.name,
+    );
+    this.setState({ usage: summary });
+  }
+
+  /**
+   * Agents SDK scheduled-task handler (docs/06-AGENTIC-CHAT.md Section 6.6): looks for this
+   * turn's real AI Gateway log row by correlation id and, once found, upgrades the `chat_usage`
+   * row in place from `"estimated"` to `"gateway"`. Covers a failed-but-logged turn identically
+   * to a successful one (Spike F: a failed dynamic-route call still produces its own
+   * correlatable log row) -- no special case is needed for that path.
+   *
+   * A REST-call failure (network, credentials) is logged distinctly from a genuinely empty
+   * result, but both fall through to the same bounded-retry path below: neither should ever
+   * throw out of a scheduled task, since a scheduled-task exception has no request to surface
+   * to and would otherwise leave this turn's ledger row stuck mid-reconciliation.
+   *
+   * @param payload The `chat_usage` row and correlation id to reconcile, from
+   * {@link recordTurnUsage}'s initial schedule call or a prior attempt's own backoff reschedule.
+   */
+  async reconcileUsage(payload: ReconcileUsagePayload): Promise<void> {
+    const repository = new UsageRepository(this.env.DB);
+
+    let match: Awaited<ReturnType<typeof findLogByCorrelationId>> = null;
+    try {
+      match = await findLogByCorrelationId(payload.correlationId, {
+        accountId: this.env.CLOUDFLARE_ACCOUNT_ID,
+        gatewayId: this.env.AI_GATEWAY_ID,
+        apiToken: this.env.CLOUDFLARE_API_TOKEN,
+      });
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "usage_reconcile_lookup_failed",
+          chatUsageId: payload.chatUsageId,
+          correlationId: payload.correlationId,
+          error: String(error),
+        }),
+      );
+    }
+
+    if (match !== null) {
+      const updated = await repository.reconcileWithGatewayLog(
+        payload.correlationId,
+        match,
+      );
+      // `updated === false` means the row (or the whole chat) disappeared between scheduling
+      // and this task running (docs/06-AGENTIC-CHAT.md Section 11) -- exit cleanly, no
+      // broadcast to a target that no longer exists.
+      if (updated) {
+        await this.refreshUsageState();
+        this.broadcast(
+          JSON.stringify({
+            type: "usage_reconciled",
+            chatUsageId: payload.chatUsageId,
+            costSource: "gateway",
+          } satisfies UsageReconciledFrame),
+        );
+      }
+      return;
+    }
+
+    const attempts = await repository.incrementReconcileAttempts(
+      payload.correlationId,
+    );
+    if (attempts === null) {
+      // Section 11: the row's target has disappeared -- exit cleanly, not an error.
+      return;
+    }
+    if (attempts >= MAX_RECONCILE_ATTEMPTS) {
+      this.broadcast(
+        JSON.stringify({
+          type: "usage_reconcile_exhausted",
+          chatUsageId: payload.chatUsageId,
+        } satisfies UsageReconcileExhaustedFrame),
+      );
+      return;
+    }
+    await this.schedule<ReconcileUsagePayload>(
+      RECONCILE_BACKOFF_SECONDS,
+      "reconcileUsage",
+      payload,
+    );
   }
 
   /**

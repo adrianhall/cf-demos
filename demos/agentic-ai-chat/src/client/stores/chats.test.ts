@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { emptyUsageSummary } from "../composables/useChatAgent";
 import { type Chat, useChatsStore } from "./chats";
 
 /** A stable chat fixture returned by mocked API responses. */
@@ -11,6 +12,7 @@ function chat(overrides: Partial<Chat> = {}): Chat {
     route: "basic",
     createdAt: "2026-08-01T00:00:00.000Z",
     updatedAt: "2026-08-01T00:00:00.000Z",
+    usage: emptyUsageSummary(),
     ...overrides,
   };
 }

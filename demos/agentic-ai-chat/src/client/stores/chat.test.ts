@@ -105,6 +105,20 @@ describe("useChatStore", () => {
     expect(firstSocket.readyState).toBe(MockWebSocket.CLOSED);
   });
 
+  it("exposes usage and lastReconciliationEvent, defaulting to zeroed/null", () => {
+    const store = useChatStore();
+
+    expect(store.usage).toEqual({
+      totalCostUsd: 0,
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+      turnCount: 0,
+      confirmedTurnCount: 0,
+      lastUpdatedAt: null,
+    });
+    expect(store.lastReconciliationEvent).toBeNull();
+  });
+
   it("goes idle again when the chats store clears its selection", async () => {
     const store = useChatStore();
     const chatsStore = useChatsStore();
