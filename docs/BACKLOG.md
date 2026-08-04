@@ -162,8 +162,6 @@ Keep out:
 - Persistent conversations, tools, RAG, agents, and external providers.
 - Audio recording (speech-to-text).
 
-## Pending Apps
-
 ### 6. Agentic AI Chat
 
 Directory: `demos/agentic-ai-chat`
@@ -216,7 +214,47 @@ This demo seeks to emulate "Gemini AI Chat" using Cloudflare capabilities.  Thin
 
 **Note**: Unlike the previous demos, this demo should be broken into user stories - beyond the basic "agentic chat", each feature or user story is its own phase.  Tag each phase when checking it in so that we can diff between phases.
 
-### 7. Cooperative Architect Drawing
+## Pending Apps
+
+### 7. PR Review Agent
+
+Directory: `demos/review-agent`
+
+Domain: `review-agent.cfapps.uk`
+
+Using agentic AI tools, provide a PR (Pull Request) or MR (Merge Request) review agent for GitHub and GitLab, covering software architecture, code quality, accessibility, and security.  At the end, the consolidated review is added to the PR as a comment and the full report is available as a report within the UI.  The review can be triggered either by a webhook (from GitHub/GitLab) OR by entering the PR URL into the UI.
+
+While the review is ongoing, the UI will show what agents are doing and the costs associated with the PR review (when available).
+
+The repo <https://github.com/adrianhall/opencode-setup> contains a set of OpenCode agents for this purpose.  It is generally run as OpenCode agents on the checked out PR. The [reviewbot-agent](../../reviewbot-agent/) provides a "lab" version of a reviewbot that uses chat to trigger the review.  This is formed from the lab at <https://agents-school.tiwi.me>.
+
+### 8. SWAPI (StarWars API) GraphQL Service
+
+Directory: `demos/swapi-graphql`
+
+Domain: `swapi-graphql.cfapps.uk`
+
+Cloudflare products: Workers and D1.
+
+**Behavior:**
+
+- Provide a read-only GraphQL API over Star Wars data (SWAPI) — six entity
+  types (`Film`, `Person`, `Planet`, `Species`, `Starship`, `Vehicle`) and
+  their one-to-many and many-to-many relationships — gated by Cloudflare
+  Access authentication (any signed-in identity, no allowlist).
+- Serve [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server)'s built-in
+  GraphiQL console at `/graphql` as the demo's only interface — there is no
+  browser app.
+- Resolve every relation field (`Film.characters`, `Person.starships`,
+  `Planet.residents`, …) with one direct, unbatched D1 query per parent row.
+  This is deliberate: the demo exists to make the classic GraphQL N+1 problem
+  — and the harder many-to-many variant of it — visible and countable, not to
+  solve it. See "Explicit Exceptions" below.
+- Log one structured record per GraphQL request with the operation name,
+  elapsed time, and the number of D1 statements the request issued, so a
+  presenter can show the query-count blowup live in Workers Logs.
+
+### 9. Cooperative Architect Drawing
 
 Directory: `demos/architect`
 
@@ -243,7 +281,7 @@ AI capabilities to design an architecture for an application), and add collabora
 editing (two authenticated users can edit the same diagram and each user sees the cursor
 of the other user).
 
-### 8. OpenCode in Browser
+### 10. OpenCode in Browser
 
 Directory: `demos/opencode`
 
@@ -267,7 +305,7 @@ Primary flow:
 6. When an external website is accessed, egress controller logs request.
 7. User can see the egress requests via sidebar in UI.
 
-### 9. Watch Together
+### 11. Watch Together
 
 Directory: `demos/watch-together`
 
@@ -292,7 +330,7 @@ Keep out:
 
 - Chat, AI recommendations, transcoding, and durable job orchestration.
 
-### 10. Upload Indexer
+### 12. Upload Indexer
 
 Directory: `demos/upload-indexer`
 
@@ -318,7 +356,7 @@ Keep out:
 - Containers and multi-step Workflows. The consumer performs a small amount of
   Worker-compatible metadata extraction only.
 
-### 11. Video Transcoder
+### 13. Video Transcoder
 
 Directory: `demos/video-transcoder`
 
@@ -343,7 +381,7 @@ Keep out:
 
 - Multiple renditions, approvals, transcription, and AI-generated metadata.
 
-### 12. Video Publishing Pipeline
+### 14. Video Publishing Pipeline
 
 Directory: `demos/video-publishing-workflow`
 
@@ -369,7 +407,7 @@ Keep out:
 
 - AI transcription and generated content. This demo is about orchestration.
 
-### 13. Transcript Studio
+### 15. Transcript Studio
 
 Directory: `demos/transcript-studio`
 
@@ -394,7 +432,7 @@ Keep out:
 
 - Semantic search, summarization, chat, and synthetic speech.
 
-### 14. Ask Your Media
+### 16. Ask Your Media
 
 Directory: `demos/media-search`
 
@@ -420,7 +458,7 @@ Keep out:
 
 - Agent tools, autonomous actions, and multiple model providers.
 
-### 15. Multi-player game
+### 17. Multi-player game
 
 Directories: `demos/asteroid` (or the game name)
 
@@ -434,7 +472,7 @@ Also, consider board games like scrabble, monopoly.
  
 Potentially, we will do all four (as 15A, 15B, 15C, 15D)
 
-### 16. Operations Agent
+### 18. Operations Agent
 
 Directory: `demos/operations-agent`
 
@@ -465,7 +503,7 @@ Keep out:
 - Arbitrary code execution, unrestricted web browsing, and a large catalog of
   unrelated skills.
 
-### 17. Audio And Text Conversation Bridge
+### 19. Audio And Text Conversation Bridge
 
 Directory: `demos/conversation-bridge`
 

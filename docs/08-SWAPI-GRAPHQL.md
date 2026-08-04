@@ -10,9 +10,10 @@ Cloudflare products: Workers and D1.
 
 ## Behavior
 
-- Provide a public, read-only GraphQL API over Star Wars data (SWAPI) — six
-  entity types (`Film`, `Person`, `Planet`, `Species`, `Starship`, `Vehicle`)
-  and their one-to-many and many-to-many relationships.
+- Provide a read-only GraphQL API over Star Wars data (SWAPI) — six entity
+  types (`Film`, `Person`, `Planet`, `Species`, `Starship`, `Vehicle`) and
+  their one-to-many and many-to-many relationships — gated by Cloudflare
+  Access authentication (any signed-in identity, no allowlist).
 - Serve [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server)'s built-in
   GraphiQL console at `/graphql` as the demo's only interface — there is no
   browser app.
@@ -31,10 +32,13 @@ This demo intentionally narrows the repository-wide baseline in ways that
 would be wrong for most other demos. These exceptions control for this demo
 only:
 
-- **No authentication.** The entire hostname is public. The baseline
-  Cloudflare Access application uses only a reusable `bypass` policy (see
-  Access Model) — there is no allow policy, no identity, and no
-  `cloudflareAccess()` middleware in the Worker.
+- **No in-app authentication.** The hostname is gated by a single Cloudflare
+  Access `allow` policy for any authenticated identity (see Access Model),
+  but the Worker never verifies the identity JWT or mounts
+  `cloudflareAccess()`. The GraphQL API has no per-user data, no mutations,
+  and no audit columns, so Access exists only as an edge login wall — a
+  visible authentication step for the demo — not an authorization boundary
+  the application code enforces.
 - **Read-only.** The schema has no `Mutation` type and no write path. Data is
   loaded once via a D1 migration (see Phase 3) and never changes at runtime.
 - **No subscriptions.** The `Subscription` type is out of scope.
@@ -54,11 +58,17 @@ only:
 
 ## Demo Flow
 
-1. Open `https://swapi-graphql.cfapps.uk/graphql` and run a flat query:
+1. Open `https://swapi-graphql.cfapps.uk/graphql` and sign in through the
+   Cloudflare Access login page with any account from the configured
+   identity provider — the policy allows any authenticated identity, so
+   there is no allowlist to configure. Then run a flat query:
+
    ```graphql
    { films { title episodeId releaseDate } }
    ```
+
 2. Run a nested query that fans out across a many-to-many join:
+
    ```graphql
    {
      films {
@@ -70,6 +80,7 @@ only:
      }
    }
    ```
+
 3. Open Workers Logs and find the structured log for each request. Compare
    `statementCount` between the two queries — the second should show roughly
    `1 (films) + 6 (characters per film) + N (homeworld per character)`
@@ -136,17 +147,29 @@ Relation fields per type, each resolved with its own unbatched query:
 The schema is cyclic (`Film → Person → Film → …`), which is exactly what
 makes the fan-out demonstration interesting and is also why Phase 5 adds
 `@pothos/plugin-complexity`'s depth/breadth limit as an operational safety
-net for a public, unauthenticated endpoint — that guard is unrelated to the
-naive-resolution teaching point and must not batch or cache anything.
+net for an unauthorized-by-the-application endpoint — that guard is
+unrelated to the naive-resolution teaching point and must not batch or
+cache anything.
 
 ## Access Model
 
-Fully public, single Access application. There is no protected traffic, so
-this demo does **not** use the mixed public/authenticated pattern from
-`demos/url-shortener` — one hostname-wide `cloudflare_zero_trust_access_application`
-with a reusable `bypass` policy (`everyone`) covering `/*`, matching the
-baseline Public Access pattern exactly. A bypass policy issues no Access
-identity JWT, so `cloudflareAccess()` is never mounted in the Worker.
+Single Access application over the whole hostname, gated by authentication
+rather than left open. One hostname-wide
+`cloudflare_zero_trust_access_application` backed by an `allow` policy for
+any authenticated identity (`include = [{ everyone = {} }]`) covering `/*`.
+This differs from the baseline Public Access bypass pattern in exactly one
+place — the policy's `decision` is `"allow"` instead of `"bypass"` — and
+needs a configured identity provider in the Cloudflare Zero Trust team, but
+no email allowlist and no second, narrower application: every identity that
+authenticates through the configured IdP is allowed.
+
+An `allow` policy issues a real Access identity JWT for every request, but
+the Worker still never mounts `cloudflareAccess()` or reads that identity —
+the GraphQL API has nothing per-user for it to inform. Access's `allow`
+policy exists purely as an edge login wall, giving the demo a visible
+authentication step without adding any authorization logic to the
+application. This does not change the Worker's code at all versus a bypass
+policy; only the Terraform `decision` value differs.
 
 ## Implementation Plan
 
@@ -173,20 +196,26 @@ identity JWT, so `cloudflareAccess()` is never mounted in the Worker.
    `pretest:integration`. Generate binding types from `wrangler.jsonc`; never
    hand-maintain the binding interface.
 5. Write `.env.example` from the baseline permission block, adding only
-   `Account: D1 - Edit`. No `ADMIN_EMAIL` or identity-provider configuration is
-   needed since the demo has no authenticated routes.
+   `Account: D1 - Edit`. No `ADMIN_EMAIL` is needed — the Access policy has no
+   allowlist — and `CLOUDFLARE_TEAM_DOMAIN` is already part of the baseline
+   block, since a team with at least one identity provider configured is a
+   deployment prerequisite once the policy requires authentication.
 
-### Phase 2 — Cloudflare Access (public bypass only)
+### Phase 2 — Cloudflare Access (authenticate, but don't authorize in-app)
 
-6. Provision exactly one `cloudflare_zero_trust_access_application` with a
-   reusable `bypass` policy (`everyone`) covering the whole hostname, per the
-   baseline Public Access pattern. Do not add a second, narrower application —
-   this demo has no path that needs a different policy.
+6. Provision exactly one `cloudflare_zero_trust_access_application` covering
+   the whole hostname, backed by an `allow` policy for any authenticated
+   identity (`include = [{ everyone = {} }]`) instead of the baseline public
+   `bypass` policy — see Access Model. Do not add a second, narrower
+   application or an email allowlist; this demo has only one path-and-policy
+   pair, and every authenticated identity is accepted.
 7. Do not add `cloudflareAccess()` to the Worker, and do not configure
-   `cloudflareAccessPlugin()` in a Vite config for local dev — there is no
-   protected traffic to emulate and no browser app to configure Vite for at
-   all (this demo builds and deploys the Worker directly with `wrangler`, with
-   no `vite.config.ts`).
+   `cloudflareAccessPlugin()` in a Vite config for local dev. Even though
+   every production request must now authenticate at the edge, the Worker
+   never reads that identity — there is no per-user logic for it to serve —
+   and local development still has no Access edge to emulate (this demo
+   builds and deploys the Worker directly with `wrangler`, with no
+   `vite.config.ts`).
 
 ### Phase 3 — Data model and migrations
 
@@ -253,9 +282,10 @@ identity JWT, so `cloudflareAccess()` is never mounted in the Worker.
     cyclic schema can go. This runs as pre-execution query validation, built
     into the schema builder already in use, so it needs no hand-written
     validation rule or extra envelop plugin. Document in code that this is an
-    operational safety net for a public endpoint, separate from — and must
-    not interfere with — the naive per-parent resolution the demo is showing
-    off.
+    operational safety net for an endpoint open to any authenticated
+    identity with no per-query authorization limits, separate from — and
+    must not interfere with — the naive per-parent resolution the demo is
+    showing off.
 19. `src/worker/index.ts`: a Hono app mounting GraphQL Yoga at `/graphql` with
     GraphiQL enabled unconditionally. No other routes are needed.
 
