@@ -18,6 +18,9 @@ onMounted(() => void session.load());
           <span v-if="session.isAdmin" class="admin-badge">Administrator</span>
         </span>
         <span v-else-if="session.loading" class="identity">Verifying identity…</span>
+        <router-link v-if="session.isAuthenticated" class="skills-link" to="/skills">
+          Skills
+        </router-link>
         <router-link v-if="session.isAdmin" class="admin-link" to="/admin">
           Admin console
         </router-link>
@@ -65,7 +68,8 @@ onMounted(() => void session.load());
   text-transform: uppercase;
 }
 
-.admin-link {
+.admin-link,
+.skills-link {
   color: rgb(var(--v-theme-secondary));
   flex: 0 0 auto;
   font-weight: 600;
@@ -73,7 +77,9 @@ onMounted(() => void session.load());
 }
 
 .admin-link:hover,
-.admin-link:focus-visible {
+.admin-link:focus-visible,
+.skills-link:hover,
+.skills-link:focus-visible {
   text-decoration: underline;
 }
 

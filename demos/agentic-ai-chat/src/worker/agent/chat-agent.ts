@@ -1,4 +1,5 @@
 import { AIChatAgent, type OnChatMessageOptions } from "@cloudflare/ai-chat";
+import type { SkillRegistry } from "agents/skills";
 import {
   convertToModelMessages,
   type GenerateTextOnFinishCallback,
@@ -25,6 +26,7 @@ import {
   resolveDynamicRouteModelId,
 } from "../chats/route";
 import { sanitizeTitle } from "../chats/title";
+import { buildSkillRegistry } from "../skills/registry";
 import { estimateCostUsd, modelIdForRoute } from "../usage/pricing";
 import { UsageRepository } from "../usage/repository";
 import { type ChatUsageSummary, emptyUsageSummary } from "../usage/types";
@@ -33,14 +35,16 @@ import { createGetUrlTool } from "./tools/get-url";
 import { createWriteMarkdownTool } from "./tools/write-markdown";
 
 /**
- * Bound on how many `streamText()` steps one turn may take (docs/06-AGENTIC-CHAT.md Phase 9,
- * US-8). `streamText()`'s own default (`stepCountIs(1)`) stops the instant the model emits a
- * tool call, with no further step to let it respond to that tool's result -- which would leave
- * a successful `writeMarkdown`/`getUrl` call with no assistant text acknowledging it. `4` is
- * generous headroom for "call a tool, then respond" (and, from Phase 11 onward, a second tool
- * in the same turn) without letting a misbehaving model loop indefinitely.
+ * Bound on how many `streamText()` steps one turn may take (docs/06-AGENTIC-CHAT.md Phase 9/11,
+ * US-8/US-10). `streamText()`'s own default (`stepCountIs(1)`) stops the instant the model emits
+ * a tool call, with no further step to let it respond to that tool's result -- which would leave
+ * a successful `writeMarkdown`/`getUrl` call, or a skill activation, with no assistant text
+ * acknowledging it. `5` is generous headroom for "call a tool, then respond" plus Phase 11's own
+ * `activate_skill` -> `read_skill_resource` -> final-answer chain (the exact three-step shape
+ * Spike D's own proof-of-concept needed, `spikes/03-agent-skills-composability/REPORT.md`
+ * Section 6's `stopWhen: stepCountIs(5)`) without letting a misbehaving model loop indefinitely.
  */
-const MAX_TURN_STEPS = 4;
+const MAX_TURN_STEPS = 5;
 
 /**
  * System prompt for Phase 3's auto-title generation (US-2): a second, non-streaming `env.AI`
@@ -152,6 +156,13 @@ export class ChatAgent extends AIChatAgent<
    * if a wake ever occurs with no props at all. */
   private business: Business | null = null;
 
+  /** Constructed lazily, once per Durable Object wake, and reused across turns
+   * (docs/06-AGENTIC-CHAT.md Phase 11, US-10) -- `agents/skills`'s `r2()` source already caches
+   * its own R2 listing in memory (Spike D, Section 4's `refreshIntervalMs`), so rebuilding this
+   * every turn would only discard that cache for no reason, mirroring `./tools/get-url.ts`'s own
+   * "load once, keep warm" idiom for the sandboxed fetch Worker. */
+  private skillRegistry: SkillRegistry | undefined;
+
   /**
    * `partyserver`'s `Server.onStart()` lifecycle hook, called once per wake with the `props`
    * passed to `getAgentByName()` at routing time (Spike A, Section 7) -- this is how the
@@ -162,6 +173,15 @@ export class ChatAgent extends AIChatAgent<
     this.ownerEmail = props?.ownerEmail;
     this.route = props?.route ?? DEFAULT_CHAT_ROUTE;
     this.business = props?.business ?? null;
+  }
+
+  /** This chat's own skill catalog: every enterprise skill, plus (once {@link ownerEmail} is
+   * known) this chat owner's own personal skills -- never another user's
+   * (docs/06-AGENTIC-CHAT.md Phase 11, US-10, `../skills/registry.ts`'s own JSDoc for the exact
+   * mechanism enforcing that). */
+  private getSkillRegistry(): SkillRegistry {
+    this.skillRegistry ??= buildSkillRegistry(this.env.FILES, this.ownerEmail);
+    return this.skillRegistry;
   }
 
   /**
@@ -187,8 +207,8 @@ export class ChatAgent extends AIChatAgent<
    * Phase 6 extends this same wrapper for the cost ledger.
    * @param options Carries the turn's `abortSignal` (propagated to `streamText()` so a client
    * cancellation actually stops upstream generation, not just the visible response) and any
-   * client-supplied tool schemas (unused -- this class's own `writeMarkdown`/`getUrl` tools are
-   * always built server-side, per Phase 9/10).
+   * client-supplied tool schemas (unused -- this class's own `writeMarkdown`/`getUrl` tools, and
+   * Phase 11's skill catalog tools, are always built server-side, per Phase 9/10/11).
    * @returns The AI SDK's UI-message-stream `Response`, forwarded verbatim over the chat
    * WebSocket connection by `AIChatAgent`'s own wire protocol.
    */
@@ -201,6 +221,16 @@ export class ChatAgent extends AIChatAgent<
     // *only* way to later find this turn's own AI Gateway log row. `env.AI.aiGatewayLogId` is
     // always `null` for a dynamic-route call, so it cannot be used for this instead.
     const correlationId = crypto.randomUUID();
+    const skillRegistry = this.getSkillRegistry();
+    // Sequential, not `Promise.all([...])` -- a real bug Spike D hit and fixed
+    // (spikes/03-agent-skills-composability/REPORT.md Section 6): `registry.tools()` reads its
+    // descriptor map synchronously and never awaits `.load()` itself; `.systemPrompt()` is what
+    // actually triggers that `.load()`. Calling both concurrently races `.tools()` ahead of
+    // `.load()`'s first `await`, silently returning an empty tool set with no error -- the model
+    // then narrates the catalog's own "use activate_skill" instruction as plain text instead of
+    // ever calling a tool that, from its perspective, was never actually offered.
+    const skillCatalogPrompt = await skillRegistry.systemPrompt();
+    const skillTools = skillRegistry.tools();
     // Governed model selection (docs/06-AGENTIC-CHAT.md Phase 4, US-3): `this.route` is never a
     // client-supplied model id -- it is one of exactly two literal strings, resolved here to the
     // real AI Gateway dynamic route name via Terraform-sourced Worker vars
@@ -223,14 +253,24 @@ export class ChatAgent extends AIChatAgent<
       },
     });
 
-    const result = streamText({
-      model,
-      system:
-        `You are a helpful assistant embedded in a private, authenticated chat for ` +
+    const system = [
+      `You are a helpful assistant embedded in a private, authenticated chat for ` +
         `${this.ownerEmail ?? "the signed-in user"}. Answer directly and concisely. When you ` +
         `use the writeMarkdown tool, briefly confirm what you saved in your reply. When a ` +
         `getUrl call is refused, explain to the user that the destination is not allowed by ` +
         `this demo's egress policy rather than treating it as an error.`,
+      // `null` when this chat's own skill catalog is empty (`SkillRegistry.systemPrompt()`'s
+      // own `catalog.length ? [...] : null` shape, Spike D Section 5) -- an empty catalog costs
+      // nothing in the system prompt, matching US-10's "must not bloat every prompt" acceptance
+      // criterion structurally, independent of how many skills exist.
+      skillCatalogPrompt,
+    ]
+      .filter((part): part is string => Boolean(part))
+      .join("\n\n");
+
+    const result = streamText({
+      model,
+      system,
       messages: await convertToModelMessages(this.messages),
       abortSignal: options?.abortSignal,
       // `writeMarkdown` (docs/06-AGENTIC-CHAT.md Phase 9, US-8) -- bound to this chat's own R2/D1
@@ -245,6 +285,11 @@ export class ChatAgent extends AIChatAgent<
       // `this.ctx.exports.EgressGateway({ props })` directly from inside this Durable Object
       // method, per Spike C's confirmed finding that `ctx.exports` needs no threading through
       // the Worker's own `fetch()` call site to be reachable here.
+      //
+      // `activate_skill`/`read_skill_resource` (docs/06-AGENTIC-CHAT.md Phase 11, US-10) --
+      // `skillTools` is a plain `ai`-SDK `ToolSet` `SkillRegistry.tools()` already built
+      // (`getSkillRegistry()`, above); `{}` when this chat's own catalog is empty, so spreading
+      // it here adds nothing in that case.
       tools: {
         writeMarkdown: createWriteMarkdownTool({
           bucket: this.env.FILES,
@@ -258,6 +303,7 @@ export class ChatAgent extends AIChatAgent<
           createGlobalOutboundGateway: (props) =>
             this.ctx.exports.EgressGateway({ props }),
         }),
+        ...skillTools,
       },
       // See MAX_TURN_STEPS's own JSDoc: without this, a successful tool call would end the turn
       // with no assistant text acknowledging it, since streamText()'s own default stops after

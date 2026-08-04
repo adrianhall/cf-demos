@@ -13,6 +13,12 @@
  * inside a tool's own `execute()` function, with no HTTP response to shape; a rejection here
  * becomes a plain, human-readable tool result the model can explain to the user
  * (`../agent/tools/get-url.ts`), never an unhandled exception that aborts the turn (Section 11).
+ *
+ * {@link validateUrlFloor} itself is reused as-is by `../skills/source.ts` for a URL-sourced
+ * skill's one-time ingestion fetch (docs/06-AGENTIC-CHAT.md Phase 11, US-10) -- the same
+ * "http(s) only, no obviously-internal address" floor applies regardless of caller, even though
+ * that caller does not also route through `EgressGateway`'s Dynamic Worker sandbox (see
+ * `../skills/source.ts`'s own JSDoc for why that mechanism is not needed there).
  */
 
 /**

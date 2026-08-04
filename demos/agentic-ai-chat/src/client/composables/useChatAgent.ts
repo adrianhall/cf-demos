@@ -48,6 +48,10 @@ export interface ChatTurn {
    * order the tool produced them. Always empty for a user turn, and for an assistant turn that
    * never called the tool. */
   readonly attachments: readonly ChatFileAttachment[];
+  /** Names of every skill the `activate_skill` tool activated for this turn (Phase 11, US-10),
+   * in activation order, deduplicated -- the transcript's own "a skill was activated" indicator.
+   * Always empty for a user turn, and for an assistant turn that matched no skill. */
+  readonly activatedSkills: readonly string[];
 }
 
 /** A chat's running cost/token totals (docs/06-AGENTIC-CHAT.md Section 6.6a) -- mirrors
@@ -158,12 +162,14 @@ export interface UseChatAgentResult {
 }
 
 /** One part of a persisted `UIMessage`, as returned by the chat's `get-messages` REST endpoint.
- * `state`/`output` are only ever present on a persisted tool part (`type: "tool-writeMarkdown"`,
- * per the `ai` SDK's own `ToolUIPart` shape) -- absent on a plain text part. */
+ * `state`/`output`/`input` are only ever present on a persisted tool part (`type:
+ * "tool-writeMarkdown"`/`"tool-activate_skill"`, per the `ai` SDK's own `ToolUIPart` shape) --
+ * absent on a plain text part. */
 interface PersistedMessagePart {
   type: string;
   text?: string;
   state?: string;
+  input?: unknown;
   output?: unknown;
 }
 
@@ -224,6 +230,29 @@ function extractAttachments(
   return attachments;
 }
 
+/** Extract every skill the `activate_skill` tool activated from a persisted message's own tool
+ * parts (docs/06-AGENTIC-CHAT.md Phase 11, US-10) -- a page reload's own source of truth for a
+ * turn's activated skills, mirroring how {@link extractAttachments} already reconstructs a
+ * persisted turn's attachments from the same `parts` array. Reads each part's `input` (the
+ * tool-call *argument*, `{ name: "..." }` -- `agents/skills`'s `SkillRegistry.tools()`'s own
+ * schema, Spike D Section 5), not `output`: unlike `writeMarkdown`'s result, `activate_skill`'s
+ * own result text does not repeat the activated skill's name as a structured field. */
+function extractActivatedSkills(
+  parts: readonly PersistedMessagePart[],
+): string[] {
+  const names: string[] = [];
+  for (const part of parts) {
+    if (part.type !== "tool-activate_skill") {
+      continue;
+    }
+    const name = (part.input as { name?: unknown } | undefined)?.name;
+    if (typeof name === "string" && !names.includes(name)) {
+      names.push(name);
+    }
+  }
+  return names;
+}
+
 /** Convert one persisted message into a `"done"` turn. */
 function toChatTurn(message: PersistedMessage): ChatTurn {
   return {
@@ -233,6 +262,7 @@ function toChatTurn(message: PersistedMessage): ChatTurn {
     status: "done",
     errorDetail: null,
     attachments: extractAttachments(message.parts),
+    activatedSkills: extractActivatedSkills(message.parts),
   };
 }
 
@@ -347,6 +377,16 @@ export function useChatAgent(
     );
   }
 
+  /** Append one activated skill name to a turn's own {@link ChatTurn.activatedSkills} list, if
+   * not already present (docs/06-AGENTIC-CHAT.md Phase 11, US-10). */
+  function appendActivatedSkill(id: string, name: string): void {
+    turns.value = turns.value.map((turn) =>
+      turn.id === id && !turn.activatedSkills.includes(name)
+        ? { ...turn, activatedSkills: [...turn.activatedSkills, name] }
+        : turn,
+    );
+  }
+
   /** Apply one decoded UI-message-stream part to the turn its request produced. */
   function applyStreamPart(assistantTurnId: string, part: UiStreamPart): void {
     switch (part.type) {
@@ -357,11 +397,22 @@ export function useChatAgent(
         appendToTurn(assistantTurnId, (part as { delta: string }).delta);
         return;
       case "tool-input-available": {
-        const { toolCallId, toolName } = part as {
+        const { toolCallId, toolName, input } = part as {
           toolCallId: string;
           toolName: string;
+          input: unknown;
         };
         toolNamesByCallId.set(toolCallId, toolName);
+        // `activate_skill`'s own activated name is a tool-call *argument*, not something its
+        // later `tool-output-available` result repeats (docs/06-AGENTIC-CHAT.md Phase 11,
+        // US-10) -- captured here, unlike `writeMarkdown`'s attachment below, which reads the
+        // *output* instead since that is where its file id/filename actually live.
+        if (toolName === "activate_skill") {
+          const name = (input as { name?: unknown } | null)?.name;
+          if (typeof name === "string") {
+            appendActivatedSkill(assistantTurnId, name);
+          }
+        }
         return;
       }
       case "tool-output-available": {
@@ -594,6 +645,7 @@ export function useChatAgent(
         status: "done",
         errorDetail: null,
         attachments: [],
+        activatedSkills: [],
       },
       {
         id: assistantTurnId,
@@ -602,6 +654,7 @@ export function useChatAgent(
         status: "streaming",
         errorDetail: null,
         attachments: [],
+        activatedSkills: [],
       },
     ];
     pendingRequests.set(requestId, {

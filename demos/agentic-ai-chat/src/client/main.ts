@@ -14,6 +14,7 @@ import {
 import App from "./App.vue";
 import AdminView from "./views/AdminView.vue";
 import HomeView from "./views/HomeView.vue";
+import SkillsView from "./views/SkillsView.vue";
 
 /**
  * Start the browser application: mounts the Vue app with Pinia, Vue Router, and Vuetify.
@@ -27,6 +28,10 @@ export function startClient(): void {
     history: createWebHistory(),
     routes: [
       { component: HomeView, path: "/" },
+      // Docs/06-AGENTIC-CHAT.md Phase 11, US-10: personal skill management, available to any
+      // signed-in user (`App.vue`'s always-visible "Skills" link) -- the Worker's own
+      // `/api/skills` routes already scope every read/write to the caller's own identity.
+      { component: SkillsView, path: "/skills" },
       // Docs/06-AGENTIC-CHAT.md Phase 7, US-6: the admin console's own nav entry point
       // (`App.vue`'s "Admin console" link) is only ever hidden for a non-administrator
       // identity, never a route guard here -- `requireAdmin()` on the Worker is the real

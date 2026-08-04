@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { shallowRef } from "vue";
 import type { ChatUsageSummary } from "../composables/useChatAgent";
+import type { CreateSkillInput, Skill } from "./skills";
 
 /**
  * This demo's admin-settable business segment (docs/06-AGENTIC-CHAT.md Section 6.4/6.5, Phase 7,
@@ -82,19 +83,25 @@ export const useAdminStore = defineStore("admin", () => {
   const users = shallowRef<AdminUser[]>([]);
   const byBusiness = shallowRef<BusinessReportRow[]>([]);
   const byGeo = shallowRef<GeoReportRow[]>([]);
+  /** Every enterprise skill (docs/06-AGENTIC-CHAT.md Phase 11, US-10) -- visible to every chat's
+   * own skill catalog, managed only from here. */
+  const enterpriseSkills = shallowRef<Skill[]>([]);
   const loading = shallowRef(false);
   const error = shallowRef<string | null>(null);
 
-  /** Fetch the ranked user-cost table and both segment reports in parallel. */
+  /** Fetch the ranked user-cost table, both segment reports, and the enterprise skill catalog,
+   * all in parallel. */
   async function load(): Promise<void> {
     loading.value = true;
     error.value = null;
     try {
-      const [usersResponse, businessResponse, geoResponse] = await Promise.all([
-        fetch("/api/admin/users"),
-        fetch("/api/admin/reports/by-business"),
-        fetch("/api/admin/reports/by-geo"),
-      ]);
+      const [usersResponse, businessResponse, geoResponse, skillsResponse] =
+        await Promise.all([
+          fetch("/api/admin/users"),
+          fetch("/api/admin/reports/by-business"),
+          fetch("/api/admin/reports/by-geo"),
+          fetch("/api/admin/skills"),
+        ]);
       if (!usersResponse.ok) {
         throw new Error(await responseMessage(usersResponse));
       }
@@ -103,6 +110,9 @@ export const useAdminStore = defineStore("admin", () => {
       }
       if (!geoResponse.ok) {
         throw new Error(await responseMessage(geoResponse));
+      }
+      if (!skillsResponse.ok) {
+        throw new Error(await responseMessage(skillsResponse));
       }
       users.value = (
         (await usersResponse.json()) as { users: AdminUser[] }
@@ -113,6 +123,9 @@ export const useAdminStore = defineStore("admin", () => {
       byGeo.value = (
         (await geoResponse.json()) as { report: GeoReportRow[] }
       ).report;
+      enterpriseSkills.value = (
+        (await skillsResponse.json()) as { skills: Skill[] }
+      ).skills;
     } catch (cause) {
       error.value =
         cause instanceof Error
@@ -120,6 +133,55 @@ export const useAdminStore = defineStore("admin", () => {
           : "Could not load the admin console.";
     } finally {
       loading.value = false;
+    }
+  }
+
+  /**
+   * Add an enterprise skill and reload every view afterward.
+   *
+   * @param input The new skill's name, description, and source.
+   */
+  async function createSkill(input: CreateSkillInput): Promise<void> {
+    error.value = null;
+    try {
+      const response = await fetch("/api/admin/skills", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!response.ok) {
+        throw new Error(await responseMessage(response));
+      }
+      await load();
+    } catch (cause) {
+      error.value =
+        cause instanceof Error
+          ? cause.message
+          : "Could not add this enterprise skill.";
+    }
+  }
+
+  /**
+   * Delete an enterprise skill and reload every view afterward.
+   *
+   * @param id Skill id to delete.
+   */
+  async function removeSkill(id: string): Promise<void> {
+    error.value = null;
+    try {
+      const response = await fetch(
+        `/api/admin/skills/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok && response.status !== 204) {
+        throw new Error(await responseMessage(response));
+      }
+      await load();
+    } catch (cause) {
+      error.value =
+        cause instanceof Error
+          ? cause.message
+          : "Could not delete this enterprise skill.";
     }
   }
 
@@ -158,5 +220,16 @@ export const useAdminStore = defineStore("admin", () => {
     }
   }
 
-  return { byBusiness, byGeo, error, load, loading, updateMetadata, users };
+  return {
+    byBusiness,
+    byGeo,
+    createSkill,
+    enterpriseSkills,
+    error,
+    load,
+    loading,
+    removeSkill,
+    updateMetadata,
+    users,
+  };
 });

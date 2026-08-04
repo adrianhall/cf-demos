@@ -10,6 +10,7 @@ import { requireAdmin } from "./middleware/require-admin";
 import { adminRouter } from "./routes/admin";
 import { chatsRouter } from "./routes/chats";
 import { meRouter } from "./routes/me";
+import { skillsRouter } from "./routes/skills";
 import { transcribeRouter } from "./routes/transcribe";
 
 // The `CHAT_AGENT` durable_objects binding in `wrangler.jsonc.tpl` requires its class to be a
@@ -31,6 +32,7 @@ app.use("/api/admin/*", requireAdmin);
 app.route("/api/admin", adminRouter);
 app.route("/api/me", meRouter);
 app.route("/api/chats", chatsRouter);
+app.route("/api/skills", skillsRouter);
 app.route("/api/transcribe", transcribeRouter);
 
 app.onError(problemDetailsErrorHandler({ includeStack: import.meta.env.DEV }));

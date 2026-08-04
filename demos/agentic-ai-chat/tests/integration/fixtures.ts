@@ -348,6 +348,41 @@ export function getUrlToolCallPayloads(url: string): string[] {
 }
 
 /**
+ * Raw Workers AI "native format" SSE payload strings (`data: {...}\n\n` framing, per
+ * {@link createFakeAi}'s own JSDoc) that make `workers-ai-provider` emit a single, complete
+ * `activate_skill` tool call for `name`, followed by a `[DONE]` sentinel -- the same
+ * three-chunk shape (start/argument-delta/finalization) {@link writeMarkdownToolCallPayloads}/
+ * {@link getUrlToolCallPayloads} already build for their own tools, reused here for
+ * `agents/skills`'s own released `activate_skill` tool (docs/06-AGENTIC-CHAT.md Phase 11,
+ * US-10).
+ *
+ * @param name The tool call's `name` argument -- a skill's own display name.
+ * @returns Raw SSE payload strings for {@link createSequencedFakeAi}'s first call.
+ */
+export function activateSkillToolCallPayloads(name: string): string[] {
+  const args = JSON.stringify({ name });
+  return [
+    JSON.stringify({
+      tool_calls: [
+        {
+          id: "call_1",
+          type: "function",
+          index: 0,
+          function: { name: "activate_skill", arguments: "" },
+        },
+      ],
+    }),
+    JSON.stringify({
+      tool_calls: [{ index: 0, function: { arguments: args } }],
+    }),
+    JSON.stringify({
+      tool_calls: [{ id: null, type: null, function: { name: null } }],
+    }),
+    "[DONE]",
+  ];
+}
+
+/**
  * Open an authenticated chat WebSocket through the real Worker route, tracked in `openSockets`
  * for the calling test file's own `afterEach` teardown (per the `testing-durable-objects`
  * skill's lifecycle rules -- every socket a test opens must be tracked and force-closed).

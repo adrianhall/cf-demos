@@ -56,6 +56,7 @@ describe("startClient", () => {
       history: "history",
       routes: [
         expect.objectContaining({ path: "/" }),
+        expect.objectContaining({ path: "/skills" }),
         expect.objectContaining({ path: "/admin" }),
       ],
     });

@@ -13,6 +13,7 @@ function buildTurn(overrides: Partial<ChatTurn> = {}): ChatTurn {
     status: "streaming",
     errorDetail: null,
     attachments: [],
+    activatedSkills: [],
     ...overrides,
   };
 }
@@ -181,5 +182,34 @@ describe("ChatTranscript", () => {
     });
 
     expect(wrapper.find(".attachment-chip").exists()).toBe(false);
+  });
+
+  it("renders a chip for each activated skill (US-10)", () => {
+    const wrapper = mount(ChatTranscript, {
+      props: {
+        chatId: "chat-1",
+        turns: [
+          buildTurn({
+            status: "done",
+            content: "The spike passphrase is TURQUOISE-NARWHAL-77.",
+            activatedSkills: ["cloudflare-spike-fact"],
+          }),
+        ],
+      },
+    });
+
+    const chip = wrapper.get(".skill-chip");
+    expect(chip.text()).toContain("cloudflare-spike-fact");
+  });
+
+  it("renders no skill list when a turn activated no skill", () => {
+    const wrapper = mount(ChatTranscript, {
+      props: {
+        chatId: "chat-1",
+        turns: [buildTurn({ status: "done", content: "12 x 7 = 84." })],
+      },
+    });
+
+    expect(wrapper.find(".skill-chip").exists()).toBe(false);
   });
 });

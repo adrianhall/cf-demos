@@ -74,6 +74,17 @@ function fileUrl(fileId: string): string {
             </a>
           </li>
         </ul>
+
+        <ul
+          v-if="turn.activatedSkills.length > 0"
+          class="skill-list"
+          aria-label="Activated skills"
+        >
+          <li v-for="skill in turn.activatedSkills" :key="skill" class="skill-chip">
+            <FeatherIcon aria-hidden="true" size="14" type="zap" />
+            <span>{{ skill }}</span>
+          </li>
+        </ul>
       </div>
     </article>
   </div>
@@ -169,5 +180,26 @@ function fileUrl(fileId: string): string {
 .attachment-chip:hover,
 .attachment-chip:focus-visible {
   border-color: rgb(var(--v-theme-primary));
+}
+
+.skill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.skill-chip {
+  align-items: center;
+  background: rgb(var(--v-theme-secondary));
+  border-radius: 999px;
+  color: rgb(var(--v-theme-surface));
+  display: inline-flex;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  gap: 0.375rem;
+  padding: 0.25rem 0.75rem;
 }
 </style>

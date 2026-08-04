@@ -127,6 +127,7 @@ describe("useChatAgent", () => {
         status: "done",
         errorDetail: null,
         attachments: [],
+        activatedSkills: [],
       },
       {
         id: "m2",
@@ -135,6 +136,7 @@ describe("useChatAgent", () => {
         status: "done",
         errorDetail: null,
         attachments: [],
+        activatedSkills: [],
       },
     ]);
     expect(result.connectionStatus.value).toBe("connecting");
@@ -415,6 +417,216 @@ describe("useChatAgent", () => {
     });
 
     expect(result.turns.value[1]?.attachments).toEqual([]);
+  });
+
+  it("records an activated skill from an activate_skill tool call's own input (US-10)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+
+    result.send("What is the spike passphrase?");
+    const sentFrame = JSON.parse(socket.sent[0] ?? "{}") as { id: string };
+
+    socket.simulateMessage({
+      type: "cf_agent_use_chat_response",
+      id: sentFrame.id,
+      body: JSON.stringify({
+        type: "tool-input-available",
+        toolCallId: "call-1",
+        toolName: "activate_skill",
+        input: { name: "cloudflare-spike-fact" },
+      }),
+      done: true,
+    });
+
+    expect(result.turns.value[1]?.activatedSkills).toEqual([
+      "cloudflare-spike-fact",
+    ]);
+  });
+
+  it("does not record an activated skill for a tool-input-available part belonging to a tool other than activate_skill", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+
+    result.send("Save this as a file");
+    const sentFrame = JSON.parse(socket.sent[0] ?? "{}") as { id: string };
+
+    socket.simulateMessage({
+      type: "cf_agent_use_chat_response",
+      id: sentFrame.id,
+      body: JSON.stringify({
+        type: "tool-input-available",
+        toolCallId: "call-1",
+        toolName: "writeMarkdown",
+        input: { filename: "notes", content: "hello" },
+      }),
+      done: true,
+    });
+
+    expect(result.turns.value[1]?.activatedSkills).toEqual([]);
+  });
+
+  it("deduplicates an activated skill activated more than once in the same turn", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+
+    result.send("What is the spike passphrase?");
+    const sentFrame = JSON.parse(socket.sent[0] ?? "{}") as { id: string };
+
+    for (const callId of ["call-1", "call-2"]) {
+      socket.simulateMessage({
+        type: "cf_agent_use_chat_response",
+        id: sentFrame.id,
+        body: JSON.stringify({
+          type: "tool-input-available",
+          toolCallId: callId,
+          toolName: "activate_skill",
+          input: { name: "cloudflare-spike-fact" },
+        }),
+        done: false,
+      });
+    }
+
+    expect(result.turns.value[1]?.activatedSkills).toEqual([
+      "cloudflare-spike-fact",
+    ]);
+  });
+
+  it("restores a turn's activated skills from a persisted tool-activate_skill part on history reload (US-10)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify([
+            {
+              id: "u1",
+              role: "user",
+              parts: [{ type: "text", text: "What is the spike passphrase?" }],
+            },
+            {
+              id: "a1",
+              role: "assistant",
+              parts: [
+                { type: "text", text: "TURQUOISE-NARWHAL-77" },
+                {
+                  type: "tool-activate_skill",
+                  state: "output-available",
+                  input: { name: "cloudflare-spike-fact" },
+                  output: "<skill_content>...</skill_content>",
+                },
+              ],
+            },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+
+    await vi.waitFor(() => expect(result.turns.value).toHaveLength(2));
+    expect(result.turns.value[1]?.activatedSkills).toEqual([
+      "cloudflare-spike-fact",
+    ]);
+  });
+
+  it("deduplicates an activated skill repeated across two persisted tool-activate_skill parts", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify([
+            { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
+            {
+              id: "a1",
+              role: "assistant",
+              parts: [
+                {
+                  type: "tool-activate_skill",
+                  state: "output-available",
+                  input: { name: "cloudflare-spike-fact" },
+                  output: "<skill_content>...</skill_content>",
+                },
+                {
+                  type: "tool-activate_skill",
+                  state: "output-available",
+                  input: { name: "cloudflare-spike-fact" },
+                  output: "<skill_content>...</skill_content>",
+                },
+              ],
+            },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+
+    await vi.waitFor(() => expect(result.turns.value).toHaveLength(2));
+    expect(result.turns.value[1]?.activatedSkills).toEqual([
+      "cloudflare-spike-fact",
+    ]);
+  });
+
+  it("does not record an activated skill when an activate_skill tool call's input has no usable name", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(historyResponse([])));
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+    const socket = await latestSocket();
+    socket.simulateOpen();
+
+    result.send("What is the spike passphrase?");
+    const sentFrame = JSON.parse(socket.sent[0] ?? "{}") as { id: string };
+
+    socket.simulateMessage({
+      type: "cf_agent_use_chat_response",
+      id: sentFrame.id,
+      body: JSON.stringify({
+        type: "tool-input-available",
+        toolCallId: "call-1",
+        toolName: "activate_skill",
+        input: {},
+      }),
+      done: true,
+    });
+
+    expect(result.turns.value[1]?.activatedSkills).toEqual([]);
+  });
+
+  it("restores no activated skill from a persisted message with no tool-activate_skill part", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify([
+            { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
+            {
+              id: "a1",
+              role: "assistant",
+              parts: [{ type: "text", text: "Hello!" }],
+            },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const result = scope.run(() => useChatAgent(ref("chat-1")));
+    if (!result) throw new Error("effectScope did not run");
+
+    await vi.waitFor(() => expect(result.turns.value).toHaveLength(2));
+    expect(result.turns.value[1]?.activatedSkills).toEqual([]);
   });
 
   it("marks the assistant turn as errored on an in-band error part", async () => {
@@ -707,6 +919,7 @@ describe("useChatAgent", () => {
           status: "done",
           errorDetail: null,
           attachments: [],
+          activatedSkills: [],
         },
       ]),
     );
@@ -789,6 +1002,7 @@ describe("useChatAgent", () => {
         status: "done",
         errorDetail: null,
         attachments: [],
+        activatedSkills: [],
       },
     ]);
     expect(result.connectionStatus.value).not.toBe("error");
@@ -871,6 +1085,7 @@ describe("useChatAgent", () => {
         status: "done",
         errorDetail: null,
         attachments: [],
+        activatedSkills: [],
       },
     ]);
   });
@@ -925,6 +1140,7 @@ describe("useChatAgent", () => {
         status: "done",
         errorDetail: null,
         attachments: [],
+        activatedSkills: [],
       },
     ]);
     expect(MockWebSocket.instances).toHaveLength(1);

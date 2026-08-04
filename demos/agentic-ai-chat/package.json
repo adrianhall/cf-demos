@@ -52,11 +52,13 @@
   "dependencies": {
     "@adrianhall/cloudflare-toolkit": "2.3.0",
     "@cloudflare/ai-chat": "0.10.1",
+    "@cloudflare/codemode": "0.5.1",
     "@vitejs/plugin-vue": "6.0.8",
     "@vitest/coverage-istanbul": "^4.1.10",
     "agents": "0.20.1",
     "ai": "7.0.48",
     "hono": "4.12.32",
+    "just-bash": "3.2.0",
     "pinia": "4.0.2",
     "vue": "3.5.40",
     "vue-feather": "^2.0.0",
@@ -81,6 +83,7 @@
     "wrangler": "4.115.0"
   },
   "allowScripts": {
+    "@mongodb-js/zstd@7.0.0": false,
     "core-js@3.49.0": true,
     "core-js-pure@3.49.0": true,
     "esbuild@0.28.1": true,

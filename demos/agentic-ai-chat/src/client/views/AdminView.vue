@@ -4,6 +4,10 @@ import { computed, onMounted } from "vue";
 import AdminReportTable from "../components/AdminReportTable.vue";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import AdminUserTable from "../components/AdminUserTable.vue";
+// biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
+import SkillForm from "../components/SkillForm.vue";
+// biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
+import SkillList from "../components/SkillList.vue";
 import { useAdminStore } from "../stores/admin";
 
 const admin = useAdminStore();
@@ -70,6 +74,22 @@ onMounted(() => void admin.load());
         <h2>Cost by geo</h2>
         <AdminReportTable label-header="Geo" :rows="geoRows" />
       </section>
+
+      <!-- docs/06-AGENTIC-CHAT.md Phase 11, US-10: enterprise skills, visible to every chat's
+           own skill catalog (`../../worker/skills/registry.ts`) -- see `SkillsView.vue` for the
+           personal-skill equivalent, available to any signed-in user. -->
+      <section aria-label="Enterprise skills">
+        <h2>Enterprise skills</h2>
+        <div class="skill-section-body">
+          <SkillForm :submitting="admin.loading" @create="admin.createSkill" />
+          <SkillList
+            empty-message="No enterprise skills have been added yet."
+            :loading="admin.loading"
+            :skills="admin.enterpriseSkills"
+            @remove="admin.removeSkill"
+          />
+        </div>
+      </section>
     </template>
   </v-container>
 </template>
@@ -109,6 +129,12 @@ onMounted(() => void admin.load());
 section h2 {
   font-size: 1rem;
   margin: 0 0 0.75rem;
+}
+
+.skill-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
 .notice {

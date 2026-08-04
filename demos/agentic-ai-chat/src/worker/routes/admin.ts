@@ -1,6 +1,8 @@
 import { badRequest, notFound } from "@adrianhall/cloudflare-toolkit/errors";
 import { Hono } from "hono";
 import type { AppBindings } from "../bindings";
+import { SkillsRepository } from "../skills/repository";
+import { createSkill, removeSkillAndCleanup } from "../skills/service";
 import { UsageRepository } from "../usage/repository";
 import { emptyUsageSummary } from "../usage/types";
 import {
@@ -107,4 +109,50 @@ adminRouter.get("/reports/by-geo", async (context) => {
   }));
   report.sort((a, b) => b.usage.totalCostUsd - a.usage.totalCostUsd);
   return context.json({ report });
+});
+
+/**
+ * List every enterprise skill (docs/06-AGENTIC-CHAT.md Phase 11, US-10's "an enterprise skill
+ * is visible to everyone" acceptance criterion, from an admin's management perspective). See
+ * `./skills.ts`'s `skillsRouter` for the equivalent personal-skill routes.
+ */
+adminRouter.get("/skills", async (context) => {
+  const skills = await new SkillsRepository(context.env.DB).listEnterprise();
+  return context.json({ skills });
+});
+
+/** Add an enterprise skill (`ownerEmail = null`), visible to every chat's own skill catalog
+ * (`../skills/registry.ts`), from an upload or a URL source. */
+adminRouter.post("/skills", async (context) => {
+  const body = await context.req.json().catch(() => null);
+  const skill = await createSkill(
+    { bucket: context.env.FILES, database: context.env.DB },
+    null,
+    body,
+  );
+  context
+    .get("LOGGER")
+    .info("skill_created", { skillId: skill.id, scope: "enterprise" });
+  return context.json({ skill }, 201);
+});
+
+/** Remove an enterprise skill -- removing it "removes its effect on the next turn" (US-10's own
+ * acceptance criterion), bounded by `agents/skills`'s own `r2()` source refresh interval (Spike
+ * D Section 4). */
+adminRouter.delete("/skills/:id", async (context) => {
+  const id = context.req.param("id");
+  const repository = new SkillsRepository(context.env.DB);
+  const skill = await repository.findEnterprise(id);
+  if (skill === null) {
+    throw notFound({ detail: "Skill not found." });
+  }
+  await removeSkillAndCleanup(
+    { bucket: context.env.FILES, database: context.env.DB },
+    skill,
+    "enterprise",
+  );
+  context
+    .get("LOGGER")
+    .info("skill_deleted", { skillId: id, scope: "enterprise" });
+  return new Response(null, { status: 204 });
 });

@@ -288,6 +288,7 @@ describe("HomeView", () => {
                     status: "done",
                     errorDetail: null,
                     attachments: [],
+                    activatedSkills: [],
                   },
                 ],
               },
