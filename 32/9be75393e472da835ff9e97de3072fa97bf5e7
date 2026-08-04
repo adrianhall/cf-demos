@@ -1,0 +1,90 @@
+demos/agentic-ai-chat/tests/integration/transcribe.test.ts
+  s_4beefa2e1cbd37::t_3df214dbad258e 1-12,25-61,69-77,91-92,99-104
+  s_4beefa2e1cbd37::t_fcaa7dd3ac2551 62-68,93-98
+  s_4beefa2e1cbd37::t_6804f03fd11f63 78-90
+  s_4beefa2e1cbd37::t_687a20110d2875 13-24
+demos/agentic-ai-chat/README.md
+  s_4beefa2e1cbd37::t_c6381936d89b44 88-92
+  s_4beefa2e1cbd37::t_f76d8da7eda4f4 5
+  s_4beefa2e1cbd37::t_3e7f2beb9a304a 66-67
+  s_4beefa2e1cbd37::t_257e1b23f77a9e 120-122
+demos/agentic-ai-chat/src/client/components/ChatComposer.test.ts
+  s_4beefa2e1cbd37::t_4b3f3b870440c5 2,5-37
+  s_4beefa2e1cbd37::t_4dc2e4566540d5 105-133,141-149,153-163,230-235,239-245,249-258,262-265,269-279,283-285,289-294
+  s_4beefa2e1cbd37::t_d273d4eb098620 182-184,188-190,193-195,203-209,218-220
+  s_4beefa2e1cbd37::t_bfd4c0a3ed2b4d 198-202,210-217,221-229
+  s_4beefa2e1cbd37::t_c419f992197885 164-181,185-187,191-192,196-197
+  s_4beefa2e1cbd37::t_fcaa7dd3ac2551 134-140,150-152,236-238,246-248,259-261,266-268,280-282,286-288
+  s_4beefa2e1cbd37::t_bbda8152dc5d33 38
+demos/agentic-ai-chat/src/worker/transcribe/validation.test.ts
+  s_4beefa2e1cbd37::t_fcaa7dd3ac2551 40-41
+  s_4beefa2e1cbd37::t_58a413aa871a3f 1-39,42-82
+demos/agentic-ai-chat/tests/integration/fixtures.ts
+  s_4beefa2e1cbd37::t_f2e9ef3c25653a 193
+  s_4beefa2e1cbd37::t_5879f8eec5ae2d 183-192,194-197
+  s_4beefa2e1cbd37::t_1d18b32f2ad5a4 182
+demos/agentic-ai-chat/EXPLAIN-DEMO.md
+  s_4beefa2e1cbd37::t_6eef505cd7414b 3
+  s_4beefa2e1cbd37::t_e20fefbd92ed25 106-111
+  s_4beefa2e1cbd37::t_4e23132175a299 43-54
+  s_4beefa2e1cbd37::t_65eccc9d390cc5 167-169
+  s_4beefa2e1cbd37::t_68df69a6471334 155
+demos/agentic-ai-chat/src/worker/transcribe/validation.ts
+  s_4beefa2e1cbd37::t_54220756d92b83 1-37,40-67
+  s_4beefa2e1cbd37::t_fcaa7dd3ac2551 38-39
+demos/agentic-ai-chat/src/worker/middleware/transcribe-body-limit.ts
+  s_4beefa2e1cbd37::t_c9811aacc3f80a 1-19
+demos/agentic-ai-chat/src/worker/index.ts
+  s_4beefa2e1cbd37::t_be90446fe55a9f 11
+  s_4beefa2e1cbd37::t_769fa0d1305849 26
+demos/agentic-ai-chat/src/client/composables/useVoiceDictation.test.ts
+  s_4beefa2e1cbd37::t_d0b7f574303159 1-17,22-132,136-154,162-176,180-190,201,203-219,422-440,444-510
+  s_4beefa2e1cbd37::t_fcaa7dd3ac2551 18-21,133-135,155-161,177-179,441-443
+  s_4beefa2e1cbd37::t_74ff892acce6ca 191-200,202
+  s_4beefa2e1cbd37::t_1ac7a997c177c5 220-314
+  s_4beefa2e1cbd37::t_c9b84ab933b197 315-328,332-350,354-421
+  s_4beefa2e1cbd37::t_d273d4eb098620 329-331,351-353
+demos/agentic-ai-chat/src/worker/transcribe/transcription.test.ts
+  s_4beefa2e1cbd37::t_17abedf85d74ab 1-31,37-105
+  s_4beefa2e1cbd37::t_fcaa7dd3ac2551 32-36
+demos/agentic-ai-chat/src/worker/middleware/transcribe-body-limit.test.ts
+  s_4beefa2e1cbd37::t_62daac40418ac6 1-68
+demos/agentic-ai-chat/src/client/composables/useVoiceDictation.ts
+  s_4beefa2e1cbd37::t_9f6a75adfc3b19 103
+  s_4beefa2e1cbd37::t_d4a341b069b978 1-97,104-105,107-131,136-219
+  s_4beefa2e1cbd37::t_a950e6256ccdbf 98-102,106
+  s_4beefa2e1cbd37::t_fcaa7dd3ac2551 132-135
+demos/agentic-ai-chat/DEMO.md
+  s_4beefa2e1cbd37::t_ade51f05acae05 64
+  s_4beefa2e1cbd37::t_88b9eece207ae1 68,72
+  s_4beefa2e1cbd37::t_f32fadbfb5845c 36-50
+  s_4beefa2e1cbd37::t_3a8e4d3dc06acf 3,11,13
+demos/agentic-ai-chat/src/worker/transcribe/transcription.ts
+  s_4beefa2e1cbd37::t_5f5fb9dbf8a09b 1-108
+demos/agentic-ai-chat/src/worker/routes/transcribe.ts
+  s_4beefa2e1cbd37::t_fcaa7dd3ac2551 5-8,26-36
+  s_4beefa2e1cbd37::t_7664d20b71d4d2 1-4,9-25,37-43
+demos/agentic-ai-chat/src/client/components/ChatComposer.vue
+  s_4beefa2e1cbd37::t_932526a1df7dda 67-68
+  s_4beefa2e1cbd37::t_11a4188426244e 163-164,168-171
+  s_4beefa2e1cbd37::t_c70a1ea9f71827 197,199-229
+  s_4beefa2e1cbd37::t_1dd8bc92b3d450 2,5,21,42-66,69-104
+  s_4beefa2e1cbd37::t_c37063efbff5a6 109-151,153-155
+  s_4beefa2e1cbd37::t_f3a438074c3f1c 172-173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "329be75393e472da835ff9e97de3072fa97bf5e7",
+  "prompts": {},
+  "sessions": {
+    "s_4beefa2e1cbd37": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_036a85d0cffezB8Qs09Hv3NKrS",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
