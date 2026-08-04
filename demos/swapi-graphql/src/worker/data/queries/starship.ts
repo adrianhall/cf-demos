@@ -1,7 +1,7 @@
 import { COLUMNS } from "../tables/starship";
 
 /** Comma-delimited explicit starship projection reused by the static statements. */
-const columns = COLUMNS.join(", ");
+const columns = COLUMNS.map((column) => `starship.${column}`).join(", ");
 
 /** Static SQL statements that return starships without using `SELECT *`. */
 export const STARSHIP_QUERIES = {

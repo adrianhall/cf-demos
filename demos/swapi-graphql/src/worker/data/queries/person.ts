@@ -1,7 +1,7 @@
 import { COLUMNS } from "../tables/person";
 
 /** Comma-delimited explicit person projection reused by the static statements. */
-const columns = COLUMNS.join(", ");
+const columns = COLUMNS.map((column) => `person.${column}`).join(", ");
 
 /** Static SQL statements that return people without using `SELECT *`. */
 export const PERSON_QUERIES = {

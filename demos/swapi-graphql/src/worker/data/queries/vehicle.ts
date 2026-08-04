@@ -1,7 +1,7 @@
 import { COLUMNS } from "../tables/vehicle";
 
 /** Comma-delimited explicit vehicle projection reused by the static statements. */
-const columns = COLUMNS.join(", ");
+const columns = COLUMNS.map((column) => `vehicle.${column}`).join(", ");
 
 /** Static SQL statements that return vehicles without using `SELECT *`. */
 export const VEHICLE_QUERIES = {

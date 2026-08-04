@@ -32,11 +32,12 @@
     "pretest:coverage": "run-s generate:wrangler:local generate:types",
     "test:coverage": "vitest run --coverage --coverage.provider=istanbul --passWithNoTests",
     "pretest:integration": "run-s generate:wrangler:local generate:types",
-    "test:integration": "vitest run --passWithNoTests"
+    "test:integration": "vitest run --project integration --passWithNoTests"
   },
   "devDependencies": {
     "@adrianhall/cloudflare-toolkit": "2.3.0",
     "@biomejs/biome": "2.5.7",
+    "@cloudflare/vitest-pool-workers": "^0.20.1",
     "@cloudflare/workers-types": "^5.20260804.1",
     "@types/node": "^24.13.3",
     "@vitest/coverage-istanbul": "^4.1.10",

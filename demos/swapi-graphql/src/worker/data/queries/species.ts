@@ -1,7 +1,7 @@
 import { COLUMNS } from "../tables/species";
 
 /** Comma-delimited explicit species projection reused by the static statements. */
-const columns = COLUMNS.join(", ");
+const columns = COLUMNS.map((column) => `species.${column}`).join(", ");
 
 /** Static SQL statements that return species without using `SELECT *`. */
 export const SPECIES_QUERIES = {

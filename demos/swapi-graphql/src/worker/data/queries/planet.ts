@@ -1,7 +1,7 @@
 import { COLUMNS } from "../tables/planet";
 
 /** Comma-delimited explicit planet projection reused by the static statements. */
-const columns = COLUMNS.join(", ");
+const columns = COLUMNS.map((column) => `planet.${column}`).join(", ");
 
 /** Static SQL statements that return planets without using `SELECT *`. */
 export const PLANET_QUERIES = {

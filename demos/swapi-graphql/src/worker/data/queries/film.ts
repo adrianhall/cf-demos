@@ -1,7 +1,7 @@
 import { COLUMNS } from "../tables/film";
 
 /** Comma-delimited explicit film projection reused by the static statements. */
-const columns = COLUMNS.join(", ");
+const columns = COLUMNS.map((column) => `film.${column}`).join(", ");
 
 /** Static SQL statements that return films without using `SELECT *`. */
 export const FILM_QUERIES = {
