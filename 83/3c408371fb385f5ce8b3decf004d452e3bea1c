@@ -1,0 +1,19 @@
+demos/swapi-graphql/package.json
+  s_276cef5b601ed9::t_8e92e6faec7be9 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "833c408371fb385f5ce8b3decf004d452e3bea1c",
+  "prompts": {},
+  "sessions": {
+    "s_276cef5b601ed9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_03288bd7bffet3pqlIBW9zQ4x0",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
