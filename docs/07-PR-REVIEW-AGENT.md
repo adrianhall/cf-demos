@@ -8,7 +8,9 @@ Status: Draft
 
 ## Goal
 
-Using agentic AI tools, provide a PR (Pull Request) or MR (Merge Request) review agent for GitHub and GitLab, covering software architecture, code quality, accessibility, and security.  At the end, the consolidated review is added to the PR as a comment and the full report is available as a link on the UI.  The review can be triggered either by a webhook (from GitHub/GitLab) OR by entering the PR URL into the UI.
+Using agentic AI tools, provide a PR (Pull Request) or MR (Merge Request) review agent for GitHub and GitLab, covering software architecture, code quality, accessibility, and security.  At the end, the consolidated review is added to the PR as a comment and the full report is available as a report within the UI.  The review can be triggered either by a webhook (from GitHub/GitLab) OR by entering the PR URL into the UI.
+
+While the review is ongoing, the UI will show what agents are doing and the costs associated with the PR review (when available).
 
 ## Prior Art
 
