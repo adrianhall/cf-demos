@@ -1,0 +1,57 @@
+demos/swapi-graphql/src/worker/data/queries/person.ts
+  s_b46be06e44afeb::t_414d741e4df791 4
+demos/swapi-graphql/package.json
+  s_b46be06e44afeb::t_c469a201d31047 35
+  s_b46be06e44afeb::t_3837fcdb437d9e 40
+demos/swapi-graphql/src/worker/data/queries/planet.ts
+  s_b46be06e44afeb::t_414d741e4df791 4
+demos/swapi-graphql/src/worker/data/queries/species.ts
+  s_b46be06e44afeb::t_414d741e4df791 4
+demos/swapi-graphql/src/worker/data/repositories/naive-relations.test.ts
+  s_b46be06e44afeb::t_563a7cc423bdd7 1-66
+demos/swapi-graphql/tests/integration/vitest.config.ts
+  s_b46be06e44afeb::t_ca311a50af8a95 1-33
+demos/swapi-graphql/src/worker/data/tables/mappers.test.ts
+  s_b46be06e44afeb::t_563a7cc423bdd7 1-12,23-24,35-40,54-56,70-76,89-91,104-110,125-126,141-146,163-165,182-188,204-205,221-223
+  s_b46be06e44afeb::t_e68460e8107ee4 13-22,25-34,41-53,57-69,77-88,92-103,111-124,127-140,147-162,166-181,189-203,206-220
+demos/swapi-graphql/src/worker/data/queries/starship.ts
+  s_b46be06e44afeb::t_414d741e4df791 4
+demos/swapi-graphql/src/worker/data/queries/vehicle.ts
+  s_b46be06e44afeb::t_414d741e4df791 4
+demos/swapi-graphql/src/worker/data/queries/film.ts
+  s_b46be06e44afeb::t_414d741e4df791 4
+demos/swapi-graphql/tests/integration/setup.ts
+  s_b46be06e44afeb::t_ca311a50af8a95 1-30,34-36
+  s_b46be06e44afeb::t_e68460e8107ee4 31-33
+demos/swapi-graphql/vitest.config.ts
+  s_b46be06e44afeb::t_ca311a50af8a95 1-17
+demos/swapi-graphql/tests/integration/graphql.test.ts
+  s_b46be06e44afeb::t_e68460e8107ee4 17-20,37-39,98-102,106-118,120-121,124-135,143-146,149-151
+  s_b46be06e44afeb::t_414d741e4df791 159
+  s_b46be06e44afeb::t_9330e093837195 1-16,21-36,40-97,103-105,119,122-123,136-142,147-148,152-158,160-169
+demos/swapi-graphql/tests/integration/drift.test.ts
+  s_b46be06e44afeb::t_e68460e8107ee4 6-106,112-117,122-130,132-140
+  s_b46be06e44afeb::t_9330e093837195 1-5,107-111,118-121,131,141
+demos/swapi-graphql/tsconfig.json
+  s_b46be06e44afeb::t_414d741e4df791 14-17
+demos/swapi-graphql/src/worker/vitest.config.ts
+  s_b46be06e44afeb::t_ca311a50af8a95 1-9
+demos/swapi-graphql/package-lock.json
+  s_b46be06e44afeb::t_703d583f48d846 20,508-526,2694-2700,4309-4318
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2b527fd66c21ae7aacf940fd31d0d98cc5595388",
+  "prompts": {},
+  "sessions": {
+    "s_b46be06e44afeb": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_03269eb50ffe6P7tNeeXFta6pl",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
