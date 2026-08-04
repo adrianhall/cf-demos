@@ -1,0 +1,54 @@
+demos/swapi-graphql/wrangler.jsonc.tpl
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-16
+demos/swapi-graphql/package.json
+  s_cd73aa8028ee2b::t_9516c7cb799791 13,31
+  s_cd73aa8028ee2b::t_40faf9c6134b6f 38
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-12,14-30,32-37,39-46,48-50
+  s_cd73aa8028ee2b::t_27f0bce80721c4 47
+demos/swapi-graphql/infra/swapi-graphql.tf
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-86
+demos/swapi-graphql/.env.example
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-26
+demos/swapi-graphql/infra/.gitignore
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-7
+demos/swapi-graphql/README.md
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-3
+demos/swapi-graphql/.gitignore
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-8
+demos/swapi-graphql/EXPLAIN-DEMO.md
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-3
+demos/swapi-graphql/infra/providers.tf
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-32
+demos/swapi-graphql/infra/local-outputs.json
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-5
+demos/swapi-graphql/infra/outputs.tf
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-19
+demos/swapi-graphql/DEMO.md
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-3
+demos/swapi-graphql/tsconfig.json
+  s_cd73aa8028ee2b::t_9271ea746a5792 4,13
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-3,5-12,14-16
+demos/swapi-graphql/src/worker/index.ts
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-11
+demos/swapi-graphql/biome.json
+  s_cd73aa8028ee2b::t_f3682bd47721d5 4-10
+  s_cd73aa8028ee2b::t_0335942fdcb583 1-3,11-22
+demos/swapi-graphql/package-lock.json
+  s_cd73aa8028ee2b::t_f84d13d33ff507 1-3877
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0548d1c80d0429356fa1536c7795744243cf71e1",
+  "prompts": {},
+  "sessions": {
+    "s_cd73aa8028ee2b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0327cd1e3ffe7n4WWLa3lEl9LO",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
