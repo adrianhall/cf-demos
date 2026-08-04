@@ -1,0 +1,50 @@
+{
+  "name": "@cf-demos/swapi-graphql",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
+  },
+  "scripts": {
+    "prebuild": "run-s generate:wrangler:local generate:types",
+    "build": "tsc --noEmit",
+    "check": "run-s check:* check:infra:fmt",
+    "check:format": "biome format .",
+    "check:infra": "terraform -chdir=infra validate",
+    "check:infra:fmt": "terraform -chdir=infra fmt -check",
+    "check:lint": "biome lint .",
+    "precheck:types": "run-s generate:wrangler:local generate:types",
+    "check:types": "tsc --noEmit",
+    "format": "run-s format:*",
+    "format:biome": "biome format --write .",
+    "format:infra": "terraform -chdir=infra fmt",
+    "generate:types": "generate-wrangler-types -- --include-runtime=false --strict-vars=false",
+    "generate:wrangler": "generate-wrangler -cf --terraform infra",
+    "generate:wrangler:local": "generate-wrangler -c -l infra/local-outputs.json",
+    "prestart": "run-s generate:wrangler:local generate:types",
+    "start": "wrangler dev",
+    "pretest": "run-s generate:wrangler:local generate:types",
+    "test": "vitest run --passWithNoTests",
+    "pretest:coverage": "run-s generate:wrangler:local generate:types",
+    "test:coverage": "vitest run --coverage --coverage.provider=istanbul --passWithNoTests",
+    "pretest:integration": "run-s generate:wrangler:local generate:types",
+    "test:integration": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@adrianhall/cloudflare-toolkit": "2.3.0",
+    "@biomejs/biome": "2.5.7",
+    "@cloudflare/workers-types": "^5.20260804.1",
+    "@vitest/coverage-istanbul": "^4.1.10",
+    "npm-run-all2": "9.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.10",
+    "wrangler": "4.118.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20260730.1": true,
+    "fsevents": false
+  }
+}
