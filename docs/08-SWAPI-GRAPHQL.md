@@ -1,6 +1,6 @@
 # Demo 8: SWAPI GraphQL Service
 
-Directory: `demos/swapi-graphql`
+Directory: `~/gitlab/cf-demos/demos/swapi-graphql`
 
 Domain: `swapi-graphql.cfapps.uk`
 
