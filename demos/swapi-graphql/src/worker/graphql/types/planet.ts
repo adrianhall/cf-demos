@@ -1,6 +1,9 @@
-/** Defines the Planet GraphQL object and its intentionally unbatched relations. */
-import { findFilmsByPlanetId } from "../../data/repositories/film";
-import { findPeopleByPlanetId } from "../../data/repositories/person";
+/** Defines the Planet GraphQL object and its batched relationship fields. */
+import { RELATION_LOADER_MAX_BATCH_SIZE } from "../../data/queries/helpers";
+import { relatedParentId } from "../../data/repositories/batch";
+import { relationFirst } from "../relations";
+import { findFilmsByPlanetIds } from "../../data/repositories/film";
+import { findPeopleByPlanetIds } from "../../data/repositories/person";
 import { filmType, personType, planetType } from "./refs";
 
 planetType.implement({
@@ -18,13 +21,25 @@ planetType.implement({
     created: t.exposeString("created"),
     edited: t.exposeString("edited"),
     url: t.exposeString("url"),
-    residents: t.field({
-      type: [personType],
-      resolve: (planet, _args, env) => findPeopleByPlanetId(env, planet.id),
+    residents: t.loadableGroup({
+      type: personType,
+      args: { first: t.arg.int() },
+      byPath: true,
+      loaderOptions: { maxBatchSize: RELATION_LOADER_MAX_BATCH_SIZE },
+      load: (ids, env, args) =>
+        findPeopleByPlanetIds(env, ids.map(String), relationFirst(args.first)),
+      group: relatedParentId,
+      resolve: (planet) => planet.id,
     }),
-    films: t.field({
-      type: [filmType],
-      resolve: (planet, _args, env) => findFilmsByPlanetId(env, planet.id),
+    films: t.loadableGroup({
+      type: filmType,
+      args: { first: t.arg.int() },
+      byPath: true,
+      loaderOptions: { maxBatchSize: RELATION_LOADER_MAX_BATCH_SIZE },
+      load: (ids, env, args) =>
+        findFilmsByPlanetIds(env, ids.map(String), relationFirst(args.first)),
+      group: relatedParentId,
+      resolve: (planet) => planet.id,
     }),
   }),
 });

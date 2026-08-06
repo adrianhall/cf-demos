@@ -1,4 +1,5 @@
 import { COLUMNS } from "../tables/vehicle";
+import { placeholders, relationQuery } from "./helpers";
 
 /** Comma-delimited explicit vehicle projection reused by the static statements. */
 const columns = COLUMNS.map((column) => `vehicle.${column}`).join(", ");
@@ -7,6 +8,32 @@ const columns = COLUMNS.map((column) => `vehicle.${column}`).join(", ");
 export const VEHICLE_QUERIES = {
   list: `SELECT ${columns} FROM vehicle ORDER BY name`,
   byId: `SELECT ${columns} FROM vehicle WHERE id = ?`,
-  byFilmId: `SELECT ${columns} FROM vehicle INNER JOIN film_vehicle ON film_vehicle.vehicle_id = vehicle.id WHERE film_vehicle.film_id = ? ORDER BY vehicle.name`,
-  byPersonId: `SELECT ${columns} FROM vehicle INNER JOIN person_vehicle ON person_vehicle.vehicle_id = vehicle.id WHERE person_vehicle.person_id = ? ORDER BY vehicle.name`,
+  byIds: (count: number) =>
+    `SELECT ${columns} FROM vehicle WHERE id IN (${placeholders(count)})`,
+  byFilmIds: (count: number, first?: number) =>
+    relationQuery(
+      {
+        columns,
+        entity: "vehicle",
+        join: "film_vehicle",
+        joinEntityColumn: "vehicle_id",
+        joinParentColumn: "film_id",
+        orderBy: "vehicle.name, vehicle.id",
+      },
+      count,
+      first,
+    ),
+  byPersonIds: (count: number, first?: number) =>
+    relationQuery(
+      {
+        columns,
+        entity: "vehicle",
+        join: "person_vehicle",
+        joinEntityColumn: "vehicle_id",
+        joinParentColumn: "person_id",
+        orderBy: "vehicle.name, vehicle.id",
+      },
+      count,
+      first,
+    ),
 } as const;

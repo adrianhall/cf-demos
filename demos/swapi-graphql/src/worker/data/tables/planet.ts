@@ -34,6 +34,8 @@ export interface PlanetRow {
 
 /** Application representation of a planet. */
 export interface Planet {
+  /** Parent relationship key populated only by batch relationship queries. */
+  parentId?: string;
   id: string;
   name: string;
   rotationPeriod: string;

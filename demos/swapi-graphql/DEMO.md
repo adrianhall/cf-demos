@@ -2,7 +2,7 @@
 
 Prerequisites: deploy the demo with `npm run deploy`, have an identity available from the configured Cloudflare Access identity provider, and sign in to the Cloudflare dashboard for the deployed account.
 
-1. In a browser, open `https://swapi-graphql.cfapps.uk/graphql`, replacing the hostname if this deployment uses a different `DEMO_DOMAIN`.
+1. In a browser, open `https://swapi-graphql.cfapps.uk/`, replacing the hostname if this deployment uses a different `DEMO_DOMAIN`; confirm it redirects to `/graphql`.
 2. On the Cloudflare Access page, select the configured identity provider and complete sign-in with any available identity.
 3. In GraphiQL, run the flat query:
 
@@ -25,7 +25,7 @@ Prerequisites: deploy the demo with `npm run deploy`, have an identity available
    }
    ```
 
-6. Return to **Workers & Pages** > **swapi-graphql** > **Logs** and compare the nested request's `statementCount` and `durationMs` with the flat request.
+6. Return to **Workers & Pages** > **swapi-graphql** > **Logs** and confirm the nested request prepares two statements: one for films and one batched relationship query.
 7. In the Cloudflare dashboard, open **Storage & Databases** > **D1**, select the `swapi-graphql-db` database, and open the console.
 8. In the D1 console, run:
 
@@ -33,7 +33,7 @@ Prerequisites: deploy the demo with `npm run deploy`, have an identity available
    SELECT * FROM film_person LIMIT 10;
    ```
 
-9. Return to GraphiQL and rerun the nested query while the relationship rows are visible in the D1 console.
-10. In **Workers & Pages** > **swapi-graphql** > **Logs**, open the new `GraphQL request completed` record and use `statementCount` to connect the repeated per-film relationship lookups to the join-table rows.
+9. Return to GraphiQL and run `{ films { title characters(first: 2) { name } } }` to cap each film's child list without changing the number of D1 statements.
+10. In **Workers & Pages** > **swapi-graphql** > **Logs**, open the new `GraphQL request completed` record and confirm the statement count remains constant as result size is bounded.
 
-Expected result: the flat query prepares one D1 statement, while the nested query prepares the films statement, one character query per film, and additional homeworld queries for returned people. See [EXPLAIN-DEMO.md](./EXPLAIN-DEMO.md) for the reason this intentional N+1 behavior differs from a production resolver design.
+Expected result: the flat query prepares one D1 statement. The nested film-to-character query prepares two statements regardless of the number of returned films; `first` bounds each parent list. See [EXPLAIN-DEMO.md](./EXPLAIN-DEMO.md) for the batching design.

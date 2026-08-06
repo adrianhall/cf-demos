@@ -38,6 +38,8 @@ export interface VehicleRow {
 
 /** Application representation of a vehicle. */
 export interface Vehicle {
+  /** Parent relationship key populated only by batch relationship queries. */
+  parentId?: string;
   id: string;
   name: string;
   model: string;

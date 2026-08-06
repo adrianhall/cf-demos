@@ -1,6 +1,9 @@
-/** Defines the Vehicle GraphQL object and its intentionally unbatched relations. */
-import { findFilmsByVehicleId } from "../../data/repositories/film";
-import { findPeopleByVehicleId } from "../../data/repositories/person";
+/** Defines the Vehicle GraphQL object and its batched relationship fields. */
+import { RELATION_LOADER_MAX_BATCH_SIZE } from "../../data/queries/helpers";
+import { relatedParentId } from "../../data/repositories/batch";
+import { relationFirst } from "../relations";
+import { findFilmsByVehicleIds } from "../../data/repositories/film";
+import { findPeopleByVehicleIds } from "../../data/repositories/person";
 import { filmType, personType, vehicleType } from "./refs";
 
 vehicleType.implement({
@@ -20,13 +23,25 @@ vehicleType.implement({
     created: t.exposeString("created"),
     edited: t.exposeString("edited"),
     url: t.exposeString("url"),
-    pilots: t.field({
-      type: [personType],
-      resolve: (vehicle, _args, env) => findPeopleByVehicleId(env, vehicle.id),
+    pilots: t.loadableGroup({
+      type: personType,
+      args: { first: t.arg.int() },
+      byPath: true,
+      loaderOptions: { maxBatchSize: RELATION_LOADER_MAX_BATCH_SIZE },
+      load: (ids, env, args) =>
+        findPeopleByVehicleIds(env, ids.map(String), relationFirst(args.first)),
+      group: relatedParentId,
+      resolve: (vehicle) => vehicle.id,
     }),
-    films: t.field({
-      type: [filmType],
-      resolve: (vehicle, _args, env) => findFilmsByVehicleId(env, vehicle.id),
+    films: t.loadableGroup({
+      type: filmType,
+      args: { first: t.arg.int() },
+      byPath: true,
+      loaderOptions: { maxBatchSize: RELATION_LOADER_MAX_BATCH_SIZE },
+      load: (ids, env, args) =>
+        findFilmsByVehicleIds(env, ids.map(String), relationFirst(args.first)),
+      group: relatedParentId,
+      resolve: (vehicle) => vehicle.id,
     }),
   }),
 });

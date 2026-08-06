@@ -1,7 +1,9 @@
-/** Defines the Species GraphQL object and its intentionally unbatched relations. */
-import { findFilmsBySpeciesId } from "../../data/repositories/film";
-import { findPeopleBySpeciesId } from "../../data/repositories/person";
-import { findPlanetBySpeciesId } from "../../data/repositories/planet";
+/** Defines the Species GraphQL object and its batched relationship fields. */
+import { RELATION_LOADER_MAX_BATCH_SIZE } from "../../data/queries/helpers";
+import { relatedParentId } from "../../data/repositories/batch";
+import { relationFirst } from "../relations";
+import { findFilmsBySpeciesIds } from "../../data/repositories/film";
+import { findPeopleBySpeciesIds } from "../../data/repositories/person";
 import { filmType, personType, planetType, speciesType } from "./refs";
 
 speciesType.implement({
@@ -22,15 +24,27 @@ speciesType.implement({
     homeworld: t.field({
       type: planetType,
       nullable: true,
-      resolve: (species, _args, env) => findPlanetBySpeciesId(env, species.id),
+      resolve: (species) => species.homeworldId,
     }),
-    people: t.field({
-      type: [personType],
-      resolve: (species, _args, env) => findPeopleBySpeciesId(env, species.id),
+    people: t.loadableGroup({
+      type: personType,
+      args: { first: t.arg.int() },
+      byPath: true,
+      loaderOptions: { maxBatchSize: RELATION_LOADER_MAX_BATCH_SIZE },
+      load: (ids, env, args) =>
+        findPeopleBySpeciesIds(env, ids.map(String), relationFirst(args.first)),
+      group: relatedParentId,
+      resolve: (species) => species.id,
     }),
-    films: t.field({
-      type: [filmType],
-      resolve: (species, _args, env) => findFilmsBySpeciesId(env, species.id),
+    films: t.loadableGroup({
+      type: filmType,
+      args: { first: t.arg.int() },
+      byPath: true,
+      loaderOptions: { maxBatchSize: RELATION_LOADER_MAX_BATCH_SIZE },
+      load: (ids, env, args) =>
+        findFilmsBySpeciesIds(env, ids.map(String), relationFirst(args.first)),
+      group: relatedParentId,
+      resolve: (species) => species.id,
     }),
   }),
 });

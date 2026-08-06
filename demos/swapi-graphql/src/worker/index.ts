@@ -15,6 +15,9 @@ const app = new Hono<{ Bindings: AppBindings; Variables: AppVariables }>();
 
 app.use(cloudflareLogger());
 
+/** Sends the hostname root to the GraphiQL console without pinning it in browser caches. */
+app.get("/", (c) => c.redirect("/graphql", 302));
+
 /** Yoga request handler configured with the executable schema and Worker bindings. */
 const yoga = createYoga<GraphQLServerContext, AppBindings>({
   schema,

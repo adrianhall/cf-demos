@@ -153,7 +153,7 @@ describe("SWAPI GraphQL API", () => {
     expect(luke?.homeworld).toEqual({ name: "Tatooine" });
   });
 
-  it("counts one relation statement per returned parent for a nested many-to-many query", async () => {
+  it("batches a nested many-to-many query into one relation statement", async () => {
     const context = createGraphQLServerContext(env as AppBindings);
     const result = await execute({
       contextValue: context.env,
@@ -164,6 +164,24 @@ describe("SWAPI GraphQL API", () => {
 
     const films = (result.data as { films: { id: string }[] }).films;
     expect(films.length).toBeGreaterThan(1);
-    expect(context.telemetry.statementCount()).toBe(1 + films.length);
+    expect(context.telemetry.statementCount()).toBe(2);
+  });
+
+  it("caps every parent's many-to-many child list with first", async () => {
+    const data = await graphql<{
+      films: { characters: { id: string }[] }[];
+    }>(`{ films { characters(first: 2) { id } } }`);
+
+    expect(data.films).not.toHaveLength(0);
+    expect(data.films.every((film) => film.characters.length <= 2)).toBe(true);
+  });
+
+  it("redirects the hostname root to GraphiQL", async () => {
+    const response = await exports.default.fetch(
+      new Request("https://swapi.example/", { redirect: "manual" }),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("/graphql");
   });
 });

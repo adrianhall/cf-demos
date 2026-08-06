@@ -1,6 +1,5 @@
 /**
- * Intentionally naive starship queries. Every relation lookup runs one unbatched
- * D1 statement for one parent id so GraphQL's N+1 behavior remains observable.
+ * Batched starship queries used by request-scoped GraphQL DataLoaders.
  */
 import type { AppBindings } from "../../bindings";
 import { STARSHIP_QUERIES } from "../queries/starship";
@@ -9,6 +8,7 @@ import {
   type Starship,
   type StarshipRow,
 } from "../tables/starship";
+import { loadBatch, loadRelatedBatch, type Related } from "./batch";
 
 /** Returns all starships. @param env Worker bindings. @returns Mapped starships. */
 export async function listStarships(env: AppBindings): Promise<Starship[]> {
@@ -16,32 +16,38 @@ export async function listStarships(env: AppBindings): Promise<Starship[]> {
   return result.results.map(mapStarship);
 }
 /** Returns one starship. @param env Worker bindings. @param id Starship id. @returns The starship or null. */
-export async function findStarshipById(
+/** Loads starships by primary keys. @param env Worker bindings. @param ids Starship ids. @returns Mapped starships. */
+export function findStarshipsByIds(
   env: AppBindings,
-  id: string,
-): Promise<Starship | null> {
-  const row = await env.DB.prepare(STARSHIP_QUERIES.byId)
-    .bind(id)
-    .first<StarshipRow>();
-  return row === null ? null : mapStarship(row);
-}
-/** Returns starships for one film. @param env Worker bindings. @param filmId Parent film id. @returns Related starships. */
-export async function findStarshipsByFilmId(
-  env: AppBindings,
-  filmId: string,
+  ids: readonly string[],
 ): Promise<Starship[]> {
-  const result = await env.DB.prepare(STARSHIP_QUERIES.byFilmId)
-    .bind(filmId)
-    .all<StarshipRow>();
-  return result.results.map(mapStarship);
+  return loadBatch(env, STARSHIP_QUERIES.byIds(ids.length), ids, mapStarship);
 }
-/** Returns starships piloted by one person. @param env Worker bindings. @param personId Parent person id. @returns Related starships. */
-export async function findStarshipsByPersonId(
+/** Loads starships grouped by film. @param env Worker bindings. @param ids Film ids. @param first Optional per-film cap. @returns Related starships. */
+export function findStarshipsByFilmIds(
   env: AppBindings,
-  personId: string,
-): Promise<Starship[]> {
-  const result = await env.DB.prepare(STARSHIP_QUERIES.byPersonId)
-    .bind(personId)
-    .all<StarshipRow>();
-  return result.results.map(mapStarship);
+  ids: readonly string[],
+  first?: number,
+): Promise<Related<Starship>[]> {
+  return loadRelatedBatch(
+    env,
+    STARSHIP_QUERIES.byFilmIds(ids.length, first),
+    ids,
+    first,
+    mapStarship,
+  );
+}
+/** Loads starships grouped by person. @param env Worker bindings. @param ids Person ids. @param first Optional per-person cap. @returns Related starships. */
+export function findStarshipsByPersonIds(
+  env: AppBindings,
+  ids: readonly string[],
+  first?: number,
+): Promise<Related<Starship>[]> {
+  return loadRelatedBatch(
+    env,
+    STARSHIP_QUERIES.byPersonIds(ids.length, first),
+    ids,
+    first,
+    mapStarship,
+  );
 }

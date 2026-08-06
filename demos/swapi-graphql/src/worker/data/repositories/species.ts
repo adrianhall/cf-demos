@@ -1,10 +1,10 @@
 /**
- * Intentionally naive species queries. Every relation lookup runs one unbatched
- * D1 statement for one parent id so GraphQL's N+1 behavior remains observable.
+ * Batched species queries used by request-scoped GraphQL DataLoaders.
  */
 import type { AppBindings } from "../../bindings";
 import { SPECIES_QUERIES } from "../queries/species";
 import { mapSpecies, type Species, type SpeciesRow } from "../tables/species";
+import { loadBatch, loadRelatedBatch, type Related } from "./batch";
 
 /** Returns all species. @param env Worker bindings. @returns Mapped species. */
 export async function listSpecies(env: AppBindings): Promise<Species[]> {
@@ -12,32 +12,24 @@ export async function listSpecies(env: AppBindings): Promise<Species[]> {
   return result.results.map(mapSpecies);
 }
 /** Returns one species. @param env Worker bindings. @param id Species id. @returns The species or null. */
-export async function findSpeciesById(
+/** Loads species by primary keys. @param env Worker bindings. @param ids Species ids. @returns Mapped species. */
+export function findSpeciesByIds(
   env: AppBindings,
-  id: string,
-): Promise<Species | null> {
-  const row = await env.DB.prepare(SPECIES_QUERIES.byId)
-    .bind(id)
-    .first<SpeciesRow>();
-  return row === null ? null : mapSpecies(row);
-}
-/** Returns species for one film. @param env Worker bindings. @param filmId Parent film id. @returns Related species. */
-export async function findSpeciesByFilmId(
-  env: AppBindings,
-  filmId: string,
+  ids: readonly string[],
 ): Promise<Species[]> {
-  const result = await env.DB.prepare(SPECIES_QUERIES.byFilmId)
-    .bind(filmId)
-    .all<SpeciesRow>();
-  return result.results.map(mapSpecies);
+  return loadBatch(env, SPECIES_QUERIES.byIds(ids.length), ids, mapSpecies);
 }
-/** Returns a person's nullable species. @param env Worker bindings. @param personId Parent person id. @returns The species or null. */
-export async function findSpeciesByPersonId(
+/** Loads species grouped by film. @param env Worker bindings. @param ids Film ids. @param first Optional per-film cap. @returns Related species. */
+export function findSpeciesByFilmIds(
   env: AppBindings,
-  personId: string,
-): Promise<Species | null> {
-  const row = await env.DB.prepare(SPECIES_QUERIES.byPersonId)
-    .bind(personId)
-    .first<SpeciesRow>();
-  return row === null ? null : mapSpecies(row);
+  ids: readonly string[],
+  first?: number,
+): Promise<Related<Species>[]> {
+  return loadRelatedBatch(
+    env,
+    SPECIES_QUERIES.byFilmIds(ids.length, first),
+    ids,
+    first,
+    mapSpecies,
+  );
 }

@@ -42,6 +42,8 @@ export interface StarshipRow {
 
 /** Application representation of a starship. */
 export interface Starship {
+  /** Parent relationship key populated only by batch relationship queries. */
+  parentId?: string;
   id: string;
   name: string;
   model: string;

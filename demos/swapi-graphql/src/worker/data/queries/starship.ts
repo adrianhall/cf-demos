@@ -1,4 +1,5 @@
 import { COLUMNS } from "../tables/starship";
+import { placeholders, relationQuery } from "./helpers";
 
 /** Comma-delimited explicit starship projection reused by the static statements. */
 const columns = COLUMNS.map((column) => `starship.${column}`).join(", ");
@@ -7,6 +8,32 @@ const columns = COLUMNS.map((column) => `starship.${column}`).join(", ");
 export const STARSHIP_QUERIES = {
   list: `SELECT ${columns} FROM starship ORDER BY name`,
   byId: `SELECT ${columns} FROM starship WHERE id = ?`,
-  byFilmId: `SELECT ${columns} FROM starship INNER JOIN film_starship ON film_starship.starship_id = starship.id WHERE film_starship.film_id = ? ORDER BY starship.name`,
-  byPersonId: `SELECT ${columns} FROM starship INNER JOIN person_starship ON person_starship.starship_id = starship.id WHERE person_starship.person_id = ? ORDER BY starship.name`,
+  byIds: (count: number) =>
+    `SELECT ${columns} FROM starship WHERE id IN (${placeholders(count)})`,
+  byFilmIds: (count: number, first?: number) =>
+    relationQuery(
+      {
+        columns,
+        entity: "starship",
+        join: "film_starship",
+        joinEntityColumn: "starship_id",
+        joinParentColumn: "film_id",
+        orderBy: "starship.name, starship.id",
+      },
+      count,
+      first,
+    ),
+  byPersonIds: (count: number, first?: number) =>
+    relationQuery(
+      {
+        columns,
+        entity: "starship",
+        join: "person_starship",
+        joinEntityColumn: "starship_id",
+        joinParentColumn: "person_id",
+        orderBy: "starship.name, starship.id",
+      },
+      count,
+      first,
+    ),
 } as const;

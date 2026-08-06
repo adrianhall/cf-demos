@@ -33,7 +33,7 @@ npm run db:migrate:local
 npm run start
 ```
 
-Open `http://localhost:8787/graphql`. Local development uses the committed placeholder D1 binding and the local database under `.wrangler/`; it does not emulate the production Access login wall.
+Open `http://localhost:8787/`; it redirects to GraphiQL at `/graphql`. Local development uses the committed placeholder D1 binding and the local database under `.wrangler/`; it does not emulate the production Access login wall.
 
 ## Testing
 
@@ -54,7 +54,7 @@ This initializes and applies Terraform, forcibly regenerates `wrangler.jsonc` an
 
 ## Verify
 
-1. Open `https://swapi-graphql.cfapps.uk/graphql`, replacing the hostname if `DEMO_DOMAIN` was changed.
+1. Open `https://swapi-graphql.cfapps.uk/`, replacing the hostname if `DEMO_DOMAIN` was changed; it redirects to GraphiQL.
 2. Complete the Access login and run:
 
    ```graphql

@@ -1,4 +1,5 @@
 import { COLUMNS } from "../tables/person";
+import { foreignKeyQuery, placeholders, relationQuery } from "./helpers";
 
 /** Comma-delimited explicit person projection reused by the static statements. */
 const columns = COLUMNS.map((column) => `person.${column}`).join(", ");
@@ -7,9 +8,67 @@ const columns = COLUMNS.map((column) => `person.${column}`).join(", ");
 export const PERSON_QUERIES = {
   list: `SELECT ${columns} FROM person ORDER BY name`,
   byId: `SELECT ${columns} FROM person WHERE id = ?`,
-  byFilmId: `SELECT ${columns} FROM person INNER JOIN film_person ON film_person.person_id = person.id WHERE film_person.film_id = ? ORDER BY person.name`,
-  byPlanetId: `SELECT ${columns} FROM person WHERE homeworld_id = ? ORDER BY name`,
-  bySpeciesId: `SELECT ${columns} FROM person WHERE species_id = ? ORDER BY name`,
-  byStarshipId: `SELECT ${columns} FROM person INNER JOIN person_starship ON person_starship.person_id = person.id WHERE person_starship.starship_id = ? ORDER BY person.name`,
-  byVehicleId: `SELECT ${columns} FROM person INNER JOIN person_vehicle ON person_vehicle.person_id = person.id WHERE person_vehicle.vehicle_id = ? ORDER BY person.name`,
+  byIds: (count: number) =>
+    `SELECT ${columns} FROM person WHERE id IN (${placeholders(count)})`,
+  byFilmIds: (count: number, first?: number) =>
+    relationQuery(
+      {
+        columns,
+        entity: "person",
+        join: "film_person",
+        joinEntityColumn: "person_id",
+        joinParentColumn: "film_id",
+        orderBy: "person.name, person.id",
+      },
+      count,
+      first,
+    ),
+  byPlanetIds: (count: number, first?: number) =>
+    foreignKeyQuery(
+      {
+        columns,
+        entity: "person",
+        parentColumn: "homeworld_id",
+        orderBy: "person.name, person.id",
+      },
+      count,
+      first,
+    ),
+  bySpeciesIds: (count: number, first?: number) =>
+    foreignKeyQuery(
+      {
+        columns,
+        entity: "person",
+        parentColumn: "species_id",
+        orderBy: "person.name, person.id",
+      },
+      count,
+      first,
+    ),
+  byStarshipIds: (count: number, first?: number) =>
+    relationQuery(
+      {
+        columns,
+        entity: "person",
+        join: "person_starship",
+        joinEntityColumn: "person_id",
+        joinParentColumn: "starship_id",
+        orderBy: "person.name, person.id",
+      },
+      count,
+      first,
+    ),
+  byVehicleIds: (count: number, first?: number) =>
+    relationQuery(
+      {
+        columns,
+        entity: "person",
+        join: "person_vehicle",
+        joinEntityColumn: "person_id",
+        joinParentColumn: "vehicle_id",
+        orderBy: "person.name, person.id",
+      },
+      count,
+      first,
+    ),
 } as const;

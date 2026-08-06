@@ -1,10 +1,10 @@
 /** Assembles the read-only SWAPI GraphQL schema. */
-import { findFilmById, listFilms } from "../data/repositories/film";
-import { findPersonById, listPeople } from "../data/repositories/person";
-import { findPlanetById, listPlanets } from "../data/repositories/planet";
-import { findSpeciesById, listSpecies } from "../data/repositories/species";
-import { findStarshipById, listStarships } from "../data/repositories/starship";
-import { findVehicleById, listVehicles } from "../data/repositories/vehicle";
+import { listFilms } from "../data/repositories/film";
+import { listPeople } from "../data/repositories/person";
+import { listPlanets } from "../data/repositories/planet";
+import { listSpecies } from "../data/repositories/species";
+import { listStarships } from "../data/repositories/starship";
+import { listVehicles } from "../data/repositories/vehicle";
 import { builder } from "./builder";
 import "./types/film";
 import "./types/person";
@@ -31,7 +31,7 @@ builder.queryType({
       type: filmType,
       nullable: true,
       args: { id: t.arg.id({ required: true }) },
-      resolve: (_root, { id }, env) => findFilmById(env, id),
+      resolve: (_root, { id }) => id,
     }),
     people: t.field({
       type: [personType],
@@ -41,7 +41,7 @@ builder.queryType({
       type: personType,
       nullable: true,
       args: { id: t.arg.id({ required: true }) },
-      resolve: (_root, { id }, env) => findPersonById(env, id),
+      resolve: (_root, { id }) => id,
     }),
     planets: t.field({
       type: [planetType],
@@ -51,7 +51,7 @@ builder.queryType({
       type: planetType,
       nullable: true,
       args: { id: t.arg.id({ required: true }) },
-      resolve: (_root, { id }, env) => findPlanetById(env, id),
+      resolve: (_root, { id }) => id,
     }),
     speciesList: t.field({
       type: [speciesType],
@@ -61,7 +61,7 @@ builder.queryType({
       type: speciesType,
       nullable: true,
       args: { id: t.arg.id({ required: true }) },
-      resolve: (_root, { id }, env) => findSpeciesById(env, id),
+      resolve: (_root, { id }) => id,
     }),
     starships: t.field({
       type: [starshipType],
@@ -71,7 +71,7 @@ builder.queryType({
       type: starshipType,
       nullable: true,
       args: { id: t.arg.id({ required: true }) },
-      resolve: (_root, { id }, env) => findStarshipById(env, id),
+      resolve: (_root, { id }) => id,
     }),
     vehicles: t.field({
       type: [vehicleType],
@@ -81,7 +81,7 @@ builder.queryType({
       type: vehicleType,
       nullable: true,
       args: { id: t.arg.id({ required: true }) },
-      resolve: (_root, { id }, env) => findVehicleById(env, id),
+      resolve: (_root, { id }) => id,
     }),
   }),
 });

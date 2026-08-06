@@ -1,10 +1,10 @@
 /**
- * Intentionally naive film queries. Every relation lookup runs one unbatched
- * D1 statement for one parent id so GraphQL's N+1 behavior remains observable.
+ * Batched film queries used by request-scoped GraphQL DataLoaders.
  */
 import type { AppBindings } from "../../bindings";
 import { FILM_QUERIES } from "../queries/film";
 import { mapFilm, type Film, type FilmRow } from "../tables/film";
+import { loadBatch, loadRelatedBatch, type Related } from "./batch";
 
 /** Returns all films. @param env Worker bindings. @returns Mapped films. */
 export async function listFilms(env: AppBindings): Promise<Film[]> {
@@ -12,60 +12,80 @@ export async function listFilms(env: AppBindings): Promise<Film[]> {
   return result.results.map(mapFilm);
 }
 /** Returns one film. @param env Worker bindings. @param id Film id. @returns The film or null. */
-export async function findFilmById(
+/** Loads films by primary keys. @param env Worker bindings. @param ids Film ids. @returns Mapped films. */
+export function findFilmsByIds(
   env: AppBindings,
-  id: string,
-): Promise<Film | null> {
-  const row = await env.DB.prepare(FILM_QUERIES.byId).bind(id).first<FilmRow>();
-  return row === null ? null : mapFilm(row);
-}
-/** Returns films for one person. @param env Worker bindings. @param personId Parent person id. @returns Related films. */
-export async function findFilmsByPersonId(
-  env: AppBindings,
-  personId: string,
+  ids: readonly string[],
 ): Promise<Film[]> {
-  const result = await env.DB.prepare(FILM_QUERIES.byPersonId)
-    .bind(personId)
-    .all<FilmRow>();
-  return result.results.map(mapFilm);
+  return loadBatch(env, FILM_QUERIES.byIds(ids.length), ids, mapFilm);
 }
-/** Returns films for one planet. @param env Worker bindings. @param planetId Parent planet id. @returns Related films. */
-export async function findFilmsByPlanetId(
+/** Loads films grouped by person. @param env Worker bindings. @param ids Person ids. @param first Optional per-person cap. @returns Related films. */
+export function findFilmsByPersonIds(
   env: AppBindings,
-  planetId: string,
-): Promise<Film[]> {
-  const result = await env.DB.prepare(FILM_QUERIES.byPlanetId)
-    .bind(planetId)
-    .all<FilmRow>();
-  return result.results.map(mapFilm);
+  ids: readonly string[],
+  first?: number,
+): Promise<Related<Film>[]> {
+  return loadRelatedBatch(
+    env,
+    FILM_QUERIES.byPersonIds(ids.length, first),
+    ids,
+    first,
+    mapFilm,
+  );
 }
-/** Returns films for one species. @param env Worker bindings. @param speciesId Parent species id. @returns Related films. */
-export async function findFilmsBySpeciesId(
+/** Loads films grouped by planet. @param env Worker bindings. @param ids Planet ids. @param first Optional per-planet cap. @returns Related films. */
+export function findFilmsByPlanetIds(
   env: AppBindings,
-  speciesId: string,
-): Promise<Film[]> {
-  const result = await env.DB.prepare(FILM_QUERIES.bySpeciesId)
-    .bind(speciesId)
-    .all<FilmRow>();
-  return result.results.map(mapFilm);
+  ids: readonly string[],
+  first?: number,
+): Promise<Related<Film>[]> {
+  return loadRelatedBatch(
+    env,
+    FILM_QUERIES.byPlanetIds(ids.length, first),
+    ids,
+    first,
+    mapFilm,
+  );
 }
-/** Returns films for one starship. @param env Worker bindings. @param starshipId Parent starship id. @returns Related films. */
-export async function findFilmsByStarshipId(
+/** Loads films grouped by species. @param env Worker bindings. @param ids Species ids. @param first Optional per-species cap. @returns Related films. */
+export function findFilmsBySpeciesIds(
   env: AppBindings,
-  starshipId: string,
-): Promise<Film[]> {
-  const result = await env.DB.prepare(FILM_QUERIES.byStarshipId)
-    .bind(starshipId)
-    .all<FilmRow>();
-  return result.results.map(mapFilm);
+  ids: readonly string[],
+  first?: number,
+): Promise<Related<Film>[]> {
+  return loadRelatedBatch(
+    env,
+    FILM_QUERIES.bySpeciesIds(ids.length, first),
+    ids,
+    first,
+    mapFilm,
+  );
 }
-/** Returns films for one vehicle. @param env Worker bindings. @param vehicleId Parent vehicle id. @returns Related films. */
-export async function findFilmsByVehicleId(
+/** Loads films grouped by starship. @param env Worker bindings. @param ids Starship ids. @param first Optional per-starship cap. @returns Related films. */
+export function findFilmsByStarshipIds(
   env: AppBindings,
-  vehicleId: string,
-): Promise<Film[]> {
-  const result = await env.DB.prepare(FILM_QUERIES.byVehicleId)
-    .bind(vehicleId)
-    .all<FilmRow>();
-  return result.results.map(mapFilm);
+  ids: readonly string[],
+  first?: number,
+): Promise<Related<Film>[]> {
+  return loadRelatedBatch(
+    env,
+    FILM_QUERIES.byStarshipIds(ids.length, first),
+    ids,
+    first,
+    mapFilm,
+  );
+}
+/** Loads films grouped by vehicle. @param env Worker bindings. @param ids Vehicle ids. @param first Optional per-vehicle cap. @returns Related films. */
+export function findFilmsByVehicleIds(
+  env: AppBindings,
+  ids: readonly string[],
+  first?: number,
+): Promise<Related<Film>[]> {
+  return loadRelatedBatch(
+    env,
+    FILM_QUERIES.byVehicleIds(ids.length, first),
+    ids,
+    first,
+    mapFilm,
+  );
 }

@@ -36,6 +36,8 @@ export interface PersonRow {
 
 /** Application representation of a person. */
 export interface Person {
+  /** Parent relationship key populated only by batch relationship queries. */
+  parentId?: string;
   id: string;
   name: string;
   height: string;

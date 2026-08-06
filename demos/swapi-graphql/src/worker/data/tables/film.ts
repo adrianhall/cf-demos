@@ -28,6 +28,8 @@ export interface FilmRow {
 
 /** Application representation of a film. */
 export interface Film {
+  /** Parent relationship key populated only by batch relationship queries. */
+  parentId?: string;
   id: string;
   episodeId: string;
   title: string;

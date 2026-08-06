@@ -1,10 +1,10 @@
 /**
- * Intentionally naive vehicle queries. Every relation lookup runs one unbatched
- * D1 statement for one parent id so GraphQL's N+1 behavior remains observable.
+ * Batched vehicle queries used by request-scoped GraphQL DataLoaders.
  */
 import type { AppBindings } from "../../bindings";
 import { VEHICLE_QUERIES } from "../queries/vehicle";
 import { mapVehicle, type Vehicle, type VehicleRow } from "../tables/vehicle";
+import { loadBatch, loadRelatedBatch, type Related } from "./batch";
 
 /** Returns all vehicles. @param env Worker bindings. @returns Mapped vehicles. */
 export async function listVehicles(env: AppBindings): Promise<Vehicle[]> {
@@ -12,32 +12,38 @@ export async function listVehicles(env: AppBindings): Promise<Vehicle[]> {
   return result.results.map(mapVehicle);
 }
 /** Returns one vehicle. @param env Worker bindings. @param id Vehicle id. @returns The vehicle or null. */
-export async function findVehicleById(
+/** Loads vehicles by primary keys. @param env Worker bindings. @param ids Vehicle ids. @returns Mapped vehicles. */
+export function findVehiclesByIds(
   env: AppBindings,
-  id: string,
-): Promise<Vehicle | null> {
-  const row = await env.DB.prepare(VEHICLE_QUERIES.byId)
-    .bind(id)
-    .first<VehicleRow>();
-  return row === null ? null : mapVehicle(row);
-}
-/** Returns vehicles for one film. @param env Worker bindings. @param filmId Parent film id. @returns Related vehicles. */
-export async function findVehiclesByFilmId(
-  env: AppBindings,
-  filmId: string,
+  ids: readonly string[],
 ): Promise<Vehicle[]> {
-  const result = await env.DB.prepare(VEHICLE_QUERIES.byFilmId)
-    .bind(filmId)
-    .all<VehicleRow>();
-  return result.results.map(mapVehicle);
+  return loadBatch(env, VEHICLE_QUERIES.byIds(ids.length), ids, mapVehicle);
 }
-/** Returns vehicles piloted by one person. @param env Worker bindings. @param personId Parent person id. @returns Related vehicles. */
-export async function findVehiclesByPersonId(
+/** Loads vehicles grouped by film. @param env Worker bindings. @param ids Film ids. @param first Optional per-film cap. @returns Related vehicles. */
+export function findVehiclesByFilmIds(
   env: AppBindings,
-  personId: string,
-): Promise<Vehicle[]> {
-  const result = await env.DB.prepare(VEHICLE_QUERIES.byPersonId)
-    .bind(personId)
-    .all<VehicleRow>();
-  return result.results.map(mapVehicle);
+  ids: readonly string[],
+  first?: number,
+): Promise<Related<Vehicle>[]> {
+  return loadRelatedBatch(
+    env,
+    VEHICLE_QUERIES.byFilmIds(ids.length, first),
+    ids,
+    first,
+    mapVehicle,
+  );
+}
+/** Loads vehicles grouped by person. @param env Worker bindings. @param ids Person ids. @param first Optional per-person cap. @returns Related vehicles. */
+export function findVehiclesByPersonIds(
+  env: AppBindings,
+  ids: readonly string[],
+  first?: number,
+): Promise<Related<Vehicle>[]> {
+  return loadRelatedBatch(
+    env,
+    VEHICLE_QUERIES.byPersonIds(ids.length, first),
+    ids,
+    first,
+    mapVehicle,
+  );
 }

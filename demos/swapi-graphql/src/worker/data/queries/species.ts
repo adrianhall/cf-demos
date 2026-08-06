@@ -1,4 +1,5 @@
 import { COLUMNS } from "../tables/species";
+import { placeholders, relationQuery } from "./helpers";
 
 /** Comma-delimited explicit species projection reused by the static statements. */
 const columns = COLUMNS.map((column) => `species.${column}`).join(", ");
@@ -7,6 +8,19 @@ const columns = COLUMNS.map((column) => `species.${column}`).join(", ");
 export const SPECIES_QUERIES = {
   list: `SELECT ${columns} FROM species ORDER BY name`,
   byId: `SELECT ${columns} FROM species WHERE id = ?`,
-  byFilmId: `SELECT ${columns} FROM species INNER JOIN film_species ON film_species.species_id = species.id WHERE film_species.film_id = ? ORDER BY species.name`,
-  byPersonId: `SELECT ${columns} FROM species INNER JOIN person ON person.species_id = species.id WHERE person.id = ?`,
+  byIds: (count: number) =>
+    `SELECT ${columns} FROM species WHERE id IN (${placeholders(count)})`,
+  byFilmIds: (count: number, first?: number) =>
+    relationQuery(
+      {
+        columns,
+        entity: "species",
+        join: "film_species",
+        joinEntityColumn: "species_id",
+        joinParentColumn: "film_id",
+        orderBy: "species.name, species.id",
+      },
+      count,
+      first,
+    ),
 } as const;

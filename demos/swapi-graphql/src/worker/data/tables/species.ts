@@ -36,6 +36,8 @@ export interface SpeciesRow {
 
 /** Application representation of a species. */
 export interface Species {
+  /** Parent relationship key populated only by batch relationship queries. */
+  parentId?: string;
   id: string;
   name: string;
   classification: string;

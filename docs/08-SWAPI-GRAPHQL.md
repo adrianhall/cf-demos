@@ -17,14 +17,12 @@ Cloudflare products: Workers and D1.
 - Serve [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server)'s built-in
   GraphiQL console at `/graphql` as the demo's only interface — there is no
   browser app.
-- Resolve every relation field (`Film.characters`, `Person.starships`,
-  `Planet.residents`, …) with one direct, unbatched D1 query per parent row.
-  This is deliberate: the demo exists to make the classic GraphQL N+1 problem
-  — and the harder many-to-many variant of it — visible and countable, not to
-  solve it. See "Explicit Exceptions" below.
+- Resolve relation fields with request-scoped Pothos DataLoaders. N:1 fields
+  batch by entity ID; M:N fields batch parent IDs, group rows by parent, and
+  support an optional bounded `first` argument using a window function.
 - Log one structured record per GraphQL request with the operation name,
   elapsed time, and the number of D1 statements the request issued, so a
-  presenter can show the query-count blowup live in Workers Logs.
+  presenter can show that nested relationship queries remain bounded.
 
 ## Explicit Exceptions
 
@@ -42,15 +40,10 @@ only:
 - **Read-only.** The schema has no `Mutation` type and no write path. Data is
   loaded once via a D1 migration (see Phase 3) and never changes at runtime.
 - **No subscriptions.** The `Subscription` type is out of scope.
-- **Naive by design.** Relation resolvers are intentionally unbatched. A
-  production fix (DataLoader batching for one-to-many fields, and a batched
-  `ROW_NUMBER() OVER (PARTITION BY …)` or query-per-parent strategy for
-  many-to-many child connections) is described in `EXPLAIN-DEMO.md` as
-  further reading, not implemented here.
-- **No pagination.** Every SWAPI collection is small (at most ~90 rows), so
-  list fields return the full set with no `first`/`after` arguments. This
-  keeps the schema minimal and does not hide the N+1 fan-out behind cursor
-  mechanics.
+- **Bounded child lists.** Root lists return the full small reference dataset.
+  Relationship fields accept optional `first: Int` values from 1 through 100.
+  M:N batching uses `ROW_NUMBER() OVER (PARTITION BY …)` to apply that limit
+  independently to every parent.
 - **No UI beyond GraphiQL.** GraphQL Yoga's default GraphiQL is enabled
   unconditionally (including in production) because it is the demo's
   intended interface, not a dev convenience to gate behind
@@ -82,9 +75,8 @@ only:
    ```
 
 3. Open Workers Logs and find the structured log for each request. Compare
-   `statementCount` between the two queries — the second should show roughly
-   `1 (films) + 6 (characters per film) + N (homeworld per character)`
-   statements, growing with the data instead of staying constant.
+   `statementCount`: the nested query should stay at three statements (films,
+   characters, and homeworlds) regardless of the number of returned rows.
 4. Open the D1 console and run `SELECT * FROM film_person LIMIT 10;` to show
    the join table the naive resolver is querying once per film.
 
@@ -133,7 +125,8 @@ Flat `Query` fields only, no arguments beyond `id` lookups:
 `planet(id: ID!)`, `speciesList`, `species(id: ID!)`, `starships`,
 `starship(id: ID!)`, `vehicles`, `vehicle(id: ID!)`.
 
-Relation fields per type, each resolved with its own unbatched query:
+Relation fields per type, each resolved with a request-scoped batch query. M:N
+fields support an optional `first: Int` argument:
 
 | Type | One-to-many / N:1 | Many-to-many |
 | --- | --- | --- |
