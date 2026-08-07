@@ -1,1 +1,22 @@
-<div id="app"></div><script type="module" src="/src/client/main.ts"></script>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Applies to every page this single-page app serves, including the public Phase 6 `/share`
+      read-only viewer (docs/09-ARCHITECT.md's Phase 6 "Set a restrictive referrer policy"
+      requirement) and the protected `/app/invitations/:token` redemption page, whose path
+      itself embeds a bearer token. `strict-origin-when-cross-origin` never sends a full URL
+      (path, query, or fragment) to a different origin, and never sends the origin at all over a
+      downgrade from HTTPS to HTTP; a same-origin request still receives the full URL, which this
+      app's own client-side code needs for nothing today but costs nothing to keep available.
+    -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <title>Architect</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/client/main.ts"></script>
+  </body>
+</html>

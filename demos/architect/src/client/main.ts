@@ -28,6 +28,7 @@ import DiagramEditorView from "./views/DiagramEditorView.vue";
 import DiagramLibraryView from "./views/DiagramLibraryView.vue";
 import InvitationRedeemView from "./views/InvitationRedeemView.vue";
 import LandingView from "./views/LandingView.vue";
+import ShareView from "./views/ShareView.vue";
 
 /** Start the public landing page and Access-gated application shell. */
 export function startClient(): void {
@@ -35,6 +36,11 @@ export function startClient(): void {
     history: createWebHistory(),
     routes: [
       { component: LandingView, path: "/" },
+      // Anonymous, read-only (docs/09-ARCHITECT.md's Phase 6) — no Access identity is required
+      // or read here; the share token lives only in this route's URL fragment, which Vue Router
+      // ignores for matching (fragments are never sent to a server), so a bare `/share` path
+      // match is intentional and correct.
+      { component: ShareView, path: "/share" },
       // `/app` has no page of its own — it exists only so a bookmarked/typed `/app` URL lands
       // somewhere useful once authenticated, without also gating an empty intermediate page
       // Access would already have to authorize.

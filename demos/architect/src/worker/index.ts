@@ -11,6 +11,7 @@ import { accessMiddleware } from "./middleware/access";
 import { diagramsRouter } from "./routes/diagrams";
 import { invitationsRouter } from "./routes/invitations";
 import { meRouter } from "./routes/me";
+import { sharedRouter } from "./routes/shared";
 
 const app = new Hono<AppBindings>();
 
@@ -19,6 +20,7 @@ app.use(accessMiddleware);
 app.route("/api/me", meRouter);
 app.route("/api/diagrams", diagramsRouter);
 app.route("/api/invitations", invitationsRouter);
+app.route("/shared", sharedRouter);
 app.onError(problemDetailsErrorHandler({ includeStack: import.meta.env.DEV }));
 app.notFound(notFoundHandler());
 

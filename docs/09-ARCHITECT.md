@@ -4,7 +4,15 @@ Directory: `demos/architect`
 
 Domain: `architect.cfapps.uk`
 
-Status: Phase 0 spikes completed; deployed Workflow readiness remains a Phase 5 blocker
+Status: Phases 0-6 complete. Phase 5's deployed Workflow readiness blocker is resolved: a
+deployed smoke verification (`wrangler workflows trigger` directly against the real
+`architect-architecture` Workflow) reached both a `ready` job with a schema-valid R2 proposal and
+a durable `failed` job after the model rejected an impossible schema request. That verification
+also found and fixed two defects not caught by local-only testing: the `generate` step's
+1-second timeout (copied from Spike 08's synchronous local fixture config, too short for a real
+Workers AI call) and `extractResponseText()` rejecting the already-parsed object
+`response_format` actually returns. Phase 6 (public publishing) is implemented, tested, and
+deployed. Phase 7 (verification, documentation, and cleanup) is next.
 
 Cloudflare products: Workers, Static Assets, Cloudflare Access, Durable
 Objects, D1, R2, Workers KV, Workflows, and Workers AI.

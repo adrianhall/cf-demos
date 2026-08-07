@@ -48,3 +48,14 @@ Expected result: two authenticated editors see each other's presence and live cu
 32. Open R2 and show the `proposals/<jobId>.json` object written by the accepted job; open D1 and show the `architecture_jobs` row with `status = 'ready'` and its `proposal_r2_key`. Open Durable Objects and show `DiagramRoom` broadcasting `job_progress` — the Worker Logs' `architecture_job_started`, `architecture_job_completed`, and `architecture_proposal_accepted` lines confirm none of them include the prompt or generated document content.
 
 Expected result: both editors watch one Workflow's progress in real time without polling manually, the proposal never changes the diagram until explicitly accepted, and acceptance after an intervening edit is rejected with a specific, actionable message rather than a generic error.
+
+## Public read-only publishing
+
+33. In User A's window (the owner), click **Share** in the toolbar, then **Publish this diagram**, and **Copy link**.
+34. Open the copied link in a third, fully anonymous browser window (or a private/incognito window with no Access session at all) and show it renders the diagram read-only — no palette, no properties editing, and no participant/connection chip — with pan, zoom, and node/edge detail inspection all still working.
+35. Back in User A's window, make one more edit on the canvas (move a node), then in the **Share** dialog click **Republish current version** and reload the anonymous window: show it now reflects the new position at the updated revision, using the exact same link.
+36. In the **Share** dialog, click **Revoke published link**, then reload the anonymous window again and show the "not available" message — the same link no longer resolves.
+37. Publish again to get a fresh link, then in the Cloudflare dashboard open R2 and show the `snapshots/<diagramId>/` prefix containing one immutable object per published revision (the earlier revision from step 35 is still present, even though only the latest is reachable through a live link). Open Workers KV and show the one entry keyed by the share token's digest, pointing at that latest object's key.
+38. In Workers & Pages, open the `architect` Worker's Logs and find the `diagram_published` and `diagram_share_revoked` lines from the steps above — point out that neither includes the raw token or any graph content.
+
+Expected result: an anonymous visitor with the link sees a live, read-only snapshot of the diagram with no sign-in and no editing or collaboration connection; republishing updates the same link in place; revoking immediately stops the link from resolving; and every published revision remains in R2 as an immutable object even after a newer one supersedes it.

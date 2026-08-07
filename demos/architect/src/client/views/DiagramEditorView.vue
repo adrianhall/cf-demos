@@ -15,6 +15,8 @@ import MemberList from "../components/diagrams/MemberList.vue";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import PropertiesPanel from "../components/diagrams/PropertiesPanel.vue";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
+import SharePanel from "../components/diagrams/SharePanel.vue";
+// biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import FeatherIcon from "../components/FeatherIcon.vue";
 import { useDiagramDocumentStore } from "../stores/diagram-document";
 import { useSessionStore } from "../stores/session";
@@ -26,6 +28,7 @@ const store = useDiagramDocumentStore();
 const session = useSessionStore();
 const inviteDialogOpen = ref(false);
 const proposalDialogOpen = ref(false);
+const shareDialogOpen = ref(false);
 
 /**
  * Whether the signed-in identity owns the open diagram.
@@ -170,6 +173,10 @@ function backToLibrary(): void {
         <template #prepend><FeatherIcon name="user-plus" /></template>
         Invite
       </v-btn>
+      <v-btn v-if="isOwner" variant="text" @click="shareDialogOpen = true">
+        <template #prepend><FeatherIcon name="globe" /></template>
+        Share
+      </v-btn>
       <!--
         Unconditionally rendered, even while the current identity may be the wrong one: this is
         the only recovery available in local development if the wrong dev identity was selected
@@ -220,6 +227,11 @@ function backToLibrary(): void {
     <InviteDialog
       v-if="store.diagram"
       v-model:open="inviteDialogOpen"
+      :diagram-id="store.diagram.id"
+    />
+    <SharePanel
+      v-if="store.diagram && isOwner"
+      v-model:open="shareDialogOpen"
       :diagram-id="store.diagram.id"
     />
     <ArchitectureProposalDialog

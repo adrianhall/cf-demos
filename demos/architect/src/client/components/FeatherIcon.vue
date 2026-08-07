@@ -11,6 +11,7 @@ export type FeatherIconName =
   | "edit-2"
   | "folder"
   | "git-commit"
+  | "globe"
   | "grid"
   | "log-out"
   | "mouse-pointer"

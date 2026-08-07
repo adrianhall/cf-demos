@@ -52,6 +52,14 @@ Acceptance is the one moment an AI proposal can change the diagram, and it appli
 
 A retry is always a new job id and a new Workflow instance — this demo never restarts or reuses a Workflow instance id for a user-visible "try again," so a stuck or exhausted instance can never silently resurrect itself into non-terminal state. The rate limit, idempotency key, and one-active-job-per-diagram check are all D1-backed rather than in-memory, so they hold up across the multiple isolates a real deployment runs concurrently — an in-memory counter would silently reset on every new isolate and stop meaning anything.
 
+## Public publishing
+
+Publishing (`src/worker/shares/repository.ts`'s `ShareRepository`) gives every diagram at most one active, owner-managed public link, built from the same digest-only capability pattern Phase 3's invitations already established (`src/worker/invitations/token.ts`): a random 256-bit token is generated, only its SHA-256 digest is ever persisted, and the raw value is returned to the owner exactly once. `POST /api/diagrams/:id/share` derives the diagram's title, current revision, and document entirely server-side — never from the request — and writes them as one immutable JSON object to R2 at the deterministic, revision-addressed key `snapshots/<diagramId>/<revision>.json`, using the R2 binding's `onlyIf: { "If-None-Match": "*" }` conditional `put()` so the same key can never be silently overwritten. A diagram's first publish inserts a new `diagram_shares` row and a matching `SHARES` KV entry (token digest -> current R2 key); every later republish reuses the *same* token digest and simply repoints the KV entry and D1 row at the new revision's key, so an already-shared link keeps working and reflects the diagram's latest content without ever needing to be reissued. Republishing with no edit since the last publish is treated as a harmless no-op rather than a collision — the repository checks whether the diagram's active share is already at the requested revision before ever attempting the create-only R2 write, since a same-diagram/same-revision key is expected to already exist in that case, not a conflict.
+
+The anonymous path is deliberately the simplest, most isolated code in this demo: `POST /shared/resolve` (mounted outside `/api/*`, requiring no Cloudflare Access identity at all) hashes the submitted token and reads exactly one KV entry, then the R2 object it names — it never queries D1 and never calls `DiagramRoom`, so an anonymous visitor cannot observe diagram ownership, membership, or any live editable state by construction, not by an extra filtering step. The capability itself lives in the share link's URL *fragment* (`/share#<token>`), which browsers never transmit in a request or a `Referer` header; the public `ShareView.vue` reads it once, client-side, and sends it only in a same-origin JSON body. Revoking a diagram deletes its KV entry immediately and sets `revoked_at` in D1; the brief's own Access Model section explicitly accepts that KV deletion is eventually consistent across Cloudflare's edge as a deliberate, documented trade-off — acceptable here specifically because the content being revoked was, until a moment ago, intentionally public.
+
+The read-only viewer reuses `DiagramCanvas.vue`'s `readOnly` prop from Phase 2/4 rather than a second canvas implementation — it disables drag and connect gestures while leaving pan, zoom, and node/edge inspection enabled, and it never opens the Phase 4 collaboration WebSocket at all.
+
 ## Further Reading
 
 - [Vue Flow](https://vueflow.dev/)
@@ -67,6 +75,8 @@ A retry is always a new job id and a new Workflow instance — this demo never r
 - [Workflows: sleeping and retrying](https://developers.cloudflare.com/workflows/build/sleeping-and-retrying/)
 - [Workers AI: JSON mode / structured output](https://developers.cloudflare.com/workers-ai/json-mode/)
 - [D1](https://developers.cloudflare.com/d1/), [R2](https://developers.cloudflare.com/r2/), and [Workers KV](https://developers.cloudflare.com/kv/)
+- [R2 Workers API: conditional operations](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/#conditional-operations)
+- [Referrer-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy)
 - [Hibernatable WebSockets](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)
 - [Durable Objects testing with Vitest](https://developers.cloudflare.com/workers/testing/vitest-integration/test-apis/)
 - `spikes/07-architect-collaboration/REPORT.md` — the measured SQLite schema, frame protocol, close codes, cursor rate limit, and test cleanup recipe this phase implements

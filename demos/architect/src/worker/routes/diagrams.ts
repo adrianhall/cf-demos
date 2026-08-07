@@ -13,16 +13,16 @@ import {
 import { getBlueprint } from "../../graph/blueprints";
 import type { GraphDocument } from "../../graph/types";
 import { validateGraphDocument } from "../../graph/validation";
-import { ArchitectureJobRepository } from "../architecture/repository";
 import { deriveIdempotentJobId } from "../architecture/idempotency";
+import { ArchitectureJobRepository } from "../architecture/repository";
 import {
   MAX_DIAGRAM_NODES_FOR_PROPOSAL,
   PROPOSAL_RATE_LIMIT_MS,
   validateStartProposalInput,
 } from "../architecture/validation";
 import type { AppBindings } from "../bindings";
-import { DiagramRepository } from "../diagrams/repository";
 import { validateOperationInput } from "../diagrams/operation-input";
+import { DiagramRepository } from "../diagrams/repository";
 import {
   validateCreateDiagramInput,
   validateDiagramId,
@@ -35,6 +35,7 @@ import {
   requireSameOriginMutation,
   requireSameOriginUpgrade,
 } from "../middleware/mutation-guard";
+import { ShareRepository } from "../shares/repository";
 
 /**
  * Diagram library, document, membership, and invitation-management API, mounted at
@@ -172,6 +173,85 @@ diagramsRouter.delete("/:id/invitations/:invitationId", async (context) => {
   await invitations.revoke(id, context.req.param("invitationId"));
 
   context.get("LOGGER").info("diagram_invitation_revoked", { diagramId: id });
+  return context.body(null, 204);
+});
+
+/**
+ * Publish (or republish/update) a diagram's current document as a new immutable, anonymous
+ * read-only snapshot (`docs/09-ARCHITECT.md`'s Phase 6). Owner-only.
+ *
+ * Derives the diagram's current title, revision, and document entirely server-side from D1 and
+ * `DiagramRoom.readDocument()` — never from the request body — before delegating to
+ * `../shares/repository.ts`'s `publish()` for the actual R2/KV/D1 writes. See that method's own
+ * documentation for exactly when the response includes a fresh raw `token` (first publish only)
+ * versus `null` (every republish reuses the existing link).
+ */
+diagramsRouter.post("/:id/share", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  const identity = context.get("Cloudflare_Access_Identity").email;
+  const diagrams = new DiagramRepository(context.env.DB);
+  const diagram = await diagrams.requireOwner(identity, id);
+
+  const room = context.env.DIAGRAM_ROOM.getByName(id);
+  const snapshot = await room.readDocument();
+
+  const shares = new ShareRepository(
+    context.env.DB,
+    context.env.SNAPSHOTS,
+    context.env.SHARES,
+  );
+  const result = await shares.publish(
+    id,
+    diagram.title,
+    snapshot.revision,
+    snapshot.document,
+  );
+
+  context.get("LOGGER").info("diagram_published", { diagramId: id });
+  return context.json({
+    published: true,
+    revision: result.revision,
+    token: result.token,
+  });
+});
+
+/** Read a diagram's current publication status. Owner-only. Never returns a token or digest. */
+diagramsRouter.get("/:id/share", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  const identity = context.get("Cloudflare_Access_Identity").email;
+  const diagrams = new DiagramRepository(context.env.DB);
+  await diagrams.requireOwner(identity, id);
+
+  const shares = new ShareRepository(
+    context.env.DB,
+    context.env.SNAPSHOTS,
+    context.env.SHARES,
+  );
+  return context.json({ status: await shares.getStatus(id) });
+});
+
+/**
+ * Revoke a diagram's active share, if any. Owner-only, idempotent.
+ *
+ * Removing its `SHARES` KV entry is eventually consistent across Cloudflare's edge — an
+ * acceptable, explicitly documented window here because the content was deliberately published
+ * publicly (`docs/09-ARCHITECT.md`'s Phase 6) — but the D1 `revoked_at` write is synchronous and
+ * durable before that KV delete even begins.
+ */
+diagramsRouter.delete("/:id/share", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  const identity = context.get("Cloudflare_Access_Identity").email;
+  const diagrams = new DiagramRepository(context.env.DB);
+  await diagrams.requireOwner(identity, id);
+
+  const shares = new ShareRepository(
+    context.env.DB,
+    context.env.SNAPSHOTS,
+    context.env.SHARES,
+  );
+  await shares.revoke(id);
+
+  context.get("LOGGER").info("diagram_share_revoked", { diagramId: id });
   return context.body(null, 204);
 });
 
