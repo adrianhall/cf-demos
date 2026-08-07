@@ -1,0 +1,290 @@
+spikes/06-architect-vue-editor/src/graph/layout.test.ts
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-15
+spikes/10-architect-workflow-deployed/src/index.ts
+  s_f89a8ab8e38943::t_d3c66cd6c80300 46-47
+  s_f89a8ab8e38943::t_27bd75312f7796 148
+  s_f89a8ab8e38943::t_3464027beb44bc 227,229-231,236
+  s_f89a8ab8e38943::t_8c55fcc501a3e4 232-235
+  s_f89a8ab8e38943::t_4a3294262f21ad 59-61,64,67,146,151,156
+  s_f89a8ab8e38943::t_dd7064167b8529 92-102,124,228
+  s_f89a8ab8e38943::t_4afb1058e5d569 1-45,48-58,62-63,65-66,68-91,103-123,125-145,147,149-150,152-155,157-226,237-240
+spikes/09-architect-ai-structured-output/scripts/run.mjs
+  s_e7f31b0122c89a::t_c02f740b184e65 1-16,18-28
+  s_e7f31b0122c89a::t_84532183b81ca1 17
+spikes/08-architect-workflow-local/src/generator.ts
+  s_0da611817ede10::t_0980adec4a9dcf 1-51
+spikes/06-architect-vue-editor/src/components/ActorNode.vue
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-17
+spikes/10-architect-workflow-deployed/teardown-results.json
+  s_f89a8ab8e38943::t_ba36b059eff470 2
+  s_f89a8ab8e38943::t_a8a725838f5179 1,3-20
+spikes/10-architect-workflow-deployed/infra/local-outputs.json
+  s_f89a8ab8e38943::t_ad3692e962c9e1 1-8
+spikes/06-architect-vue-editor/src/graph/store.ts
+  s_07d6513fbeb376::t_ad5a517a45be81 1,40-41,45-46,80,82
+  s_07d6513fbeb376::t_ffd4d30af3bb48 2-39,42-44,47-79,81,83-84
+spikes/07-architect-collaboration/vitest.config.ts
+  s_e76389e00b1b05::t_277987e707bff9 1-17
+spikes/08-architect-workflow-local/src/validation.ts
+  s_0da611817ede10::t_0980adec4a9dcf 1-47
+spikes/06-architect-vue-editor/src/graph/catalog.ts
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-29
+spikes/06-architect-vue-editor/package.json
+  s_07d6513fbeb376::t_363854210eb7a0 13,16
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-12,14-15,17-33
+spikes/06-architect-vue-editor/src/graph/types.ts
+  s_07d6513fbeb376::t_ad5a517a45be81 1,33,36,47
+  s_07d6513fbeb376::t_ffd4d30af3bb48 2-32,34-35,37-46,48-56
+spikes/08-architect-workflow-local/README.md
+  s_0da611817ede10::t_0980adec4a9dcf 1-21
+spikes/06-architect-vue-editor/src/components/DiagramCanvas.vue
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-3,5,7-12,14-15,18-19,21,23-24,26,28-29,32-33,35,39-41,43-45,47-48,50-57
+  s_07d6513fbeb376::t_ad5a517a45be81 4,6,13,16-17,20,22,25,27,30,34,36-38,42,46,49
+  s_07d6513fbeb376::t_6f2e99bde5c7c8 31
+docs/09-ARCHITECT.md
+  s_e163ce79598185::t_6b493992b87f7f 97,123-127,135-137,148-150,192-195,199-218,513-515,539,560-562,574-575,603,605-607,609-611,614,620-621,623-624,632,635-645,649-650,654-655,658,687,696-697,715-716
+  s_e163ce79598185::t_b8cd9203d34c7f 225-226,228-251,264-267,312-339,344-373,377-399,402-407,412-425,428-446,452-488
+  s_e163ce79598185::t_aefc7e51176176 1-6,8-96,98-122,128-134,138-147,151-191,196-198,219-224,227,502-512,516-536,538,542-559,563-573,576-598,604,608,612-613,615-619,622,625-627,631,633-634,646-648,651-653,656-657,659-686,688-695,698-705,707-714
+  s_e163ce79598185::t_6c86513735c4ab 706
+  s_b053578b3df98c::t_fa5f6603c75c3b 7,272-311,340-343,374-376,408-411,447-451,489-501,537,540-541,599-602,628-630
+  s_e163ce79598185::t_6ee133581cb279 252-263,268-271,400-401,426-427
+spikes/10-architect-workflow-deployed/scripts/teardown.mjs
+  s_f89a8ab8e38943::t_3abe1c87e14d12 1-23
+spikes/08-architect-workflow-local/migrations/0001_architecture_jobs.sql
+  s_0da611817ede10::t_0980adec4a9dcf 1-9
+spikes/10-architect-workflow-deployed/infra/outputs.tf
+  s_f89a8ab8e38943::t_febec47b97ca15 1-34
+spikes/08-architect-workflow-local/src/diagram-room.ts
+  s_0da611817ede10::t_0980adec4a9dcf 1-30,32,40-48
+  s_0da611817ede10::t_61bafeeb4a2311 31,33-39,49-57
+spikes/08-architect-workflow-local/src/index.ts
+  s_0da611817ede10::t_0980adec4a9dcf 1-33
+spikes/06-architect-vue-editor/src/main.ts
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-10
+spikes/06-architect-vue-editor/src/components/ProductNode.vue
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-23
+spikes/07-architect-collaboration/REPORT.md
+  s_e76389e00b1b05::t_9e4bb21e95e485 1-166
+spikes/10-architect-workflow-deployed/package.json
+  s_f89a8ab8e38943::t_223ede3617bafa 30-33
+  s_f89a8ab8e38943::t_febec47b97ca15 1-13,15-24,26-29,34-35
+  s_f89a8ab8e38943::t_ad3692e962c9e1 14
+  s_f89a8ab8e38943::t_7adfbd6fe3949f 25
+spikes/10-architect-workflow-deployed/infra/access.tf
+  s_f89a8ab8e38943::t_febec47b97ca15 1-26
+spikes/09-architect-ai-structured-output/README.md
+  s_e7f31b0122c89a::t_c02f740b184e65 1-7
+spikes/08-architect-workflow-local/.gitignore
+  s_0da611817ede10::t_0980adec4a9dcf 1-3
+spikes/06-architect-vue-editor/src/graph/coordinates.test.ts
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-13
+spikes/09-architect-ai-structured-output/.gitignore
+  s_e7f31b0122c89a::t_c02f740b184e65 1-7
+spikes/10-architect-workflow-deployed/infra/spike.tf
+  s_f89a8ab8e38943::t_febec47b97ca15 1-43
+spikes/07-architect-collaboration/tests/collaboration.test.ts
+  s_e76389e00b1b05::t_90c1945bc5270b 66,98
+  s_e76389e00b1b05::t_277987e707bff9 1-5,12-14,16-65,67,70-97,99-100
+  s_e76389e00b1b05::t_c1dc484f2daa72 6-11,15,68-69
+spikes/06-architect-vue-editor/wrangler.jsonc
+  s_07d6513fbeb376::t_27ac8a04fe4d93 5
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-4,6-7
+spikes/06-architect-vue-editor/src/graph/store.test.ts
+  s_07d6513fbeb376::t_ad5a517a45be81 9
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-8,10-24
+spikes/09-architect-ai-structured-output/wrangler.jsonc
+  s_e7f31b0122c89a::t_c02f740b184e65 1-15
+spikes/09-architect-ai-structured-output/infra/providers.tf
+  s_e7f31b0122c89a::t_c02f740b184e65 1-29
+spikes/08-architect-workflow-local/tests/architecture-workflow.test.ts
+  s_0da611817ede10::t_0980adec4a9dcf 1-33,36-58,60-84
+  s_0da611817ede10::t_dc5d4de2f8057a 34-35
+  s_0da611817ede10::t_ab887de75dc0c0 59
+spikes/09-architect-ai-structured-output/tsconfig.json
+  s_e7f31b0122c89a::t_25b25480f8752c 4,8-9
+  s_e7f31b0122c89a::t_c02f740b184e65 1-3,5-7,10-12
+spikes/06-architect-vue-editor/src/components/TypedEdge.vue
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-30
+spikes/06-architect-vue-editor/src/components/PropertiesPanel.test.ts
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-20
+spikes/06-architect-vue-editor/.gitignore
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-3
+spikes/08-architect-workflow-local/src/contracts.ts
+  s_0da611817ede10::t_0980adec4a9dcf 1-55
+spikes/06-architect-vue-editor/src/graph/coordinates.ts
+  s_07d6513fbeb376::t_ffd4d30af3bb48 2-4,6-9,11-12
+  s_07d6513fbeb376::t_ad5a517a45be81 1,5,10
+spikes/07-architect-collaboration/wrangler.jsonc
+  s_e76389e00b1b05::t_277987e707bff9 1-4,6-12
+  s_e76389e00b1b05::t_7ff3269a20b1d0 5
+spikes/09-architect-ai-structured-output/REPORT.md
+  s_e7f31b0122c89a::t_c02f740b184e65 1-10,14-16,18,32-37,39-51,54-55,62,64
+  s_e7f31b0122c89a::t_c8aadb3c74d65f 11-13,17,19-31,38,53,56-61,63,65
+  s_e7f31b0122c89a::t_b88914ee8e49d8 52
+spikes/07-architect-collaboration/src/index.ts
+  s_e76389e00b1b05::t_242dfdab0adbe8 218,237
+  s_e76389e00b1b05::t_7ff3269a20b1d0 83,85-88
+  s_e76389e00b1b05::t_277987e707bff9 1-82,84,89-217,219-236,238-272
+spikes/06-architect-vue-editor/vite.config.ts
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-7
+spikes/06-architect-vue-editor/src/vue.d.ts
+  s_07d6513fbeb376::t_ad5a517a45be81 1-6
+spikes/09-architect-ai-structured-output/scripts/cleanup.mjs
+  s_e7f31b0122c89a::t_c02f740b184e65 1-16
+spikes/06-architect-vue-editor/src/components/PropertiesPanel.vue
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-44
+spikes/09-architect-ai-structured-output/src/index.ts
+  s_e7f31b0122c89a::t_33a33a6682dd87 167-170
+  s_e7f31b0122c89a::t_c02f740b184e65 1-166,171-172
+spikes/10-architect-workflow-deployed/infra/providers.tf
+  s_f89a8ab8e38943::t_febec47b97ca15 1-29
+spikes/06-architect-vue-editor/tsconfig.json
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-16
+spikes/08-architect-workflow-local/src/architecture-workflow.ts
+  s_0da611817ede10::t_6d412ff613a67d 29-30
+  s_0da611817ede10::t_61bafeeb4a2311 9
+  s_0da611817ede10::t_c05bece507ae8f 3,35-40
+  s_0da611817ede10::t_0980adec4a9dcf 1-2,4-8,10-28,31-34,41-68
+spikes/08-architect-workflow-local/wrangler.jsonc
+  s_0da611817ede10::t_0980adec4a9dcf 1-28
+spikes/07-architect-collaboration/.gitignore
+  s_e76389e00b1b05::t_277987e707bff9 1-3
+spikes/06-architect-vue-editor/src/worker.ts
+  s_07d6513fbeb376::t_ad5a517a45be81 4
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-3,5-7
+spikes/10-architect-workflow-deployed/tsconfig.json
+  s_f89a8ab8e38943::t_febec47b97ca15 1-6,8-10
+  s_f89a8ab8e38943::t_4afb1058e5d569 7
+spikes/08-architect-workflow-local/REPORT.md
+  s_0da611817ede10::t_f14a9ece175a44 1-73,77-181
+  s_0da611817ede10::t_4dc7cf994f6aa5 74-76
+spikes/10-architect-workflow-deployed/REPORT.md
+  s_f89a8ab8e38943::t_21d9e3016fa260 1-72
+spikes/06-architect-vue-editor/src/styles.css
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-3
+spikes/06-architect-vue-editor/src/components/DiagramPalette.vue
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-35
+spikes/08-architect-workflow-local/package.json
+  s_0da611817ede10::t_0980adec4a9dcf 1-24,29-30
+  s_0da611817ede10::t_78affa53a0ac06 25-28
+spikes/06-architect-vue-editor/src/App.vue
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-74,76-96
+  s_07d6513fbeb376::t_e35dbf6db744df 75
+spikes/10-architect-workflow-deployed/migrations/0001_jobs.sql
+  s_f89a8ab8e38943::t_febec47b97ca15 1-9
+spikes/06-architect-vue-editor/vitest.config.ts
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-11
+spikes/08-architect-workflow-local/tsconfig.json
+  s_0da611817ede10::t_0980adec4a9dcf 1-17
+spikes/07-architect-collaboration/tsconfig.json
+  s_e76389e00b1b05::t_277987e707bff9 1-16
+spikes/06-architect-vue-editor/src/test/setup.ts
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-11
+spikes/06-architect-vue-editor/REPORT.md
+  s_07d6513fbeb376::t_e35dbf6db744df 1-180
+spikes/09-architect-ai-structured-output/infra/access.tf
+  s_e7f31b0122c89a::t_c02f740b184e65 1-26
+spikes/10-architect-workflow-deployed/wrangler.jsonc.tpl
+  s_f89a8ab8e38943::t_febec47b97ca15 1-35
+spikes/09-architect-ai-structured-output/scripts/probe.mjs
+  s_e7f31b0122c89a::t_33a33a6682dd87 8-10,12-28,30,32
+  s_e7f31b0122c89a::t_84532183b81ca1 11,29,37
+  s_e7f31b0122c89a::t_c02f740b184e65 1-7,31,33-36
+spikes/09-architect-ai-structured-output/package.json
+  s_e7f31b0122c89a::t_c02f740b184e65 1-24
+spikes/08-architect-workflow-local/vitest.config.ts
+  s_0da611817ede10::t_0980adec4a9dcf 1-13
+spikes/06-architect-vue-editor/index.html
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-12
+spikes/10-architect-workflow-deployed/.gitignore
+  s_f89a8ab8e38943::t_febec47b97ca15 1-7
+spikes/06-architect-vue-editor/src/graph/layout.ts
+  s_07d6513fbeb376::t_ffd4d30af3bb48 1-14
+spikes/07-architect-collaboration/package.json
+  s_e76389e00b1b05::t_277987e707bff9 1-29
+spikes/10-architect-workflow-deployed/scripts/run.mjs
+  s_f89a8ab8e38943::t_2ab93bc8a87ff5 24-40,42
+  s_f89a8ab8e38943::t_3464027beb44bc 55
+  s_f89a8ab8e38943::t_a9ddaca5945099 64-66
+  s_f89a8ab8e38943::t_f81f8e657fc089 69
+  s_f89a8ab8e38943::t_3abe1c87e14d12 1-23,41,43-50,56-63,67-68,70-103
+  s_f89a8ab8e38943::t_3604be6a0ddbf8 51-54
+spikes/06-architect-vue-editor/package-lock.json
+  s_07d6513fbeb376::t_e5a2a0a688ad94 1-4977
+spikes/07-architect-collaboration/package-lock.json
+  s_07d6513fbeb376::t_bf53efb48f156e 1-3174
+spikes/08-architect-workflow-local/package-lock.json
+  s_e76389e00b1b05::t_931d2ca225cda9 1-3171
+spikes/09-architect-ai-structured-output/infra/.terraform.lock.hcl
+  s_07d6513fbeb376::t_b6dbbd3f006cd5 1-41
+spikes/09-architect-ai-structured-output/package-lock.json
+  s_e7f31b0122c89a::t_8c0c043d399a5a 1-1627
+spikes/10-architect-workflow-deployed/infra/.terraform.lock.hcl
+  s_f89a8ab8e38943::t_db8b1dcb21d9d2 1-41
+spikes/10-architect-workflow-deployed/package-lock.json
+  s_f89a8ab8e38943::t_c6d99c08caec43 1-1964
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e4c2407fabb705b86d52482560763ac23690c509",
+  "prompts": {},
+  "sessions": {
+    "s_07d6513fbeb376": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02353ce8affeiCV2g4TOSeTKHj",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_0da611817ede10": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02353ce30ffeQbTwJSCMmP0Z9M",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_b053578b3df98c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_023549ad8ffeh6t6sHgbhGJx7L",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_e163ce79598185": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_023a5e41effeUsY99s0BVcXT6q",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_e76389e00b1b05": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02353ce3effesVEDD1RUwdmn89",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_e7f31b0122c89a": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02353ce1effeFBzQluih9mTW4q",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_f89a8ab8e38943": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_02353cd99ffe9jg36I9c5n0xTj",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
