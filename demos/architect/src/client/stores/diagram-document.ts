@@ -5,6 +5,7 @@ import type {
   ParticipantRole,
   ServerFrame,
 } from "../../collaboration-protocol";
+import { useArchitectureProposalStore } from "./architecture-proposal";
 import {
   applyGraphOperation,
   GraphOperationError,
@@ -342,6 +343,9 @@ export const useDiagramDocumentStore = defineStore("diagram-document", {
         },
         onStatusChange: (status: DiagramSocketStatus) => {
           this.connectionStatus = status;
+          useArchitectureProposalStore().setSocketConnected(
+            status === "connected",
+          );
         },
       });
     },
@@ -351,6 +355,7 @@ export const useDiagramDocumentStore = defineStore("diagram-document", {
       socketHandle?.disconnect();
       socketHandle = null;
       this.connectionStatus = "idle";
+      useArchitectureProposalStore().setSocketConnected(false);
     },
 
     /**
@@ -426,6 +431,10 @@ export const useDiagramDocumentStore = defineStore("diagram-document", {
           const remaining = { ...this.remoteCursors };
           delete remaining[frame.participant.email];
           this.remoteCursors = remaining;
+          return;
+        }
+        case "job_progress": {
+          useArchitectureProposalStore().handleJobProgress(frame);
           return;
         }
         default: {

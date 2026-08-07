@@ -45,6 +45,26 @@ export interface CursorSelection {
 }
 
 /**
+ * Durable status of one `architecture_jobs` row / `ArchitectureWorkflow` instance
+ * (`docs/09-ARCHITECT.md`'s AI Workflow section).
+ *
+ * `"queued"` is this implementation's own addition to the brief's six named states
+ * (`summarizing`/`generating`/`validating`/`storing`/`ready`/`failed`): it is the status a
+ * `POST /api/diagrams/:id/proposals` row is created with, covering the gap between D1 row
+ * creation and the Workflow's own `summarize` step actually running — a gap Spike 10 measured
+ * as potentially several minutes in a deployed environment. Every other value matches the
+ * brief's named states exactly.
+ */
+export type ArchitectureJobStatus =
+  | "queued"
+  | "summarizing"
+  | "generating"
+  | "validating"
+  | "storing"
+  | "ready"
+  | "failed";
+
+/**
  * Request header the Worker's `/api/diagrams/:id/ws` route sets with the caller's verified
  * Cloudflare Access email before forwarding the upgrade to `DiagramRoom`. Any client-supplied
  * value is deleted first — see `./worker/routes/diagrams.ts`.
@@ -226,6 +246,28 @@ export interface ParticipantLeftFrame {
   participants: Participant[];
 }
 
+/**
+ * Room -> client: broadcast to every connected socket whenever an AI architecture proposal job's
+ * status changes (`docs/09-ARCHITECT.md`'s Phase 5 AI Workflow).
+ *
+ * Deliberately carries only status metadata, never the prompt or generated document — "Store
+ * only proposal metadata in live room state; the proposal document remains in R2" — so a client
+ * that needs the actual proposed document (to preview it before accepting) fetches it
+ * separately via `GET /api/diagrams/:id/proposals/:jobId`, which is also the fallback when this
+ * frame cannot be delivered because the socket is disconnected.
+ */
+export interface JobProgressFrame {
+  type: "job_progress";
+  /** The architecture job (and `ArchitectureWorkflow` instance) this notification is about. */
+  jobId: string;
+  /** The job's new durable status. */
+  status: ArchitectureJobStatus;
+  /** ISO-8601 timestamp of this status change. */
+  updatedAt: string;
+  /** A user-safe explanation, present only when `status` is `"failed"`. Never model output. */
+  error?: string;
+}
+
 /** Every frame shape `DiagramRoom` may send over a diagram's WebSocket. */
 export type ServerFrame =
   | SyncFrame
@@ -234,4 +276,5 @@ export type ServerFrame =
   | OperationRejectedFrame
   | CursorBroadcastFrame
   | ParticipantJoinedFrame
-  | ParticipantLeftFrame;
+  | ParticipantLeftFrame
+  | JobProgressFrame;

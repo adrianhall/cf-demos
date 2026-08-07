@@ -24,7 +24,8 @@ export type FeatherIconName =
   | "users"
   | "wifi"
   | "wifi-off"
-  | "x";
+  | "x"
+  | "zap";
 
 const props = withDefaults(
   defineProps<{

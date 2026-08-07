@@ -4,6 +4,8 @@ import {
 } from "@adrianhall/cloudflare-toolkit/logging";
 import { DurableObject } from "cloudflare:workers";
 import type {
+  ArchitectureJobStatus,
+  JobProgressFrame,
   OperationAcceptedFrame,
   OperationRejectedFrame,
   ParticipantJoinedFrame,
@@ -110,6 +112,51 @@ interface DocumentStateRow {
 interface OperationDedupeRow {
   [column: string]: SqlStorageValue;
   accepted_revision: number;
+}
+
+/**
+ * Maximum number of distinct architecture job notifications retained in the
+ * `job_notifications` table (`docs/09-ARCHITECT.md`'s "Store only proposal metadata in live room
+ * state" instruction). Each row is already the *latest* notification for one job — never a full
+ * history — so this bounds the number of distinct jobs remembered, not the number of status
+ * transitions; a long-lived diagram accumulating many past AI proposal attempts still keeps this
+ * table small.
+ */
+const JOB_NOTIFICATION_HISTORY_LIMIT = 50;
+
+/** Raw row shape for `job_notifications`. */
+interface JobNotificationRow {
+  [column: string]: SqlStorageValue;
+  job_id: string;
+  status: string;
+  updated_at: string;
+  error: string | null;
+}
+
+/** Build the wire frame shape clients receive for one job's notification. */
+function buildJobProgressFrame(
+  jobId: string,
+  status: ArchitectureJobStatus,
+  updatedAt: string,
+  error: string | null,
+): JobProgressFrame {
+  return {
+    type: "job_progress",
+    jobId,
+    status,
+    updatedAt,
+    ...(error !== null ? { error } : {}),
+  };
+}
+
+/** Convert a `job_notifications` row to the wire frame shape clients receive. */
+function toJobProgressFrame(row: JobNotificationRow): JobProgressFrame {
+  return buildJobProgressFrame(
+    row.job_id,
+    row.status as ArchitectureJobStatus,
+    row.updated_at,
+    row.error,
+  );
 }
 
 /**
@@ -235,6 +282,66 @@ export class DiagramRoom extends DurableObject<Env> {
         document: candidate,
       };
     });
+  }
+
+  /**
+   * Record an AI architecture proposal job's new status and broadcast it to every connected
+   * socket (`docs/09-ARCHITECT.md`'s Phase 5 AI Workflow), called by `../architecture-workflow.ts`
+   * after each named-state D1 transition.
+   *
+   * Stores only the *latest* notification per job — never a history — matching "Store only
+   * proposal metadata in live room state; the proposal document remains in R2." A caller whose
+   * socket is disconnected when this broadcasts simply misses it; `GET
+   * /api/diagrams/:id/proposals/:jobId` (`../routes/diagrams.ts`) is the documented fallback,
+   * reading this same latest-notification row via {@link getJobNotification}.
+   *
+   * @param status The job's new durable status.
+   * @param jobId The job (and `ArchitectureWorkflow` instance) this notification is about.
+   * @param error A user-safe explanation, meaningful only when `status` is `"failed"`. Never
+   * model output or a raw exception message.
+   */
+  async notifyJobProgress(
+    status: ArchitectureJobStatus,
+    jobId: string,
+    error?: string,
+  ): Promise<void> {
+    const updatedAt = new Date().toISOString();
+    this.ctx.storage.sql.exec(
+      `INSERT INTO job_notifications (job_id, status, updated_at, error) VALUES (?, ?, ?, ?)
+       ON CONFLICT (job_id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at, error = excluded.error`,
+      jobId,
+      status,
+      updatedAt,
+      error ?? null,
+    );
+    this.pruneJobNotifications();
+    this.broadcast(
+      buildJobProgressFrame(jobId, status, updatedAt, error ?? null),
+    );
+  }
+
+  /**
+   * Read the latest notification recorded for one architecture job, if any.
+   *
+   * Used by `GET /api/diagrams/:id/proposals/:jobId` (`../routes/diagrams.ts`) to combine this
+   * Durable Object's own view with the D1 job row — mirroring Spike 10's measured `GET
+   * /jobs/:id` contract, which reads both sources so the HTTP response proves both paths are
+   * working.
+   *
+   * @param jobId The job id.
+   * @returns The job's latest `job_progress` frame, or `null` if this room has never notified
+   * about that job (for example, immediately after the Workflow's `summarize` step starts, or if
+   * every notification for it failed to deliver — see {@link notifyJobProgress}'s
+   * fail-open behavior).
+   */
+  async getJobNotification(jobId: string): Promise<JobProgressFrame | null> {
+    const row = this.ctx.storage.sql
+      .exec<JobNotificationRow>(
+        "SELECT job_id, status, updated_at, error FROM job_notifications WHERE job_id = ?",
+        jobId,
+      )
+      .toArray()[0];
+    return row ? toJobProgressFrame(row) : null;
   }
 
   /**
@@ -572,7 +679,10 @@ export class DiagramRoom extends DurableObject<Env> {
     }
   }
 
-  /** Create the `document_state`/`operations` tables and seed revision 0 if not already done. */
+  /**
+   * Create the `document_state`/`operations`/`job_notifications` tables and seed revision 0 if
+   * not already done.
+   */
   private initializeSchema(): void {
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS document_state (
@@ -586,6 +696,12 @@ export class DiagramRoom extends DurableObject<Env> {
         accepted_revision INTEGER NOT NULL,
         kind TEXT NOT NULL,
         payload_json TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS job_notifications (
+        job_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        error TEXT
       );
     `);
     const existing = this.ctx.storage.sql
@@ -621,6 +737,19 @@ export class DiagramRoom extends DurableObject<Env> {
         SELECT operation_id FROM operations ORDER BY accepted_revision DESC LIMIT ?
       )`,
       OPERATION_HISTORY_LIMIT,
+    );
+  }
+
+  /**
+   * Drop every job notification older than the {@link JOB_NOTIFICATION_HISTORY_LIMIT} most
+   * recently updated distinct jobs.
+   */
+  private pruneJobNotifications(): void {
+    this.ctx.storage.sql.exec(
+      `DELETE FROM job_notifications WHERE job_id NOT IN (
+        SELECT job_id FROM job_notifications ORDER BY updated_at DESC LIMIT ?
+      )`,
+      JOB_NOTIFICATION_HISTORY_LIMIT,
     );
   }
 }

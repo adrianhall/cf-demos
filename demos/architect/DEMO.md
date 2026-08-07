@@ -20,7 +20,7 @@
 14. Open the `architect editor` application and show the explicit `/app*` and `/api/*` destinations and authenticated-user allow policy.
 15. In Workers & Pages, open the `architect` Worker and show Logs and automatic tracing are enabled; find the `diagram_created`, `diagram_invitation_created`, `invitation_redeemed`, and `diagram_invitation_revoked` log lines from the steps above.
 16. Open D1 and show the `diagram_members` row added for User B, and the `diagram_invites` row for the revoked invitation (`revoked_at` set, `token_digest` populated but never the raw token). Open Durable Objects and show the `DiagramRoom` namespace with a live instance for the shared diagram.
-17. Open R2 and Workers KV and show they remain empty — this demo does not publish or generate AI proposals yet.
+17. Open Workers KV and show it remains empty — this demo does not publish yet (see the AI proposal steps below for R2's first object).
 
 Expected result: public pages remain reachable without a JWT; application pages and APIs require Cloudflare Access. The diagram's owner can create a single-use, expiring invitation link and revoke it; a second identity can redeem an active link into durable editor membership and immediately list, open, and edit the same diagram; a revoked or already-used link is rejected with a clear error.
 
@@ -37,3 +37,14 @@ Expected result: public pages remain reachable without a JWT; application pages 
 26. Open the Durable Objects view and show the `DiagramRoom` instance's active WebSocket connections while both windows are still open.
 
 Expected result: two authenticated editors see each other's presence and live cursor exactly as they move, both windows converge on the same accepted revision after concurrent edits, a losing edit is never silently merged and requires an explicit retry, and closing a tab promptly updates the remaining window's participant list.
+
+## Workflow-backed AI proposal (both windows still open)
+
+27. In User A's window, click **Ask AI** in the toolbar and enter a short application description (for example "A serverless API that stores uploaded files and their metadata").
+28. Click **Generate proposal** and point out the live progress indicator advancing through summarizing, generating, validating, and storing while User B's window shows the identical sequence with no action on their part.
+29. Once the proposal reaches ready, show the read-only preview canvas in both windows, then click **Accept** in User A's window — the diagram updates in both windows as one new revision, exactly like any other accepted edit.
+30. Click **Ask AI** again, submit a new prompt, and — before it finishes — make an edit directly on the canvas in User B's window. Once the proposal reaches ready, click **Accept** and show the "Someone changed the diagram… please regenerate" message instead of a generic error, then click **Regenerate** to start a fresh job.
+31. In the Cloudflare dashboard, open the Workflows area and find the `ArchitectureWorkflow` instances created by the steps above — open one and show its step history (`summarize`, `mark generating`, `generate`, `validate`, `store`, `mark ready`).
+32. Open R2 and show the `proposals/<jobId>.json` object written by the accepted job; open D1 and show the `architecture_jobs` row with `status = 'ready'` and its `proposal_r2_key`. Open Durable Objects and show `DiagramRoom` broadcasting `job_progress` — the Worker Logs' `architecture_job_started`, `architecture_job_completed`, and `architecture_proposal_accepted` lines confirm none of them include the prompt or generated document content.
+
+Expected result: both editors watch one Workflow's progress in real time without polling manually, the proposal never changes the diagram until explicitly accepted, and acceptance after an intervening edit is rejected with a specific, actionable message rather than a generic error.

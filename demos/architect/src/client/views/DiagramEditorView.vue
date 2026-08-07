@@ -3,6 +3,8 @@ import type { Connection } from "@vue-flow/core";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
+import ArchitectureProposalDialog from "../components/diagrams/ArchitectureProposalDialog.vue";
+// biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import DiagramCanvas from "../components/diagrams/DiagramCanvas.vue";
 // biome-ignore lint/correctness/noUnusedImports: Vue's template compiler consumes this import.
 import DiagramPalette from "../components/diagrams/DiagramPalette.vue";
@@ -23,6 +25,7 @@ const router = useRouter();
 const store = useDiagramDocumentStore();
 const session = useSessionStore();
 const inviteDialogOpen = ref(false);
+const proposalDialogOpen = ref(false);
 
 /**
  * Whether the signed-in identity owns the open diagram.
@@ -159,6 +162,10 @@ function backToLibrary(): void {
         </v-chip>
       </div>
       <v-chip v-if="store.pending" size="small">Saving…</v-chip>
+      <v-btn variant="text" @click="proposalDialogOpen = true">
+        <template #prepend><FeatherIcon name="zap" /></template>
+        Ask AI
+      </v-btn>
       <v-btn v-if="isOwner" variant="text" @click="inviteDialogOpen = true">
         <template #prepend><FeatherIcon name="user-plus" /></template>
         Invite
@@ -213,6 +220,11 @@ function backToLibrary(): void {
     <InviteDialog
       v-if="store.diagram"
       v-model:open="inviteDialogOpen"
+      :diagram-id="store.diagram.id"
+    />
+    <ArchitectureProposalDialog
+      v-if="store.diagram"
+      v-model:open="proposalDialogOpen"
       :diagram-id="store.diagram.id"
     />
   </div>

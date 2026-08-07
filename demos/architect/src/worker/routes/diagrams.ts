@@ -1,13 +1,25 @@
 import {
   badRequest,
+  internalServerError,
+  notFound,
   unprocessableContent,
 } from "@adrianhall/cloudflare-toolkit/errors";
+import { problemDetails } from "@adrianhall/cloudflare-toolkit/problem-details";
 import { Hono } from "hono";
 import {
   TRUSTED_IDENTITY_HEADER,
   TRUSTED_ROLE_HEADER,
 } from "../../collaboration-protocol";
 import { getBlueprint } from "../../graph/blueprints";
+import type { GraphDocument } from "../../graph/types";
+import { validateGraphDocument } from "../../graph/validation";
+import { ArchitectureJobRepository } from "../architecture/repository";
+import { deriveIdempotentJobId } from "../architecture/idempotency";
+import {
+  MAX_DIAGRAM_NODES_FOR_PROPOSAL,
+  PROPOSAL_RATE_LIMIT_MS,
+  validateStartProposalInput,
+} from "../architecture/validation";
 import type { AppBindings } from "../bindings";
 import { DiagramRepository } from "../diagrams/repository";
 import { validateOperationInput } from "../diagrams/operation-input";
@@ -192,6 +204,215 @@ diagramsRouter.post("/:id/operations", async (context) => {
   context.get("LOGGER").info("diagram_updated", {
     diagramId: id,
     status: result.status,
+  });
+  return context.json({ result });
+});
+
+/**
+ * Start an AI architecture proposal Workflow (`docs/09-ARCHITECT.md`'s Phase 5 AI Workflow —
+ * `{ "prompt": "...", "idempotencyKey"?: "..." }`).
+ *
+ * Any member — owner or editor — may request a proposal. This route derives diagram identity,
+ * membership, and the diagram's current revision entirely server-side (never trusting a client-
+ * supplied revision) before enforcing, in order: a graph-size bound on the *current* diagram
+ * (`MAX_DIAGRAM_NODES_FOR_PROPOSAL` — unrelated to the AI schema's own 2-8 proposed-node bound),
+ * the idempotency-key duplicate check, one-active-job-per-diagram, and a per-requester start-rate
+ * throttle — see `../architecture/validation.ts` and `../architecture/idempotency.ts` for exactly
+ * how each is computed. The job id doubles as the `ArchitectureWorkflow` instance id.
+ */
+diagramsRouter.post("/:id/proposals", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  const identity = context.get("Cloudflare_Access_Identity").email;
+  const repository = new DiagramRepository(context.env.DB);
+  await repository.getAccessible(identity, id);
+
+  const input = validateStartProposalInput(await readJsonBody(context.req.raw));
+
+  const room = context.env.DIAGRAM_ROOM.getByName(id);
+  const snapshot = await room.readDocument();
+  if (snapshot.document.nodes.length > MAX_DIAGRAM_NODES_FOR_PROPOSAL) {
+    throw unprocessableContent({
+      detail: `This diagram has more than ${MAX_DIAGRAM_NODES_FOR_PROPOSAL} nodes, too many for an AI proposal.`,
+    });
+  }
+
+  const jobs = new ArchitectureJobRepository(context.env.DB);
+  const jobId = input.idempotencyKey
+    ? await deriveIdempotentJobId(id, identity, input.idempotencyKey)
+    : crypto.randomUUID();
+
+  const existing = await jobs.findById(jobId);
+  if (existing) {
+    context.get("LOGGER").info("architecture_job_started", {
+      diagramId: id,
+      jobId,
+      duplicate: true,
+    });
+    return context.json({ job: existing, duplicate: true });
+  }
+
+  const active = await jobs.findActiveForDiagram(id);
+  if (active) {
+    throw problemDetails({
+      status: 409,
+      title: "Conflict",
+      detail: "A proposal is already in progress for this diagram.",
+    });
+  }
+
+  const recent = await jobs.mostRecentByRequester(identity);
+  if (
+    recent &&
+    Date.now() - Date.parse(recent.createdAt) < PROPOSAL_RATE_LIMIT_MS
+  ) {
+    throw problemDetails({
+      status: 429,
+      title: "Too Many Requests",
+      detail: "Please wait before starting another proposal.",
+    });
+  }
+
+  await jobs.ensureJob({
+    id: jobId,
+    workflowInstanceId: jobId,
+    diagramId: id,
+    baseRevision: snapshot.revision,
+    requesterEmail: identity,
+  });
+  try {
+    await context.env.ARCHITECTURE_WORKFLOW.create({
+      id: jobId,
+      params: {
+        diagramId: id,
+        baseRevision: snapshot.revision,
+        requesterEmail: identity,
+        prompt: input.prompt,
+      },
+    });
+  } catch {
+    // A concurrent request with the same idempotency key may have already created the Workflow
+    // instance between this route's own duplicate check and this call — `Workflow.create()`
+    // throws if the id already exists. Treat that race the same as an ordinary duplicate.
+    const created = await jobs.findById(jobId);
+    if (created) {
+      return context.json({ job: created, duplicate: true });
+    }
+    throw internalServerError({ detail: "Could not start the proposal." });
+  }
+
+  const created = await jobs.findById(jobId);
+  if (!created) {
+    throw internalServerError({ detail: "Could not start the proposal." });
+  }
+
+  context.get("LOGGER").info("architecture_job_started", {
+    diagramId: id,
+    jobId,
+    duplicate: false,
+  });
+  return context.json({ job: created, duplicate: false }, 201);
+});
+
+/**
+ * Read one architecture job's D1 status plus `DiagramRoom`'s last notification for it, and — once
+ * `"ready"` — the validated proposed document itself, so the client can render a preview.
+ *
+ * Mirrors Spike 10's measured `GET /jobs/:id` contract (D1 plus Durable Object), authorized the
+ * same way as every other diagram route (owner or editor membership).
+ */
+diagramsRouter.get("/:id/proposals/:jobId", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  const jobId = context.req.param("jobId");
+  const identity = context.get("Cloudflare_Access_Identity").email;
+  const repository = new DiagramRepository(context.env.DB);
+  await repository.getAccessible(identity, id);
+
+  const jobs = new ArchitectureJobRepository(context.env.DB);
+  const job = await jobs.findById(jobId);
+  if (!job || job.diagramId !== id) {
+    throw notFound({ detail: "Proposal job not found." });
+  }
+
+  const room = context.env.DIAGRAM_ROOM.getByName(id);
+  const notification = await room.getJobNotification(jobId);
+
+  let proposal: GraphDocument | undefined;
+  if (job.status === "ready" && job.proposalR2Key) {
+    const object = await context.env.SNAPSHOTS.get(job.proposalR2Key);
+    if (object) {
+      proposal = validateGraphDocument(JSON.parse(await object.text()));
+    }
+  }
+
+  return context.json({ job, notification, proposal });
+});
+
+/**
+ * Accept a `"ready"` proposal as one atomic `replace_document` revision.
+ *
+ * Re-derives the diagram's *current* revision server-side and compares it against the job's own
+ * `baseRevision` — captured when the Workflow started — **before** even attempting the apply, so
+ * a stale proposal is rejected with a specific, user-actionable reason
+ * (`extensions.reason === "stale_base_revision"`) rather than a generic error. `applyOperation`'s
+ * own `"stale"` result is still the backstop for a genuinely concurrent edit that lands between
+ * this check and the apply itself.
+ */
+diagramsRouter.post("/:id/proposals/:jobId/accept", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  const jobId = context.req.param("jobId");
+  const identity = context.get("Cloudflare_Access_Identity").email;
+  const repository = new DiagramRepository(context.env.DB);
+  await repository.getAccessible(identity, id);
+
+  const jobs = new ArchitectureJobRepository(context.env.DB);
+  const job = await jobs.findById(jobId);
+  if (!job || job.diagramId !== id) {
+    throw notFound({ detail: "Proposal job not found." });
+  }
+  if (job.status !== "ready" || !job.proposalR2Key) {
+    throw unprocessableContent({
+      detail: "This proposal is not ready to accept.",
+    });
+  }
+
+  const room = context.env.DIAGRAM_ROOM.getByName(id);
+  const current = await room.readDocument();
+  const staleDetail =
+    "The diagram changed since this proposal was generated. Please regenerate the proposal.";
+  if (current.revision !== job.baseRevision) {
+    throw unprocessableContent({
+      detail: staleDetail,
+      extensions: { reason: "stale_base_revision" },
+    });
+  }
+
+  const object = await context.env.SNAPSHOTS.get(job.proposalR2Key);
+  if (!object) {
+    throw internalServerError({ detail: "The proposal document is missing." });
+  }
+  const document = validateGraphDocument(JSON.parse(await object.text()));
+
+  const result = await room.applyOperation({
+    operationId: crypto.randomUUID(),
+    baseRevision: job.baseRevision,
+    kind: "replace_document",
+    payload: { document },
+  });
+
+  if (result.status === "stale") {
+    throw unprocessableContent({
+      detail: staleDetail,
+      extensions: { reason: "stale_base_revision" },
+    });
+  }
+  if (result.status === "rejected") {
+    throw unprocessableContent({ detail: result.error });
+  }
+  await repository.touchUpdatedAt(id);
+
+  context.get("LOGGER").info("architecture_proposal_accepted", {
+    diagramId: id,
+    jobId,
   });
   return context.json({ result });
 });

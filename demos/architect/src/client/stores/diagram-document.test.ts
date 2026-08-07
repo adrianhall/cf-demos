@@ -7,6 +7,7 @@ import type {
   DiagramSocketHandle,
 } from "../composables/useDiagramSocket";
 import { useDiagramSocket } from "../composables/useDiagramSocket";
+import { useArchitectureProposalStore } from "./architecture-proposal";
 import { useDiagramDocumentStore } from "./diagram-document";
 
 vi.mock("../composables/useDiagramSocket", () => ({
@@ -426,5 +427,40 @@ describe("useDiagramDocumentStore", () => {
     store.disconnect();
     expect(fake.disconnect).toHaveBeenCalledOnce();
     expect(store.connectionStatus).toBe("idle");
+  });
+
+  it("forwards a job_progress frame to the architecture proposal store", async () => {
+    const { fake } = await loadWithFakeSocket();
+    const proposalStore = useArchitectureProposalStore();
+    proposalStore.job = {
+      id: "job-1",
+      diagramId: "d-1",
+      baseRevision: 1,
+      requesterEmail: "owner@example.com",
+      status: "generating",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    fake.callbacks.onFrame({
+      type: "job_progress",
+      jobId: "job-1",
+      status: "validating",
+      updatedAt: "2026-01-01T00:01:00.000Z",
+    } satisfies ServerFrame);
+
+    expect(proposalStore.job?.status).toBe("validating");
+  });
+
+  it("tells the architecture proposal store when the socket connects/disconnects", async () => {
+    const { store, fake } = await loadWithFakeSocket();
+    const proposalStore = useArchitectureProposalStore();
+    proposalStore.setSocketConnected = vi.fn();
+
+    fake.callbacks.onStatusChange("connected");
+    expect(proposalStore.setSocketConnected).toHaveBeenCalledWith(true);
+
+    store.disconnect();
+    expect(proposalStore.setSocketConnected).toHaveBeenCalledWith(false);
   });
 });
