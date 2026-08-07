@@ -1,0 +1,129 @@
+demos/architect/tests/integration/access.test.ts
+  s_2a633b937b74d7::t_5e3a41014c59dd 43-45,52-54
+  s_2a633b937b74d7::t_bc39fde54b47d3 1,5-9,23
+  s_2a633b937b74d7::t_7836898d2fb016 2-4,10,15,19-22,24-27,31,35-37,41-42,55
+  s_2a633b937b74d7::t_357e6651c2bd96 11-14,16-18,28-30,32-34,38-40,46-51
+demos/architect/src/access-policies.ts
+  s_2a633b937b74d7::t_736b1f3280efaf 1-14
+demos/architect/README.md
+  s_2a633b937b74d7::t_7836898d2fb016 1-45
+demos/architect/src/client/App.vue
+  s_2a633b937b74d7::t_736b1f3280efaf 1-5
+demos/architect/wrangler.jsonc.tpl
+  s_2a633b937b74d7::t_52a2cc62c09cee 1-22
+demos/architect/index.html
+  s_2a633b937b74d7::t_52a2cc62c09cee 1
+demos/architect/src/worker/bindings.ts
+  s_2a633b937b74d7::t_736b1f3280efaf 1-12
+demos/architect/src/worker/middleware/access.test.ts
+  s_2a633b937b74d7::t_357e6651c2bd96 6-16,20-27
+  s_2a633b937b74d7::t_7836898d2fb016 1-5,17-19,28-29
+demos/architect/src/vue.d.ts
+  s_2a633b937b74d7::t_357e6651c2bd96 5-9
+  s_2a633b937b74d7::t_af78904718bafd 1-4,10-11
+demos/architect/package.json
+  s_2a633b937b74d7::t_7499049b3b2958 38
+  s_2a633b937b74d7::t_818c5ef33e488c 39
+  s_2a633b937b74d7::t_8381f2b3996913 20
+  s_2a633b937b74d7::t_52a2cc62c09cee 1-5,10-19,21-37,40-76
+  s_2a633b937b74d7::t_b0750725c891a5 6-9,77-81
+demos/architect/.gitignore
+  s_2a633b937b74d7::t_52a2cc62c09cee 1-12
+demos/architect/.env.example
+  s_2a633b937b74d7::t_52a2cc62c09cee 1-25
+demos/architect/.dev.vars
+  s_2a633b937b74d7::t_52a2cc62c09cee 1-2
+demos/architect/src/worker/middleware/access.ts
+  s_2a633b937b74d7::t_736b1f3280efaf 1-15
+demos/architect/tsconfig.tsbuildinfo
+  s_2a633b937b74d7::t_8bf5b5a4e0265c 1
+demos/architect/src/worker/diagram-room.ts
+  s_2a633b937b74d7::t_736b1f3280efaf 1-9
+demos/architect/infra/architect.tf
+  s_2a633b937b74d7::t_e8160a2daf400e 1-100
+demos/architect/src/client/views/EditorShellView.vue
+  s_2a633b937b74d7::t_736b1f3280efaf 1-7,13-45
+  s_2a633b937b74d7::t_357e6651c2bd96 8-12
+demos/architect/src/client/vitest.config.ts
+  s_2a633b937b74d7::t_736b1f3280efaf 1-7
+demos/architect/biome.json
+  s_2a633b937b74d7::t_52a2cc62c09cee 1-2,14,22
+  s_2a633b937b74d7::t_a4caa812e29faf 3-8,11-13,15-21
+  s_2a633b937b74d7::t_1d5c76d2c8b0ef 9
+  s_2a633b937b74d7::t_6abb6c8a81e83e 10
+demos/architect/DEMO.md
+  s_2a633b937b74d7::t_7836898d2fb016 1-17
+demos/architect/infra/providers.tf
+  s_2a633b937b74d7::t_e8160a2daf400e 1-33
+demos/architect/vite.config.ts
+  s_2a633b937b74d7::t_357e6651c2bd96 11-14
+  s_2a633b937b74d7::t_736b1f3280efaf 1-10,15-19
+demos/architect/infra/outputs.tf
+  s_2a633b937b74d7::t_e8160a2daf400e 1-5,11-54
+  s_2a633b937b74d7::t_c953058477a3fe 6-10
+demos/architect/tests/integration/vitest.config.ts
+  s_2a633b937b74d7::t_7836898d2fb016 1-7,14-17
+  s_2a633b937b74d7::t_357e6651c2bd96 8-10
+  s_2a633b937b74d7::t_7afd0880c7fbee 11-13
+demos/architect/src/client/stores/session.ts
+  s_2a633b937b74d7::t_736b1f3280efaf 1-18,21-23,28-33
+  s_2a633b937b74d7::t_357e6651c2bd96 19-20,24-27
+demos/architect/src/worker/routes/me.ts
+  s_2a633b937b74d7::t_736b1f3280efaf 1-14
+demos/architect/src/client/views/LandingView.vue
+  s_2a633b937b74d7::t_736b1f3280efaf 1-26
+demos/architect/src/worker/architecture-workflow.ts
+  s_2a633b937b74d7::t_736b1f3280efaf 1,3-15,20,25
+  s_2a633b937b74d7::t_357e6651c2bd96 16-19,21-24
+  s_2a633b937b74d7::t_af78904718bafd 2
+demos/architect/src/worker/index.ts
+  s_2a633b937b74d7::t_736b1f3280efaf 1-22
+demos/architect/src/client/stores/session.test.ts
+  s_2a633b937b74d7::t_357e6651c2bd96 10-17,26-29,32-34
+  s_2a633b937b74d7::t_7836898d2fb016 1-9,18-25,30-31,35-36
+demos/architect/EXPLAIN-DEMO.md
+  s_2a633b937b74d7::t_7836898d2fb016 1-17
+demos/architect/tsconfig.json
+  s_2a633b937b74d7::t_af78904718bafd 3,6,9
+  s_2a633b937b74d7::t_52a2cc62c09cee 1-2,4-5,7-8,10,18
+  s_2a633b937b74d7::t_357e6651c2bd96 11-17
+demos/architect/src/vite-env.d.ts
+  s_2a633b937b74d7::t_736b1f3280efaf 1-6
+demos/architect/scripts/delete-worker-if-present.mjs
+  s_2a633b937b74d7::t_23d7aa2cced5d1 13-19,25-27,29-31
+  s_2a633b937b74d7::t_7499049b3b2958 1-12,20-24,28,32-36
+demos/architect/infra/access.tf
+  s_2a633b937b74d7::t_e8160a2daf400e 1-38
+demos/architect/vitest.config.ts
+  s_2a633b937b74d7::t_736b1f3280efaf 1-4,10-18
+  s_2a633b937b74d7::t_357e6651c2bd96 5-9
+demos/architect/infra/local-outputs.json
+  s_2a633b937b74d7::t_52a2cc62c09cee 1-10
+demos/architect/migrations/0001_initial.sql
+  s_2a633b937b74d7::t_e8160a2daf400e 1-47
+demos/architect/src/worker/vitest.config.ts
+  s_2a633b937b74d7::t_736b1f3280efaf 1-5
+demos/architect/src/client/main.ts
+  s_2a633b937b74d7::t_357e6651c2bd96 6-14,23-26,31-43
+  s_2a633b937b74d7::t_736b1f3280efaf 1-5,15-22,27-30,44-47
+demos/architect/infra/.terraform.lock.hcl
+  s_2a633b937b74d7::t_b9fb82f2a874ff 1-41
+demos/architect/package-lock.json
+  s_2a633b937b74d7::t_34c2c9b613d603 1-6847
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9d363b9125537e1f39f5e79002ade47a3cac4e95",
+  "prompts": {},
+  "sessions": {
+    "s_2a633b937b74d7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_023145116ffey23cihcOEqcrDH",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
