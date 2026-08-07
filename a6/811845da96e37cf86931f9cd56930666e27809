@@ -1,0 +1,176 @@
+demos/architect/src/worker/lib/read-json-body.ts
+  s_6ecae2ee6303c8::t_ed2df1df3490d2 1-17
+demos/architect/src/worker/diagrams/operation-input.ts
+  s_6ecae2ee6303c8::t_e105461529af1f 1-2,14-136,201
+  s_6ecae2ee6303c8::t_9b7388abdab12b 137-200
+  s_6ecae2ee6303c8::t_da0e1e51b6f14d 3-13
+demos/architect/src/client/components/diagrams/ActorNode.vue
+  s_6ecae2ee6303c8::t_d3e3f7a233d5f9 1,3-25
+  s_6ecae2ee6303c8::t_522e4f49db1e4c 2
+demos/architect/src/graph/catalog.ts
+  s_6ecae2ee6303c8::t_8e9d37515b8d50 89
+  s_6ecae2ee6303c8::t_367a23d63fe2c1 1-55,64-88,90
+  s_6ecae2ee6303c8::t_a1d2db213164f7 56-63
+demos/architect/src/worker/diagrams/types.ts
+  s_6ecae2ee6303c8::t_360d9c25f7fb01 1-29
+demos/architect/tests/integration/vitest.config.ts
+  s_6ecae2ee6303c8::t_f754049de58596 8-25,31-34
+  s_6ecae2ee6303c8::t_0912863ae9443e 2-5,26-30
+  s_6ecae2ee6303c8::t_668deb757680a8 35-45
+demos/architect/src/worker/middleware/mutation-guard.ts
+  s_6ecae2ee6303c8::t_d027e661104403 1-37,39-45
+  s_6ecae2ee6303c8::t_828afb31c4bf9f 38
+demos/architect/src/graph/types.ts
+  s_6ecae2ee6303c8::t_43a0df6f920ccf 35-66,68-90,107
+  s_6ecae2ee6303c8::t_543e50c62b89b3 1-34,67,91-106,108
+demos/architect/src/client/components/diagrams/ProductNode.vue
+  s_6ecae2ee6303c8::t_abb20378a828ee 1,3,5-38
+  s_6ecae2ee6303c8::t_4520168c13c75c 2,4
+demos/architect/src/graph/blueprints.ts
+  s_6ecae2ee6303c8::t_cc2f6adc8cf377 1-171
+demos/architect/EXPLAIN-DEMO.md
+  s_6ecae2ee6303c8::t_d712fbf782ab24 11-18,21-22
+  s_6ecae2ee6303c8::t_8c5b0578aafc4a 23
+demos/architect/src/client/components/diagrams/DiagramPalette.test.ts
+  s_6ecae2ee6303c8::t_8ea5ea2b0d50b3 1-34,41-44,48-50,58-71,76-97
+  s_6ecae2ee6303c8::t_0912863ae9443e 35-40,45-47,51-57,72-75
+demos/architect/src/worker/diagrams/validation.ts
+  s_6ecae2ee6303c8::t_76b45665ae3d2f 1-86
+demos/architect/src/client/stores/diagram-document.test.ts
+  s_6ecae2ee6303c8::t_9bbabe750f6cbb 21-27,29
+  s_6ecae2ee6303c8::t_95240a4222961d 1-20,28,30-172,178-196
+  s_6ecae2ee6303c8::t_0912863ae9443e 173-177
+demos/architect/tsconfig.json
+  s_6ecae2ee6303c8::t_0a0e1fa24e21b1 9
+demos/architect/src/worker/diagrams/validation.test.ts
+  s_6ecae2ee6303c8::t_d357b843493fe8 1-54,56-58,60-62
+  s_6ecae2ee6303c8::t_cbc31eb7d2e37b 55,59
+demos/architect/src/client/components/diagrams/PropertiesPanel.vue
+  s_6ecae2ee6303c8::t_e0ce5efc6c5694 3,6
+  s_6ecae2ee6303c8::t_0912863ae9443e 19
+  s_6ecae2ee6303c8::t_3a0fdd7480d62c 25,34,43
+  s_6ecae2ee6303c8::t_f91c9638888907 1-2,4-5,7-18,20-24,26-33,35-42,44-131
+demos/architect/src/client/views/DiagramEditorView.vue
+  s_6ecae2ee6303c8::t_a6e4ebe92a8e44 1-4,6,8,10,12-121
+  s_6ecae2ee6303c8::t_d907ccc1e81c16 5,7,9,11
+demos/architect/src/client/components/diagrams/DiagramCanvas.vue
+  s_6ecae2ee6303c8::t_e84473d62f0071 1,3,5-11,13-15,17,19,21-29,46-65,72-111,114-133
+  s_6ecae2ee6303c8::t_2a3dd396d75b0b 30-45
+  s_6ecae2ee6303c8::t_df00beacaf0032 112-113
+  s_6ecae2ee6303c8::t_0912863ae9443e 66-71
+  s_6ecae2ee6303c8::t_67f10186f70867 2,4,12,16,18,20
+demos/architect/README.md
+  s_6ecae2ee6303c8::t_2c9103a4c80666 18
+  s_6ecae2ee6303c8::t_0914d51bdb3a76 30-31,33
+demos/architect/src/worker/diagrams/repository.test.ts
+  s_6ecae2ee6303c8::t_0912863ae9443e 143
+  s_6ecae2ee6303c8::t_57dd8ceef3d59e 1-123,125-142,144-160
+  s_6ecae2ee6303c8::t_e76a8d4fe9e460 124
+demos/architect/src/worker/routes/diagrams.ts
+  s_6ecae2ee6303c8::t_b189f50d3ce6eb 1-118
+demos/architect/src/client/components/diagrams/DiagramCanvas.test.ts
+  s_6ecae2ee6303c8::t_1e95d43ab687d8 1-71,75-104
+  s_6ecae2ee6303c8::t_9bbabe750f6cbb 72-74
+demos/architect/src/graph/validation.test.ts
+  s_6ecae2ee6303c8::t_a917d8631f070d 1-53,55-85,87-91,93-127,129-130
+  s_6ecae2ee6303c8::t_0912863ae9443e 54,86,92,128
+demos/architect/src/graph/operations.ts
+  s_6ecae2ee6303c8::t_f453641f6cf8e4 1-219
+demos/architect/src/worker/middleware/body-limit.ts
+  s_6ecae2ee6303c8::t_62f87331001741 1-25
+demos/architect/src/worker/diagrams/operation-input.test.ts
+  s_6ecae2ee6303c8::t_d8c61f1d31c987 1-93
+demos/architect/src/client/stores/diagram-document.ts
+  s_6ecae2ee6303c8::t_2b5d86c3fd474d 61-102
+  s_6ecae2ee6303c8::t_0dea6711508792 2-10
+  s_6ecae2ee6303c8::t_0912863ae9443e 37-39,151-152,206-208,215-217
+  s_6ecae2ee6303c8::t_5f9ce7cc63c869 113
+  s_6ecae2ee6303c8::t_2ccac66c760c62 1,11-36,40-60,103-112,114-150,153-205,209-214,218-238
+demos/architect/src/client/components/diagrams/PropertiesPanel.test.ts
+  s_6ecae2ee6303c8::t_23fc6564411ca8 1-22,25-34,40-64,68-117
+  s_6ecae2ee6303c8::t_0912863ae9443e 23-24,35-39,65-67
+demos/architect/src/client/stores/diagrams.test.ts
+  s_6ecae2ee6303c8::t_9c6cb473b79fa3 1-59,65-86,90-94
+  s_6ecae2ee6303c8::t_0912863ae9443e 60-64,87-89
+demos/architect/DEMO.md
+  s_6ecae2ee6303c8::t_b4b721324ca9f0 9-18,20
+demos/architect/package.json
+  s_6ecae2ee6303c8::t_2ab88e073db836 54-56
+demos/architect/src/worker/diagram-room.ts
+  s_6ecae2ee6303c8::t_0912863ae9443e 5-8,174-178
+  s_6ecae2ee6303c8::t_082459f3675c11 2-4,9,12,14-19,21-173,179-253
+demos/architect/src/worker/index.ts
+  s_6ecae2ee6303c8::t_642c0928427e46 11,19
+demos/architect/src/graph/operations.test.ts
+  s_6ecae2ee6303c8::t_7aa37a5751994b 1-180
+demos/architect/src/client/components/diagrams/TypedEdge.vue
+  s_6ecae2ee6303c8::t_1120fa5ae4a12b 3-4
+  s_6ecae2ee6303c8::t_bc697b5b914516 1,5-54
+  s_6ecae2ee6303c8::t_5ced0e70746d2a 2
+demos/architect/src/client/components/diagrams/CreateDiagramDialog.test.ts
+  s_6ecae2ee6303c8::t_1924dd411ee334 1-19,21-43,48-53,57-60
+  s_6ecae2ee6303c8::t_0912863ae9443e 20,54-56
+  s_6ecae2ee6303c8::t_a11963437d6604 44-47
+demos/architect/src/worker/vitest.config.ts
+  s_6ecae2ee6303c8::t_3fbebf8039ff00 6-10
+  s_6ecae2ee6303c8::t_f77fdf584cb2a1 4-5,11-12
+demos/architect/src/client/components/diagrams/CreateDiagramDialog.vue
+  s_6ecae2ee6303c8::t_e06efcc9b9da6e 2
+  s_6ecae2ee6303c8::t_343f83979be0c0 29-36
+  s_6ecae2ee6303c8::t_6b2445bce84710 3
+  s_6ecae2ee6303c8::t_40c19b83328495 1,4-28,37-69
+demos/architect/src/client/views/DiagramLibraryView.vue
+  s_6ecae2ee6303c8::t_208472e4ef1e8a 1-5,7,9-23,29,33-47,52-217
+  s_6ecae2ee6303c8::t_4b5e42da8fde15 6,8
+  s_6ecae2ee6303c8::t_0912863ae9443e 24-28,30-32,48-51
+demos/architect/src/client/views/DiagramLibraryView.test.ts
+  s_6ecae2ee6303c8::t_fa50c7fb94401b 1-30,39-42,45-49,53-59,67-85,89,93-117
+  s_6ecae2ee6303c8::t_0912863ae9443e 31-38,43-44,50-52,60-66,86-88,90-92
+demos/architect/src/feather-icons.d.ts
+  s_6ecae2ee6303c8::t_820d0c97f3cc51 1-21
+demos/architect/src/graph/validation.ts
+  s_6ecae2ee6303c8::t_224f8cb25cd024 7
+  s_6ecae2ee6303c8::t_6c8c8b885040ba 80
+  s_6ecae2ee6303c8::t_b50c84cb4031f7 1-6,8-40,42-79,81-256
+  s_6ecae2ee6303c8::t_0912863ae9443e 41
+demos/architect/src/worker/middleware/mutation-guard.test.ts
+  s_6ecae2ee6303c8::t_140d1b191806d7 2-10,12-66
+  s_6ecae2ee6303c8::t_e92bf3ee4e087c 1,11
+demos/architect/src/client/stores/diagrams.ts
+  s_6ecae2ee6303c8::t_eeb08a9777d124 1-122
+demos/architect/src/client/components/diagrams/DiagramPalette.vue
+  s_6ecae2ee6303c8::t_149e141ac75f72 94
+  s_6ecae2ee6303c8::t_a26ae7ef0f9d05 5
+  s_6ecae2ee6303c8::t_0912863ae9443e 34-36
+  s_6ecae2ee6303c8::t_47569e67c2d563 1-4,6-33,37-93,95-117
+demos/architect/src/client/main.ts
+  s_6ecae2ee6303c8::t_046e8dd6d9c472 7,11,13,15-17,20-24,27-28,37-50,59,63,65,67-69,72-76
+demos/architect/tests/integration/diagrams.test.ts
+  s_6ecae2ee6303c8::t_289fd6178c547c 1,3-4,6-9,15-72,78-112,116-127,146-147,150,152-177,196-197,200,202-203,209-215,217-218,233-236,240-254,258-270,274-306,310-312,316-319
+  s_6ecae2ee6303c8::t_1a469955206104 73-77
+  s_6ecae2ee6303c8::t_c94bdc36356484 2,5,10-14
+  s_6ecae2ee6303c8::t_0912863ae9443e 113-115,128-145,148-149,151,178-195,198-199,201,204-208,216,219-232,237-239,255-257,271-273,307-309,313-315
+demos/architect/src/client/components/FeatherIcon.vue
+  s_6ecae2ee6303c8::t_ca9a7549eb02df 1-51
+demos/architect/src/worker/diagrams/repository.ts
+  s_6ecae2ee6303c8::t_0912863ae9443e 123-127
+  s_6ecae2ee6303c8::t_bf28af65111df7 1-122,128-155
+demos/architect/package-lock.json
+  s_6ecae2ee6303c8::t_fffbb5ee054148 14-16,2463-2468,2944-2979,3241-3328,3703-3807
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a6811845da96e37cf86931f9cd56930666e27809",
+  "prompts": {},
+  "sessions": {
+    "s_6ecae2ee6303c8": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0229fa5a6ffe4i6GFy9IgR7bDE",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
