@@ -1,0 +1,7 @@
+node_modules/
+.wrangler/
+worker-configuration.d.ts
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+artifacts/

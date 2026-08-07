@@ -1,0 +1,8 @@
+{
+  "account_id": "00000000000000000000000000000000",
+  "worker_name": "spike-10-architect-workflow-local",
+  "d1_database_id": "00000000-0000-0000-0000-000000000000",
+  "d1_database_name": "spike-10-architect-workflow-local-jobs",
+  "r2_bucket_name": "spike-10-architect-workflow-local-proposals",
+  "workflow_name": "spike-10-architect-workflow-local-architecture"
+}
