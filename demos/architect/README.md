@@ -15,7 +15,7 @@ An authenticated collaborative architecture shell based on Cloudflare Workers, S
 
 ## Local Development
 
-Run `npm start`, then open `http://localhost:5173`. The local Access screen offers Architect and Customer identities. Use `/app` (redirects to `/app/diagrams`) to open the diagram library, create a diagram from a starter blueprint, and open its editor. The shell's Sign out control is unconditionally available.
+Run `npm start`, then open `http://localhost:5173`. The local Access screen offers Architect and Customer identities. Use `/app` (redirects to `/app/diagrams`) to open the diagram library, create a diagram from a starter blueprint, and open its editor. As the diagram's owner, use the editor's **Invite** control to create an editor invitation link, then open that link (`/app/invitations/:token`) as the Customer identity to redeem durable editor access. The shell's Sign out control is unconditionally available.
 
 ## Testing
 
@@ -30,7 +30,7 @@ Run `npm start`, then open `http://localhost:5173`. The local Access screen offe
 3. Open `https://architect.cfapps.uk` for the public landing page and `https://architect.cfapps.uk/app` to complete Access sign-in and reach the diagram library.
 4. Confirm `GET /api/me` succeeds only after Access authentication, then create a diagram and confirm it reopens with the same document after a page reload.
 
-Provisioned resources: the Worker and custom domain, public and authenticated Access applications, D1 `DB` (diagram directory and owner membership), R2 `SNAPSHOTS`, KV `SHARES`, one SQLite `DiagramRoom` Durable Object namespace (authoritative per-diagram document and revision), and the Workflow declaration.
+Provisioned resources: the Worker and custom domain, public and authenticated Access applications, D1 `DB` (diagram directory, membership, and single-use invitation digests), R2 `SNAPSHOTS`, KV `SHARES`, one SQLite `DiagramRoom` Durable Object namespace (authoritative per-diagram document and revision), and the Workflow declaration.
 
 | Problem | Resolution |
 | --- | --- |

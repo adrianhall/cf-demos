@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DiagramRepository } from "./repository";
 
-/** A recorded D1 statement used to verify the repository's owner-scoped predicates. */
+/** A recorded D1 statement used to verify the repository's access-scoped predicates. */
 interface RecordedStatement {
   parameters: unknown[];
   sql: string;
@@ -91,7 +91,7 @@ describe("DiagramRepository", () => {
     ]);
   });
 
-  it("lists only diagrams owned by the verified identity", async () => {
+  it("lists only diagrams the identity is a member of", async () => {
     const { database, statements } = databaseFor({
       id: "d-1",
       owner_email: "owner@example.com",
@@ -100,7 +100,7 @@ describe("DiagramRepository", () => {
       updated_at: "2026-01-01T00:00:00.000Z",
     });
 
-    const diagrams = await new DiagramRepository(database).listOwnedBy(
+    const diagrams = await new DiagramRepository(database).listAccessibleBy(
       "owner@example.com",
     );
 
@@ -114,38 +114,99 @@ describe("DiagramRepository", () => {
       },
     ]);
     expect(statements[0].parameters).toEqual(["owner@example.com"]);
-    expect(statements[0].sql).toContain("WHERE owner_email = ?");
+    expect(statements[0].sql).toContain("JOIN diagram_members m");
+    expect(statements[0].sql).toContain("WHERE m.email = ?");
   });
 
-  it("throws notFound() when a diagram is not owned by the caller", async () => {
+  it("throws notFound() when the caller has no membership row for the diagram", async () => {
     const { database } = databaseFor(null);
     await expect(
-      new DiagramRepository(database).getOwned("owner@example.com", "d-1"),
+      new DiagramRepository(database).getAccessible("owner@example.com", "d-1"),
     ).rejects.toMatchObject({ problemDetails: { status: 404 } });
   });
 
-  it("renames a diagram only through the owner-scoped predicate", async () => {
+  it("getAccessible() returns the diagram for a confirmed editor, not only the owner", async () => {
+    const { database } = databaseFor({
+      id: "d-1",
+      owner_email: "owner@example.com",
+      title: "Existing",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      role: "editor",
+    });
+
+    const diagram = await new DiagramRepository(database).getAccessible(
+      "editor@example.com",
+      "d-1",
+    );
+
+    expect(diagram.id).toBe("d-1");
+  });
+
+  it("requireOwner() returns the diagram for a confirmed owner", async () => {
+    const { database } = databaseFor({
+      id: "d-1",
+      owner_email: "owner@example.com",
+      title: "Existing",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      role: "owner",
+    });
+
+    const diagram = await new DiagramRepository(database).requireOwner(
+      "owner@example.com",
+      "d-1",
+    );
+
+    expect(diagram.id).toBe("d-1");
+  });
+
+  it("requireOwner() throws notFound() for a caller with no membership at all", async () => {
+    const { database } = databaseFor(null);
+    await expect(
+      new DiagramRepository(database).requireOwner("nobody@example.com", "d-1"),
+    ).rejects.toMatchObject({ problemDetails: { status: 404 } });
+  });
+
+  it("requireOwner() throws forbidden() for a confirmed editor, not notFound()", async () => {
+    const { database } = databaseFor({
+      id: "d-1",
+      owner_email: "owner@example.com",
+      title: "Existing",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      role: "editor",
+    });
+
+    await expect(
+      new DiagramRepository(database).requireOwner("editor@example.com", "d-1"),
+    ).rejects.toMatchObject({ problemDetails: { status: 403 } });
+  });
+
+  it("renames a diagram without repeating the owner-only predicate", async () => {
     const { database, statements } = databaseFor({
       id: "d-1",
       owner_email: "owner@example.com",
       title: "Old title",
       created_at: "2026-01-01T00:00:00.000Z",
       updated_at: "2026-01-01T00:00:00.000Z",
+      role: "editor",
     });
 
     const diagram = await new DiagramRepository(database).rename(
-      "owner@example.com",
+      "editor@example.com",
       "d-1",
       "New title",
     );
 
     expect(diagram.title).toBe("New title");
-    expect(statements[1].sql).toContain("WHERE id = ? AND owner_email = ?");
+    expect(statements[1].sql).toBe(
+      "UPDATE diagrams SET title = ?, updated_at = ? WHERE id = ?",
+    );
     expect(statements[1].parameters).toEqual([
       "New title",
       diagram.updatedAt,
       "d-1",
-      "owner@example.com",
     ]);
   });
 
@@ -156,5 +217,34 @@ describe("DiagramRepository", () => {
       "UPDATE diagrams SET updated_at = ? WHERE id = ?",
     );
     expect(statements[0].parameters[1]).toBe("d-1");
+  });
+
+  it("lists members, owner first", async () => {
+    const { database, statements } = databaseFor({
+      email: "owner@example.com",
+      role: "owner",
+    });
+
+    const members = await new DiagramRepository(database).listMembers("d-1");
+
+    expect(members).toEqual([{ email: "owner@example.com", role: "owner" }]);
+    expect(statements[0].sql).toContain("ORDER BY role DESC");
+  });
+
+  it("adds a member idempotently via ON CONFLICT DO NOTHING", async () => {
+    const { database, statements } = databaseFor(null);
+    await new DiagramRepository(database).addMember(
+      "d-1",
+      "editor@example.com",
+      "editor",
+    );
+    expect(statements[0].sql).toContain(
+      "ON CONFLICT (diagram_id, email) DO NOTHING",
+    );
+    expect(statements[0].parameters.slice(0, 3)).toEqual([
+      "d-1",
+      "editor@example.com",
+      "editor",
+    ]);
   });
 });

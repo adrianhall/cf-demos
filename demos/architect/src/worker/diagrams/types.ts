@@ -27,3 +27,11 @@ export interface UpdateDiagramInput {
   /** Replacement title. */
   title: string;
 }
+
+/** One `diagram_members` row, as returned by `GET /api/diagrams/:id/members`. */
+export interface DiagramMember {
+  /** Verified Cloudflare Access email of the member. */
+  email: string;
+  /** `"owner"` — exactly one per diagram, set at creation — or `"editor"`. */
+  role: "owner" | "editor";
+}

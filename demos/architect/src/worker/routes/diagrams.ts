@@ -9,28 +9,35 @@ import {
   validateDiagramId,
   validateUpdateDiagramInput,
 } from "../diagrams/validation";
+import { InvitationRepository } from "../invitations/repository";
 import { readJsonBody } from "../lib/read-json-body";
 import { requestBodyLimit } from "../middleware/body-limit";
 import { requireSameOriginMutation } from "../middleware/mutation-guard";
 
 /**
- * Owner-scoped diagram library and document API, mounted at `/api/diagrams` by `../index.ts`.
+ * Diagram library, document, membership, and invitation-management API, mounted at
+ * `/api/diagrams` by `../index.ts`.
  *
  * Every route runs after `accessMiddleware` (see `../middleware/access.ts`), so
- * `Cloudflare_Access_Identity` is always set. Phase 2 has no editor membership yet, so every
- * lookup checks D1 ownership (`owner_email`) directly; Phase 3 extends this to
- * `diagram_members` without changing this router's request/response shapes.
+ * `Cloudflare_Access_Identity` is always set. Phase 3 widens list/open/rename/operations
+ * authorization from Phase 2's owner-only `owner_email` check to `diagram_members` membership
+ * (owner or editor) via `DiagramRepository.getAccessible()`; invitation management stays
+ * owner-only via `DiagramRepository.requireOwner()`. Invitation *redemption* is a separate,
+ * non-diagram-scoped route — see `./invitations.ts` — because a raw token already fully
+ * identifies its diagram.
  */
 export const diagramsRouter = new Hono<AppBindings>();
 
 diagramsRouter.use(requireSameOriginMutation);
 diagramsRouter.use(requestBodyLimit);
 
-/** List every diagram owned by the caller, most recently updated first. */
+/** List every diagram the caller can access (owner or editor membership), most recently updated first. */
 diagramsRouter.get("/", async (context) => {
   const identity = context.get("Cloudflare_Access_Identity").email;
   const repository = new DiagramRepository(context.env.DB);
-  return context.json({ diagrams: await repository.listOwnedBy(identity) });
+  return context.json({
+    diagrams: await repository.listAccessibleBy(identity),
+  });
 });
 
 /**
@@ -61,7 +68,7 @@ diagramsRouter.get("/:id", async (context) => {
   const id = validateDiagramId(context.req.param("id"));
   const identity = context.get("Cloudflare_Access_Identity").email;
   const repository = new DiagramRepository(context.env.DB);
-  const diagram = await repository.getOwned(identity, id);
+  const diagram = await repository.getAccessible(identity, id);
 
   const room = context.env.DIAGRAM_ROOM.getByName(id);
   const snapshot = await room.readDocument();
@@ -74,7 +81,7 @@ diagramsRouter.get("/:id", async (context) => {
   });
 });
 
-/** Rename a diagram (`{ "title": "..." }`). Phase 2 supports no other mutable field. */
+/** Rename a diagram (`{ "title": "..." }`). Any member — owner or editor — may rename. */
 diagramsRouter.patch("/:id", async (context) => {
   const id = validateDiagramId(context.req.param("id"));
   const identity = context.get("Cloudflare_Access_Identity").email;
@@ -86,18 +93,78 @@ diagramsRouter.patch("/:id", async (context) => {
   return context.json({ diagram });
 });
 
+/** List a diagram's members (email + role). Visible to any member, not owner-only. */
+diagramsRouter.get("/:id/members", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  const identity = context.get("Cloudflare_Access_Identity").email;
+  const repository = new DiagramRepository(context.env.DB);
+  await repository.getAccessible(identity, id);
+
+  return context.json({ members: await repository.listMembers(id) });
+});
+
+/**
+ * Create an editor invitation for a diagram. Owner-only.
+ *
+ * The raw token is returned exactly once, in this response — see
+ * `../invitations/repository.ts`'s `create()`. No request body fields are read; creating an
+ * invitation needs nothing beyond the diagram id and the caller's verified identity.
+ */
+diagramsRouter.post("/:id/invitations", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  const identity = context.get("Cloudflare_Access_Identity").email;
+  const diagrams = new DiagramRepository(context.env.DB);
+  await diagrams.requireOwner(identity, id);
+
+  const invitations = new InvitationRepository(context.env.DB);
+  const created = await invitations.create(id, identity);
+
+  context.get("LOGGER").info("diagram_invitation_created", { diagramId: id });
+  return context.json(created, 201);
+});
+
+/** List a diagram's currently redeemable invitations. Owner-only. */
+diagramsRouter.get("/:id/invitations", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  const identity = context.get("Cloudflare_Access_Identity").email;
+  const diagrams = new DiagramRepository(context.env.DB);
+  await diagrams.requireOwner(identity, id);
+
+  const invitations = new InvitationRepository(context.env.DB);
+  return context.json({ invitations: await invitations.listActive(id) });
+});
+
+/**
+ * Revoke one invitation (identified by its opaque `InvitationSummary.id`, never the raw token or
+ * its digest). Owner-only, idempotent.
+ */
+diagramsRouter.delete("/:id/invitations/:invitationId", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  const identity = context.get("Cloudflare_Access_Identity").email;
+  const diagrams = new DiagramRepository(context.env.DB);
+  await diagrams.requireOwner(identity, id);
+
+  const invitations = new InvitationRepository(context.env.DB);
+  await invitations.revoke(id, context.req.param("invitationId"));
+
+  context.get("LOGGER").info("diagram_invitation_revoked", { diagramId: id });
+  return context.body(null, 204);
+});
+
 /**
  * Forward one revisioned document edit to `DiagramRoom.applyOperation`
  * (`{ "operationId": "...", "baseRevision": 0, "kind": "...", "payload": {...} }`).
  *
- * Phase 2 is single-user, but edits still flow through this exact revisioned-command endpoint so
- * Phase 4's WebSocket transport can be added without replacing the persistence model.
+ * Any member — owner or editor — may submit an operation, per Phase 3's "owner and editor can
+ * edit" rule. Phase 2 was single-user, but edits still flow through this exact
+ * revisioned-command endpoint so Phase 4's WebSocket transport can be added without replacing
+ * the persistence model.
  */
 diagramsRouter.post("/:id/operations", async (context) => {
   const id = validateDiagramId(context.req.param("id"));
   const identity = context.get("Cloudflare_Access_Identity").email;
   const repository = new DiagramRepository(context.env.DB);
-  await repository.getOwned(identity, id);
+  await repository.getAccessible(identity, id);
 
   const operation = validateOperationInput(await readJsonBody(context.req.raw));
   const room = context.env.DIAGRAM_ROOM.getByName(id);

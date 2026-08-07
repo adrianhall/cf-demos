@@ -26,6 +26,7 @@ import {
 import App from "./App.vue";
 import DiagramEditorView from "./views/DiagramEditorView.vue";
 import DiagramLibraryView from "./views/DiagramLibraryView.vue";
+import InvitationRedeemView from "./views/InvitationRedeemView.vue";
 import LandingView from "./views/LandingView.vue";
 
 /** Start the public landing page and Access-gated application shell. */
@@ -47,6 +48,11 @@ export function startClient(): void {
         component: DiagramEditorView,
         name: "diagram-editor",
         path: "/app/diagrams/:id",
+      },
+      {
+        component: InvitationRedeemView,
+        name: "invitation-redeem",
+        path: "/app/invitations/:token",
       },
     ],
   });
