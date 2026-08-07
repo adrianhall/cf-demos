@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "includes": [
+      "**",
+      "!coverage",
+      "!dist",
+      "!node_modules",
+      "!.wrangler",
+      "!wrangler.jsonc",
+      "!worker-configuration.d.ts"
+    ]
+  },
+  "formatter": { "indentStyle": "space", "indentWidth": 2 },
+  "linter": { "enabled": true },
+  "overrides": [
+    {
+      "includes": ["src/**/*.vue"],
+      "linter": { "rules": { "correctness": { "noUnusedVariables": "off" } } }
+    }
+  ]
+}
