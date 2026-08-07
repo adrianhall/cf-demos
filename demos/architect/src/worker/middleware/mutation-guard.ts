@@ -43,3 +43,29 @@ export const requireSameOriginMutation: MiddlewareHandler = async (
 
   await next();
 };
+
+/**
+ * Enforce the Access Model's same-origin rule for the WebSocket upgrade route specifically.
+ *
+ * A WebSocket upgrade is always an HTTP `GET` request, so {@link requireSameOriginMutation}'s
+ * safe-method bypass would otherwise skip it entirely. `docs/09-ARCHITECT.md`'s Access Model
+ * explicitly calls out "same-origin requests for every state-changing API **and WebSocket
+ * upgrade**" as a first-class requirement distinct from an ordinary read — joining a live
+ * collaboration room is a connecting action, not a passive read. Call this directly from the
+ * upgrade route handler (`../routes/diagrams.ts`), never through `app.use()`, since every other
+ * `GET` route on `diagramsRouter` must remain origin-agnostic for ordinary same-tab navigation
+ * and `fetch()` reads.
+ *
+ * @param request Raw incoming upgrade request.
+ * @throws {ProblemDetailsError} `forbidden()` when `Origin` is missing or does not match the
+ * request's own origin.
+ */
+export function requireSameOriginUpgrade(request: Request): void {
+  const origin = request.headers.get("origin");
+  const requestOrigin = new URL(request.url).origin;
+  if (!origin || origin !== requestOrigin) {
+    throw forbidden({
+      detail: "This WebSocket upgrade must originate from the same origin.",
+    });
+  }
+}

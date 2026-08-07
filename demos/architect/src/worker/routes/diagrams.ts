@@ -1,5 +1,12 @@
-import { unprocessableContent } from "@adrianhall/cloudflare-toolkit/errors";
+import {
+  badRequest,
+  unprocessableContent,
+} from "@adrianhall/cloudflare-toolkit/errors";
 import { Hono } from "hono";
+import {
+  TRUSTED_IDENTITY_HEADER,
+  TRUSTED_ROLE_HEADER,
+} from "../../collaboration-protocol";
 import { getBlueprint } from "../../graph/blueprints";
 import type { AppBindings } from "../bindings";
 import { DiagramRepository } from "../diagrams/repository";
@@ -12,7 +19,10 @@ import {
 import { InvitationRepository } from "../invitations/repository";
 import { readJsonBody } from "../lib/read-json-body";
 import { requestBodyLimit } from "../middleware/body-limit";
-import { requireSameOriginMutation } from "../middleware/mutation-guard";
+import {
+  requireSameOriginMutation,
+  requireSameOriginUpgrade,
+} from "../middleware/mutation-guard";
 
 /**
  * Diagram library, document, membership, and invitation-management API, mounted at
@@ -24,7 +34,9 @@ import { requireSameOriginMutation } from "../middleware/mutation-guard";
  * (owner or editor) via `DiagramRepository.getAccessible()`; invitation management stays
  * owner-only via `DiagramRepository.requireOwner()`. Invitation *redemption* is a separate,
  * non-diagram-scoped route — see `./invitations.ts` — because a raw token already fully
- * identifies its diagram.
+ * identifies its diagram. Phase 4 adds the `GET /:id/ws` live-collaboration upgrade route below;
+ * it authorizes membership the same way as every other route here but forwards the caller's
+ * verified identity and role to `DiagramRoom` as trusted headers instead of returning JSON.
  */
 export const diagramsRouter = new Hono<AppBindings>();
 
@@ -182,4 +194,46 @@ diagramsRouter.post("/:id/operations", async (context) => {
     status: result.status,
   });
   return context.json({ result });
+});
+
+/**
+ * Authenticated hibernatable-WebSocket upgrade route for live cooperative editing
+ * (`docs/09-ARCHITECT.md`'s Phase 4 Collaboration Protocol).
+ *
+ * `accessMiddleware` (mounted globally in `../index.ts`) already required a valid Access
+ * identity before this handler runs. This route additionally, in order:
+ *
+ * 1. Validates the diagram id (`404` for a malformed id, matching every other route).
+ * 2. Enforces same-origin (`requireSameOriginUpgrade` — a WebSocket upgrade is a connecting
+ *    action, not an ordinary safe `GET`, so `requireSameOriginMutation`'s method-based bypass
+ *    above does not cover it; see that function's own documentation).
+ * 3. Requires an actual `Upgrade: websocket` request.
+ * 4. Checks D1 membership (owner **or** editor) via `DiagramRepository.getAccessibleWithRole()`
+ *    — `404` for a non-member, identical to every other diagram route.
+ * 5. Strips any client-supplied trusted headers and sets the Worker's own verified
+ *    `X-Architect-Identity`/`X-Architect-Role` before forwarding to `DiagramRoom`. The Durable
+ *    Object trusts only these Worker-added values — see `../diagram-room.ts` and
+ *    `../diagram-room-protocol.ts`'s `parseTrustedIdentity()`.
+ */
+diagramsRouter.get("/:id/ws", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  requireSameOriginUpgrade(context.req.raw);
+  if (context.req.header("upgrade")?.toLowerCase() !== "websocket") {
+    throw badRequest({ detail: "Expected a WebSocket upgrade request." });
+  }
+
+  const identity = context.get("Cloudflare_Access_Identity").email;
+  const repository = new DiagramRepository(context.env.DB);
+  const { role } = await repository.getAccessibleWithRole(identity, id);
+
+  const headers = new Headers(context.req.raw.headers);
+  headers.delete(TRUSTED_IDENTITY_HEADER);
+  headers.delete(TRUSTED_ROLE_HEADER);
+  headers.set(TRUSTED_IDENTITY_HEADER, identity);
+  headers.set(TRUSTED_ROLE_HEADER, role);
+
+  context.get("LOGGER").info("diagram_room_connect", { diagramId: id, role });
+  return context.env.DIAGRAM_ROOM.getByName(id).fetch(
+    new Request(context.req.raw, { headers }),
+  );
 });

@@ -4,6 +4,7 @@ import { computed } from "vue";
 
 /** Curated Feather icon names actually used by this demo's UI. */
 export type FeatherIconName =
+  | "alert-triangle"
   | "check"
   | "copy"
   | "corner-down-right"
@@ -12,13 +13,17 @@ export type FeatherIconName =
   | "git-commit"
   | "grid"
   | "log-out"
+  | "mouse-pointer"
   | "plus"
+  | "refresh-cw"
   | "save"
   | "search"
   | "trash-2"
   | "user"
   | "user-plus"
   | "users"
+  | "wifi"
+  | "wifi-off"
   | "x";
 
 const props = withDefaults(

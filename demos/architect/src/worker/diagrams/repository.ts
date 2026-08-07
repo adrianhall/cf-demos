@@ -122,6 +122,33 @@ export class DiagramRepository {
   }
 
   /**
+   * Read one diagram plus the caller's specific membership role, enforcing Phase 3's membership
+   * boundary (owner **or** editor) in the same query as {@link getAccessible}.
+   *
+   * Used only by the Phase 4 WebSocket upgrade route (`../routes/diagrams.ts`), which must
+   * forward the caller's verified role — not merely confirm access — as a trusted
+   * `X-Architect-Role` header to `DiagramRoom` (`docs/09-ARCHITECT.md`'s Access Model). Every
+   * other route continues to use {@link getAccessible}, which does not need the role.
+   *
+   * @param email Verified Cloudflare Access email.
+   * @param id Validated diagram UUID.
+   * @returns The accessible diagram and the caller's membership role.
+   * @throws {ProblemDetailsError} `notFound()` when the diagram does not exist or `email` has no
+   * `diagram_members` row for it — identical to {@link getAccessible}'s indistinguishable-404
+   * behavior.
+   */
+  async getAccessibleWithRole(
+    email: string,
+    id: string,
+  ): Promise<{ diagram: Diagram; role: DiagramMember["role"] }> {
+    const row = await this.memberRow(email, id);
+    if (row === null) {
+      throw notFound({ detail: "Diagram not found." });
+    }
+    return { diagram: toDiagram(row), role: row.role as DiagramMember["role"] };
+  }
+
+  /**
    * Read one diagram and additionally enforce that `email` is specifically its **owner** — used
    * by invitation management (this phase) and publishing (Phase 6), where editor membership is
    * not sufficient.
