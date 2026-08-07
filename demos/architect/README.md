@@ -15,7 +15,7 @@ An authenticated collaborative architecture shell based on Cloudflare Workers, S
 
 ## Local Development
 
-Run `npm start`, then open `http://localhost:5173`. The local Access screen offers Architect and Customer identities. Use `/app` to open the protected shell and its unconditionally available Sign out control.
+Run `npm start`, then open `http://localhost:5173`. The local Access screen offers Architect and Customer identities. Use `/app` (redirects to `/app/diagrams`) to open the diagram library, create a diagram from a starter blueprint, and open its editor. The shell's Sign out control is unconditionally available.
 
 ## Testing
 
@@ -27,10 +27,10 @@ Run `npm start`, then open `http://localhost:5173`. The local Access screen offe
 
 1. Confirm no conflicting DNS record exists for `architect.cfapps.uk`.
 2. Run `npm run deploy`.
-3. Open `https://architect.cfapps.uk` for the public landing page and `https://architect.cfapps.uk/app` to complete Access sign-in.
-4. Confirm `GET /api/me` succeeds only after Access authentication.
+3. Open `https://architect.cfapps.uk` for the public landing page and `https://architect.cfapps.uk/app` to complete Access sign-in and reach the diagram library.
+4. Confirm `GET /api/me` succeeds only after Access authentication, then create a diagram and confirm it reopens with the same document after a page reload.
 
-Provisioned resources: the Worker and custom domain, public and authenticated Access applications, D1 `DB`, R2 `SNAPSHOTS`, KV `SHARES`, one SQLite Durable Object namespace, and the Workflow declaration.
+Provisioned resources: the Worker and custom domain, public and authenticated Access applications, D1 `DB` (diagram directory and owner membership), R2 `SNAPSHOTS`, KV `SHARES`, one SQLite `DiagramRoom` Durable Object namespace (authoritative per-diagram document and revision), and the Workflow declaration.
 
 | Problem | Resolution |
 | --- | --- |

@@ -6,7 +6,7 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2024",
-    "types": ["node", "vite/client"]
+    "types": ["node", "vite/client", "@cloudflare/vitest-pool-workers/types"]
   },
   "include": [
     "src",
