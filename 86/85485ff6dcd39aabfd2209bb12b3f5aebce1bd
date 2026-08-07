@@ -1,0 +1,101 @@
+demos/architect/src/worker/index.ts
+  s_2c29d07905c35d::t_3c49e8884df10e 14
+  s_2c29d07905c35d::t_b2eb524884602a 23
+demos/architect/src/worker/shares/token.ts
+  s_2c29d07905c35d::t_cfd60c56b2c200 1-80
+demos/architect/src/worker/shares/token.test.ts
+  s_2c29d07905c35d::t_73166da9ffd71e 1-58
+demos/architect/src/worker/routes/shared.ts
+  s_2c29d07905c35d::t_6061167bdb0676 1-4,6-63
+  s_2c29d07905c35d::t_2746b2a525d745 5
+demos/architect/src/worker/routes/diagrams.ts
+  s_2c29d07905c35d::t_2746b2a525d745 17,25,38
+  s_2c29d07905c35d::t_fd2e70a5c63bc1 179-257
+demos/architect/src/client/stores/shared-viewer.ts
+  s_2c29d07905c35d::t_7e04f45c2a9c82 1-82
+demos/architect/src/client/components/diagrams/SharePanel.test.ts
+  s_2c29d07905c35d::t_69388524deb40e 86-92,95-97
+  s_2c29d07905c35d::t_ba919662b1cce2 1-63,72,74-85,93-94,98-141
+  s_2c29d07905c35d::t_01e4d9a09cef29 64-71,73
+demos/architect/src/client/views/ShareView.test.ts
+  s_2c29d07905c35d::t_69388524deb40e 78-84
+  s_2c29d07905c35d::t_fbda5bc717cf7a 1-77,85-93
+demos/architect/src/client/stores/shared-viewer.test.ts
+  s_2c29d07905c35d::t_588555f96bed34 1-42,50-67
+  s_2c29d07905c35d::t_69388524deb40e 43-49
+demos/architect/EXPLAIN-DEMO.md
+  s_2c29d07905c35d::t_e71eb3c2b9f0ee 55-62
+  s_2c29d07905c35d::t_4ad5b379ef4576 78-79
+demos/architect/src/worker/shares/repository.test.ts
+  s_2c29d07905c35d::t_68279b376273c2 1-115,130,132-136,141-188,190-202,204,206-209,229-261
+  s_2c29d07905c35d::t_2746b2a525d745 137-140,189
+  s_2c29d07905c35d::t_c764c448c6cd98 203,205,210-228
+  s_2c29d07905c35d::t_fd02cb0b390b64 116-129,131
+demos/architect/src/worker/shares/types.ts
+  s_2c29d07905c35d::t_9142fb61f729da 1-53
+demos/architect/src/client/stores/diagram-share.test.ts
+  s_2c29d07905c35d::t_c298c1d2ea847b 1-11,19-31,40,42-53,61-100,108-115
+  s_2c29d07905c35d::t_01e4d9a09cef29 32-39,41
+  s_2c29d07905c35d::t_69388524deb40e 12-18,54-60,101-107
+docs/09-ARCHITECT.md
+  s_2c29d07905c35d::t_c00f809a2ae350 8-13
+  s_2c29d07905c35d::t_f10eb051f6fc3a 7,14-15
+demos/architect/src/client/components/diagrams/SharePanel.vue
+  s_2c29d07905c35d::t_7b15fcb3b9d426 3
+  s_2c29d07905c35d::t_a4161265552160 1-2,4-132
+demos/architect/src/worker/shares/validation.ts
+  s_2c29d07905c35d::t_438d40714fe8a6 1-37
+demos/architect/src/worker/shares/repository.ts
+  s_2c29d07905c35d::t_d8442fb4ec0236 9
+  s_2c29d07905c35d::t_6def662751db23 67
+  s_2c29d07905c35d::t_37fcf463b1cea1 68-71,81-91,93,96-99,105-112
+  s_2c29d07905c35d::t_51546a6c6c5655 194
+  s_2c29d07905c35d::t_03b372972a5e59 113-115
+  s_2c29d07905c35d::t_531589e8eafef4 2-3,5-8,10-65,72-80,92,94-95,100-104,116-193,195-199
+  s_2c29d07905c35d::t_2746b2a525d745 4
+  s_2c29d07905c35d::t_5ede95275ae7f4 66
+  s_2c29d07905c35d::t_24bd341b2029aa 1
+demos/architect/DEMO.md
+  s_2c29d07905c35d::t_05c59c6261b54d 51-61
+demos/architect/src/client/views/DiagramEditorView.vue
+  s_2c29d07905c35d::t_520f44c99e9f84 176-179
+  s_2c29d07905c35d::t_b9c9e52dead080 18-19
+  s_2c29d07905c35d::t_b6004a6eda7cae 31
+  s_2c29d07905c35d::t_672f4aeab8d749 232-236
+demos/architect/tests/integration/shares.test.ts
+  s_2c29d07905c35d::t_0287b79ba22033 111-118,168-171,193-196,220-223,235-238,247-249,256-258,263-274,291-294,329-332,348-350
+  s_2c29d07905c35d::t_283d602b37a781 317
+  s_2c29d07905c35d::t_48056e35e34f63 243
+  s_2c29d07905c35d::t_e69b49c5848fad 1-110,119-167,172-192,197-219,224-234,239-242,244-246,250-255,259-262,275-290,295-316,318-328,333-347,351-366
+demos/architect/src/worker/shares/validation.test.ts
+  s_2c29d07905c35d::t_549db9e4a86ff4 1-11,13-22,26-33
+  s_2c29d07905c35d::t_03ed3d1f1fcbca 12,23-25
+demos/architect/src/client/views/ShareView.vue
+  s_2c29d07905c35d::t_5d9c7e8016881a 1-135
+demos/architect/index.html
+  s_2c29d07905c35d::t_6aecafa02aef6d 1-22
+demos/architect/src/client/main.ts
+  s_2c29d07905c35d::t_b8592fa54464c3 39-43
+  s_2c29d07905c35d::t_a9ea53c657024d 31
+demos/architect/src/client/components/FeatherIcon.vue
+  s_2c29d07905c35d::t_00740f4bb27f6b 14
+demos/architect/src/client/stores/diagram-share.ts
+  s_2c29d07905c35d::t_7b15fcb3b9d426 87-91
+  s_2c29d07905c35d::t_1f2d4d9e3d4a73 1-86,92-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8685485ff6dcd39aabfd2209bb12b3f5aebce1bd",
+  "prompts": {},
+  "sessions": {
+    "s_2c29d07905c35d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_022a36b6effehXL0N3IlLsHCjv",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
