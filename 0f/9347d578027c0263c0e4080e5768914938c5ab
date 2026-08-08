@@ -1,0 +1,319 @@
+demos/architect/src/client/App.test.tsx
+  s_92c52624163b76::t_92129e29b845aa 50-55
+  s_92c52624163b76::t_0cea8aa2f03021 44-49,56
+demos/architect/src/client/components/editor/DiagramCanvas.test.tsx
+  s_92c52624163b76::t_92129e29b845aa 7-13,23-27,45-47,71-73,98-99,101-103,116-118,130-136,150-152,163-165,178-180,224-226,261-263,284-286,306-308,330-332,346-348,365-367,394-396
+  s_92c52624163b76::t_9a62b545c2113c 77-92
+  s_92c52624163b76::t_da034ea7bb9daf 191-214
+  s_92c52624163b76::t_95e3db6d93a898 234-251
+  s_92c52624163b76::t_4d968e92525b96 268-283,287-291
+  s_92c52624163b76::t_eacd73b9c661de 329,351-353
+  s_92c52624163b76::t_14d498aacbfaf3 1-6,14-22,28-44,48-70,74-76,93-97,100,104-115,119-129,137-149,153-162,166-177,181-190,215-223,227-233,252-260,264-267,292-305,309-328,333-345,349-350,354-364,368-393,397-404
+demos/architect/public/icons/d1.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-5
+demos/architect/src/client/stores/diagramStore.test.ts
+  s_92c52624163b76::t_cd04ba5fc546e3 177-192,199,201
+  s_92c52624163b76::t_92129e29b845aa 8-13,38-47,108
+  s_92c52624163b76::t_be1f9ac69d6d48 159-164
+  s_92c52624163b76::t_0faad7c4ae3a61 111-114,118-157
+  s_92c52624163b76::t_18a5ba72619d7d 1-7,14-37,48-107,109-110,158,165-176,193-198,200,202-251
+  s_92c52624163b76::t_996582f34994b1 115-117
+demos/architect/src/worker/middleware/body-limit.test.ts
+  s_92c52624163b76::t_f6e1ffeba4c6c2 1-69
+demos/architect/src/client/components/blueprints/BlueprintGallery.test.tsx
+  s_92c52624163b76::t_58aef7980e8913 79-85
+  s_92c52624163b76::t_92129e29b845aa 13-15,17-19,25-27,38-43,46-48,56-58,64-66,72-77
+  s_92c52624163b76::t_e65e17cd727e40 1-12,16,20-24,28-37,44-45,49-55,59-63,67-71,78,86
+demos/architect/src/client/components/blueprints/CreateDiagramModal.tsx
+  s_92c52624163b76::t_55a3672e39e3cd 140-149
+  s_92c52624163b76::t_92129e29b845aa 35-39,45-47,49-51,156-161,164-168
+  s_92c52624163b76::t_21c99bb1cab2b1 1
+  s_92c52624163b76::t_9a937d267ec82b 2-34,40-44,48,52-139,150-155,162-163,169-172
+demos/architect/src/client/components/editor/toolbar/Toolbar.test.tsx
+  s_92c52624163b76::t_92129e29b845aa 22-31,66-75,79-81,114-116,151-157,168-171
+  s_92c52624163b76::t_f4ed5f79c89416 14-17
+  s_92c52624163b76::t_996582f34994b1 209-213,230-234
+  s_92c52624163b76::t_875bb60fe96c1e 184-208,214-225
+  s_92c52624163b76::t_7b74425c9ce1b1 52-63
+  s_92c52624163b76::t_858d732935ef4e 226-229,235-246
+  s_92c52624163b76::t_8e465baa2a205f 7
+  s_92c52624163b76::t_7914c307801052 1-6,8-13,18-21,32-51,64-65,76-78,82-113,117-150,158-167,172-183,247
+demos/architect/src/client/views/EditorView.test.tsx
+  s_92c52624163b76::t_4db40d56e4f882 1-25
+demos/architect/src/client/components/blueprints/BlueprintGallery.tsx
+  s_92c52624163b76::t_4d3f663a449a3b 1-18,22-23,28-42,48-54,58-71,76-97,104-116
+  s_92c52624163b76::t_92129e29b845aa 19-21,24-27,43-47,55-57,72-75,98-103
+demos/architect/src/client/api/diagrams.test.ts
+  s_92c52624163b76::t_0c4cdfbe61e2ab 2-44,50-60,64,69-71,78-84,88-93,99-107,111-128,132-149,155-156,160-171,175-178,182-186,192-193,197-201,211-213,220-226,230-241
+  s_92c52624163b76::t_996582f34994b1 61-63,66-68,72-77,85-87,94-98,108-110,129-131,150-154,157-159,172-174,179-181,194-196,202-210,214-219,227-229
+  s_92c52624163b76::t_96953933aea294 1
+  s_92c52624163b76::t_bb1b6672762ab3 45-49,187-191
+  s_92c52624163b76::t_780b03fd9461ab 65
+demos/architect/src/client/components/editor/toolbar/StatusBar.tsx
+  s_92c52624163b76::t_f1a079395f090e 1-18,21-24,29-63
+  s_92c52624163b76::t_92129e29b845aa 19-20,25-28
+demos/architect/EXPLAIN-DEMO.md
+  s_92c52624163b76::t_f37cf279e37537 25-26,32,38-48
+  s_92c52624163b76::t_ace46b66b2a7be 82-115
+  s_92c52624163b76::t_69d784c14b6de6 33-37
+  s_92c52624163b76::t_afb74495cebc75 3-5
+  s_92c52624163b76::t_b02782c06ccc6a 54
+  s_92c52624163b76::t_da3f9af69ebbc8 185-188
+demos/architect/public/icons/durable-object.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-6
+demos/architect/public/icons/email-routing.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-4
+demos/architect/src/blueprints.test.ts
+  s_92c52624163b76::t_a88e700c334fdd 1-54
+demos/architect/src/client/components/editor/panels/PropertiesPanel.tsx
+  s_92c52624163b76::t_92129e29b845aa 64-71,73-78,83-85,133-135,143-146,190-192,228-230,266-268
+  s_92c52624163b76::t_fd91a28458d74d 1-63,72,79-82,86-132,136-142,147-189,193-227,231-265,269-277,284-285
+  s_92c52624163b76::t_99fe154833bf45 283
+  s_92c52624163b76::t_093c23be940f98 278-282
+demos/architect/public/icons/worker-astro.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-5
+demos/architect/src/blueprints.ts
+  s_92c52624163b76::t_02609cb1e48ea1 1-670
+demos/architect/public/icons/dns.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-5
+demos/architect/package.json
+  s_92c52624163b76::t_3660b7d0116bf5 52-53,57
+  s_92c52624163b76::t_e4034e9422d49b 56
+demos/architect/public/icons/waf.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-5
+demos/architect/tests/integration/worker.test.ts
+  s_92c52624163b76::t_9467bd879765ee 113
+demos/architect/src/worker/diagrams/repository.test.ts
+  s_92c52624163b76::t_92129e29b845aa 123-124,128-132,170-173,223-224
+  s_92c52624163b76::t_3f7049b3c22d0a 1-122,125-127,133-169,174-222,225-274
+demos/architect/src/client/components/editor/nodes/CFNode.tsx
+  s_92c52624163b76::t_9c876576f7b7f0 1-76
+demos/architect/public/icons/images.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-5
+demos/architect/src/client/components/editor/edges/CFEdge.test.tsx
+  s_92c52624163b76::t_92129e29b845aa 25-27,46-48,61-63,69-71,77-79,95-97,104-110
+  s_92c52624163b76::t_789db9d760afce 51-58
+  s_92c52624163b76::t_25dec73f05aac5 1-24,28-45,49-50,59-60,64-68,72-76,80-94,98-103,111-115
+demos/architect/src/worker/diagrams/validation.test.ts
+  s_92c52624163b76::t_92129e29b845aa 67-69,130-134,172-174
+  s_92c52624163b76::t_200b5e9d26061d 62-65
+  s_92c52624163b76::t_5e66b492acb83e 40-43
+  s_92c52624163b76::t_7b01272ebf0735 1-39,44-61,66,70-129,135-171,175-178
+demos/architect/src/client/components/editor/panels/ServicePalette.test.tsx
+  s_92c52624163b76::t_92129e29b845aa 35-37
+  s_92c52624163b76::t_2d5757fc9c8cbc 31,39
+  s_92c52624163b76::t_999a2d416491ad 1-30,32-34,38,40-52
+demos/architect/src/client/components/dashboard/ConfirmDeleteModal.tsx
+  s_92c52624163b76::t_305c310aff119a 1-23,34-39,46-51,54-58,64-70
+  s_92c52624163b76::t_4b1f9f8f36372e 24-33
+  s_92c52624163b76::t_92129e29b845aa 40-45,52-53,59-63
+demos/architect/src/client/components/dashboard/ConfirmDeleteModal.test.tsx
+  s_92c52624163b76::t_92129e29b845aa 33-38,47-52,61-66
+  s_92c52624163b76::t_cf0fdf82d7de2a 1-32,39-46,53-57,59,67,69-71
+  s_92c52624163b76::t_cb15f6cb8343bb 58,60,68
+demos/architect/src/client/views/DashboardView.tsx
+  s_92c52624163b76::t_fe186e76fb89c5 1-6
+demos/architect/README.md
+  s_92c52624163b76::t_01299c2c013ce7 83-85
+  s_92c52624163b76::t_d78085266e61a1 7
+  s_92c52624163b76::t_0481f58072021b 53
+demos/architect/src/client/components/editor/DiagramCanvas.tsx
+  s_92c52624163b76::t_954b396efbee3a 274-278,280-281
+  s_92c52624163b76::t_ac7cca3baf6eba 279
+  s_92c52624163b76::t_60e275ba3fe1b4 1-4,6-11,13,19-35,37-88,90-101,103-107,111-134,138-162,168-180,185-235,239-254,268,282-310,314-324
+  s_92c52624163b76::t_232f04a1158bc7 5
+  s_92c52624163b76::t_c9ba82156047e8 269-273
+  s_92c52624163b76::t_92129e29b845aa 14-18,108-110,135-137,181-184,236-238,311-313
+  s_92c52624163b76::t_c8d3995e55d4fc 102
+  s_92c52624163b76::t_becd6e481f10e2 12
+  s_92c52624163b76::t_911aeca824783f 36
+  s_92c52624163b76::t_2e27a5194b5477 89
+  s_92c52624163b76::t_810124c87030d0 163-167
+  s_92c52624163b76::t_fa54897885546c 255-267
+demos/architect/src/worker/diagrams/repository.ts
+  s_92c52624163b76::t_eb3794e2e488bd 2-147,151-205
+  s_92c52624163b76::t_92129e29b845aa 1,148-150
+demos/architect/src/worker/routes/diagrams.ts
+  s_92c52624163b76::t_bab4bdcfcca55b 1-26,32-90,94-111,115-128
+  s_92c52624163b76::t_92129e29b845aa 27-31,91-93,112-114
+demos/architect/public/icons/access.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-4
+demos/architect/public/icons/stream.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-4
+demos/architect/public/icons/agents.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-8
+demos/architect/public/icons/external-db.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-6
+demos/architect/src/client/views/BlueprintsView.tsx
+  s_92c52624163b76::t_804de7c9c0d26c 1-30
+demos/architect/src/client/api/diagrams.ts
+  s_92c52624163b76::t_fa7a97d68cab1b 1-160
+demos/architect/public/icons/analytics-engine.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-4
+demos/architect/src/catalog.test.ts
+  s_92c52624163b76::t_188a2dac6b4242 1-64
+demos/architect/public/icons/workers-for-platforms.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-5
+demos/architect/public/icons/kv.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-5
+demos/architect/src/client/components/editor/edges/edgeTypes.ts
+  s_92c52624163b76::t_216664ae4f6fa1 1-6
+demos/architect/public/icons/external-api.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-7
+demos/architect/src/catalog.ts
+  s_92c52624163b76::t_02609cb1e48ea1 1-674
+demos/architect/public/icons/client-browser.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-8
+demos/architect/src/worker/lib/read-json-body.ts
+  s_92c52624163b76::t_162508114f0705 1-18
+demos/architect/src/client/components/blueprints/BlueprintPreview.test.tsx
+  s_92c52624163b76::t_d0d0aa4385adb5 1-28
+demos/architect/src/worker/middleware/same-origin.ts
+  s_92c52624163b76::t_92129e29b845aa 33-36
+  s_92c52624163b76::t_6c143350dcfc42 1-32,37-60
+demos/architect/src/client/app.css
+  s_92c52624163b76::t_6772085b254858 4-10,17-54,66-73,76,79,101-111,123-803
+demos/architect/vitest.config.ts
+  s_92c52624163b76::t_c967bb58521829 15-23
+demos/architect/public/icons/queues.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-3
+demos/architect/src/worker/diagrams/types.ts
+  s_92c52624163b76::t_7dd48147e91203 1-58
+demos/architect/src/client/components/editor/panels/PropertiesPanel.test.tsx
+  s_92c52624163b76::t_6457c24eed3095 42-44,50-69
+  s_92c52624163b76::t_996582f34994b1 45-49
+  s_92c52624163b76::t_5d0a1abc203d14 147,162-164,169
+  s_92c52624163b76::t_410db23f07e47c 1-26,32-41,70-72,78-86,90-93,101-111,119-146,148-155,165-168,170-173,184-191
+  s_92c52624163b76::t_92129e29b845aa 27-31,73-77,87-89,94-100,112-118,156-161,174-183
+demos/architect/public/icons/cdn.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-7
+demos/architect/src/worker/vitest.config.ts
+  s_92c52624163b76::t_8c5f0a0d372af4 6-11
+demos/architect/src/client/components/blueprints/CreateDiagramModal.test.tsx
+  s_92c52624163b76::t_996582f34994b1 84-86
+  s_92c52624163b76::t_92129e29b845aa 8-10,49-55,57-59,71-76,92-98,107-109,119-126
+  s_92c52624163b76::t_9592fd6f4c56c2 79-83,87-88
+  s_92c52624163b76::t_15b09cb844f1e8 1-7,11-48,56,60-70,77-78,89-91,99-106,110-118,127-142,144,147-156
+  s_92c52624163b76::t_eefc464fac36d0 143,145-146
+demos/architect/src/client/components/editor/nodes/CFNode.test.tsx
+  s_92c52624163b76::t_d59f75ab2f50ff 100
+  s_92c52624163b76::t_92129e29b845aa 19-21,44-48,66-69,88-90,104-118
+  s_92c52624163b76::t_0f6e80f922bcbc 2,11-16,22
+  s_92c52624163b76::t_c2247bb0f1088e 25-36
+  s_92c52624163b76::t_7391ada01ecffe 1,3-10,17-18,23-24,37-43,49-65,70-87,91-99,101-103,119-120
+demos/architect/src/client/views/AppShellView.tsx
+  s_92c52624163b76::t_774dd66d66e579 2-20,27,29-32,36,60-67
+demos/architect/src/client/components/editor/panels/ServicePalette.tsx
+  s_92c52624163b76::t_c040018942914d 1-48,53-138
+  s_92c52624163b76::t_92129e29b845aa 49-52
+demos/architect/src/worker/middleware/same-origin.test.ts
+  s_92c52624163b76::t_592d25c6d5378b 1-27,32-142
+  s_92c52624163b76::t_92129e29b845aa 28-31
+demos/architect/src/client/views/AppShellView.test.tsx
+  s_92c52624163b76::t_92129e29b845aa 158-160
+  s_92c52624163b76::t_25c66a44442b54 4-18,23,109-157,161
+  s_92c52624163b76::t_ffc07341c1c6cf 3
+demos/architect/public/icons/load-balancer.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-8
+demos/architect/public/icons/hyperdrive.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-3
+demos/architect/public/icons/pages.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-5
+demos/architect/src/client/components/editor/types.ts
+  s_92c52624163b76::t_83387b8907ae7f 1-38
+demos/architect/src/client/components/editor/nodes/nodeTypes.ts
+  s_92c52624163b76::t_8c10fa93fca28f 1-9
+demos/architect/src/client/test/setup.ts
+  s_92c52624163b76::t_25dc7896275a64 13-27
+demos/architect/biome.json
+  s_92c52624163b76::t_b74dafb5e64e82 11-12
+demos/architect/public/icons/workers-ai.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-5
+demos/architect/src/client/test/mock-xyflow.tsx
+  s_92c52624163b76::t_92129e29b845aa 30-40,48-50,61-63,70-73,134-138,146-150,195-204
+  s_92c52624163b76::t_8be03fc8d11f68 1-29,41-47,51-60,64-69,74-133,139-145,151-194,205
+demos/architect/public/icons/cron-trigger.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-4
+demos/architect/src/worker/lib/read-json-body.test.ts
+  s_92c52624163b76::t_da27ed1ffe6764 1-6,11-44
+  s_92c52624163b76::t_996582f34994b1 7-10
+demos/architect/DEMO.md
+  s_92c52624163b76::t_1e3395c709f170 31-47,51,54-55,59,61
+  s_92c52624163b76::t_04bc6a1cb5dafc 5
+demos/architect/public/icons/workflow.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-8
+demos/architect/src/client/components/dashboard/DiagramGrid.test.tsx
+  s_92c52624163b76::t_5099a15b23fa65 1-7,14-50,54-71,75-76,80-84,92,94-95,99,103-104,111-113,117,121,125-130,134-136,140,144,148-155,159,163,167-171,190
+  s_92c52624163b76::t_3b31de1c89f9c8 172-189
+  s_92c52624163b76::t_92129e29b845aa 8-13,51-53,72-74,77-79,85-91,93,96-98,100-102,105-110,114-116,118-120,122-124,131-133,137-139,141-143,145-147,156-158,160-162,164-166
+demos/architect/src/worker/index.ts
+  s_92c52624163b76::t_d65c761207d7a5 10
+  s_92c52624163b76::t_e80a2e4a3baa5c 23
+demos/architect/public/icons/autorag.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-6
+demos/architect/src/client/views/EditorView.tsx
+  s_92c52624163b76::t_be494b4e142af9 1-17
+demos/architect/src/client/components/editor/edges/CFEdge.tsx
+  s_92c52624163b76::t_bbb27acaaec59c 1-100
+demos/architect/public/icons/ai-gateway.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-6
+demos/architect/tests/integration/diagrams.test.ts
+  s_92c52624163b76::t_d4bf22c38b7104 138,143,146-147,149,169-170
+  s_92c52624163b76::t_92129e29b845aa 139-141,152-154,165-167,175-177,185-187,192-194,218-226,230-231,245-252,265-271,276-283,290-291,304-311
+  s_92c52624163b76::t_61ffa84d71ed39 1-137,142,144-145,148,150-151,155-164,168,171-174,178-184,188-191,195-217,227-229,232-244,253-264,272-275,284-289,292-303,312-353
+demos/architect/src/client/components/editor/toolbar/StatusBar.test.tsx
+  s_92c52624163b76::t_186f59f46f2318 88-90,94-98
+  s_92c52624163b76::t_996582f34994b1 91-93
+  s_92c52624163b76::t_7a81059060d82e 61-72
+  s_92c52624163b76::t_f44985ea39e46d 1-60,73-74,82-87,99-111
+  s_92c52624163b76::t_92129e29b845aa 75-81
+demos/architect/public/icons/client-mobile.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-5
+demos/architect/public/icons/worker-hono.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-4
+demos/architect/public/icons/r2.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-5
+demos/architect/public/icons/vectorize.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-4
+demos/architect/public/icons/worker.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-5
+demos/architect/src/client/stores/diagramStore.ts
+  s_92c52624163b76::t_b1a60fa829f71c 1-336
+demos/architect/src/worker/diagrams/validation.ts
+  s_92c52624163b76::t_82e6bdf4860bfd 1-166,171,175-176,182-214,218-246
+  s_92c52624163b76::t_92129e29b845aa 167-170,172-174,177-181,215-217
+demos/architect/src/client/components/editor/toolbar/Toolbar.tsx
+  s_92c52624163b76::t_92129e29b845aa 11-14,31-33,55-58,77-78,80-81,119-121,145-148,154-158
+  s_92c52624163b76::t_4baa6e31dadc1f 1-10,15-30,34-54,59-76,79,82-118,122-144,149-153,159-297
+demos/architect/src/client/components/blueprints/BlueprintPreview.tsx
+  s_92c52624163b76::t_040f5a39e7f38a 4-5,29
+  s_92c52624163b76::t_92129e29b845aa 14-20,23-26,67-70
+  s_92c52624163b76::t_741e3f6e39e220 1-3,6-13,21-22,27-28,30-66,71-76
+demos/architect/src/client/components/dashboard/DiagramGrid.tsx
+  s_92c52624163b76::t_40a410f35c3285 1-2,8-117,123-142,146-174,178-184,190-220
+  s_92c52624163b76::t_92129e29b845aa 3-7,118-122,143-145,175-177,185-189
+demos/architect/src/worker/middleware/body-limit.ts
+  s_92c52624163b76::t_294dea2e772ada 1-21
+demos/architect/src/client/App.tsx
+  s_92c52624163b76::t_11fc27c8d9289d 2,6-8,10-18,21-28
+demos/architect/public/icons/browser-rendering.svg
+  s_92c52624163b76::t_74d8aaf43642ad 1-8
+demos/architect/package-lock.json
+  s_92c52624163b76::t_4c04729376dfc1 12-13,16-17,2433-2481,2510,2520,3030-3099,3271-3276,3346,3349-3453,3555-3560,5588-5596,5989-6017
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0f9347d578027c0263c0e4080e5768914938c5ab",
+  "prompts": {},
+  "sessions": {
+    "s_92c52624163b76": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_01d42fd3dffesZhJHi2V279KJd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
