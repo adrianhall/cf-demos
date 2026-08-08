@@ -1,724 +1,466 @@
-# Demo 9: Cooperative Architect Drawing
+# Demo 9: Architect
 
 Directory: `demos/architect`
 
 Domain: `architect.cfapps.uk`
 
-Status: Phases 0-6 complete. Phase 5's deployed Workflow readiness blocker is resolved: a
-deployed smoke verification (`wrangler workflows trigger` directly against the real
-`architect-architecture` Workflow) reached both a `ready` job with a schema-valid R2 proposal and
-a durable `failed` job after the model rejected an impossible schema request. That verification
-also found and fixed two defects not caught by local-only testing: the `generate` step's
-1-second timeout (copied from Spike 08's synchronous local fixture config, too short for a real
-Workers AI call) and `extractResponseText()` rejecting the already-parsed object
-`response_format` actually returns. Phase 6 (public publishing) is implemented, tested, and
-deployed. Phase 7 (verification, documentation, and cleanup) is next.
+Status: Plan finalized — all open questions resolved (see [Decisions](#decisions)
+below; the standalone Open Questions section has been folded into the plan).
+See [Post-MVP](#post-mvp-live-collaboration-and-ai-proposals)
+for what that means for a future collaboration/AI specification. No code
+exists yet for this plan.
 
-Cloudflare products: Workers, Static Assets, Cloudflare Access, Durable
-Objects, D1, R2, Workers KV, Workflows, and Workers AI.
+Cloudflare products: Workers, Static Assets, Cloudflare Access, D1, and
+Workers KV. Durable Objects, Workflows, Workers AI, and R2 are explicitly out
+of scope for this plan — see [Post-MVP](#post-mvp-live-collaboration-and-ai-proposals).
 
 ## Summary
 
-This demo is a focused architecture-diagram editor for an architect and a
-customer or sales engineer. Authenticated users can build a Cloudflare
-architecture together, see each other's presence and cursors, and ask Workers
-AI to propose a diagram through a durable Workflow. An owner can publish an
-immutable version at an anonymous, read-only link.
+CF-Architect (`~/repos/adrianhall/CF-Architect`) is a real, working
+Cloudflare-architecture-diagram tool: a curated product catalog, drag-and-drop
+editing on `@xyflow/react`, blueprint templates, PNG/SVG/project-scaffold
+export, print mode, dark mode, a personal dashboard, admin user management,
+and anonymous read-only sharing. It runs on Astro (SSR) + React islands +
+Drizzle ORM over D1, with hand-rolled Cloudflare Access JWT verification and
+custom Node scripts (`firstrun.mjs`/`deploy.mjs`/`teardown.mjs`) standing in
+for Terraform-owned infrastructure and `@adrianhall/cloudflare-toolkit`.
 
-The design combines the strongest ideas from the two prior-art projects:
+This demo ports that application's *functionality* onto this repository's
+conventions: Hono for the Worker API, a React single-page app served through
+the Static Assets binding (no Astro, no SSR), Terraform owning every
+Cloudflare resource per this repository's baseline contract, and
+`@adrianhall/cloudflare-toolkit` for Access enforcement, structured logging,
+RFC 9457 errors, and local-dev Access emulation. React is an explicit,
+justified exception to this repository's Vue default (see AGENTS.md's
+scenario-override clause): CF-Architect is real, working prior art built on
+React and `@xyflow/react`, and rewriting its UI in Vue would be pure
+translation effort with no new teaching value — the value in this demo is
+porting real functionality onto this repository's infrastructure and backend
+conventions, not re-proving that a diagram editor can be built in Vue (this
+repository's prior Vue attempt at this same demo already proved that).
 
-- `CF-Architect`: a Cloudflare product catalog, editable nodes and edges,
-  blueprints, and anonymous read-only sharing.
-- `interactive-demos`: AI-generated architecture documents, live cursors, and
-  one Durable Object per diagram.
+Catalog data, blueprint templates, and the overall node/edge visual model are
+ported directly — they are data and product design, not framework-coupled
+code. React component structure (`CFNode`, `CFEdge`, `ServicePalette`,
+`PropertiesPanel`, `Toolbar`, the Zustand store shape) may be used as a close
+structural reference and adapted, since the rendering library
+(`@xyflow/react`) and framework family (React) do not change. The **backend**
+is not a light port: Drizzle ORM, the custom auth strategy, and the custom
+deploy/teardown scripts are replaced outright with this repository's raw-D1 +
+`cloudflare-toolkit` + Terraform conventions, per the [Terraform And
+Toolkit Gap Analysis](#terraform-and-toolkit-gap-analysis) findings below.
 
-The implementation must use the repository's Vue, Vite, Vuetify, Pinia, Hono,
-Terraform, Wrangler, Access, testing, and documentation conventions. Prior-art
-code is a behavioral reference only; do not copy its React/Astro code or
-private source verbatim.
+This is an MVP scope: live multi-user collaboration and AI-generated
+proposals — the previous, from-scratch plan's original differentiators — are
+deliberately deferred rather than built now. See
+[Post-MVP](#post-mvp-live-collaboration-and-ai-proposals).
+
+## Decisions
+
+Four design forks were raised as open questions and resolved as follows.
+Each decision is threaded into the relevant section below; this list exists
+only as a single point of reference back to the reasoning.
+
+1. **Scope** — MVP is CF-Architect parity only (Phases 0–6 below). Live
+   collaboration and AI proposals are real, wanted features, but are
+   deliberately left unspecified here and will get their own specification
+   once this MVP ships — see [Post-MVP](#post-mvp-live-collaboration-and-ai-proposals).
+2. **Admin / Identity Provider** — Drop Terraform-provisioned GitHub-only
+   IdP; keep the admin feature, but re-key it on a single operator-configured
+   `ADMIN_EMAIL` value instead of a D1 `is_admin` role column and
+   promote/demote workflow. See [Access Model](#access-model) and
+   [Phase 4](#phase-4---admin-tag-phase-04-admin).
+3. **Sharing model** — Keep CF-Architect's live-pointer share link (a share
+   always reflects the diagram's current state); fix the underlying security
+   bug by storing only a SHA-256 digest of the token, never the raw value.
+   See [Phase 3](#phase-3---sharing-tag-phase-03-sharing).
+4. **Prior Vue implementation** — Already deleted; this is a clean start in
+   the same directory and on the same domain (see the dashboard-verification
+   note in Status above before Phase 1 provisions infrastructure).
 
 ## Goals
 
-- Make two authenticated users editing one diagram the primary demonstration.
-- Keep one Durable Object authoritative for each live diagram.
-- Show presence, remote cursors, and edits in both browsers without refresh.
-- Use a Workflow for durable AI proposal generation, retries, and visible
-  progress. Workflows are not part of the real-time editing path.
-- Let the owner invite editors and publish an anonymous read-only version.
-- Give D1, R2, and KV distinct, easy-to-explain responsibilities.
-- Make every important action visible in the UI, Workers Logs, or Workflows
-  dashboard.
+- Reach feature parity with CF-Architect's catalog, editor, blueprints,
+  dashboard, admin user management, export, print mode, and dark mode,
+  running on Hono + React + Terraform + `cloudflare-toolkit`.
+- Fix the security issues found in CF-Architect's current implementation
+  while porting: plaintext share tokens, the committed Terraform state file,
+  and the unused `SESSION` KV namespace.
+- Give every Cloudflare resource (Worker, custom domain, D1, KV, Access) an
+  explicit Terraform owner with the bootstrap-deployment, `subdomain` block,
+  and `depends_on` patterns this repository requires.
+- Make every state-changing API enforce Cloudflare Access and same-origin
+  checks through `cloudflareAccess()`, not a hand-rolled JWT verifier.
 
 ## Non-Goals
 
-- General-purpose whiteboarding, freehand drawing, comments, chat, or file
-  uploads.
-- CRDT or operational-transformation research. The Durable Object serializes
-  edits and rejects stale revisions with a full resync.
-- Pixel-perfect parity with either prior-art application.
-- Generated deployment-ready Terraform or application source code.
-- AI chat, RAG, external model providers, or autonomous changes to a diagram.
-- Anonymous editing. Anonymous users can only view a published version.
-- Complex organization roles. A diagram has one owner and zero or more
-  editors.
+- Pixel-perfect parity with CF-Architect's Astro page structure or Drizzle
+  schema — only its user-facing behavior is the target.
+- Live multi-user collaboration and AI-generated proposals — deliberately
+  deferred; see [Post-MVP](#post-mvp-live-collaboration-and-ai-proposals).
+- GitHub as a provisioned Identity Provider — this demo relies on whichever
+  IdP(s) the account's Access team already has configured.
+- Complex organization roles beyond a single designated admin identity.
+- Generated deployment-ready Terraform or application source code beyond what
+  this plan's phases describe.
 
-## Primary Demo Flow
+## Terraform And Toolkit Gap Analysis
 
-1. Sign in as User A, create a diagram from a small blueprint, and add or edit
-   a product node and connection.
-2. Create an editor invitation. Open it as User B in a second browser window
-   and accept it.
-3. Keep both windows open. Move each cursor and edit different parts of the
-   diagram. Each user sees the other's cursor, presence, and accepted edits.
-4. Ask Workers AI to propose an architecture for a short application
-   description. Watch its Workflow progress, preview the proposal in both
-   windows, and accept it as one atomic diagram revision.
-5. Publish the diagram. Open the share link in an anonymous window and verify
-   that it is read-only.
-6. Open Workers Logs, the Durable Objects view, the Workflow instance, D1, R2,
-   and KV in the Cloudflare dashboard to show where each part of the demo
-   lives.
+These findings came from reading CF-Architect's `terraform/`, `wrangler.toml`,
+`scripts/`, `src/middleware.ts`, `src/lib/auth/`, and `src/env.d.ts`. Every
+item below is a **settled** decision for this port — they follow directly
+from this repository's AGENTS.md baseline, not from a preference call.
 
-## Relevant Skills
+**Terraform:**
 
-- `cloudflare`
-- `cloudflare-one`
-- `cloudflare-terraform-best-practices`
-- `cloudflare-deploy-scripts`
-- `cloudflare-toolkit`
-- `durable-objects`
-- `testing-durable-objects`
-- `workers-best-practices`
-- `wrangler`
-- `vue-best-practices`
-- `vue-pinia-best-practices`
-- `vue-router-best-practices`
-- `vue-testing-best-practices`
-- `web-perf`
+- CF-Architect commits an empty `terraform.tfstate` at its repository root
+  (tracked since the commit that introduced Terraform) and has no
+  `cloudflare_worker` resource at all — the Worker is entirely unmanaged by
+  Terraform; `wrangler deploy` creates it implicitly. This port's Terraform
+  must never commit state, and must own the Worker resource with an explicit
+  `subdomain` block, the bootstrap-deployment placeholder pattern, and
+  `depends_on` from the Worker to D1 and KV.
+- CF-Architect deploys to a bare `*.workers.dev` hostname; this repository
+  requires a custom domain in an active zone (`architect.cfapps.uk`, matching
+  the domain already assigned to this demo slot), provisioned with
+  `cloudflare_workers_custom_domain`.
+- CF-Architect's single Access application covers every protected path with
+  no explicit public-bypass application; this port uses the two-application
+  pattern (hostname-wide public `bypass`, plus a more specific authenticated
+  application scoped to protected destinations).
+- CF-Architect hand-writes `terraform/terraform.tfvars` from `.env` inside a
+  custom `firstrun.mjs` script; this port uses the `dotenv` Terraform provider
+  to read `.env` directly, and deletes that script.
+- The Cloudflare provider is pinned to `~> 5.0`; this port pins `~> 5.22.0`
+  per this repository's baseline.
+- Terraform provisions a `SESSION` KV namespace that `src/env.d.ts` never even
+  types and nothing in `src/` ever reads. This port drops it — it is dead
+  infrastructure, not a feature to preserve.
+- CF-Architect provisions a `cloudflare_zero_trust_access_identity_provider`
+  for GitHub. This port drops it (see [Decisions](#decisions) #2) — Access
+  authentication relies on the account's already-configured IdP(s), like
+  every other demo in this repository.
 
-## Product Responsibilities
+**Wrangler / deployment scripts:**
 
-| Product | Responsibility |
-| --- | --- |
-| Durable Objects | One coordination room per diagram: authoritative document, ordered revisions, WebSockets, presence, and cursors. |
-| D1 | Diagram directory, owner/editor membership, invitation records, publication metadata, and AI job directory. |
-| R2 | Immutable published snapshots and AI proposal documents. |
-| Workers KV | Fast anonymous share-token lookup to the current published R2 snapshot. |
-| Workflows | Durable AI generation steps, retry policy, status, and completion notification. |
-| Workers AI | Produce a structured architecture proposal from the prompt and current diagram summary. |
-| Cloudflare Access | Authenticate all editor pages, APIs, invitations, and WebSocket upgrades. |
+- CF-Architect edits a committed `wrangler.toml` in place via string
+  replacement inside `deploy.mjs` to inject real resource IDs and strip
+  `DEV_MODE`. This port uses one committed `wrangler.jsonc.tpl` with
+  `{{placeholder}}` markers, `infra/local-outputs.json` for local
+  substitution, and the toolkit's `generate-wrangler`/`generate-wrangler-types`
+  CLIs — this repository's standard pattern (see the `cloudflare-deploy-scripts`
+  skill).
+- `firstrun.mjs`, `deploy.mjs`, and `teardown.mjs` are hand-written
+  orchestration scripts. This port replaces them with composed
+  `npm-run-all2` `package.json` scripts, matching every other demo in this
+  repository.
+- CF-Architect states no explicit Workers Logs sampling rate. This port sets
+  one explicitly in `wrangler.jsonc.tpl`.
 
-Do not duplicate the live graph in D1. Durable Object SQLite is authoritative
-for editable state; D1 is the relational directory around it. Published R2
-objects are immutable versions, not a second writable copy.
+**`cloudflare-toolkit`:**
+
+- CF-Architect does not depend on `@adrianhall/cloudflare-toolkit` at all.
+  `src/middleware.ts` hand-verifies the `Cf-Access-Jwt-Assertion` header with
+  `jose` and returns ad-hoc `{ ok: false, error: {...} }` JSON on failure.
+  This port uses the toolkit's framework-agnostic core (`/guards`, `/errors`,
+  `/problem-details`, `/logging`) everywhere, and — because the API layer
+  moves to Hono (see [Architecture](#architecture)) — the `/hono` middleware
+  (`cloudflareAccess()`, `cloudflareLogger()`, `problemDetailsErrorHandler()`)
+  and `/vite`'s `cloudflareAccessPlugin()` for local development, replacing
+  the hand-rolled verifier entirely.
+
+## Architecture
+
+- **Worker**: a Hono app is the Worker's `fetch` handler, mounted under
+  `/api/*`. Static Assets (`ASSETS` binding, SPA fallback) serve the React
+  build for every other route. `run_worker_first` covers `/api/*` only —
+  every page route is served directly by the assets layer, exactly like this
+  repository's existing Vue demos, per AGENTS.md's guidance that Access
+  already gates page routes at the edge before the Worker is involved.
+- **Client**: React 19 + `@xyflow/react`, Vite + `@vitejs/plugin-react` +
+  `@cloudflare/vite-plugin`, Zustand for editor state (kept from CF-Architect
+  — a reasonable, framework-appropriate choice with no repository convention
+  against it). No Astro, no server-rendered pages; this is a single-page app
+  like every other demo here, just built with React instead of Vue.
+- **Data**: raw D1 (`env.DB`) with `@adrianhall/cloudflare-toolkit/guards`
+  (`throwIfNull`, `sqlCount`) instead of Drizzle ORM — no other demo in this
+  repository uses an ORM, and the toolkit's guards are designed around raw
+  `.first()`/`.all()` result shapes. D1 migrations run through Wrangler
+  (`db:migrate:local`/`db:migrate:remote`, `CI=1`), replacing Drizzle's
+  migration generator. Workers KV (`SHARES`) is the fast anonymous
+  share-token lookup, matching CF-Architect's own existing KV usage for
+  sharing.
+- **Auth**: `cloudflareAccess()` on every `/api/*` route (audience
+  validated), paired with `cloudflareAccessPlugin()` in `vite.config.ts` for
+  local development, replacing the hand-rolled `jose` verifier. Admin
+  authorization is a second, independent check layered on top — see
+  [Access Model](#access-model).
+- **Observability**: `cloudflareLogger()` for request-scoped structured
+  logging, `problemDetailsErrorHandler()`/`notFoundHandler()` for RFC 9457
+  error responses, explicit Workers Logs sampling and tracing in
+  `wrangler.jsonc.tpl`.
+- **Testing**: this repository's standard three-Vitest-project layout —
+  `src/worker/vitest.config.ts` (node, pure domain logic), `src/client/vitest.config.ts`
+  (jsdom, React Testing Library instead of Vue Test Utils), and
+  `tests/integration/vitest.config.ts` (`@cloudflare/vitest-pool-workers`
+  against real bindings) — replacing CF-Architect's single flat Vitest config
+  and hand-rolled `sqlite-db.ts`/`mock-kv.ts` fakes.
 
 ## Access Model
 
-Use two Access applications on the hostname:
+Two Access applications on `architect.cfapps.uk`, per AGENTS.md's Public
+Access pattern:
 
 - A hostname-wide public `bypass` application for the landing page,
-  `/share/*`, and `/shared/*`.
-- A more-specific authenticated application with explicit destinations for
-  `/app*` and `/api/*`, backed by an `allow` policy for any authenticated
-  identity.
+  `/blueprints`, and the read-only share viewer.
+- A more specific authenticated application with explicit destinations for
+  `/app*` and `/api/*`, backed by an `allow` policy for **any authenticated
+  identity** — no Identity Provider is provisioned by Terraform; this demo
+  relies on whichever IdP(s) the account's Access team already has
+  configured, matching every other demo in this repository.
 
-Mount `cloudflareAccess()` on authenticated Worker routes and validate the
-authenticated application's audience. The WebSocket upgrade handler must
-authorize diagram membership in D1, remove any client-supplied identity or
-role headers, and add trusted values before forwarding to the Durable Object.
-The Durable Object trusts only those Worker-added values.
+Mount `cloudflareAccess()` on every `/api/*` route and validate the
+authenticated application's audience. Use one shared path-policy array in the
+Worker and `cloudflareAccessPlugin()` for local development, with at least two
+selectable local identities and an unconditional `/cdn-cgi/access/logout`
+control. Require same-origin requests and an exact JSON content type for
+every state-changing API request.
 
-Require same-origin requests for every state-changing API and WebSocket
-upgrade. Mutations also require an exact JSON content type. Reject a missing or
-foreign `Origin` before reading a body, redeeming a token, or forwarding an
-upgrade.
+**Admin authorization is independent of Access policy.** A single
+operator-configured `ADMIN_EMAIL` value (an `.env`/Terraform variable
+threaded through to a Worker var, the same pattern AGENTS.md's Public Access
+section already documents for an "expected-identity Worker variable") is
+compared against the verified identity's email by a small Hono middleware
+applied to every admin-only route — not just a "whoami" endpoint. `GET
+/api/me` returns `{ email, isAdmin }` so the client can conditionally render
+admin UI without duplicating the check. There is no D1 role column, no
+first-user-becomes-admin bootstrap, and no promote/demote workflow: exactly
+one identity is ever the admin, and it is set by the operator, not the
+application.
 
-Use one shared path-policy array in the Worker and
-`cloudflareAccessPlugin()` for local development. List public and protected
-paths explicitly, default to block, provide at least two selectable local
-identities, and render an unconditional `/cdn-cgi/access/logout` control.
+## What We're Porting From CF-Architect
 
-An editor invitation is a random, single-use, expiring capability. Store only
-its SHA-256 digest in D1. Redeeming it requires Access authentication and adds
-that identity to `diagram_members`; the redemption page lives under the
-protected `/app/invitations/:token` route. Public share tokens are separate and
-grant read-only access only to an already-published R2 object.
+| Feature | CF-Architect today | Disposition in this port |
+| --- | --- | --- |
+| Product catalog (~30 nodes, 6 categories) | `src/lib/catalog.ts` | Port data directly. |
+| Blueprint templates (8 templates) | `src/lib/blueprints.ts` | Port data directly. |
+| Diagram canvas, palette, properties panel, undo/redo | React islands + Zustand | Port and adapt; same libraries, new host app. |
+| Autosave (debounced `PUT`) | `DiagramCanvas.tsx` | Port. |
+| Personal dashboard (list/create/rename/delete/duplicate) | `DiagramList.tsx` + `/api/v1/diagrams` | Port. |
+| PNG/SVG/project-scaffold export | `ExportButton.tsx`, `html-to-image`, `scaffold.ts` | Port. |
+| Print mode | `PrintButton.tsx` | Port. |
+| Dark mode | `src/lib/preferences.ts` (pure `localStorage`) | Port as-is — no backend involvement. |
+| Read-only anonymous sharing | `/s/:token`, `ShareRepository` | Port with the live-pointer model retained; fix the security bug by storing only a SHA-256 digest of the token, never the raw value, in D1 and as the KV key. |
+| Admin user management | `/api/v1/admin/users/*`, `users.is_admin`, first-user-becomes-admin | Redesigned, not dropped: a single operator-configured `ADMIN_EMAIL` replaces the D1 role column and bootstrap logic. Since there is now exactly one admin, promote/demote no longer applies; the admin view becomes a read-only user directory plus diagram moderation (view/delete any user's diagram). See [Phase 4](#phase-4---admin-tag-phase-04-admin). |
+| GitHub-only Identity Provider | Terraform `cloudflare_zero_trust_access_identity_provider` | Dropped — relies on the account's already-configured Access IdP(s), like every other demo in this repository. |
+| `thumbnail_key` column | `src/lib/db/schema.ts` (commented "post-MVP", never implemented) | Drop — dead column, not a feature to preserve. |
+| ELK auto-layout | Shipped in the main bundle | Port, but lazy-load it on first use (dynamic `import()`) instead of bundling it up front — CF-Architect ships it eagerly, but this repository's prior Vue attempt at this same demo measured a 539.52 kB gzip cost for the equivalent Vue library and deferred it for exactly that reason. Lazy-loading keeps the feature without the up-front cost. |
 
-## Data And State Model
+## Data Model (D1)
 
-### D1
-
-- `diagrams`: `id`, `owner_email`, `title`, `created_at`, `updated_at`.
-- `diagram_members`: `diagram_id`, `email`, `role`, `joined_at`; unique on
-  diagram and email.
-- `diagram_invites`: token digest, diagram ID, creator, expiry, and redemption
-  fields.
-- `diagram_shares`: token digest, diagram ID, current R2 object key,
-  publication revision, created/updated timestamps, and optional revocation
-  timestamp.
-- `architecture_jobs`: job ID, Workflow instance ID, diagram ID, base revision,
-  requester, status, proposal R2 key, and timestamps.
-
-### Durable Object SQLite
-
-`DiagramRoom extends DurableObject<Env>` is addressed with
-`DIAGRAM_ROOM.getByName(diagramId)`. Store:
-
-- A singleton document containing the validated graph and current revision.
-- A bounded operation table keyed by `operationId` for deduplication and
-  troubleshooting.
-
-Persist an accepted operation and its new revision before broadcasting it.
-Connections store verified identity and display metadata with
-`serializeAttachment()` so hibernation does not lose identity. Presence and
-cursor positions are transient and rebuilt from active WebSockets.
-
-The graph contract is renderer-independent: products, external actors, edges,
-annotations, and viewport. Vue Flow positions and selection state remain client
-concerns unless needed to reproduce the diagram. A single curated product
-catalog supplies labels, categories, icons, handles, and documentation links.
-
-## Collaboration Protocol
-
-- On connect, send the full document, current revision, and participants.
-- A durable edit contains `operationId`, `baseRevision`, `kind`, and a small
-  validated payload.
-- If `baseRevision` is current, apply it, increment the revision, persist, then
-  acknowledge and broadcast the accepted operation.
-- If it is stale, reject it and send the current full document. The client
-  resyncs and asks the user to retry; it does not silently merge.
-- Cursor, selection, and drag-preview messages are transient and rate-limited.
-  Persist only the final node position on drag end.
-- AI proposal acceptance is one atomic replacement operation. Reject it when
-  the proposal's base revision is stale.
-
-This is deliberately simpler than CRDT/OT while still producing deterministic
-behavior when two users edit at once.
-
-## AI Workflow
-
-The editor submits a short application description. Enforce prompt and graph
-size limits, one active job per diagram, and a small per-user start rate. The
-Worker records an `architecture_jobs` row with the current diagram revision and
-starts an `ArchitectureWorkflow` instance whose ID is the job ID.
-
-The Workflow performs a short sequence of durable steps:
-
-1. Set `summarizing`, build a compact semantic summary of the current diagram
-   and curated product catalog, then notify the room.
-2. Set `generating`, call one verified Workers AI model using structured JSON
-   output, and report retry attempts without exposing prompt content.
-3. Set `validating`, validate the result against the shared architecture schema
-   and product catalog. Unknown products or invalid edges fail clearly; never
-   map them silently to Workers.
-4. Set `storing`, write the proposal JSON to a deterministic R2 key, then set
-   the D1 job to `ready`.
-5. Notify the diagram's Durable Object after each status change. It broadcasts
-   progress and the final proposal status to connected editors.
-
-The Workflow may retry the model step with bounded exponential backoff. Catch
-terminal step failures and run an idempotent finalization step that sets
-`failed` in D1 and notifies the room, so a job cannot remain `running`. Its side
-effects must be idempotent so a retry cannot create duplicate jobs or objects.
-The proposal never changes the diagram by itself. Editors preview it, then
-explicitly accept or reject it. Acceptance fails if anyone changed the diagram
-since the Workflow captured its base revision. A user retry creates a new job
-and Workflow instance; it never reuses a retained instance ID.
+- `diagrams`: `id`, `owner_email`, `title`, `description`, `graph_data`
+  (JSON), `created_at`, `updated_at`. `owner_email` replaces CF-Architect's
+  `owner_id` foreign key into its own `users` table, since Access identity
+  *is* the user.
+- `users`: `email` (primary key), `display_name`, `first_seen_at`,
+  `last_seen_at`. A lightweight directory only, upserted by the shared auth
+  middleware on every authenticated request (matching CF-Architect's own
+  upsert-on-auth pattern). It exists solely to back the admin user-directory
+  view (Phase 4) — it is never consulted for authorization. There is
+  deliberately no `is_admin` column: admin status is `ADMIN_EMAIL`, not data.
+- `diagram_shares`: SHA-256 token digest (never the raw token), `diagram_id`,
+  `created_at`, optional `revoked_at`. Simpler than a revision-addressed
+  scheme because the live-pointer model always reads the diagram's current
+  `graph_data` at request time — there is no snapshot to key by revision.
 
 ## Implementation Plan
 
-### Phase 0 - Spikes (tag: `phase-00-spikes`)
+### Phase 0 - Spike (tag: `phase-00-spike`)
 
-Keep each spike disposable and record results under `spikes/<name>/REPORT.md`.
-The report must separate source-verified, locally verified, and deployed
-findings and record exact package, Wrangler, and workerd versions.
+**Unknown to prove:** whether `@xyflow/react`, its custom node/edge renderers,
+palette drag-and-drop, and a true read-only mode behave the same wired
+directly into `@cloudflare/vite-plugin` + a plain React SPA as they do inside
+CF-Architect's Astro-island architecture — and whether
+`cloudflareAccessPlugin()` coexists cleanly with that setup. This is a narrow,
+single-spike unknown (unlike the previous Vue plan's four spikes): React Flow
+itself is mature, well-documented, and already proven in CF-Architect: the
+only real open question is the surrounding host app, not the diagram library.
 
-#### Spike Execution Rule
+**Probe:** a small local page with five catalog products, one external actor,
+two edge types, editable properties, and a read-only toggle, served through
+`@cloudflare/vite-plugin` with no Astro involved, plus `cloudflareAccessPlugin()`
+gating it locally.
 
-This account requires every deployed Worker endpoint to have a Cloudflare
-Access application and policy. It also prevents the account endpoint used by a
-Workers AI or AI Gateway remote binding from being covered by a suitable Access
-policy. Therefore:
-
-- **Never use a remote binding in a spike.** This includes Workers AI,
-  AI Gateway, D1, R2, KV, and any other `remote: true` binding. Do not use
-  `wrangler dev --remote` either.
-- A **local spike** runs only local Wrangler/workerd simulations through
-  `wrangler dev` and Vitest. It creates no Cloudflare resources and needs no
-  Terraform. If the feature has no local simulation, inject a local fake at
-  the application seam instead of reaching Cloudflare.
-- A **deployed spike** is required for Workers AI, AI Gateway, or behavior that
-  must be verified on Cloudflare's runtime. It must expose a small HTTP probe
-  on its own `*.workers.dev` hostname. Terraform must create a hostname-wide
-  Access application with an explicit `bypass` policy before the probe is run.
-  Wrangler deploys the Worker code; the probe script calls only that Worker
-  over HTTP. The script must delete the Worker and run `terraform destroy`
-  after recording the result, including failure cleanup.
-- Deployed spikes run only with explicit operator approval and the root `.env`.
-  They must not share resources with a demo or another spike.
-
-Existing reports contain useful precedent, but some also used remote bindings
-or direct Cloudflare API/model probes that are forbidden for this demo. Reuse
-only their source-verified findings and results obtained through a deployed,
-Access-bypassed Worker HTTP endpoint:
-
-- `spikes/00-aichatagent-basics/REPORT.md` provides the deployed Worker plus
-  bypass Access lifecycle and a successful Worker -> Workers AI result reached
-  through that Worker. Its `remote: true` configuration is historical evidence
-  only and must not be copied.
-- `spikes/05-workers-ai-speech-to-text/REPORT.md` repeats the deployed Worker ->
-  Workers AI -> HTTP probe pattern. Reuse those HTTP-path findings only; do not
-  reuse its direct REST probe path.
-- `spikes/02-dynamic-workers-egress-control/REPORT.md` proves that a Durable
-  Object and `@cloudflare/vitest-pool-workers` can run fully locally. It does
-  not test collaborative WebSockets or this diagram protocol.
-- `spikes/01-ai-gateway-dynamic-routing/REPORT.md` and
-  `spikes/04-ai-gateway-cost-reconciliation/REPORT.md` provide a Terraform
-  Access lifecycle precedent, but their direct AI Gateway API findings are not
-  admissible evidence for this demo. This demo does not currently use AI
-  Gateway. If it is later added, verify it with a new deployed HTTP-probe spike,
-   never a remote binding or direct probe-script API call.
-
-#### Measured Spike Decisions (2026-08-07)
-
-- Spike 06 selected Vue Flow `1.48.2` with Vue `3.5.40` and Vuetify `4.1.6`.
-  Persist a versioned renderer-independent graph document, keep shared cursors
-  in graph coordinates, and transform them for each client viewport. Initial
-  delivery excludes ELK: it produced correct layouts, but its static import
-  added 539.52 kB gzip to the small editor bundle. Retain an optional lazy-load
-  seam if user feedback justifies auto-layout later.
-- Spike 07 selected a SQLite singleton-document table plus a bounded operation
-  table, updated together with `storage.transactionSync()` before broadcast.
-  Use `sync`, `operation_accepted`, `resync`, and transient `cursor` frames;
-  stale edits receive the entire current document and are never retried
-  automatically. Limit cursor broadcasts to one per socket every 50 ms. Use
-  close codes `4400` for malformed frames and `4401` for an absent trusted
-  identity. Integration tests must set `fileParallelism: false`, best-effort
-  close tracked clients without awaiting their close events, then call
-  `evictAllDurableObjects({ webSockets: "close" })` in `afterEach`.
-- Spike 08 proved the local Workflow/D1/R2/Durable Object binding layout and
-  durable status model. Keep the fake generator seam as
-  `generate({ fixture, attempt, summary }) => raw text`; only the generation
-  step retries, with one retry after the initial attempt. D1 writes each named
-  state before the room notification. The supported Vitest pool can create and
-  inspect an instance and its D1/R2/DO effects, but does not provide a verified
-  deterministic single-step control; use durable side effects for automated
-  assertions and Local Explorer for manual inspection.
-- Spike 09 selected `@cf/meta/llama-3.3-70b-instruct-fp8-fast` with
-  `response_format: { type: "json_schema", json_schema }` through `env.AI`.
-  The 679-byte architecture schema validated small and medium fixtures; the
-  impossible fixture was rejected by the binding/model path, so the Workflow
-  must persist that class of failure. Keep independent validation because JSON
-  Mode does not guarantee schema adherence. `guided_json` is not the selected
-  adapter.
-- Spike 10 proved deployed D1 plus Durable Object terminal-failure reporting
-  and the Worker/Access/D1/R2 teardown order, but did not prove a successful
-  deployed Workflow execution: the replacement-model instance remained
-  `queued` for three minutes. Do not claim local/deployed parity, AI-to-R2
-  success, or completion of this risk until a fresh deployed readiness probe
-  observes both `ready` and an invalid-fixture `failed` result.
-
-#### Spike 06 - Vue Diagram Editor
-
-Directory: `spikes/06-architect-vue-editor`
-
-Mode: **Local** (`vite dev`; no Terraform and no Cloudflare resources).
-
-**Unknowns to prove:**
-
-- Whether current Vue Flow works cleanly with Vue 3, Vuetify, TypeScript, and
-  the repository's Vite setup without React-only dependencies.
-- Whether custom product nodes, typed/labeled edges, palette drag/drop, node
-  property edits, viewport restore, and a true read-only mode cover the primary
-  editor flow.
-- How screen coordinates map to flow coordinates for palette drops and remote
-  cursor rendering at different pan/zoom levels.
-- Whether ELK auto-layout is small and reliable enough to include, or should be
-  left out of the demo.
-
-**Probe:** build one small local page with five catalog products, one external
-actor, two edge types, editable properties, saved/restored JSON, and a read-only
-toggle. Open two browser windows with different viewport positions and verify a
-recorded cursor coordinate maps to the same graph point in each.
-
-**Report must decide:** package versions, graph JSON contract, coordinate
-conversion, component boundaries, read-only enforcement, and whether ELK is in
-or out. Do not continue to Phase 1 with the editor library still undecided.
-
-**Measured decision:** Vue Flow is selected. Use the versioned graph contract
-and graph-space cursor protocol recorded in `spikes/06-architect-vue-editor/REPORT.md`.
-ELK is out of the initial bundle.
-
-#### Spike 07 - Collaborative Diagram Room
-
-Directory: `spikes/07-architect-collaboration`
-
-Mode: **Local** (`wrangler dev` and Vitest; local Durable Object only, no
-Terraform and no Cloudflare resources).
-
-**Unknowns to prove:**
-
-- Whether two hibernatable WebSockets can use the current declarative
-  `exports` configuration and recover trusted identity attachments after
-  eviction.
-- Whether the proposed `operationId`/`baseRevision` protocol produces one
-  deterministic revision when two clients edit concurrently.
-- Whether operation persistence and document update can be atomic in Durable
-  Object SQLite, and duplicate operation IDs remain harmless after reconnect.
-- Whether transient cursor/selection frames can remain unpersisted while final
-  drag positions persist and replay correctly.
-- Which cleanup sequence avoids the known hibernatable-WebSocket test hangs
-  documented by the `testing-durable-objects` skill.
-
-**Probe:** use a minimal graph with two nodes. Connect two scripted WebSocket
-clients over localhost, send concurrent edits from the same base revision,
-verify one acceptance and one stale resync, retry a duplicate operation, move
-both cursors, evict the Durable Object, and reconnect.
-
-**Report must decide:** exact frame schemas, SQLite tables/transaction shape,
-close codes, cursor rate limit, resync behavior, and the integration-test
-cleanup recipe. This spike does not use Access; stand-in identities are added
-by the local Worker's upgrade handler solely to test the trusted-header seam.
-
-**Measured decision:** use the frame, SQLite, close-code, rate-limit, and
-cleanup decisions recorded in `spikes/07-architect-collaboration/REPORT.md`.
-
-#### Spike 08 - Local Workflow Orchestration
-
-Directory: `spikes/08-architect-workflow-local`
-
-Mode: **Local** (`wrangler dev` and Vitest; local Workflow, D1, R2, and Durable
-Object simulations; no Terraform and no Cloudflare resources).
-
-**Unknowns to prove:**
-
-- Whether the current Wrangler/workerd combination runs a Workflow that reads
-  D1, writes R2, and calls a Durable Object using the final binding layout.
-- Whether named progress states reach the room in order and survive Workflow or
-  Durable Object restarts.
-- Whether a caught exhausted step can run the finalization step that writes
-  `failed` to D1 and notifies the room.
-- Whether deterministic job IDs and R2 keys make retries idempotent.
-- Whether the repository's supported Vitest integration can start, advance,
-  inspect, and clean up a Workflow instance without polling a real account.
-
-**Probe:** compile a fake architecture generator into the spike and inject it
-at the same interface the real Workers AI adapter will implement. Exercise
-success, malformed output, one transient retry, exhausted retries, duplicate
-start, unknown products, invalid edges, and Durable Object notification. Use
-only local D1 and R2 data.
-
-**Report must decide:** Workflow step boundaries, retry configuration, progress
-and failure semantics, fake-AI interface, instance inspection mechanism, and
-test cleanup. It must not contain an `AI` binding because Workers AI has no
-local simulation on this account.
-
-**Measured decision:** use the seven durable step boundaries and generator seam
-from `spikes/08-architect-workflow-local/REPORT.md`; assert terminal behavior
-through D1, R2, and Durable Object effects rather than per-step harness control.
-
-#### Spike 09 - Workers AI Structured Architecture Output
-
-Directory: `spikes/09-architect-ai-structured-output`
-
-Mode: **Deployed** (Terraform Access bypass plus Wrangler deployment; driven
-only through HTTP; complete teardown required).
-
-**Unknowns to prove:**
-
-- Which current Workers AI model reliably returns the proposed architecture
-  schema through the deployed `env.AI` binding.
-- Whether `guided_json` or `response_format` is the correct live input for that
-  model and what response shape the binding actually returns.
-- Whether the schema and curated catalog fit comfortably in the request and
-  how reliably the model stays within them. Deterministic rejection of unknown
-  products and invalid edges is already proved locally in Spike 08.
-- Real latency and failure behavior for a small, medium, and intentionally
-  invalid fixture. Cost totals are not needed.
-
-**Probe:** deploy a minimal Worker with an `AI` binding and fixed fixture IDs.
-`POST /probe` selects a committed fixture, calls Workers AI, validates the
-result with the proposed schema, and returns validation status and timing only.
-Do not expose an arbitrary public prompt endpoint and do not log fixture or
-model output.
-
-**Infrastructure and lifecycle:** follow the proven Terraform pattern in
-`spikes/05-workers-ai-speech-to-text`: create a bypass Access policy and
-application for the spike's `*.workers.dev` hostname, deploy with Wrangler,
-call `/probe` over HTTP, delete the Worker, then destroy the Access resources.
-Do not run `wrangler dev`, add `remote: true`, or call Workers AI directly from
-the probe script.
-
-**Report must decide:** model ID, exact request/response adapter, schema size,
-validation behavior, measured latency, and the fixtures retained for later
-tests.
-
-**Measured decision:** use `@cf/meta/llama-3.3-70b-instruct-fp8-fast` and
-`response_format` JSON Schema, retaining the `small`, `medium`, and `invalid`
-fixture IDs. See `spikes/09-architect-ai-structured-output/REPORT.md` for the
-safe response adapter and observed timings.
-
-#### Spike 10 - Deployed Architecture Workflow
-
-Directory: `spikes/10-architect-workflow-deployed`
-
-Mode: **Deployed** (Terraform-managed Access bypass, D1, and R2; Wrangler
-deployment; driven only through HTTP; complete teardown required).
-
-**Unknowns to prove:**
-
-- Whether the exact locally tested Workflow can call the selected Workers AI
-  model on Cloudflare, persist a proposal to R2, update D1, and notify a
-  deployed Durable Object.
-- Whether progress and terminal failure behavior observed locally match the
-  deployed Workflow runtime.
-- Whether the Workflow, declarative Durable Object `exports`, AI binding, D1,
-  and R2 can coexist in one Worker deployment and generated binding types.
-- Whether the complete teardown order removes the Worker/Workflow/DO before
-  emptying and destroying R2 and D1.
-
-**Probe:** expose only `POST /jobs` to start one committed fixture and
-`GET /jobs/:id` to read status. The GET route must read the D1 job and the
-Durable Object's last notification so the HTTP probe proves both paths. Run one
-successful job and one deliberately invalid fixture that reaches durable
-`failed`; do not add a browser or remote binding.
-
-**Infrastructure and lifecycle:** Terraform creates the bypass Access
-application/policy, D1 database, and R2 bucket. Wrangler deploys the Worker,
-Workflow, Durable Object, and bindings. The runner applies D1 migrations,
-drives the endpoints over the Access-bypassed `*.workers.dev` hostname, deletes
-the Worker, empties R2, and runs `terraform destroy`, even after a failed
-assertion.
-
-**Report must decide:** deployed/local parity, final binding and class
-configuration, observed status transitions, HTTP polling contract, teardown
-order, and any correction required in Phase 5.
-
-**Measured decision:** final bindings and teardown order are viable, but
-deployed Workflow start readiness is unresolved. The observed model-deprecation
-failure did finalize in D1 and the Durable Object; a later replacement-model
-instance remained queued. Resolve this with a new isolated deployed HTTP probe
-before claiming Phase 5 completion.
-
-**Phase 0 result:** all five reports exist, no remote binding was used, and both
-deployed spikes completed teardown. Editor, collaboration, local Workflow, and
-Workers AI adapter decisions are fixed above. The deployed Workflow readiness
-risk remains open: it blocks the Phase 5 completion claim, not Phase 1 through
-Phase 4 implementation. A follow-up isolated HTTP-probe deployment must prove
-one `ready` job and one validation-driven durable `failed` job before Phase 5
-is declared complete.
+**Report must decide:** whether Astro added anything load-bearing that the
+plain Vite/React/Cloudflare setup needs to reproduce, and confirm the final
+dependency versions.
 
 ### Phase 1 - Scaffolding And Access (tag: `phase-01-scaffolding`)
 
-1. Create `demos/architect` with the canonical layout and Vue 3, Vite,
-   Vuetify, Pinia, Vue Router, Feather Icons, Hono, and TypeScript.
-2. Provision with Terraform: Worker registration, bootstrap deployment, custom
-   domain, Access applications/policies, D1, R2, KV, Workers Logs, and tracing.
-   Put explicit `depends_on` references from the Worker to D1, R2, and KV.
-3. Commit one `wrangler.jsonc.tpl` and `infra/local-outputs.json`. Bind `DB`,
-   `SNAPSHOTS`, `SHARES`, `DIAGRAM_ROOM`, `ARCHITECTURE_WORKFLOW`, and `AI`;
-   configure Static Assets SPA fallback and run the Worker first for `/api/*`
-   and `/shared/*`. Declare `DiagramRoom` as a SQLite Durable Object with the
-   current Wrangler `exports` lifecycle model, not the legacy `migrations`
-   array, and add the Workflow declaration.
-4. Wire local and production Wrangler generation, generated binding types, D1
-   local/remote migrations, build, check, test, deploy, and complete teardown.
-   R2 teardown must empty the bucket before Terraform destroys it.
-5. Add global logging, RFC 9457 errors, Access middleware, shared access
-   policies, local Access emulation, `GET /api/me`, a public landing page, an
-   authenticated empty app shell, and logout.
-6. Create the initial D1 migration for all tables in Data And State Model.
+1. **Before provisioning anything**, verify in the Cloudflare dashboard that
+   no resources remain from the previous Vue implementation on
+   `architect.cfapps.uk` (see the note in Status above); clean up manually if
+   Terraform state for it is unrecoverable.
+2. Create `demos/architect` with the canonical layout: Hono, React 19,
+   TypeScript, Vite, `@cloudflare/vite-plugin`, `@vitejs/plugin-react`.
+3. Provision with Terraform: Worker registration, bootstrap deployment,
+   custom domain, the two Access applications/policies (no Identity Provider
+   resource — see [Access Model](#access-model)), D1, KV, Workers Logs, and
+   tracing. Explicit `depends_on` from the Worker to D1 and KV.
+4. Commit one `wrangler.jsonc.tpl` and `infra/local-outputs.json`. Bind `DB`
+   and `SHARES`; configure Static Assets SPA fallback and run the Worker
+   first only for `/api/*`.
+5. Wire local and production Wrangler generation, generated binding types, D1
+   local/remote migrations, build, check, test, deploy, and complete
+   teardown.
+6. Add global logging, RFC 9457 errors, `cloudflareAccess()`, shared access
+   policies, local Access emulation, an auth middleware that upserts the
+   `users` directory row on every authenticated request, `GET /api/me`
+   (returns `{ email, isAdmin }`, comparing against `ADMIN_EMAIL`), a public
+   landing page, an authenticated empty app shell, and logout.
+7. Add `ADMIN_EMAIL` to `.env.example`, as a Terraform variable, and as a
+   Worker var.
+8. Create the initial D1 migration for `diagrams` and `users` (see [Data
+   Model](#data-model-d1); `diagram_shares` is added in Phase 3).
 
-**Testing:** verify Access on page/API/WebSocket paths, public bypass paths,
-binding generation, migrations, and the empty responsive shell.
+**Testing:** verify Access on page/API paths, public bypass paths, the
+`ADMIN_EMAIL` comparison in `GET /api/me`, binding generation, migrations,
+and the empty responsive shell.
 
 **Definition of done:** `npm run deploy` can produce an empty secure app and
 `npm run teardown` leaves no named or billable resources.
 
-### Phase 2 - Personal Diagram Library And Editor (tag: `phase-02-editor`)
+### Phase 2 - Diagram Library And Editor (tag: `phase-02-editor`)
 
-1. Implement owner-scoped diagram list/create/open/rename APIs and D1
-   repositories. Creating a diagram also creates the owner membership row.
-2. Implement `DiagramRoom` document initialization, read/update RPC methods,
-   graph validation, revisioning, and deletion cleanup. The Worker checks D1
-   membership before every Durable Object call.
-3. Build a focused editor using Vue Flow: searchable product
-   palette, product and external nodes, labeled typed edges, properties panel,
-   delete, pan, zoom, fit, and a few useful blueprints. Keep the
-   catalog modest rather than copying every prior-art item. Keep ELK out of the
-   initial bundle; add it only as a lazy-loaded follow-up if needed.
-4. Save edits through revisioned commands even with one user so Phase 4 does
-   not replace the persistence model.
+1. Port the product catalog and blueprint template data.
+2. Implement owner-scoped diagram list/create/open/rename/duplicate/delete
+   APIs and a raw-D1 repository, replacing Drizzle.
+3. Port the editor: searchable product palette, product/actor nodes, typed
+   labeled edges, properties panel, undo/redo, autosave, pan/zoom/fit, and
+   the blueprint gallery.
+4. Port the dashboard (diagram card grid, rename, duplicate, delete).
 5. Emit `diagram_created`, `diagram_opened`, and `diagram_updated` structured
    logs without graph content or user email.
 
-**Testing:** cover graph validation and command application, owner isolation,
-editor interactions, blueprint creation, reload from Durable Object state, and
-recovery after Durable Object eviction.
+**Testing:** cover graph validation, owner isolation, editor interactions,
+blueprint creation, and dashboard actions.
 
-**Definition of done:** one authenticated user can create, edit, reload, and
-reopen a durable diagram.
+**Definition of done:** one authenticated user can create, edit, reload,
+reopen, duplicate, and delete diagrams, matching CF-Architect's current
+single-user behavior.
 
-### Phase 3 - Collaborator Invitations (tag: `phase-03-invitations`)
+### Phase 3 - Sharing (tag: `phase-03-sharing`)
 
-1. Add owner-only create/list/revoke invitation APIs and authenticated redeem
-   flow. Enforce single use, expiry, random tokens, and digest-only D1 storage.
-2. Add the editor membership role to diagram list/open authorization. Return
-   `404`, not `403`, when a caller probes a diagram they cannot access.
-3. Build the invitation dialog, copy-link action, protected
-   `/app/invitations/:token` redemption page, and member list. Only the owner
-   can invite or publish; owner and editor can edit.
-4. Ensure an invitation cannot be confused with a public share token.
-
-**Testing:** cover expired, revoked, reused, malformed, and cross-diagram
-tokens; owner-only controls; and User B gaining access only after redemption.
-
-**Definition of done:** User A can grant User B durable editor membership with
-one expiring link.
-
-### Phase 4 - Live Cooperative Editing (tag: `phase-04-collaboration`)
-
-1. Add the authenticated WebSocket upgrade route. Authorize membership in D1,
-   enforce same-origin, inject trusted identity/role headers, and route by
-   validated diagram UUID.
-2. Implement the Collaboration Protocol with hibernatable WebSockets,
-   persisted revisions, deduplicated operation IDs, acknowledgements, stale
-   revision resync, participant join/leave, and transient cursor/selection
-   broadcasts.
-3. Add the client connection composable and Pinia collaboration store with
-   reconnect/backoff, full-state hydration, optimistic pending state, and
-   clear conflict recovery. Do not retry a rejected stale edit silently.
-4. Render participant avatars/names and distinct remote cursors. Announce
-   connection/conflict state accessibly and honor reduced motion.
-5. Emit `participant_joined`, `participant_left`, `operation_accepted`, and
-   `operation_rejected` logs. Do not log graph payloads or cursor positions.
-
-**Testing:** connect two identities to the same room and prove bidirectional
-edits and cursors; prove a different diagram is isolated; reject a non-member;
-deduplicate retries; resync a stale revision; and recover after hibernation.
-
-**Definition of done:** two authenticated editors can work in the same diagram
-and always converge on the Durable Object's accepted revision.
-
-### Phase 5 - Workflow-Backed AI Proposals (tag: `phase-05-ai-workflow`)
-
-1. Implement `ArchitectureWorkflow` exactly as described in AI Workflow, with
-   bounded retries, deterministic IDs/keys, shared schema validation, and
-   idempotent D1/R2 writes. Use
-   `@cf/meta/llama-3.3-70b-instruct-fp8-fast` through the verified
-   `response_format` JSON Schema adapter, and retain independent validation.
-   Use a top-level failure path that durably sets
-   `failed` and notifies the room after retries are exhausted.
-2. Add owner/editor APIs to start a proposal and read its status. The Worker
-   derives diagram identity, membership, and base revision server-side. Enforce
-   request size limits, one active job per diagram, per-user throttling, and an
-   idempotency key.
-3. Let the Durable Object broadcast job progress and the completed proposal to
-   all connected editors. Use the named states `summarizing`, `generating`,
-   `validating`, `storing`, `ready`, and `failed`. Store only proposal metadata
-   in live room state; the proposal document remains in R2.
-4. Build prompt, progress, preview, accept, reject, failure, and retry UI.
-   Accepting applies one atomic revision; a stale proposal asks the user to
-   regenerate instead of overwriting newer work. Retry creates a new job ID.
-5. Emit `architecture_job_started`, `architecture_job_completed`,
-   `architecture_job_failed`, and `architecture_proposal_accepted` logs without
-   prompt or generated document content.
-
-**Testing:** use a fake AI binding for valid, malformed, transient-failure, and
-permanent-failure outputs; prove progress, terminal failure finalization,
-throttling, single-active-job enforcement, retries, and idempotency; prove both
-editors see progress/result; and reject acceptance after an intervening edit.
-Keep the real Workers AI check as an optional, explicitly authorized deployed
-smoke test because it has no local model simulator.
-
-**Definition of done:** a natural-language request becomes a validated,
-previewable proposal through a visible Workflow and changes the shared diagram
-only after explicit acceptance. Before this phase is complete, an isolated
-deployed smoke probe must demonstrate both a `ready` job and a validation-driven
-durable `failed` job after Workflow scheduling begins.
-
-### Phase 6 - Public Publishing (tag: `phase-06-publishing`)
-
-1. Add owner-only publish/update/revoke APIs. Publishing writes a new immutable
-   R2 snapshot under a revision-addressed key with create-only semantics,
-   records it in D1, and updates a high-entropy KV token-digest key to point at
-   that object. Never reuse an R2 key or expose editable Durable Object state
-   directly to an anonymous request.
-2. Use links shaped as `/share#<token>` so the capability fragment is never
-   sent in an HTTP URL or invocation log. The public viewer reads the fragment
-   and sends it in the JSON body of `POST /shared/resolve`; the Worker hashes it
-   before D1/KV lookup and returns only the read-only snapshot. Set a restrictive
-   referrer policy, validate expiry/revocation metadata, and document that KV
-   revocation is eventually consistent because the content was deliberately
-   published publicly.
-3. Build a read-only viewer with pan, zoom, fit, product details, and no editing
-   or collaboration connection. Add owner controls to copy, update, and revoke
-   the share.
-4. Emit `diagram_published` and `diagram_share_revoked` logs without tokens or
+1. Add owner-only share create/revoke APIs. Store only a SHA-256 token digest
+   — never the raw token — in D1 and as the KV key; the live diagram is read
+   at request time, so there is no snapshot to keep in sync.
+2. Build the read-only viewer and owner share controls (copy link, revoke).
+3. Emit `diagram_shared` and `diagram_share_revoked` logs without tokens or
    graph content.
 
-**Testing:** prove anonymous access to a valid publication, no write or
-WebSocket path from the viewer, unpublished/unknown/revoked behavior, immutable
-old R2 versions, create-only R2 writes, KV digest pointer updates, and that raw
-tokens do not appear in request URLs or storage.
+**Testing:** prove anonymous access to a valid share, unpublished/unknown/
+revoked behavior, that a live edit is immediately visible through an existing
+share link (the live-pointer model working as intended), and that raw tokens
+never appear in request URLs, logs, or storage.
 
-**Definition of done:** the owner can publish a safe anonymous read-only link
-without exposing the live editor.
+**Definition of done:** the owner can share a read-only link without exposing
+edit access, with no plaintext token anywhere.
 
-### Phase 7 - Verification, Documentation, And Cleanup (tag: `phase-07-complete`)
+### Phase 4 - Admin (tag: `phase-04-admin`)
 
-1. Close coverage gaps across the standard worker, client, and integration
-   Vitest projects. Keep Durable Object/WebSocket cleanup deterministic and use
-   the Phase 0 Workflow test mechanism.
+1. Add the `ADMIN_EMAIL`-comparison middleware (introduced in Phase 1) to
+   every admin route; return `403` for any other authenticated identity.
+2. Add `GET /api/admin/users` (paginated directory: email, display name,
+   diagram count, first/last seen) and `DELETE /api/admin/diagrams/:id`
+   (moderation delete of any user's diagram).
+3. Build the admin UI — user directory table, and the ability to open or
+   delete any user's diagram — gated by `isAdmin` from `GET /api/me`.
+4. Emit `admin_diagram_deleted` structured logs without graph content.
+
+**Testing:** prove every non-`ADMIN_EMAIL` authenticated identity gets `403`
+on every admin route; prove the `ADMIN_EMAIL` identity can list users and
+delete any diagram; prove a deleted diagram cascades its shares.
+
+**Definition of done:** the operator-designated admin can view every user's
+diagrams and remove any diagram; no other identity can.
+
+### Phase 5 - Export, Print, And Preferences (tag: `phase-05-export`)
+
+1. Port PNG/SVG export and the project-scaffold ZIP generator.
+2. Port print mode.
+3. Port dark mode (client-only `localStorage` preference).
+
+**Testing:** cover export filename generation, scaffold ZIP contents, and
+print-mode side effects.
+
+**Definition of done:** feature parity with CF-Architect's export, print, and
+theme behavior.
+
+### Phase 6 - Verification, Documentation, And Cleanup (tag: `phase-06-complete`)
+
+1. Close coverage gaps across the three Vitest projects.
 2. Run formatting, linting, type checking, coverage, production build,
    Wrangler generation/type checks, `terraform fmt -check`, and `terraform
-   validate`. Run the `web-perf` review and a WCAG 2.2 AA review on editor and
-   public viewer desktop/mobile layouts.
-3. Verify single-command deploy and teardown, including D1 migrations, Workflow
-   deployment, Worker deletion, R2 emptying, and removal of generated files.
-4. Write `README.md` as the operator guide, `DEMO.md` as the exact two-user and
-   dashboard presentation script, and `EXPLAIN-DEMO.md` as the product/data-flow
-   explanation with current Cloudflare links. Add accurate JSDoc to every
-   authored TypeScript declaration.
-5. Reconcile this plan with spike reports and implemented behavior. Remove dead
-   code, stale comments, unused bindings, unsupported catalog entries, and all
-   generated local configuration from version control.
+   validate`. Run the `web-perf` review and a WCAG 2.2 AA review.
+3. Verify single-command deploy and teardown.
+4. Write `README.md`, `DEMO.md`, and `EXPLAIN-DEMO.md`. Add accurate JSDoc to
+   every authored TypeScript declaration.
 
-**Definition of done:** the complete Primary Demo Flow is reproducible, all
-verification passes, documentation stays in its assigned lane, and teardown
-leaves no demo resources.
+**Definition of done:** the complete ported feature set — including admin —
+is reproducible, all verification passes, and teardown leaves no demo
+resources.
+
+## Post-MVP: Live Collaboration And AI Proposals
+
+Live multi-user collaboration (one Durable Object per diagram, hibernatable
+WebSockets, presence, remote cursors) and Workflow-backed AI proposal
+generation (`ArchitectureWorkflow`, `@cf/meta/llama-3.3-70b-instruct-fp8-fast`
+through `env.AI`) were the previous, from-scratch plan's original
+differentiators. They are real, wanted features — not rejected — but are
+deliberately out of scope for this MVP (see [Decisions](#decisions) #1)
+rather than carried here as phase-by-phase detail that would go stale before
+it is built.
+
+The prior research on this — `spikes/06-architect-vue-editor` through
+`spikes/10-architect-workflow-deployed`, which had already settled real
+unknowns (Durable Object SQLite transaction shape, WebSocket close codes,
+Workflow step boundaries, the verified Workers AI model and schema adapter)
+— has been removed along with the Vue implementation it supported. A future
+collaboration/AI specification cannot treat those unknowns as settled and
+will need to re-run equivalent spikes from scratch (they are no longer
+Vue-specific unknowns in any case, since this plan is React-based); it should
+also resolve how Phase 1–6's D1-column diagram storage migrates to Durable
+Object SQLite once a diagram becomes collaboratively editable — a real
+migration cost, not a detail to gloss over when that work is scoped.
 
 ## Non-Negotiable Tests
 
-- Every authenticated API and WebSocket route rejects an unauthenticated
-  request; public routes cannot mutate or join a room.
-- State-changing HTTP and WebSocket routes reject missing or foreign origins.
-- A non-member cannot discover, read, edit, invite to, publish, or connect to a
+- Every authenticated API route rejects an unauthenticated request; public
+  routes cannot mutate a diagram.
+- State-changing API requests reject missing or foreign origins.
+- A non-owner cannot discover, read, edit, share, or revoke another user's
   diagram.
-- Two clients in one room converge; clients in different rooms remain
-  isolated.
-- Identity and role come from Access and D1, never a WebSocket message.
-- An accepted edit is persisted before broadcast and survives eviction.
-- Duplicate operation IDs do not apply twice; stale revisions resync safely.
-- Workflow retries do not duplicate D1 rows or R2 objects.
-- Workflow exhaustion produces a durable `failed` status in both D1 and the
-  connected clients; paid job creation is bounded.
-- AI output is schema-validated and never mutates a diagram without acceptance.
-- Public shares return only immutable published fields and never the editable
-  room document or membership data.
-- Teardown empties R2 and removes Worker, Durable Object namespace, Workflow,
-  D1, KV, Access, and custom-domain resources.
+- Every admin route rejects every identity except `ADMIN_EMAIL` with `403`.
+- Share tokens are never stored, logged, or returned in plaintext — only
+  their SHA-256 digest.
+- Public shares return only the intended read-only fields and never
+  membership or admin data.
+- Teardown removes Worker, D1, KV, Access, and custom-domain resources, and
+  leaves no committed Terraform state.
 
 ## Key Risks
 
-- **Editor library fit:** settle Vue Flow and layout support in Phase 0;
-  avoid building a custom canvas unless the spike proves it necessary.
-- **Concurrent edits:** revision rejection is intentional. Do not add CRDT/OT
-  unless real use shows that the simpler protocol cannot support the demo.
-- **Workflow testing:** pin the supported local harness behavior in Phase 0 and
-  do not defer Workflow verification to a live account.
-- **AI drift:** keep one shared schema and curated catalog, pin a verified model,
-  and fail unknown products rather than guessing.
-- **Public revocation:** KV is eventually consistent. Published content is
-  intentionally public; use fragment tokens plus digest-only storage, document
-  the short revocation window, and never use this pattern for private data.
+- **Astro-coupling surprises:** CF-Architect's Astro middleware and adapter
+  may do more implicit work (redirects, cookie handling) than the STRUCTURE.md
+  survey caught. Phase 0's spike exists specifically to surface this before
+  Phase 1 commits to the plain Vite/React architecture.
+- **Scope creep back toward the previous plan:** it remains easy to slide
+  back into building live collaboration or AI proposals mid-implementation,
+  even though the prior spike research for them no longer exists in this
+  repository to lean on. Treat Phases 0–6 as the complete, demo-able MVP;
+  Post-MVP work needs its own specification — and its own from-scratch
+  spikes — first.
+- **Security regressions during the port:** CF-Architect's plaintext share
+  tokens and committed Terraform state are real bugs in working prior art;
+  porting code structure without also porting the fix (digest-only token
+  storage) is a real risk to guard against explicitly in review.

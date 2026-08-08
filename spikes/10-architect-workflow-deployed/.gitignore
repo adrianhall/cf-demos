@@ -1,7 +1,0 @@
-node_modules/
-wrangler.jsonc
-worker-configuration.d.ts
-infra/.terraform/
-infra/*.tfstate
-infra/*.tfstate.*
-run-results.json
