@@ -2,7 +2,7 @@
 
 See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 
-> This script covers Phase 1 (scaffolding and Access) of `docs/09-ARCHITECT.md`: a secure, empty app shell. Later phases add the catalog/editor, sharing, admin, and export/print/dark-mode capabilities this script will grow to cover.
+> This script covers Phases 1–2 (scaffolding/Access and the diagram library/editor) of `docs/09-ARCHITECT.md`. Later phases add sharing, admin, and export/print/dark-mode capabilities this script will grow to cover.
 
 ## Demonstration Prerequisites
 
@@ -28,18 +28,37 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 6. Back in the browser, use the always-visible **Sign out** control.
 7. Sign in as the identity matching this deployment's `ADMIN_EMAIL`. Show the app shell now displays `(administrator)` next to that email.
 8. Re-run the D1 query from step 5 and show both identities' rows in the same `users` table, each upserted independently.
+9. In a signed-out/incognito window, open `https://architect.cfapps.uk/blueprints`. Show the public blueprint gallery loads with no Access challenge, even though no one is signed in.
+10. Back in the signed-in browser, from the dashboard (`/app`) select **+ New Diagram**. Pick the **API Gateway** blueprint card and show its live preview thumbnail.
+11. In the create dialog, confirm the title, and select **Create Diagram**. Show the editor opens with the blueprint's nodes and edges already on the canvas.
+12. Drag a product (for example **D1 Database**) from the left palette onto the canvas. Click it, and in the right-hand properties panel change its label and pick a documentation link to show it opens the real Cloudflare docs page.
+13. Draw a new connection between two nodes by dragging from one node's handle to another's. Select the new edge and change its **Edge Type** in the properties panel; show the stroke style update live.
+14. Select **Layout ↓** in the toolbar. Show ELK auto-layout re-arranges the nodes, and that **Undo** reverts it back to the manual layout.
+15. Watch the status bar report "Saving…" then "Saved just now" a moment after the last change, with no explicit save action taken.
+16. Switch to the D1 tab and run:
+
+    ```sql
+    SELECT id, title, owner_email, updated_at FROM diagrams;
+    ```
+
+    Point out the row for the diagram just edited, and that `updated_at` matches the autosave just observed.
+17. Return to the dashboard (the toolbar's **Architect** logo). Show the new diagram's card with a live thumbnail preview matching the canvas.
+18. Open the card's overflow menu and select **Duplicate**. Show a second card appears titled "… (copy)" with an identical preview.
+19. Open the overflow menu on the original diagram and select **Delete**, confirm in the dialog, and show the card disappears from the grid.
 
 ## Expected Results
 
-- Unauthenticated visitors see the public landing page at `/`; opening `/app` or calling `/api/me` unauthenticated redirects to (or returns `401` for) Cloudflare Access sign-in.
+- Unauthenticated visitors see the public landing page at `/` and the public blueprint gallery at `/blueprints`; opening `/app` or calling `/api/me` unauthenticated redirects to (or returns `401` for) Cloudflare Access sign-in.
 - Every signed-in identity sees its own email in the app shell; only the identity matching `ADMIN_EMAIL` sees the `(administrator)` marker.
 - The `users` table in D1 gains one row per distinct identity that has ever signed in, with `last_seen_at` refreshed on every subsequent visit.
+- A signed-in identity can create a diagram from a blueprint or a blank canvas, edit its nodes/edges/properties, see changes autosave within about a second, and reload the page with no data loss.
+- The dashboard lists only the signed-in identity's own diagrams, and duplicate/delete act on exactly the selected diagram.
 
 ## Where To Observe State
 
-- **Worker logs:** Workers & Pages > `architect` > Logs.
+- **Worker logs:** Workers & Pages > `architect` > Logs — look for `diagram_created`, `diagram_opened`, and `diagram_updated` entries (never graph content or email).
 - **Traces:** Workers & Pages > `architect` > Observability > Traces (10% sampling).
-- **D1 data:** D1 > `architect-db` > Console; query the `users` table as shown above.
+- **D1 data:** D1 > `architect-db` > Console; query the `users` and `diagrams` tables as shown above.
 - **Access applications:** Zero Trust > Access controls > Applications > `architect public` and `architect app`.
 
 Run `npm run teardown` after the presentation; see README.md for details.

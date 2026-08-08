@@ -110,7 +110,7 @@ describe("Architect Worker", () => {
 
   it("returns a not-found problem for an unmounted API route", async () => {
     const response = await request(
-      await apiRequest("alice@example.com", "/api/diagrams"),
+      await apiRequest("alice@example.com", "/api/nonexistent"),
     );
 
     expect(response.status).toBe(404);

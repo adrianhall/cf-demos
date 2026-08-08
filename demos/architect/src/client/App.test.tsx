@@ -41,4 +41,17 @@ describe("App", () => {
 
     expect(screen.getByRole("link", { name: "Sign out" })).toBeInTheDocument();
   });
+
+  it("renders the public blueprint gallery at /blueprints", () => {
+    window.history.pushState({}, "", "/blueprints");
+
+    render(<App />);
+
+    expect(
+      screen.getByRole("heading", { name: "Start a new diagram" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Blank Canvas/ }),
+    ).toBeInTheDocument();
+  });
 });

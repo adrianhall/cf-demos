@@ -4,7 +4,7 @@ A Cloudflare architecture diagram editor based on Cloudflare Workers, Static Ass
 
 See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches and how it works, and [`DEMO.md`](./DEMO.md) for a presenter's demo script.
 
-> **Status:** Phase 1 (scaffolding and Access) of `docs/09-ARCHITECT.md` is implemented — a secure, empty app shell with no diagram editor yet. Later phases add the catalog/editor, sharing, admin, and export/print/dark-mode features described in that plan.
+> **Status:** Phases 1–2 (scaffolding/Access and the diagram library/editor) of `docs/09-ARCHITECT.md` are implemented — an authenticated user can create, edit, autosave, duplicate, and delete diagrams from a Cloudflare product catalog and blueprint templates. Later phases add sharing, admin, and export/print/dark-mode features described in that plan.
 
 ## Prerequisites
 
@@ -50,7 +50,7 @@ npm start
 
 `npm start` generates `wrangler.jsonc` from `wrangler.jsonc.tpl` and the committed local placeholder values in `infra/local-outputs.json`, generates binding types, applies the D1 migration to the local SQLite database (`db:migrate:local`), builds, and starts Vite. No Terraform state or cloud resources are required.
 
-Open the printed local address. `/` is the public landing page; opening `/app` triggers the local Access dev-login form, which offers `admin@example.com` (matching `infra/local-outputs.json`'s `admin_email`) and `alice@example.com`. Use the visible **Sign out** control in the app shell to switch identities. Local D1 data lives under `.wrangler/` and can be deleted between sessions.
+Open the printed local address. `/` is the public landing page, and `/blueprints` is the public blueprint gallery; opening `/app` triggers the local Access dev-login form, which offers `admin@example.com` (matching `infra/local-outputs.json`'s `admin_email`) and `alice@example.com`. Use the visible **Sign out** control in the app shell to switch identities. Local D1 data lives under `.wrangler/` and can be deleted between sessions.
 
 ## Testing
 
@@ -80,6 +80,9 @@ Before provisioning for the first time, verify in the Cloudflare dashboard that 
 3. Sign in through the configured identity provider and confirm the app shell shows your email.
 4. In the Cloudflare dashboard under **Workers & Pages** > `<DEMO_NAME>` > **D1** > `<DEMO_NAME>-db` > **Console**, run `SELECT * FROM users;` and confirm a row exists for the identity you signed in as.
 5. Sign in as the identity matching `ADMIN_EMAIL` and confirm the app shell marks it `(administrator)`.
+6. From the dashboard, select **+ New Diagram**, choose a blueprint (or a blank canvas), and confirm the editor opens with that diagram's graph.
+7. Drag a product from the palette onto the canvas, wait a moment, and confirm the status bar reports a save. Reload the page and confirm the change persisted.
+8. In the Cloudflare dashboard's D1 console, run `SELECT id, title, owner_email FROM diagrams;` and confirm the new row exists.
 
 ## Provisioned Resources
 

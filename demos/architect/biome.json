@@ -8,7 +8,8 @@
       "!coverage",
       "!.wrangler",
       "!worker-configuration.d.ts",
-      "!test-results"
+      "!test-results",
+      "!public"
     ]
   },
   "formatter": {

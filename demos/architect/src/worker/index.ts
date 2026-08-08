@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import type { AppBindings } from "./bindings";
 import { accessMiddleware } from "./middleware/access";
 import { upsertUserMiddleware } from "./middleware/upsert-user";
+import { diagramsRouter } from "./routes/diagrams";
 import { meRouter } from "./routes/me";
 
 // Only `/api/*` is routed to this Worker (see `wrangler.jsonc.tpl`'s `run_worker_first`); every
@@ -19,6 +20,7 @@ app.use(cloudflareLogger());
 app.use("/api/*", accessMiddleware, upsertUserMiddleware);
 
 app.route("/api/me", meRouter);
+app.route("/api/diagrams", diagramsRouter);
 
 app.onError(problemDetailsErrorHandler({ includeStack: import.meta.env.DEV }));
 app.notFound(notFoundHandler());

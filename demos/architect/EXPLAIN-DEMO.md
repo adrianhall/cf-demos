@@ -1,8 +1,8 @@
 # Architect — What This Demo Teaches
 
-> This file describes Phase 1 (scaffolding and Access) of `docs/09-ARCHITECT.md`. It is the
-> foundation for a Cloudflare architecture diagram editor ported from a real, working prior art
-> application (CF-Architect); later phases add the catalog/editor, sharing, admin, and
+> This file describes Phases 1–2 (scaffolding/Access, and the diagram library/editor) of
+> `docs/09-ARCHITECT.md`, a Cloudflare architecture diagram editor ported from a real, working
+> prior art application (CF-Architect). Later phases add sharing, admin, and
 > export/print/dark-mode capabilities the full plan describes.
 
 ## What This Demonstrates
@@ -22,21 +22,36 @@
   administrator, set by the operator rather than by a first-user-wins bootstrap.
 - **React as a deliberate, scenario-scoped exception to this repository's Vue default.** This
   port's UI is React because the real prior art (CF-Architect) and the diagram library it needs
-  in Phase 2 (`@xyflow/react`) are both React; rewriting proven, working functionality in Vue
-  first would be pure translation effort with no new teaching value. Phase 1 itself has no
-  React-specific complexity yet — that arrives with the diagram canvas in Phase 2.
+  (`@xyflow/react`) are both React; rewriting proven, working functionality in Vue first would be
+  pure translation effort with no new teaching value.
 - **A lightweight identity directory that is explicitly never an authorization source.** Every
   authenticated request upserts a `users` row keyed on the verified email. The table exists
   solely to back a future read-only admin user directory (Phase 4) — no route ever reads it to
   decide what a request is allowed to do, which is why `upsertUserMiddleware` performs no
   authorization check of its own.
+- **A drag-and-drop diagram editor built entirely on raw D1 and a client-side graph library, with
+  no ORM.** `@xyflow/react` owns the canvas; a small Zustand store
+  (`src/client/stores/diagramStore.ts`) tracks nodes, edges, viewport, selection, and a
+  session-scoped undo/redo stack. The Worker never inspects individual node/edge contents beyond
+  a shallow shape check (`src/worker/diagrams/validation.ts`'s `validateGraphDataInput()`) — a
+  diagram's `graph_data` column is opaque JSON as far as the server is concerned.
+- **Same-origin and content-type enforcement as its own composable middleware, not a bundled
+  library default.** `enforceSameOriginJson()` (`src/worker/middleware/same-origin.ts`) rejects
+  every state-changing `/api/diagrams` request whose `Sec-Fetch-Site`/`Origin` headers do not
+  match this Worker's own origin, and whose body is not exactly `application/json` — defense in
+  depth on top of Cloudflare Access, since Access alone proves *who* is asking, not that the
+  request itself originated from this demo's own browser UI.
+- **A static product/blueprint catalog shared between the client and the Worker.**
+  `src/catalog.ts` and `src/blueprints.ts` sit outside both `src/worker/` and `src/client/`
+  (alongside `src/access-policies.ts`, Phase 1's own precedent for a module both layers import)
+  because the palette/canvas render from it in the browser and `POST /api/diagrams` resolves a
+  `blueprintId` against it on the server — the same data, never duplicated.
 
 ## How It Works
 
 ### Data model
 
-`migrations/0001_create_diagrams_and_users.sql` creates both tables Phase 1 through Phase 4 need,
-even though only `users` is written to yet:
+`migrations/0001_create_diagrams_and_users.sql` creates both tables Phase 1 through Phase 4 need:
 
 ```sql
 CREATE TABLE diagrams (
@@ -64,7 +79,40 @@ user identifier anywhere in this schema. `users.display_name` is always `NULL` t
 and `source` — no name claim — and this demo provisions no Identity Provider of its own that
 could supply one (see "Dropped: a provisioned Identity Provider" below). Wrangler owns this
 schema through `db:migrate:local`/`db:migrate:remote`; Terraform owns only the
-`cloudflare_d1_database` resource itself.
+`cloudflare_d1_database` resource itself. Notably absent from `diagrams`: a `blueprint_id`
+column. Once a diagram is cloned from a blueprint template, its graph is fully independent of
+that template — `POST /api/diagrams` resolves `blueprintId` against `BLUEPRINT_MAP`
+(`src/blueprints.ts`) purely to seed the new row's `graph_data`, and never persists which
+blueprint (if any) it came from.
+
+### The diagram editor and its API
+
+`DiagramRepository` (`src/worker/diagrams/repository.ts`) scopes every read and write to
+`owner_email` in the same query, mirroring `demos/agentic-ai-chat`'s `ChatRepository` pattern: a
+diagram id that exists but belongs to a different identity is indistinguishable from one that
+never existed at all, so every route reports `404`, never `403`, for either case. `PUT
+/api/diagrams/:id/graph` replaces the *entire* graph on every autosave — there is no partial-patch
+protocol — after `validateGraphDataInput()` re-serializes it into a canonical shape (`nodes`,
+`edges`, and `viewport` are always present, defaulted if the client omits any of them).
+
+On the client, `DiagramCanvas` (`src/client/components/editor/DiagramCanvas.tsx`) debounces
+autosave 500 ms after the last change and a title-only save 1 s after the last keystroke,
+independently — a title edit alone does not wait on the (usually much larger) graph payload,
+and vice versa. Every mutation to the Zustand store that structurally changes the graph (adding
+or removing a node/edge, running ELK auto-layout) pushes an undo snapshot first, so `Ctrl+Z`/
+`Ctrl+Shift+Z` and the toolbar's Undo/Redo buttons operate on exactly the same history stack a
+keyboard shortcut would.
+
+The service palette (`src/client/components/editor/panels/ServicePalette.tsx`) supports both
+drag-and-drop onto the canvas and a click/keyboard-activatable "add at center" path — CF-Architect's
+original palette was drag-only, with no keyboard or screen-reader route to add a node at all,
+which does not meet this repository's WCAG 2.2 AA bar for a primary workflow.
+
+ELK (`elkjs`), the auto-layout engine, is imported with a dynamic `import()` only when a user
+actually clicks a layout button (`src/client/components/editor/toolbar/Toolbar.tsx`), rather than
+bundled into the main chunk. This repository's prior Vue attempt at this same demo measured a
+~540 KB gzip cost for the equivalent library bundled eagerly; lazy-loading keeps the feature
+without paying that cost on every page load.
 
 ### The two-application Access model
 
@@ -134,5 +182,8 @@ traces at 10% sampling on the Worker resource.
 - [RFC 9457 — Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457)
 - [Hono](https://hono.dev/docs/getting-started/cloudflare-workers)
 - [React](https://react.dev/)
-- [React Flow (`@xyflow/react`)](https://reactflow.dev/) — adopted starting Phase 2's diagram canvas.
+- [React Flow (`@xyflow/react`)](https://reactflow.dev/) — the diagram canvas library.
+- [Zustand](https://zustand.docs.pmnd.rs/) — the editor's client-side state store.
+- [ELK.js](https://github.com/kieler/elkjs) — the automatic graph layout engine, lazy-loaded on first use.
+- [Fetch metadata request headers (`Sec-Fetch-Site`)](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site) — the primary signal `enforceSameOriginJson()` relies on.
 - `spikes/06-architect-reactflow-host/REPORT.md` — this repository's Phase 0 spike confirming the plain Vite/React/Cloudflare host architecture.

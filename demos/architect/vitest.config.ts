@@ -12,7 +12,15 @@ export default defineConfig({
       reportsDirectory: "./coverage",
       reporter: ["text", "html", "lcov"],
       include: ["src/**/*.{ts,tsx}"],
-      exclude: ["**/*.test.{ts,tsx}", "**/*.config.{ts,js}", "**/*.d.ts"],
+      exclude: [
+        "**/*.test.{ts,tsx}",
+        "**/*.config.{ts,js}",
+        "**/*.d.ts",
+        // Test doubles/setup, not authored application source: `mock-xyflow.tsx` stubs every
+        // `@xyflow/react` export other test files import from, so plenty of its own branches
+        // are exercised only by whichever subset a given test file actually needs.
+        "src/client/test/**",
+      ],
     },
   },
 });
