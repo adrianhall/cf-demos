@@ -1,0 +1,222 @@
+demos/architect/src/client/views/LandingView.tsx
+  s_c47e9f9e7e0875::t_2c9f35f7204d94 1-19
+demos/architect/tsconfig.json
+  s_c47e9f9e7e0875::t_d8bc29d52cc525 1-27
+demos/architect/tests/integration/worker.test.ts
+  s_c47e9f9e7e0875::t_37800f94db1ea9 1-105,109-121
+  s_c47e9f9e7e0875::t_ba042034a86214 106-108
+docs/DECISIONS.md
+  s_c47c5f78a54944::t_df1ac051e6285a 978-1041
+  s_c47e9f9e7e0875::t_d6aa2234bc6086 1042-1068
+spikes/06-architect-reactflow-host/src/client/edges/HttpEdge.tsx
+  s_c47c5f78a54944::t_7e587d756c0995 1-38
+demos/architect/infra/providers.tf
+  s_c47e9f9e7e0875::t_5163ba2a992de5 1-34
+spikes/06-architect-reactflow-host/README.md
+  s_c47c5f78a54944::t_43188eb1ef9ef6 1-84
+demos/architect/EXPLAIN-DEMO.md
+  s_c47e9f9e7e0875::t_fd96a56238adca 1-138
+demos/architect/src/worker/users/repository.ts
+  s_c47e9f9e7e0875::t_798f72f8006173 13-14
+  s_c47e9f9e7e0875::t_51c60e0ef6e397 1-12,15-30
+demos/architect/src/client/views/LandingView.test.tsx
+  s_c47e9f9e7e0875::t_38baf81cb5b137 9-11
+  s_c47e9f9e7e0875::t_28abff5c1ff457 1-8,12-13
+spikes/06-architect-reactflow-host/REPORT.md
+  s_c47c5f78a54944::t_f6e81304b517bc 1-228
+demos/architect/infra/access.tf
+  s_c47e9f9e7e0875::t_5a2107d5f37cac 1-66
+demos/architect/src/worker/routes/me.ts
+  s_c47e9f9e7e0875::t_75427feee0829c 1-24
+spikes/06-architect-reactflow-host/.gitignore
+  s_c47c5f78a54944::t_14ef44e00e111c 1-4
+spikes/06-architect-reactflow-host/tsconfig.json
+  s_c47c5f78a54944::t_1e61983844530f 1-20
+demos/architect/.env.example
+  s_c47e9f9e7e0875::t_2737bf39870490 1-32
+demos/architect/src/worker/index.ts
+  s_c47e9f9e7e0875::t_b8c7a10b161828 1-26
+spikes/06-architect-reactflow-host/src/client/nodes/ActorNode.tsx
+  s_c47c5f78a54944::t_a80ab2afb184b7 1-17
+spikes/06-architect-reactflow-host/vite.config.ts
+  s_c47c5f78a54944::t_9272699ced3664 5
+  s_c47c5f78a54944::t_0e1804ed5ce7fc 1-4,6-20
+spikes/06-architect-reactflow-host/src/client/app.css
+  s_c47c5f78a54944::t_9f5c85e2840096 1-154
+demos/architect/infra/architect.tf
+  s_c47e9f9e7e0875::t_559bdde248e942 12-17
+  s_c47e9f9e7e0875::t_c2ade9671fdbd3 1-11,18-108
+docs/07-PR-REVIEW-AGENT.md
+  s_360f305bd18e0c::t_55eb819211fcd3 972,978-984,992
+  s_360f305bd18e0c::t_555584abf2648b 23,25-37
+  s_360f305bd18e0c::t_d798c4e4ed00cd 731-733
+  s_360f305bd18e0c::t_154c55bb721c62 705,707,714-720
+  s_360f305bd18e0c::t_c74d689d3b84cc 56-62
+  s_360f305bd18e0c::t_200aa19c8a1b9f 1006-1015,1021-1048
+  s_360f305bd18e0c::t_6716e97bd0f9d7 472-498,503,515-522,524-564,566-633
+  s_360f305bd18e0c::t_b8aa409f127bf5 108-109
+  s_360f305bd18e0c::t_5c0b2df2a028b3 889-895,901-921,925,929-932
+  s_360f305bd18e0c::t_4e9f52a080e344 936,942,946-949,953
+  s_360f305bd18e0c::t_ee59876bce3139 1049,1055-1058,1064-1080
+  s_360f305bd18e0c::t_a63c3b007ebbc8 161-175
+  s_360f305bd18e0c::t_d8bad3b89154ee 772-777,784-792
+  s_360f305bd18e0c::t_606f2d80c5cd3f 206-215,218,220,223,227
+  s_360f305bd18e0c::t_8a91ebfff35381 243-244
+  s_360f305bd18e0c::t_3656b319c8569a 80-81,87-92
+  s_360f305bd18e0c::t_bcb16ff44597ba 659-667
+  s_360f305bd18e0c::t_84173d040c39d6 10
+spikes/06-architect-reactflow-host/src/client/types.ts
+  s_c47c5f78a54944::t_6a653183ea5bd5 1-25
+demos/architect/src/client/main.tsx
+  s_c47e9f9e7e0875::t_0597818e6291d5 1-2,4-25
+  s_c47e9f9e7e0875::t_d93833d0e91419 3
+demos/architect/package.json
+  s_c47e9f9e7e0875::t_96967408c0b066 26
+  s_c47e9f9e7e0875::t_fa52a3e8abaded 1-21,23-25,27-80
+  s_c47e9f9e7e0875::t_88c21b036b43bf 22
+demos/architect/infra/local-outputs.json
+  s_c47e9f9e7e0875::t_c6250f345b4caf 1-9
+spikes/06-architect-reactflow-host/src/worker/index.ts
+  s_c47c5f78a54944::t_9e18b39f102b73 1-43
+demos/architect/src/worker/bindings.ts
+  s_c47e9f9e7e0875::t_678df8eea164ae 1-20
+demos/architect/biome.json
+  s_c47e9f9e7e0875::t_bf4a55b1a2c487 1-24
+demos/architect/src/client/views/AppShellView.test.tsx
+  s_c47e9f9e7e0875::t_8ef1b013a1d3e1 43-62
+  s_c47e9f9e7e0875::t_38baf81cb5b137 11-14,24-30,64-67
+  s_c47e9f9e7e0875::t_d16ebde15042b2 1-10,15-23,31-42,63,68-93
+demos/architect/src/worker/middleware/upsert-user.test.ts
+  s_c47e9f9e7e0875::t_38baf81cb5b137 99
+  s_c47e9f9e7e0875::t_835883201af699 21-33,40-41
+  s_c47e9f9e7e0875::t_75cf425af47992 1-20,34-39,42-98,100-117
+demos/architect/wrangler.jsonc.tpl
+  s_c47e9f9e7e0875::t_8690d7579d6dd4 1-34
+demos/architect/migrations/0001_create_diagrams_and_users.sql
+  s_c47e9f9e7e0875::t_f5bd7de59ec07f 1-21
+demos/architect/src/worker/vitest.config.ts
+  s_c47e9f9e7e0875::t_de42a93bb9d470 1-9
+demos/architect/vitest.config.ts
+  s_c47e9f9e7e0875::t_8cea523f5f3771 1-18
+demos/architect/infra/.gitignore
+  s_c47e9f9e7e0875::t_049c5796b9a090 1-7
+demos/architect/src/client/App.test.tsx
+  s_c47e9f9e7e0875::t_38baf81cb5b137 7-10,34,42
+  s_c47e9f9e7e0875::t_52b67d4dcde212 1-6,11-33,35-41,43-44
+spikes/06-architect-reactflow-host/src/client/App.tsx
+  s_c47c5f78a54944::t_7c3486f0c1cca5 1-207
+spikes/06-architect-reactflow-host/src/access-policies.ts
+  s_c47c5f78a54944::t_cc2f5554de5051 15-20
+  s_c47c5f78a54944::t_ea46adcf7be6d1 1-14,21
+spikes/06-architect-reactflow-host/index.html
+  s_c47c5f78a54944::t_ffbe715ee08f74 1-12
+spikes/06-architect-reactflow-host/src/client/catalog.ts
+  s_c47c5f78a54944::t_f14b291fea54b7 1-32
+demos/architect/src/worker/middleware/access.test.ts
+  s_c47e9f9e7e0875::t_0089d97ba26215 1-36
+demos/architect/src/client/test/setup.ts
+  s_c47e9f9e7e0875::t_ff40f3cf2b5a7f 1
+  s_c47e9f9e7e0875::t_e439d57e838012 2-12
+demos/architect/src/client/App.tsx
+  s_c47e9f9e7e0875::t_e07c271132f650 1-19
+demos/architect/infra/outputs.tf
+  s_c47e9f9e7e0875::t_c4043c73b5b662 1-44
+demos/architect/src/client/hooks/useIdentity.ts
+  s_c47e9f9e7e0875::t_102a6515c69d3c 1-92
+spikes/06-architect-reactflow-host/src/client/Palette.tsx
+  s_c47c5f78a54944::t_f7e70114467ade 1-71
+demos/architect/README.md
+  s_c47e9f9e7e0875::t_c76e958bc7e342 1-112
+demos/architect/DEMO.md
+  s_c47e9f9e7e0875::t_6c053f08c65773 1-45
+spikes/06-architect-reactflow-host/src/client/edges/BindingEdge.tsx
+  s_c47c5f78a54944::t_4fef831d062564 1-43
+spikes/06-architect-reactflow-host/src/client/PropertiesPanel.tsx
+  s_c47c5f78a54944::t_ce70875c525319 1-56
+demos/architect/.dev.vars
+  s_c47e9f9e7e0875::t_200b82395bb938 1
+demos/architect/src/worker/middleware/access.ts
+  s_c47e9f9e7e0875::t_387f9d6cb7c196 1-28
+demos/architect/src/worker/users/repository.test.ts
+  s_c47e9f9e7e0875::t_0b30ab7f08baef 18-30,37-38
+  s_c47e9f9e7e0875::t_fa059376886ad1 1-17,31-36,39-71,73-89
+  s_c47e9f9e7e0875::t_38baf81cb5b137 72
+demos/architect/src/worker/middleware/upsert-user.ts
+  s_c47e9f9e7e0875::t_d7b371a1946c7a 1-25
+docs/09-ARCHITECT.md
+  s_c47c5f78a54944::t_ae4e756386575d 10-13
+  s_c47c5f78a54944::t_db91ca529e2435 282-295
+demos/architect/vite.config.ts
+  s_c47e9f9e7e0875::t_871c5ef6688c83 1-20
+demos/architect/src/client/hooks/useIdentity.test.ts
+  s_c47e9f9e7e0875::t_f604b2e3f438d5 10-54
+  s_c47e9f9e7e0875::t_38baf81cb5b137 58-64
+  s_c47e9f9e7e0875::t_7c048b2d48f663 1-9,55-57,65-127
+demos/architect/tests/integration/vitest.config.ts
+  s_c47e9f9e7e0875::t_38baf81cb5b137 17
+  s_c47e9f9e7e0875::t_76ad986907a4d5 1-16,18-33
+spikes/06-architect-reactflow-host/src/client/nodes/ProductNode.tsx
+  s_c47c5f78a54944::t_428bcf6e134f0b 1-23
+spikes/06-architect-reactflow-host/package.json
+  s_c47c5f78a54944::t_cd8d8f2b781ffc 37-38
+  s_c47c5f78a54944::t_dd7f2bbead415a 34-36
+  s_c47c5f78a54944::t_321297f9b9d96f 1-33,39-40
+spikes/06-architect-reactflow-host/src/client/main.tsx
+  s_c47c5f78a54944::t_3e31ea462ed608 1-14
+spikes/06-architect-reactflow-host/wrangler.jsonc
+  s_c47c5f78a54944::t_a947b31aaa2f7f 1-24
+demos/architect/src/client/views/AppShellView.tsx
+  s_c47e9f9e7e0875::t_f0cd47b89a0384 1-43
+demos/architect/src/client/vitest.config.ts
+  s_c47e9f9e7e0875::t_0c404c186bc80f 1-10
+demos/architect/src/client/main.test.tsx
+  s_c47e9f9e7e0875::t_ba48e22583a735 1-18,20-21,28-37,39-42
+  s_c47e9f9e7e0875::t_6a4769556f4ce9 19,22-27,38
+demos/architect/src/client/app.css
+  s_c47e9f9e7e0875::t_38baf81cb5b137 3
+  s_c47e9f9e7e0875::t_2ed2abb55bcb73 1-2,4-57
+demos/architect/index.html
+  s_c47e9f9e7e0875::t_9d810eaaf9b405 1-16
+demos/architect/src/worker/users/types.ts
+  s_c47e9f9e7e0875::t_9edae05258bfa5 1-18
+demos/architect/.gitignore
+  s_c47e9f9e7e0875::t_3ea47ef3651046 1-12
+demos/architect/src/access-policies.ts
+  s_c47e9f9e7e0875::t_3b6e26b019a68a 1-21
+demos/architect/package-lock.json
+  s_c47e9f9e7e0875::t_cab3bcfa80e6c3 1-5743
+spikes/06-architect-reactflow-host/package-lock.json
+  s_c47c5f78a54944::t_6bd8143bfc9048 1-3204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "07c0833c36a583d2c18bfe996e4a37e86b37df63",
+  "prompts": {},
+  "sessions": {
+    "s_360f305bd18e0c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_01e28c1c8ffeH6fdssPZAodysB",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_c47c5f78a54944": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_01e227033ffer3VBZ2Aa3BsUZz",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_c47e9f9e7e0875": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_01d82456effeob0UbcZi2rptYE",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
