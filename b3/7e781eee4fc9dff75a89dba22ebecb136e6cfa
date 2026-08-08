@@ -1,0 +1,46 @@
+docs/07-PR-REVIEW-AGENT.md
+  s_360f305bd18e0c::t_1b5b4eb3f7621d 7-10,14-21,23-31,35-382,384-831,833-895
+  s_360f305bd18e0c::t_638c7099d46600 383
+docs/10-OPENCODE-BROWSER.md
+  s_a7e9f1937ef07b::t_9034212a1c31a3 1-4,6-18,20-205,207-268,270-593,602-676,678-680,682-813,815-828
+  s_c47c5f78a54944::t_c197c89ef65afb 5
+  s_a7e9f1937ef07b::t_56b5c09af54ec2 594-601
+  s_a7e9f1937ef07b::t_ed81e6ec4e144d 19
+  s_a7e9f1937ef07b::t_0e2738e1b70fa2 206
+  s_a7e9f1937ef07b::t_ece0f1596f2b97 269
+  s_a7e9f1937ef07b::t_13b56e192221fb 677
+  s_a7e9f1937ef07b::t_9cb63a058da295 681
+  s_a7e9f1937ef07b::t_53c47055195475 814
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b37e781eee4fc9dff75a89dba22ebecb136e6cfa",
+  "prompts": {},
+  "sessions": {
+    "s_360f305bd18e0c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_01e28c1c8ffeH6fdssPZAodysB",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_a7e9f1937ef07b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_01e26f7e4ffePj56wV9v3FeXYG",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_c47c5f78a54944": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_01e227033ffer3VBZ2Aa3BsUZz",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
