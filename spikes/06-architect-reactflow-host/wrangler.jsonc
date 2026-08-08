@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "spike-06-architect-reactflow-host",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2026-08-08",
+  // This spike never exposes an inbound HTTPS endpoint on the real Cloudflare network — it only
+  // ever runs under `vite dev`, gated locally by `cloudflareAccessPlugin()` — so per
+  // docs/06-AGENTIC-CHAT.md's Spike Conventions it needs neither Terraform nor a real Cloudflare
+  // Access application. `CLOUDFLARE_TEAM_DOMAIN` below is a placeholder: `cloudflareAccess()`
+  // only reads it to verify a *real* Access JWT against Cloudflare's JWKS, and this spike's local
+  // dev flow exclusively exercises `enableDevTokens`, which never reaches that code path.
+  "vars": {
+    "CLOUDFLARE_TEAM_DOMAIN": "unused-in-this-spike.cloudflareaccess.com"
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "observability": {
+    "enabled": true
+  }
+}

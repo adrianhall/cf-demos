@@ -975,3 +975,94 @@ returns that row in `result.results[0]` exactly like a `SELECT` would, alongside
 `meta.changes`. A future demo needing "update and read back the new value atomically" should
 reach for this instead of a separate `UPDATE` followed by `SELECT` (two round trips, and a
 window — however small — for another write to land in between).
+
+## NEW DECISIONS
+
+## 23. `@xyflow/react` in a plain Vite/React host, and an Access-policy `redirect: false` gotcha
+    (`spikes/06-architect-reactflow-host`, docs/09-ARCHITECT.md Phase 0)
+
+Full report: `spikes/06-architect-reactflow-host/REPORT.md`. This spike needed no Terraform and
+no real Cloudflare Access application — it never exposes an inbound HTTPS endpoint on the real
+network, only `vite dev` gated locally by `cloudflareAccessPlugin()` — so there was no
+real-account footprint to tear down afterward.
+
+**Astro added nothing load-bearing for the diagram canvas itself that a plain Vite/React/
+Cloudflare host needs to reproduce.** Reading CF-Architect's real `src/middleware.ts` directly
+confirmed its whole job is Access JWT verification, a dev-mode mock-user bypass, and an admin
+check — exactly the three things docs/09-ARCHITECT.md already planned to replace with
+`cloudflareAccess()`/`cloudflareAccessPlugin()`/an `ADMIN_EMAIL` middleware, nothing extra hiding
+in it. More surprising: CF-Architect's own editor page
+(`src/pages/diagram/[id].astro`) already mounts its React Flow island with `client:only="react"`,
+not `client:load` — Astro never server-renders the editor at all, so the single most
+Astro-coupled-looking page in the app already behaves like a plain client-rendered SPA. The one
+real gap found: Astro's file-based routing threads a diagram's `:id` into the island as an
+ordinary server-resolved prop (`src/islands/DiagramCanvasWrapper.tsx`); a plain Vite/React SPA has
+no server-side router at all, so a future phase's multi-page app needs its own client-side way to
+read that id out of the URL — a normal, well-understood addition, not a surprise blocker.
+
+**`cloudflareAccessPlugin()` fully coexists with `@cloudflare/vite-plugin` +
+`@vitejs/plugin-react`** — a complete login → authenticated `/api/*` call → `get-identity` →
+logout round trip was live-verified end to end over `curl` against a real running `vite dev`
+server, with the same `PathPolicy[]` array reused by both the plugin and the Worker's own
+`cloudflareAccess()`, exactly like `demos/url-shortener` already does.
+
+**An API path policy must set `redirect: false` explicitly, or the dev plugin can redirect an API
+caller to the login page instead of returning JSON.** Reading the toolkit's shipped
+`dist/vite/index.js` directly shows its request handler falls through to `isNavigation(req)` —
+which returns true whenever the request carries `Sec-Fetch-Mode: navigate`, or, failing that, an
+`Accept` header containing `text/html` — for any protected path whose policy entry does not
+explicitly set `redirect: false`, regardless of whether that path is `/api/*` or a page route. A
+plain `curl` (default `Accept: */*`) against an unauthenticated `/api/whoami` correctly received
+the Worker's own JSON `401`, but the identical request with `-H "Accept: text/html"` (or a real
+browser navigated there directly by URL) instead got a `302` redirect to the login form —
+live-verified both ways. `demos/url-shortener/src/access-policies.ts` already sets
+`redirect: false` on its own `/api/links`/`/api/me` entries for exactly this reason; this spike's
+first draft omitted it and reproduced the bug it was already guarding against elsewhere in this
+repo. Any future demo's Access policy array must set `redirect: false` on every `/api/*` entry
+deliberately, not rely on it being unnecessary just because the path "looks like" an API route.
+
+**Base editor bundle size confirms the prior ELK lazy-load decision's premise still holds for the
+React port.** React 19 + `@xyflow/react` + this probe's own code, with no auto-layout library
+included yet, gzips to 118.82 kB — far under the 539.52 kB gzip figure that made this repository's
+prior Vue attempt at this same demo defer ELK to a lazy `import()` (docs/09-ARCHITECT.md's
+porting table). A future phase adding ELK should still lazy-load it (the decision itself is
+unchanged) but can now cite this base measurement as the "before" figure.
+
+**Real pointer-based drag-and-drop interaction was not verified with an automated real browser —
+this environment had no browser-automation tool available, and jsdom does not implement
+HTML5 drag-and-drop or real layout geometry meaningfully enough to trust a headless simulation of
+it.** The probe's palette-drag, node-drag, and connection-drag code is structurally identical to
+CF-Architect's own already-working implementation (same `dataTransfer`/`screenToFlowPosition`
+mechanism, same `nodesDraggable`/`nodesConnectable`/`elementsSelectable` read-only-mode prop
+combination, confirmed by reading `DiagramCanvas.tsx` directly), and the built bundle loads and
+runs with zero Worker-side or console-visible errors — but this is a code-review-level claim, not
+a live-verified one. Any future phase building on this spike should do a two-minute manual
+click-test of it in a real browser first, rather than assume interaction fidelity transfers from
+a clean build alone.
+
+## 24. `wrangler deploy` resets a Worker's `observability` metadata unless a real Terraform apply
+    runs after it (`demos/architect`, Phase 1, first real deployment)
+
+Live-verified against a real Cloudflare account: after `terraform apply` sets
+`cloudflare_worker.demo.observability` (logs enabled, 100% sampling; traces enabled, 10%
+sampling) and `wrangler deploy` then runs with no `observability` block in
+`wrangler.jsonc.tpl` (this repository's shared convention — see AGENTS.md's "generated
+`wrangler.jsonc` MUST NOT duplicate ownership of settings managed by Terraform"), the next
+`terraform plan` shows the Worker's `observability.enabled`/`logs.enabled`/`traces.enabled` all
+drifted back to `false`. `wrangler deploy` does not merely leave observability alone when the
+config omits it — it actively resets it, every single deploy. Every other demo in this repository
+has this same latent bug: none had actually been deployed for real before this (their committed
+`infra/*.tfstate` files, gitignored and never applied against real resources, all show zero
+tracked resources), so the gap was never observed until `demos/architect`'s deploy was the first
+one actually run against a live account.
+
+**Fix:** `demos/architect/package.json`'s `deploy` script now runs a second, idempotent
+`terraform apply` (`deploy:infra:reconcile`) after `deploy:worker`, not just once before it:
+`run-s deploy:infra deploy:worker deploy:infra:reconcile`. This re-asserts every
+Terraform-managed setting `wrangler deploy` might have touched, without adding a second source of
+truth to `wrangler.jsonc.tpl` (which would reintroduce the exact duplicate-ownership problem
+AGENTS.md already warns against). Confirmed with a real `terraform plan -detailed-exitcode` after
+a full `npm run deploy`: zero drift. Every other demo in this repository should adopt the same
+three-step `deploy` script the next time it is actually deployed for real, and AGENTS.md's
+Resource Ownership section should eventually fold this in as a baseline requirement rather than a
+per-demo discovery.

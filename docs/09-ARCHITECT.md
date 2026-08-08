@@ -7,8 +7,10 @@ Domain: `architect.cfapps.uk`
 Status: Plan finalized — all open questions resolved (see [Decisions](#decisions)
 below; the standalone Open Questions section has been folded into the plan).
 See [Post-MVP](#post-mvp-live-collaboration-and-ai-proposals)
-for what that means for a future collaboration/AI specification. No code
-exists yet for this plan.
+for what that means for a future collaboration/AI specification.
+[Phase 0](#phase-0---spike-tag-phase-00-spike) is complete — see
+`spikes/06-architect-reactflow-host/REPORT.md`; no `demos/architect` code exists
+yet.
 
 Cloudflare products: Workers, Static Assets, Cloudflare Access, D1, and
 Workers KV. Durable Objects, Workflows, Workers AI, and R2 are explicitly out
@@ -276,6 +278,20 @@ application.
 ## Implementation Plan
 
 ### Phase 0 - Spike (tag: `phase-00-spike`)
+
+**✅ Complete — see `spikes/06-architect-reactflow-host/REPORT.md`.** Confirmed clean on every
+question below: the plain Vite/React/Cloudflare host needs nothing Astro-specific reproduced for
+the diagram canvas itself (CF-Architect's own editor page already opts out of Astro SSR via
+`client:only="react"`), and `cloudflareAccessPlugin()` coexists cleanly with
+`@cloudflare/vite-plugin` + `@vitejs/plugin-react` (full local login/logout round trip
+live-verified). Two concrete, reusable findings for later phases: every `/api/*` Access policy
+entry needs an explicit `redirect: false` (the dev plugin's navigation-vs-API detection can
+otherwise redirect an API caller to the login page instead of returning JSON — see the report's
+§3), and Phase 2's multi-page app will need its own client-side way to read a diagram's `:id` out
+of the URL, since a plain SPA has no server-side router to thread it through as a prop the way
+Astro's file-based routing did. Real pointer-based drag-and-drop interaction could not be
+verified with an automated real browser in the spike's environment; the report recommends a
+two-minute manual click-test of the spike as the first thing done in Phase 1.
 
 **Unknown to prove:** whether `@xyflow/react`, its custom node/edge renderers,
 palette drag-and-drop, and a true read-only mode behave the same wired

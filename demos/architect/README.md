@@ -1,0 +1,112 @@
+# Architect
+
+A Cloudflare architecture diagram editor based on Cloudflare Workers, Static Assets, Cloudflare Access, D1, and Workers KV.
+
+See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches and how it works, and [`DEMO.md`](./DEMO.md) for a presenter's demo script.
+
+> **Status:** Phase 1 (scaffolding and Access) of `docs/09-ARCHITECT.md` is implemented — a secure, empty app shell with no diagram editor yet. Later phases add the catalog/editor, sharing, admin, and export/print/dark-mode features described in that plan.
+
+## Prerequisites
+
+- Node.js 24 or newer and npm 11 or newer.
+- Terraform 1.10 or newer.
+- A Cloudflare account with a zone that can host `<DEMO_NAME>.<DEMO_DOMAIN>` (default `architect.cfapps.uk`) and no conflicting CNAME on that hostname.
+- A Cloudflare Zero Trust team with at least one enabled identity provider — any authenticated user from that provider can open the editor.
+- A Cloudflare API token scoped to the target account and zone with:
+  - Entire Account > Developer Platform > Workers Scripts: Edit
+  - Entire Account > Developer Platform > D1: Edit
+  - Entire Account > Developer Platform > Workers KV Storage: Edit
+  - Entire Account > Cloudflare One / Zero Trust > Access: Edit
+  - Entire Account > Cloudflare One / Zero Trust > Access: Identity Providers: Read
+  - `<your-domain>` > DNS & Zones > DNS: Write
+
+## Environment Configuration
+
+```sh
+cd demos/architect
+cp .env.example .env
+```
+
+Set every value in `.env`:
+
+| Variable | Meaning |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | API token with the permissions listed above. |
+| `CLOUDFLARE_ACCOUNT_ID` | Account that owns the Worker, D1 database, KV namespace, and Access applications. |
+| `CLOUDFLARE_ZONE_ID` | Zone ID for `DEMO_DOMAIN`. |
+| `DEMO_DOMAIN` | Zone hostname the demo is deployed under, e.g. `cfapps.uk`. |
+| `DEMO_NAME` | Worker name and hostname label, e.g. `architect` for `architect.cfapps.uk`. |
+| `CLOUDFLARE_TEAM_DOMAIN` | Access team domain without `https://`, e.g. `example.cloudflareaccess.com`. |
+| `ADMIN_EMAIL` | The sole identity `GET /api/me` reports as `isAdmin`. Any other authenticated identity can use the editor but never sees admin UI. |
+
+Do not commit `.env`, Terraform state, the generated `wrangler.jsonc`, or generated binding types (`worker-configuration.d.ts`).
+
+## Local Development
+
+```sh
+npm install
+npm start
+```
+
+`npm start` generates `wrangler.jsonc` from `wrangler.jsonc.tpl` and the committed local placeholder values in `infra/local-outputs.json`, generates binding types, applies the D1 migration to the local SQLite database (`db:migrate:local`), builds, and starts Vite. No Terraform state or cloud resources are required.
+
+Open the printed local address. `/` is the public landing page; opening `/app` triggers the local Access dev-login form, which offers `admin@example.com` (matching `infra/local-outputs.json`'s `admin_email`) and `alice@example.com`. Use the visible **Sign out** control in the app shell to switch identities. Local D1 data lives under `.wrangler/` and can be deleted between sessions.
+
+## Testing
+
+```sh
+npm run check          # format, lint, type check, Terraform fmt/validate
+npm run test:unit      # Worker and client unit projects
+npm run test:integration
+npm run test:coverage
+npm run build
+```
+
+## Deployment
+
+```sh
+cd demos/architect
+npm run deploy
+```
+
+`npm run deploy` runs `deploy:infra` (Terraform `init` then `apply -auto-approve`, reading configuration from `.env`) followed by `deploy:worker`. Before building, the `predeploy:worker` hook regenerates `wrangler.jsonc` from the live Terraform outputs (`generate-wrangler -cf --terraform infra`) and regenerates binding types (`generate-wrangler-types`). `deploy:worker` then applies the D1 migration to the remote database (`db:migrate:remote`) before building with the deployed Access application's audience tag (`VITE_ACCESS_AUDIENCE`, read from the `access_audience` Terraform output) and deploying the Worker.
+
+Before provisioning for the first time, verify in the Cloudflare dashboard that no Worker, D1 database, KV namespace, or Access application named for `DEMO_NAME` remain from a prior implementation of this demo slot; clean up manually if so.
+
+### Post-Deploy Verification
+
+1. Visit `https://<DEMO_NAME>.<DEMO_DOMAIN>` (default `https://architect.cfapps.uk`) anonymously and confirm the public landing page loads with no sign-in prompt.
+2. Select **Open the editor** (`/app`) and confirm Cloudflare Access requests sign-in.
+3. Sign in through the configured identity provider and confirm the app shell shows your email.
+4. In the Cloudflare dashboard under **Workers & Pages** > `<DEMO_NAME>` > **D1** > `<DEMO_NAME>-db` > **Console**, run `SELECT * FROM users;` and confirm a row exists for the identity you signed in as.
+5. Sign in as the identity matching `ADMIN_EMAIL` and confirm the app shell marks it `(administrator)`.
+
+## Provisioned Resources
+
+- Worker (`<DEMO_NAME>`) serving the React app shell as static assets and a Hono API.
+- D1 database `<DEMO_NAME>-db`, bound as `DB` (tables: `diagrams`, `users`).
+- Workers KV namespace `<DEMO_NAME>-shares`, bound as `SHARES` (unused until sharing ships).
+- Custom domain `<DEMO_NAME>.<DEMO_DOMAIN>`.
+- Access application + bypass policy covering the whole hostname (the public landing page).
+- Access application + allow policy for any authenticated user, scoped to `/app*` and `/api/*`.
+- Workers Logs (100% sampling) and traces (10% sampling).
+
+## Troubleshooting
+
+| Symptom | Cause and resolution |
+| --- | --- |
+| `/app` is public | Confirm the `app` Access application lists both `/app*` and `/api/*` destinations, then re-run `npm run deploy`. |
+| Local sign-in loops or shows the wrong identity | Visit `/cdn-cgi/access/logout` and choose a different dev identity. |
+| `401` from `/api/me` | Sign in through Access at `https://<DEMO_NAME>.<DEMO_DOMAIN>/app`; every `/api/*` route requires a verified Access identity. |
+| `isAdmin` is always `false` | Confirm the signed-in identity's email exactly matches `ADMIN_EMAIL` in `.env`, then re-run `npm run deploy`. |
+| `generate:wrangler` fails during deploy | Run `npm run deploy:infra:apply` successfully first; every referenced Terraform output must exist. |
+| D1 migration fails during deploy | Confirm Terraform apply completed (the D1 database must exist) before `db:migrate:remote` runs; re-run `npm run deploy`. |
+
+## Teardown
+
+```sh
+cd demos/architect
+npm run teardown
+```
+
+`npm run teardown` runs `terraform destroy -auto-approve`, removing the Worker, D1 database, KV namespace, custom domain, and both Access applications/policies, then deletes the locally generated `wrangler.jsonc` and `worker-configuration.d.ts`. Confirm no `<DEMO_NAME>` Worker, D1 database, KV namespace, or Access applications remain in the account before discarding local Terraform state.

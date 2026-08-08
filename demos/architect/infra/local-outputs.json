@@ -1,0 +1,9 @@
+{
+  "admin_email": "admin@example.com",
+  "cloudflare_team_domain": "local.cloudflareaccess.com",
+  "d1_database_id": "00000000-0000-0000-0000-000000000000",
+  "d1_database_name": "architect-local-db",
+  "environment": "development",
+  "shares_kv_namespace_id": "00000000000000000000000000000000",
+  "worker_name": "architect-local"
+}

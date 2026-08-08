@@ -1,0 +1,154 @@
+body {
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.app__toolbar h1 {
+  font-size: 1rem;
+  margin: 0;
+  flex: 1;
+}
+
+.app__identity {
+  font-family: monospace;
+}
+
+.canvas-layout {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.canvas-layout__flow {
+  flex: 1;
+  min-width: 0;
+}
+
+.palette {
+  width: 200px;
+  padding: 0.75rem;
+  border-right: 1px solid #ddd;
+  overflow-y: auto;
+}
+
+.palette__heading {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  color: #666;
+}
+
+.palette__list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.palette__item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: white;
+  cursor: grab;
+  font-size: 0.85rem;
+}
+
+.palette__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.palette__category {
+  margin-left: auto;
+  color: #999;
+  font-size: 0.7rem;
+}
+
+.properties-panel {
+  width: 240px;
+  padding: 0.75rem;
+  border-left: 1px solid #ddd;
+  overflow-y: auto;
+}
+
+.properties-panel__field {
+  display: block;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.properties-panel__field input,
+.properties-panel__field textarea {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  box-sizing: border-box;
+}
+
+.cf-node {
+  border: 1px solid #999;
+  border-left: 4px solid #f6821f;
+  border-radius: 6px;
+  background: white;
+  padding: 0.5rem 0.75rem;
+  min-width: 120px;
+  font-size: 0.85rem;
+}
+
+.cf-node--selected {
+  outline: 2px solid #2563eb;
+}
+
+.cf-node--actor {
+  border-radius: 999px;
+  border-left-width: 1px;
+  text-align: center;
+}
+
+.cf-node__label {
+  font-weight: 600;
+}
+
+.cf-node__description {
+  color: #666;
+  font-size: 0.75rem;
+}
+
+.cf-edge-label {
+  position: absolute;
+  background: white;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  border: 1px solid #ccc;
+  pointer-events: none;
+}
+
+.cf-edge-label--binding {
+  border-style: dashed;
+}

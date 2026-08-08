@@ -7,7 +7,7 @@ Domain: `review-agent.cfapps.uk`
 Status: Draft implementation plan
 
 Cloudflare products: Workers, Static Assets, Cloudflare Access, D1, Durable
-Objects (Agents SDK), Workers AI, and AI Gateway.
+Objects (Agents SDK), Workflows, Workers AI, and AI Gateway.
 
 ## Goal
 
@@ -20,15 +20,21 @@ triggered either by a webhook from GitHub/GitLab or by an authenticated user
 pasting a PR/MR URL into the UI. While a review is running, the UI shows what
 each reviewer is doing and, once available, what it cost.
 
-This is the curriculum's introduction to two things every earlier demo
+This is the curriculum's introduction to three things every earlier demo
 sidesteps: **consuming a signed, unauthenticated-by-Access inbound webhook
-from a third-party SaaS platform**, and **running several independent AI
-passes over the same input and merging their structured output into one
-report**. Every primitive it uses to do that — Workers AI, AI Gateway,
-Durable Objects, and the Agents SDK's `state`/`broadcast()` live-update
-mechanism — was already taught by demo 5 or demo 6; this demo does not
-introduce a new Cloudflare product for its own sake, only a new way of
-combining ones already in the curriculum.
+from a third-party SaaS platform**; **running several independent AI passes
+over the same input and merging their structured output into one report**;
+and — the one genuinely new product this demo brings forward from its usual
+curriculum position (demo 14) on purpose — **wrapping an agent's inherently
+non-deterministic steps (an LLM call, with tool use, whose output shape and
+retry behavior are never fully predictable) inside a Cloudflare Workflow's
+deterministic, checkpointed steps**, so a transient failure retries only the
+one step that failed — and only that step's one paid model call — instead of
+re-running (and re-billing) an entire review. Every other primitive this
+demo uses — Workers AI, AI Gateway, Durable Objects, and the Agents SDK's
+`state`/`broadcast()` live-update mechanism — was already taught by demo 5 or
+demo 6; see "Explicit Exceptions" for why pulling Workflows forward here,
+ahead of demo 14, is deliberate rather than a curriculum-ordering mistake.
 
 ## Prior Art
 
@@ -47,10 +53,13 @@ combining ones already in the curriculum.
   the lab at <https://agents-school.tiwi.me>. It confirms the
   `workers-ai-provider` + `ai` SDK + Agents SDK combination this demo also
   uses, but is chat-shaped (one conversational agent, no external Git
-  integration, no structured findings). This demo is not a chat agent: a
-  review run has a fixed start, a fixed set of parallelizable-in-principle
-  steps, and a fixed end, which is why it uses a plain Agents SDK `Agent`,
-  not an `AIChatAgent` (see "Review Orchestration").
+  integration, no structured findings, no Workflow). This demo is not a chat
+  agent: a review run has a fixed start, a fixed sequence of steps, and a
+  fixed end, which is why the pipeline itself is a Cloudflare Workflow
+  (`AgentWorkflow`) and the Agent's own job shrinks to holding the live
+  WebSocket connection and reacting to the Workflow's progress (see "Review
+  Orchestration"). Neither prior-art repo uses Workflows at all — that part
+  of this demo's design has no direct precedent in either.
 
 ## Behavior
 
@@ -68,12 +77,19 @@ combining ones already in the curriculum.
   exact caps — document their values in `README.md`, per this repo's
   convention for demo 5's message caps).
 - Run up to four specialist reviewer passes — **Architecture**, **Code
-  Quality**, **Security**, **Accessibility** — against that diff, each an
+  Quality**, **Security**, **Accessibility** — against that diff, each its
+  own durable, independently retried step of one Cloudflare Workflow, an
   independent Workers AI call through AI Gateway with its own persona and
   its own small toolset (a `getFileContent` tool for pulling more context
   than the diff hunk shows). The Accessibility pass is skipped (not run,
   not billed) when no changed file has a UI-relevant extension, mirroring
   the same rule the real `accessibility-reviewer` subagent already applies.
+- If one reviewer's call fails transiently (a network blip, a momentary
+  Workers AI/AI Gateway error), only that step retries — automatically, with
+  backoff, per the Workflow's own step configuration — while every
+  already-completed reviewer's findings and cost stay exactly as they were.
+  Nothing about a whole review ever needs to restart from the beginning
+  because one step had a bad moment (see "Review Orchestration").
 - Merge the (up to four) reviewers' structured findings into one
   consolidated report with a severity-based executive summary, in the same
   P0–P3 shape the OpenCode `review-orchestrator` produces — deterministically
@@ -89,8 +105,8 @@ combining ones already in the curriculum.
   (`queued`/`running`/`done`/`skipped`/`error`) and, once available, its
   cost to any client with that run open — over the same Durable Object
   `state` + `broadcast()` mechanism demo 6 established for a live cost
-  ledger, reused here for a fixed four-step pipeline instead of an
-  open-ended chat.
+  ledger, here fed by the owning Workflow's own progress reports rather than
+  a hand-rolled sequential loop inside the Agent itself.
 
 ## Explicit Exceptions
 
@@ -142,10 +158,21 @@ the following ways. These exceptions control for this demo only:
   deterministic, unit-testable, and free — and a smaller, less
   human-like version of that same lesson. Document the difference; do not
   pretend the two are equivalent.
-- **No Workflows.** A single Durable Object running a fixed, four-step
-  sequential pipeline is sufficient (see "Review Orchestration"); per the
-  curriculum principle, do not reach for a Workflow when a Durable Object
-  already provides the coordination this needs.
+- **Workflows appear ahead of their curriculum position (demo 14), on
+  purpose.** The curriculum principle is "introduce at most one major
+  platform concept in each demo" and "do not use a Workflow when a request
+  or Queue consumer is sufficient" — and a request or a Durable Object's own
+  in-memory sequencing genuinely would be sufficient here in the narrow
+  sense of "the pipeline would still run." This demo pulls Workflows forward
+  anyway because the user-facing lesson it exists to teach — pairing an
+  agent's non-deterministic steps with deterministic, checkpointed,
+  automatically retried orchestration — is a different emphasis than demo
+  14's own Workflows lesson (a long-running pipeline that waits on an
+  external human approval), not a duplicate of it. Demo 14 still introduces
+  Workflows as this repo's curriculum sees it first in reading order; this
+  demo is the one place it is used for something an agentic system
+  specifically needs. Say so explicitly in `EXPLAIN-DEMO.md` so the
+  reordering reads as deliberate, not as a curriculum-principle violation.
 
 ## Out Of Scope
 
@@ -176,19 +203,28 @@ per-team scoping.
 3. Open that run's detail page and watch each reviewer's badge move
    `queued` → `running` → `done` one at a time, and its cost move from
    "pending" to a real dollar figure as AI Gateway confirms it.
-4. When the run completes, open the GitHub PR and show the posted review
+4. Open the Cloudflare dashboard's Workflows view (or, when rehearsing
+   locally, Local Explorer at `/cdn-cgi/explorer`) for this run's instance
+   and show its step timeline: one step per reviewer, one per cost
+   reconciliation, each with its own status and retry count — the same
+   pipeline the badges in step 3 are a live projection of. If rehearsing,
+   force a transient failure in one reviewer step ahead of time (see
+   `DEMO.md` for the exact rehearsal trick) and point out that only that one
+   step re-ran — every other reviewer's already-recorded finding and cost
+   was untouched by the retry.
+5. When the run completes, open the GitHub PR and show the posted review
    comment: an executive summary, a severity table, and the P0/P1 findings,
    with a link back to the full report.
-5. Back in the UI, open the full report and show every finding (including
+6. Back in the UI, open the full report and show every finding (including
    the P2/P3 ones the comment omitted) and each reviewer's raw output.
-6. Demonstrate the second trigger path: paste a GitLab MR URL into the
+7. Demonstrate the second trigger path: paste a GitLab MR URL into the
    "Review a PR/MR" form and submit — no webhook configuration needed for
    this path at all.
-7. Open Workers Logs and find the structured `review_started`,
+8. Open Workers Logs and find the structured `review_started`,
    `reviewer_completed`, `reviewer_skipped`, and `review_posted` events for
    one run, correlated by `runId`, and point out that no diff or finding
    text appears in any of them.
-8. Open the AI Gateway dashboard for this demo's gateway and show the
+9. Open the AI Gateway dashboard for this demo's gateway and show the
    individual model calls for that run's reviewers, their real cost, and
    point out that it matches the number the UI now shows as "confirmed."
 
@@ -204,7 +240,8 @@ per-team scoping.
 - `workers-best-practices`
 - `wrangler`
 - `durable-objects`
-- `agents-sdk`
+- `agents-sdk` (including its Workflows integration, `agents/workflows` —
+  read `references/workflows.md` before implementing "Review Orchestration")
 
 **Vue / UI skills:**
 
@@ -432,24 +469,38 @@ prose:
 
 ## Review Orchestration
 
-One `ReviewRunAgent extends Agent<Env, ReviewRunState>` (Agents SDK, plain
-`Agent`, not `AIChatAgent` — there is no open-ended conversation here, only
-a fixed pipeline with a start and an end) per review run, addressed by
-`getAgentByName(env.REVIEW_RUN, runId)` where `runId` is a
-`crypto.randomUUID()` minted the moment a trigger is accepted (webhook or
-manual). This gives the run:
+Two cooperating pieces, deliberately given two different jobs, each doing
+only the one it is actually good at:
 
-- **A persistent connection for live status**, which is the concrete
-  "coordination/persistent connection" justification the curriculum
-  principle asks for before reaching for a Durable Object: a client with a
-  run's detail page open holds a WebSocket to this instance for the
-  run's lifetime.
-- **A natural place to hold in-memory sequencing** for the pipeline below,
-  without any extra locking.
+- **`ReviewRunAgent extends Agent<Env, ReviewRunState>`** (Agents SDK, plain
+  `Agent`, not `AIChatAgent` — there is no open-ended conversation here)
+  owns the **live connection**: it is the addressable entity a client's
+  WebSocket connects to for a run's lifetime, and the only place `state` and
+  `broadcast()` are called from. Per the Agents SDK's own guidance table for
+  choosing between an Agent alone and an Agent-plus-Workflow ("long-running
+  tasks (>30s): Agent + Workflow"), a four-reviewer review run comfortably
+  clears that bar.
+- **`ReviewPipelineWorkflow extends AgentWorkflow<ReviewRunAgent,
+  ReviewTrigger>`** (`agents/workflows`) owns the **pipeline**: the actual
+  fetch-diff → review → merge → post-comment sequence, expressed as durable,
+  independently retried Workflow steps. This is where "deterministic,
+  repeatable flows are good within an agentic architecture" is a design
+  decision with a concrete payoff, not a slogan: a transient failure in one
+  step (a network blip calling GitHub, a momentary AI Gateway error) retries
+  *only that step*, with the Workflow engine's own configurable backoff,
+  while every step that already completed — including an already-paid-for
+  model call — is never redone.
+
+Both are addressed by the same `runId`, a `crypto.randomUUID()` minted the
+moment a trigger is accepted: `getAgentByName(env.REVIEW_RUN, runId)` for
+the Agent, and `this.runWorkflow("ReviewPipelineWorkflow", payload)` (called
+from inside the Agent, per the Agents SDK's own `AgentWorkflow` integration)
+for the Workflow it owns.
 
 ```ts
 interface ReviewRunState {
   runId: string;
+  workflowInstanceId: string;
   status: "running" | "completed" | "failed";
   reviewers: Array<{
     role: ReviewerRole;
@@ -461,72 +512,125 @@ interface ReviewRunState {
 }
 ```
 
-A `@callable() start(payload: ReviewTrigger)` RPC (called once, immediately
-after the D1 `review_runs` row is inserted) does the minimum to answer
-quickly — per the Agents SDK's own webhook guidance to "respond quickly" —
-then hands off to `this.ctx.waitUntil(this.runPipeline(payload))` so the
+A `@callable() start(payload: ReviewTrigger)` RPC on `ReviewRunAgent` (called
+once, immediately after the D1 `review_runs` row is inserted) does the
+minimum to answer quickly — per the Agents SDK's own webhook guidance to
+"respond quickly" — `setState()`s every reviewer to `queued` (skipping
+`accessibility` up front if no changed file qualifies, from the changed-file
+list the trigger payload already carries), starts
+`const instance = await this.runWorkflow("ReviewPipelineWorkflow", payload)`,
+records `instance.id` into `state.workflowInstanceId`, and returns — the
 triggering HTTP request (the webhook delivery, or the UI's `POST
-/api/reviews`) returns as soon as the run is accepted, not after it
-finishes.
+/api/reviews`) is answered as soon as the run is accepted, well before the
+pipeline finishes.
 
-`runPipeline()`:
+**`ReviewRunAgent`'s Workflow lifecycle callbacks are the only place `state`
+changes after that**, translating the Workflow's own progress reports into
+the same `setState()`/`broadcast()` pair demo 6 established (durable state
+for a client connecting late; a broadcast event only for a transition a
+client already watching needs to animate):
 
-1. `setState()` every reviewer to `queued` (skip `accessibility` immediately
-   if no changed file qualifies) and broadcast nothing yet — the initial
-   state itself is what a client connecting right away receives.
-2. Fetch the diff via the matching `GitProviderClient`. On failure, write
-   `review_runs.status = "failed"` with an error detail, `setState({status:
-   "failed"})`, and stop — no reviewer ever ran, so there is nothing to bill
-   or reconcile.
-3. **Run the (up to four) active reviewers strictly sequentially, not in
-   parallel.** This is a deliberate choice, not an oversight, for two
-   independent reasons:
-   - `env.AI.aiGatewayLogId` documents itself as "the log ID from the most
-     recent `env.AI.run()` request" — a single value on the shared binding.
-     Reading it immediately after each `await env.AI.run(...)` call, before
-     the next one starts, is unambiguous; racing several calls with
-     `Promise.all` would not be. Running sequentially sidesteps that
-     question entirely instead of needing to prove it safe.
-   - It gives a presenter a legible, one-at-a-time story to narrate live —
-     "now architecture is running, now security…" — which a set of four
-     simultaneously-flipping badges would not.
+```ts
+async onWorkflowProgress(_name: string, _id: string, progress: ReviewerProgress) {
+  this.setState({ ...this.state, reviewers: mergeReviewerProgress(this.state.reviewers, progress) });
+  this.broadcast({ type: progress.event, role: progress.role, ...progress.detail });
+}
 
-   For each active reviewer, in a fixed order (`code-quality`,
+async onWorkflowComplete(_name: string, _id: string, result: { commentUrl: string }) {
+  this.setState({ ...this.state, status: "completed" });
+  this.broadcast({ type: "review_completed", commentUrl: result.commentUrl });
+}
+
+async onWorkflowError(_name: string, _id: string, error: Error) {
+  await markRunFailed(this.env.DB, this.state.runId, error.message);
+  this.setState({ ...this.state, status: "failed" });
+  this.broadcast({ type: "review_failed", detail: error.message });
+}
+```
+
+**`ReviewPipelineWorkflow.run(event, step)`**, the deterministic pipeline
+itself:
+
+1. `step.do("fetch-diff", { retries: { limit: 3, delay: "10 seconds",
+   backoff: "exponential" } }, ...)` — call the matching `GitProviderClient`.
+   A permanent provider response (`404`, `403` — the PR/MR genuinely does
+   not exist or is not reachable with this token) throws
+   `NonRetryableError` immediately, since retrying cannot help; a transient
+   one (`5xx`, a timeout) is left to the step's own retry configuration.
+   If every retry is exhausted or a `NonRetryableError` is thrown, `run()`
+   never reaches step 2 — the Workflow instance ends `errored`, and
+   `ReviewRunAgent.onWorkflowError()` marks the run `failed`. No reviewer
+   ever ran, so there is nothing to bill or reconcile.
+2. For each active reviewer, in a fixed order (`code-quality`,
    `accessibility`, `architecture`, `security` — cheaper/faster passes
-   first): `setState` that reviewer to `running` and `broadcast()` a
-   `{ type: "reviewer_started", role }` event; run its persona (see
-   "Reviewer Personas"); on success, write its `review_findings` rows and a
-   `review_reviewers` row with `costSource: "pending"` and the call's
-   `aiGatewayLogId`; `setState` it to `done`, `broadcast()`
-   `{ type: "reviewer_completed", role, findingCount }`; and `this.schedule(5,
-   "reconcileCost", { reviewerRowId, logId })` (see "Cost Tracking"). On
-   failure (including exhausting the one JSON-repair retry), write
-   `status: "error"` with the error detail instead and continue to the next
-   reviewer — one reviewer failing must not abort the whole run.
-4. Once every active reviewer has finished (successfully or not), call the
-   pure `mergeFindings()` function, assemble the consolidated Markdown
-   report (see "Report Assembly And Comment Posting"), and post it. Update
-   `review_runs` with `status: "completed"`, `commentUrl`, `completedAt`;
-   `setState({status: "completed"})`; `broadcast()`
-   `{ type: "review_completed", commentUrl }`.
-5. `reconcileCost(payload)` (an Agents SDK scheduled task, not
-   `ctx.waitUntil`, since it must survive independently of the request that
-   scheduled it): call `env.AI.gateway(env.AI_GATEWAY_ID).getLog(logId)`. Per
-   `docs/DECISIONS.md` #16, an unavailable log throws `AiGatewayLogNotFound`
-   rather than returning `null` — catch it, increment
-   `reconcile_attempts`, and reschedule with backoff (5 s, then 15 s, then
-   30 s; three attempts total) if under the bound; beyond it, leave the row
-   `costSource: "pending"` permanently, a legitimate outcome exactly as
-   demo 6 treats an unreconciled turn. On success, read `tokens_in`/
-   `tokens_out`/`cost` (the real `AiGatewayLog` field names per
-   `docs/DECISIONS.md` #16 — not `prompt_tokens`/`completion_tokens`),
-   `UPDATE` the `review_reviewers` row with `costSource: "gateway"`,
-   `setState()` that reviewer's `costUsd`/`costSource`, and `broadcast()`
-   `{ type: "cost_reconciled", role, costUsd }` so the UI can animate the
-   "pending" → confirmed transition the same way demo 6's chat badge does.
-6. The reconciliation task MUST tolerate the run having been deleted (there
-   is no deletion feature in this demo, but tolerate it anyway per the same
-   defensive habit demo 6 documents) — exit cleanly, never throw.
+   first, and still one at a time: sequencing the calls, not the Workflow
+   engine, is what keeps this legible for a presenter to narrate live, "now
+   architecture is running, now security…"):
+   - `await this.reportProgress({ role, event: "reviewer_started" })` — a
+     **non-durable** ping (fine to lose on a mid-flight interruption; it is
+     only a UI liveness cue, never the source of truth).
+   - `const result = await step.do(\`review:${role}\`, { retries: { limit:
+     2, delay: "15 seconds", backoff: "exponential" }, timeout: "3 minutes"
+     }, async () => { ... })` — run the persona (see "Reviewer Personas"),
+     then **write its `review_reviewers`/`review_findings` rows inside the
+     same step**, as an idempotent upsert keyed on `(run_id, role)`. This
+     matters precisely because Workflows guarantees a step's callback runs
+     **at least once**, not exactly once: if the D1 write had already
+     partially succeeded once before a retry, an ordinary `INSERT` would
+     conflict or duplicate rows on the second attempt, while an upsert makes
+     re-running the whole step safe. When the bounded one-shot JSON-repair
+     retry inside `runReviewer()` itself is exhausted, throw
+     `NonRetryableError` rather than letting the step's own retry config
+     re-run it — repeating an already-uncooperative model's exact same
+     prompt is unlikely to help and would otherwise mean paying for up to
+     three near-identical failed calls instead of one.
+   - `await step.mergeAgentState({ reviewers: { [role]: { status: result
+     ? "done" : "error", findingCount: result?.findings.length ?? 0 } } })`
+     — the **durable** counterpart to the ping above: step-checkpointed, so
+     it is exactly-once even if the instance is interrupted immediately
+     after.
+   - `await this.reportProgress({ role, event: "reviewer_completed" })`.
+   - Reconcile cost **as Workflow steps, not a hand-rolled schedule.**
+     `await step.sleep(\`reconcile-wait:${role}\`, "5 seconds")`, then
+     `try { const log = await step.do(\`reconcile-cost:${role}\`, {
+     retries: { limit: 3, delay: "15 seconds", backoff: "exponential" },
+     timeout: "2 minutes" }, () =>
+     env.AI.gateway(env.AI_GATEWAY_ID).getLog(result.aiGatewayLogId)); ...
+     } catch { /* leave costSource "pending" permanently */ }`. Per
+     `docs/DECISIONS.md` #16, an unavailable log **throws**
+     `AiGatewayLogNotFound` rather than returning `null` or a `404` — which
+     is exactly what makes it fit `step.do()`'s own retry mechanism with no
+     custom code: the step's callback throws until the log is ready, the
+     Workflow engine backs off and retries it for us, and if all three
+     attempts are exhausted the error simply propagates out of `step.do()`
+     to our surrounding `try`, where it is treated as a legitimate,
+     permanent "stayed pending" outcome — not a failed Workflow instance.
+     On success, read `tokens_in`/`tokens_out`/`cost` (the real
+     `AiGatewayLog` field names per `docs/DECISIONS.md` #16, not
+     `prompt_tokens`/`completion_tokens`), `UPDATE` the `review_reviewers`
+     row, `step.mergeAgentState()` the confirmed cost, and
+     `this.reportProgress({ role, event: "cost_reconciled" })` so the UI can
+     animate the "pending" → confirmed transition the same way demo 6's
+     chat badge does. No `reconcile_attempts` bookkeeping is needed in D1 at
+     all — the Workflow engine already tracks each step's own attempt count,
+     visible in its own step timeline (see "Demo Flow").
+3. `step.do("merge-and-post-comment", { retries: { limit: 2, delay: "10
+   seconds" } }, async () => { ... })`. **This step's retry must itself be
+   idempotent, and deliberately is**: its first line re-reads the
+   `review_runs` row and returns immediately if `comment_url` is already
+   set, so a retried attempt (network blip after a successful post, for
+   example) can never post the same comment twice. Otherwise it calls the
+   pure `mergeFindings()` function, builds both report representations (see
+   "Report Assembly And Comment Posting"), posts the comment, and updates
+   `review_runs` with `status: "completed"`, `comment_url`, the full report,
+   and `completed_at` — all inside the one step, for the same "one step,
+   one atomic unit of durable work" reason as step 2.
+4. `await step.reportComplete({ commentUrl })` — the durable completion
+   signal `ReviewRunAgent.onWorkflowComplete()` reacts to.
+
+`ReviewRunAgent` never runs any of this logic itself, holds no in-memory
+sequencing, and needs no locking: the Workflow instance is the one and only
+place a review's steps are ordered, retried, and checkpointed.
 
 ## Cost Tracking
 
@@ -552,6 +656,15 @@ compute nothing locally) without reusing its heaviest mechanism:
   confirmed in #13), and reconciliation is one binding call,
   `env.AI.gateway(env.AI_GATEWAY_ID).getLog(logId)`, with no REST call, no
   extra Wrangler secret, and no correlation metadata needed at all.
+- **The reconciliation backoff is a Workflow step's own retry
+  configuration, not hand-rolled scheduling code.** `getLog()` throwing
+  `AiGatewayLogNotFound` for a not-yet-indexed log (`docs/DECISIONS.md` #16)
+  is exactly the shape `step.do()`'s built-in retry mechanism exists for —
+  see "Review Orchestration" for the exact step. Compared to demo 6's Agents
+  SDK `this.schedule()`-based reconciliation, this needs no bespoke attempt
+  counter in D1, and its retry/backoff behavior is inspectable directly in
+  the Workflow's own step timeline (see "Demo Flow") instead of only in
+  application logs.
 - **No AI Gateway dynamic routing.** Demo 6 owns that lesson (governed,
   metadata-driven model selection). This demo's reviewer→model mapping is a
   fixed server-side implementation detail with no per-caller variation, so
@@ -589,16 +702,22 @@ compute nothing locally) without reusing its heaviest mechanism:
 
 | Table | Purpose | Notable columns |
 | --- | --- | --- |
-| `review_runs` | One row per review | `id` (UUID PK), `provider`, `repo_full_name`, `pr_number`, `pr_url`, `pr_title`, `pr_author`, `head_sha`, `trigger` (`webhook`\|`manual`), `triggered_by_email` (nullable), `status`, `diff_truncated`, `changed_file_count`, `comment_url` (nullable), `error_detail` (nullable), `created_at`, `completed_at`; `UNIQUE (provider, repo_full_name, pr_number, head_sha)` |
+| `review_runs` | One row per review | `id` (UUID PK), `workflow_instance_id`, `provider`, `repo_full_name`, `pr_number`, `pr_url`, `pr_title`, `pr_author`, `head_sha`, `trigger` (`webhook`\|`manual`), `triggered_by_email` (nullable), `status`, `diff_truncated`, `changed_file_count`, `comment_url` (nullable), `error_detail` (nullable), `created_at`, `completed_at`; `UNIQUE (provider, repo_full_name, pr_number, head_sha)` |
 | `review_webhook_deliveries` | Idempotency guard | `id` (`provider:deliveryId`, PK), `run_id` (nullable FK), `received_at` |
-| `review_reviewers` | Per-reviewer execution record | `id`, `run_id` FK, `role`, `model`, `status`, `skipped_reason` (nullable), `started_at`, `completed_at`, `error_detail` (nullable), `ai_gateway_log_id` (nullable), `cost_usd` (nullable), `tokens_in`/`tokens_out` (nullable), `cost_source` (`pending`\|`gateway`), `reconcile_attempts` |
+| `review_reviewers` | Per-reviewer execution record (upserted by its owning Workflow step — see "Review Orchestration") | `id`, `run_id` FK, `role`, `model`, `status`, `skipped_reason` (nullable), `started_at`, `completed_at`, `error_detail` (nullable), `ai_gateway_log_id` (nullable), `cost_usd` (nullable), `tokens_in`/`tokens_out` (nullable), `cost_source` (`pending`\|`gateway`); `UNIQUE (run_id, role)` — no `reconcile_attempts` column, unlike demo 6's ledger: the Workflow engine already tracks each reconciliation step's own attempt count |
 | `review_findings` | Merged findings | `id`, `run_id` FK, `finding_ref`, `priority` (`P0`–`P3`), `severity`, `category`, `file_path` (nullable), `line_number` (nullable), `finding`, `recommendation`, `merged_from` (nullable, comma-separated roles) |
 
 `review_runs.status`/`review_reviewers.status` are the same enums the
 `ReviewRunState` (Section "Review Orchestration") mirrors; D1 remains the
 source of truth for history and reports, `state` is a live projection for
 whichever run is currently open — the same division of responsibility demo
-6 draws between its `chat_usage` table and `ChatAgent.state.usage`.
+6 draws between its `chat_usage` table and `ChatAgent.state.usage`. The
+Workflow instance itself (addressable by `workflow_instance_id`, and shown
+in "Demo Flow") is the authoritative record of *how* a run got to that
+state — which steps ran, retried, or are still pending — the same way a D1
+row is the authoritative record of *what* the outcome was; `README.md`
+should link an operator to `wrangler workflows instances describe
+review-pipeline-workflow <id>` for the former.
 
 ## API And Routing
 
@@ -609,7 +728,9 @@ fallback, gated by Access at the edge with no Worker route needed:
 - `POST /api/webhooks/github` — public (Access-bypassed; see "Access
   Model"). Verifies the signature, parses the event, and — for a tracked
   action — inserts the `review_runs`/`review_webhook_deliveries` rows and
-  calls `start()` on the run's agent.
+  calls `start()` on the run's agent, which starts the
+  `ReviewPipelineWorkflow` instance that actually runs the review (see
+  "Review Orchestration").
 - `POST /api/webhooks/gitlab` — public, the GitLab equivalent.
 - `POST /api/reviews` — authenticated. Body `{ url: string }`; parses the
   PR/MR URL with the matching provider's `parsePrUrl()`, then reuses the
@@ -648,15 +769,27 @@ Everything else is an RFC 9457 problem details response via the toolkit's
    rule); it does not need one for the AI Gateway resource, since the
    gateway ID is a runtime string argument, not a compiled `wrangler.jsonc`
    binding the API refuses to delete out from under a live Worker — say so
-   in a comment next to the resource.
+   in a comment next to the resource. **Workflows need no Terraform
+   resource at all**, for the same reason a Durable Object class does not:
+   both are declared entirely in `wrangler.jsonc` (a binding plus a
+   `class_name`) and deployed by Wrangler, so there is nothing for
+   `depends_on` to reference and nothing product-specific for teardown to
+   clean up beyond deleting the Worker itself.
 3. Commit a single `wrangler.jsonc.tpl` with `{{placeholder}}` markers for
    every Terraform-sourced value (worker name, D1 binding details, the AI
    Gateway id, `cloudflare_team_domain`). Declare `"ai": { "binding": "AI",
    "remote": true }` (Workers AI has no local simulator, exactly as
    `docs/05-AI-CHAT.md` and `docs/DECISIONS.md` #9 already establish for
    this repo), a `"durable_objects"` binding `REVIEW_RUN` →
-   `ReviewRunAgent` with a `new_sqlite_classes` migration, `assets` with
-   `not_found_handling: single-page-application` and
+   `ReviewRunAgent` with a `new_sqlite_classes` migration, and a
+   `"workflows"` binding `REVIEW_PIPELINE` → `ReviewPipelineWorkflow`.
+   Unlike `ai`, a Workflow binding has no `remote` option at all and is
+   **not supported** as a remote binding or under `wrangler dev --remote` —
+   Cloudflare's own Workflows local-development story is a full local
+   emulation of the real engine, not a proxy to the deployed one, so local
+   dev and every integration test exercise real step execution, retries,
+   and backoff with no account credentials involved. Also configure `assets`
+   with `not_found_handling: single-page-application` and
    `run_worker_first: ["/api/*", "/agents/*"]`, `upload_source_maps: true`,
    `workers_dev: false`, `preview_urls: false`, and a current
    `compatibility_date`. Add `infra/local-outputs.json` with hardcoded
@@ -753,49 +886,71 @@ Everything else is an RFC 9457 problem details response via the toolkit's
     `workers-ai-provider` + `generateText` with the `getFileContent` tool
     and `stopWhen: stepCountIs(4)`, parse the fenced JSON block, and return
     `{ findings: RawFinding[], rawOutput: string, aiGatewayLogId: string |
-    null }`. Verify against the deployed account (per "Reviewer Personas
-    And Structured Findings") that both model tiers reliably produce
-    parseable output; record the outcome in `docs/DECISIONS.md`.
+    null }`. Throw a distinguishable `ReviewerJsonInvalidError` when the
+    bounded one-shot JSON-repair retry is still exhausted, so its caller
+    (step 19) can convert it into a `NonRetryableError` rather than letting
+    a Workflow step retry an already-uncooperative model verbatim. Verify
+    against the deployed account (per "Reviewer Personas And Structured
+    Findings") that both model tiers reliably produce parseable output;
+    record the outcome in `docs/DECISIONS.md`.
 18. Implement `src/worker/review/merge.ts`: the pure `mergeFindings()`
     function and its severity→priority mapping, unit-tested against every
     dedupe/sort rule in "Reviewer Personas And Structured Findings"
     (including the "no override" rule — confirm a `critical` finding never
     becomes anything but `P0`).
-19. Implement `src/worker/agents/ReviewRunAgent.ts`: the `Agent<Env,
-    ReviewRunState>` from "Review Orchestration" — `start()`, the
-    sequential `runPipeline()` (fixed reviewer order, per-reviewer
-    `setState`/`broadcast()`, D1 writes, `this.schedule()` for
-    reconciliation), and `reconcileCost()` (catching
-    `AiGatewayLogNotFound`, the three-attempt backoff, tolerating a
-    since-deleted run). Never accumulate a reviewer's full raw output in a
-    variable that outlives its own D1 write.
-20. Implement `src/worker/review/report.ts`: `buildFullReport()` and
+19. Implement `src/worker/workflows/ReviewPipelineWorkflow.ts`: the
+    `AgentWorkflow<ReviewRunAgent, ReviewTrigger>` from "Review
+    Orchestration" — the `fetch-diff` step (`NonRetryableError` on a
+    permanent provider response, default retry on a transient one), the
+    per-reviewer loop (`reportProgress()` pings, the `review:<role>` step
+    with its idempotent `(run_id, role)` upsert, `mergeAgentState()`, the
+    `reconcile-wait:<role>` sleep, and the `reconcile-cost:<role>` step
+    whose retry configuration *is* the reconciliation backoff), and the
+    `merge-and-post-comment` step (its own idempotent
+    already-posted-comment guard). Never accumulate a reviewer's full raw
+    output in a variable that outlives its own step's D1 write.
+20. Implement `src/worker/agents/ReviewRunAgent.ts`: the much smaller
+    `Agent<Env, ReviewRunState>` from "Review Orchestration" — `start()`
+    (insert-adjacent `setState()` of every reviewer to `queued`/`skipped`,
+    `this.runWorkflow("ReviewPipelineWorkflow", payload)`, record
+    `workflowInstanceId`) plus the three Workflow lifecycle callbacks
+    (`onWorkflowProgress`, `onWorkflowComplete`, `onWorkflowError`) that are
+    now its *only* source of state changes. This class holds no pipeline
+    logic, no D1 writes of its own, and no in-memory sequencing — everything
+    it used to do sequentially now lives in the Workflow from step 19.
+21. Implement `src/worker/review/report.ts`: `buildFullReport()` and
     `buildCommentBody()` from "Report Assembly And Comment Posting",
     sharing the same `MergedFinding[]` input so they cannot drift, and the
     "no findings" honest-empty-report path.
-21. Emit `reviewer_started`, `reviewer_completed`, `reviewer_skipped`,
+22. Emit `reviewer_started`, `reviewer_completed`, `reviewer_skipped`,
     `reviewer_failed`, and `review_posted` structured logs via
     `cloudflareLogger()`, placed after Access/validation guards, carrying
     role, model, duration, and finding/token counts — never diff text,
-    finding text, or a provider token.
+    finding text, or a provider token. Do not also log every step retry
+    attempt — that history is already visible, per attempt, in the
+    Workflow instance's own step timeline (see "Demo Flow"); duplicating it
+    into Workers Logs would be redundant, not defense in depth.
 
 ### Phase 5 — API routes
 
-22. Implement `src/worker/routes/reviews.ts`
+23. Implement `src/worker/routes/reviews.ts`
     (`POST /api/reviews`, `GET /api/reviews`, `GET /api/reviews/:id`) and
     `src/worker/routes/me.ts`, mounted from `src/worker/index.ts` (routing
     only), with `src/worker/bindings.ts` as the single
     `AppBindings`/`AppVariables` definition and the toolkit's Hono error
     handler for problem details.
-23. Implement the D1 repository layer (`src/worker/data/*.ts`) backing
+24. Implement the D1 repository layer (`src/worker/data/*.ts`) backing
     "Data Model" — one function per query, never `SELECT *`, thin mappers
     to camelCase domain objects, reused by both the webhook route and the
     manual-trigger route so they share one run-creation code path exactly
-    as "Behavior" requires.
+    as "Behavior" requires. The `review_reviewers` write is a genuine
+    upsert (`INSERT ... ON CONFLICT (run_id, role) DO UPDATE ...`), not a
+    plain `INSERT`, since a retried Workflow step calls it more than once
+    on purpose (see "Review Orchestration").
 
 ### Phase 6 — Browser application
 
-24. Build a focused Vue 3 + Vuetify UI meeting WCAG 2.2 AA on desktop and
+25. Build a focused Vue 3 + Vuetify UI meeting WCAG 2.2 AA on desktop and
     mobile:
     - A "Review a PR/MR" form (a single URL field, validated client- and
       server-side) that posts to `POST /api/reviews` and navigates to the
@@ -814,15 +969,19 @@ Everything else is an RFC 9457 problem details response via the toolkit's
       status transitions without re-announcing the whole page on every
       update; labeled controls; keyboard-operable throughout; meet
       target-size and contrast requirements.
-25. Add `src/client/composables/useReviewRun.ts`, a small, framework-
+26. Add `src/client/composables/useReviewRun.ts`, a small, framework-
     agnostic-`AgentClient`-backed Vue composable (following this repo's
     `create-adaptable-composable` conventions and demo 6's
     `useChatAgent` precedent) that connects to `/agents/review-run/:id`,
     exposes the run's `state` as a reactive ref, and surfaces the
     `reviewer_started`/`reviewer_completed`/`cost_reconciled`/
-    `review_completed` broadcast events as a typed stream for the badge
-    transition animations.
-26. Manage state in Pinia: a `session` store (identity) and a `reviews`
+    `review_completed`/`review_failed` broadcast events as a typed stream
+    for the badge transition animations. This composable never talks to a
+    Workflow directly — from the browser's side, the only observable
+    surface is still the Agent's `state`/broadcast, exactly as before;
+    "Review Orchestration" is a server-side implementation detail the
+    client is not, and should not be, aware of.
+27. Manage state in Pinia: a `session` store (identity) and a `reviews`
     store (history list, the currently open run's static detail once
     fetched via REST, merged with `useReviewRun`'s live fields). Keep
     `src/client/main.ts` bootstrap-only with `App.vue`, `views/`,
@@ -830,7 +989,7 @@ Everything else is an RFC 9457 problem details response via the toolkit's
 
 ### Phase 7 — Tests, deployment, and documentation
 
-27. Add the three Vitest projects from a root `vitest.config.ts`:
+28. Add the three Vitest projects from a root `vitest.config.ts`:
     - `src/worker/vitest.config.ts` (`environment: node`, `name: worker`):
       every provider-client method (Phase 3), the fenced-JSON parser and
       its one-retry repair path, `mergeFindings()`'s dedupe/sort/no-override
@@ -844,50 +1003,81 @@ Everything else is an RFC 9457 problem details response via the toolkit's
       `cost_reconciled` transition), and the report renderer.
     - `tests/integration/vitest.config.ts` (`@cloudflare/vitest-pool-workers`,
       `configPath` resolved from `import.meta.dirname`,
-      **`remoteBindings: false`**, with a comment explaining that the `ai`
-      binding would otherwise force a credentialed remote proxy session —
-      the same reasoning as `docs/05-AI-CHAT.md`). Drive the Hono app
-      directly (`app.fetch(request, env, ctx)`) with an injected fake `Ai`
-      returning scripted fenced-JSON completions and a `GitProviderClient`
-      test double, per this repo's established pattern for a
-      no-local-simulation binding.
-28. Integration tests MUST cover, end to end in real `workerd`: an
+      **`remoteBindings: false`**, with a comment explaining that only the
+      `ai` binding needs this — it would otherwise force a credentialed
+      remote proxy session, the same reasoning as `docs/05-AI-CHAT.md`. The
+      `workflows` binding needs no equivalent flag: Workflows have full
+      local emulation with no remote-binding mode to opt out of at all).
+      Drive the Hono app directly (`app.fetch(request, env, ctx)`) with an
+      injected fake `Ai` returning scripted fenced-JSON completions and a
+      `GitProviderClient` test double, per this repo's established pattern
+      for a no-local-simulation binding.
+29. Integration tests MUST cover, end to end in real `workerd`: an
     unauthenticated `POST /api/reviews` (blocked) alongside an
     unauthenticated `POST /api/webhooks/github` with a valid signature
     (allowed — proving the bypass application's intent is faithfully
     reproduced in the access-policy array); a rejected webhook with an
     invalid signature/token; a full run from webhook trigger through all
-    four reviewers (including one scripted to fail and one skipped for
-    having no UI files) to a posted comment and a `completed` D1 row; the
-    manual-trigger path producing the identical D1 shape as the webhook
-    path; a duplicate webhook delivery being a no-op against the
-    idempotency guard; and `getLog()` reconciliation both succeeding and
-    exhausting its retry bound (asserting the row is left `pending`
-    permanently, not retried forever). Configure
-    `@vitest/coverage-istanbul` and `test:coverage`; treat uncovered
-    authored source as a gap to close.
-29. Provide single-command `npm run deploy` (Terraform init/apply,
+    four reviewers (including one skipped for having no UI files) to a
+    posted comment and a `completed` D1 row; the manual-trigger path
+    producing the identical D1 shape as the webhook path; and a duplicate
+    webhook delivery being a no-op against the idempotency guard. Use
+    `introspectWorkflowInstance`/`introspectWorkflow` (`cloudflare:test`) —
+    not a hand-rolled fake scheduler — for every Workflow-specific
+    scenario, `disableSleeps()`/`disableRetryDelays()` in every one of them
+    so a test never actually waits out a real backoff:
+    - `mockStepError({ name: "review:code-quality" }, err, 1)` — a
+      **transient** failure that succeeds on retry — then assert every
+      *other* reviewer's `review_reviewers` row and D1 findings are
+      untouched by the retry, the concrete proof of "only the failed step
+      re-ran."
+    - `mockStepError({ name: "review:security" }, new NonRetryableError(...))`
+      (or drive `runReviewer()` to actually exhaust its JSON-repair retry)
+      — confirm the run still completes with the other reviewers' findings
+      intact and this one recorded `status: "error"`, never aborting the
+      whole instance.
+    - `mockStepError({ name: "reconcile-cost:code-quality" },
+      new AiGatewayLogNotFound(...))` beyond the step's configured retry
+      limit — assert the row is left `cost_source: "pending"` permanently
+      and the run still reaches `completed`, not `errored`.
+    - `mockStepResult({ name: "merge-and-post-comment" }, ...)` on a second,
+      deliberately retried attempt of that step — assert
+      `GitProviderClient.postComment()` (the test double) was called
+      exactly once, proving the idempotent already-posted guard works.
+    Configure `@vitest/coverage-istanbul` and `test:coverage`; treat
+    uncovered authored source as a gap to close.
+30. Provide single-command `npm run deploy` (Terraform init/apply,
     `db:migrate:remote`, `generate-wrangler -cf --terraform infra` +
     `generate:types`, build, `wrangler deploy`) and `npm run teardown`
     (`terraform destroy`), composed from small `package.json` scripts
     chained with `run-s`. A successful teardown leaves no named or
     billable resource behind — the Worker, D1 database, AI Gateway
-    resource, and both Access applications.
-30. Write `README.md` (operator/developer guide: prerequisites including
+    resource, and both Access applications. There is no separate teardown
+    step for the Workflow: like the Durable Object class, it is deleted
+    along with the Worker script that defines it.
+31. Write `README.md` (operator/developer guide: prerequisites including
     a GitHub and/or GitLab personal access token and webhook secret,
     environment configuration split between `.env`/`.dev.vars.example`/
     production secrets, local development and its `.dev.vars` exception,
     testing, the exact one-time `wrangler secret put` commands, exact
     deployment and verification steps — including how to point a real
-    repository's webhook at the deployed hostname — troubleshooting, and
-    exact teardown), `DEMO.md` (the presenter script from "Demo Flow"),
-    and `EXPLAIN-DEMO.md` (what this demo teaches about consuming
-    third-party webhooks safely, running several independent AI passes
-    and merging them deterministically, why `aiGatewayLogId` works here
-    when demo 6 had to work around it, the deliberate LLM-only
-    "security review" limitation versus real SAST, and a "Further
-    Reading" section). Add JSDoc to every authored TypeScript declaration.
-31. Verify formatting, linting, type checking, all three Vitest projects,
+    repository's webhook at the deployed hostname — how to find a run's
+    Workflow instance in the dashboard or via `wrangler workflows instances
+    describe`, troubleshooting, and exact teardown), `DEMO.md` (the
+    presenter script from "Demo Flow", including the rehearsal trick for
+    forcing a transient step failure ahead of a live demo — for example a
+    feature flag or a temporary Worker var that makes the `fetch-diff` step
+    throw once), and `EXPLAIN-DEMO.md` (what this demo teaches about
+    consuming third-party webhooks safely, running several independent AI
+    passes and merging them deterministically, why `aiGatewayLogId` works
+    here when demo 6 had to work around it, the deliberate LLM-only
+    "security review" limitation versus real SAST, **why Workflows appear
+    here ahead of demo 14 and what specifically pairing deterministic steps
+    with an agent's non-deterministic ones buys — retry isolation, no
+    re-billing completed work, and an inspectable step timeline — versus
+    demo 14's different Workflows lesson**, and a "Further Reading"
+    section). Add JSDoc to every authored TypeScript declaration.
+32. Verify formatting, linting, type checking, all three Vitest projects,
     the production build, the generated Wrangler configuration, and
     `terraform fmt -check`/`terraform validate` in `infra`. Do not run
     `terraform apply`, deploy, or destroy real resources, and do not

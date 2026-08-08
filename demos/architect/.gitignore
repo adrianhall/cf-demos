@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.wrangler/
+wrangler.jsonc
+worker-configuration.d.ts
+coverage/
+.env
+.env.*
+!.env.example
+
+# DO NOT INCLUDE .dev.vars IN THIS FILE
+# There are no secrets and it sets up the environment properly
