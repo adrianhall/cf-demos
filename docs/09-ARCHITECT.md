@@ -426,6 +426,28 @@ theme behavior.
 is reproducible, all verification passes, and teardown leaves no demo
 resources.
 
+## Phase 7: Bugs
+
+### Bug 1: Sign out should be a clear button with an icon
+
+### Bug 2: Zoom in and Zoom out should have icons
+
+### Bug 3: There should be a collapse all / uncollapse all in product catalog
+
+### Bug 4: Node editor (panel on right hand side) should be collapsed initially, collapsible or closeable with a close icon button, and open automatically when a node is selected.
+
+### Bug 5: Fit view should have an icon
+
+### Bug 6: Share button should be an icon button
+
+### Bug 7: (administrator) replaced by icon (maybe shield?)
+
+### Bug 8: "Architect" title is repeated in banner and header
+
+### Bug 9: Toolbar (Undo/redo/etc. + share) should be in the top banner
+
+### Issue 10: Validate product set against the current Cloudflare product set and explicitly via ~/repos/adrianhall/cloudflare-docs/src/icons
+
 ## Post-MVP: Live Collaboration And AI Proposals
 
 Live multi-user collaboration (one Durable Object per diagram, hibernatable
