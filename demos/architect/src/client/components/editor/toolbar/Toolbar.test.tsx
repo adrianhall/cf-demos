@@ -11,6 +11,15 @@ vi.mock("elkjs/lib/elk.bundled.js", () => ({
   },
 }));
 
+const { mockGetShareStatus } = vi.hoisted(() => ({
+  mockGetShareStatus: vi.fn(),
+}));
+vi.mock("../../../api/shares", () => ({
+  createShare: vi.fn(),
+  getShareStatus: mockGetShareStatus,
+  revokeShare: vi.fn(),
+}));
+
 // Imported dynamically, after the mocks above, since both transitively import "@xyflow/react"
 // (`../../../stores/diagramStore.ts` and `./Toolbar.tsx` themselves) and must not resolve that
 // import before the mock factory above is ready to serve it.
@@ -92,11 +101,13 @@ describe("Toolbar", () => {
       redoStack: [],
       nodes: [],
       edges: [],
+      diagramId: null,
     });
     mockXyflow.mockFitView.mockClear();
     mockXyflow.mockZoomIn.mockClear();
     mockXyflow.mockZoomOut.mockClear();
     mockElkLayout.mockReset();
+    mockGetShareStatus.mockReset();
   });
 
   it("renders the current title and updates it through the store", () => {
@@ -243,5 +254,41 @@ describe("Toolbar", () => {
     await waitFor(() => expect(mockElkLayout).toHaveBeenCalled());
     const graph = mockElkLayout.mock.calls[0]?.[0];
     expect(graph.children[0].ports).toHaveLength(0);
+  });
+
+  it("disables the Share button until a diagram has loaded", () => {
+    render(<Toolbar />);
+    expect(screen.getByTitle("Share diagram")).toBeDisabled();
+  });
+
+  it("renders no Share button at all in read-only mode", () => {
+    render(<Toolbar readOnly />);
+    expect(screen.queryByTitle("Share diagram")).not.toBeInTheDocument();
+  });
+
+  it("opens the share modal for the loaded diagram", async () => {
+    useDiagramStore.setState({ diagramId: "d1" });
+    mockGetShareStatus.mockResolvedValue({ active: false, createdAt: null });
+
+    render(<Toolbar />);
+    expect(screen.getByTitle("Share diagram")).not.toBeDisabled();
+
+    fireEvent.click(screen.getByTitle("Share diagram"));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await waitFor(() => expect(mockGetShareStatus).toHaveBeenCalledWith("d1"));
+  });
+
+  it("closes the share modal", async () => {
+    useDiagramStore.setState({ diagramId: "d1" });
+    mockGetShareStatus.mockResolvedValue({ active: false, createdAt: null });
+
+    render(<Toolbar />);
+    fireEvent.click(screen.getByTitle("Share diagram"));
+    await waitFor(() => screen.getByRole("dialog"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

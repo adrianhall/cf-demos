@@ -11,10 +11,12 @@ resource "cloudflare_worker" "demo" {
 
   # `wrangler deploy` resets a Worker's observability metadata to disabled whenever
   # wrangler.jsonc.tpl carries no `observability` block of its own (confirmed against a real
-  # deployment -- see docs/DECISIONS.md). `package.json`'s `deploy` script re-runs
-  # `deploy:infra:reconcile` (a second `terraform apply`) after `deploy:worker` for exactly this
-  # reason, so the final state after `npm run deploy` always has these settings applied, not just
-  # the state immediately after the Terraform-only step.
+  # deployment -- see docs/DECISIONS.md #24). Rather than run a second `terraform apply` after
+  # every deploy to fix that drift back up, `wrangler.jsonc.tpl` carries its own `observability`
+  # block that mirrors this one literally, value for value (see docs/DECISIONS.md #25) -- so
+  # `wrangler deploy` reasserts the exact state Terraform already established instead of
+  # resetting it. This resource remains the sole place these values are decided; change
+  # `wrangler.jsonc.tpl`'s block to match any time this one changes.
   observability = {
     enabled = true
     logs = {

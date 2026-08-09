@@ -401,4 +401,164 @@ describe("DiagramCanvas", () => {
     window.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
   });
+
+  describe("read-only mode (the public share viewer)", () => {
+    const SHARED_GRAPH = JSON.stringify({
+      edges: [],
+      nodes: [
+        {
+          data: { label: "Workers", typeId: "worker" },
+          id: "n1",
+          position: { x: 0, y: 0 },
+        },
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
+
+    it("renders from initialDiagram without ever calling the owner-authenticated getDiagram", async () => {
+      render(
+        <DiagramCanvas
+          diagramId="shared-d1"
+          readOnly
+          initialDiagram={{
+            description: "A shared diagram",
+            graphData: SHARED_GRAPH,
+            title: "Shared Diagram",
+          }}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+      );
+      expect(mockGetDiagram).not.toHaveBeenCalled();
+      expect(useDiagramStore.getState().nodes).toHaveLength(1);
+      expect(screen.getByText("Shared Diagram")).toBeInTheDocument();
+    });
+
+    it("hides the palette and properties panel, and shows a read-only status", async () => {
+      render(
+        <DiagramCanvas
+          diagramId="shared-d1"
+          readOnly
+          initialDiagram={{
+            description: "",
+            graphData: EMPTY_GRAPH,
+            title: "Shared Diagram",
+          }}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+      );
+      expect(screen.queryByPlaceholderText(/search/iu)).not.toBeInTheDocument();
+      expect(screen.getByText("Read-only")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Undo (Ctrl+Z)" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Share diagram" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("never autosaves, even if the store is dirtied directly", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+      render(
+        <DiagramCanvas
+          diagramId="shared-d1"
+          readOnly
+          initialDiagram={{
+            description: "",
+            graphData: EMPTY_GRAPH,
+            title: "Shared Diagram",
+          }}
+        />,
+      );
+      await vi.waitFor(() =>
+        expect(useDiagramStore.getState().diagramId).toBe("shared-d1"),
+      );
+
+      useDiagramStore.setState({ dirty: true });
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(mockSaveDiagramGraph).not.toHaveBeenCalled();
+      expect(mockUpdateDiagram).not.toHaveBeenCalled();
+    });
+
+    it("does not warn before unload even when the store is dirtied directly", async () => {
+      render(
+        <DiagramCanvas
+          diagramId="shared-d1"
+          readOnly
+          initialDiagram={{
+            description: "",
+            graphData: EMPTY_GRAPH,
+            title: "Shared Diagram",
+          }}
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+      );
+
+      useDiagramStore.setState({ dirty: true });
+
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it("ignores Delete/undo/redo keyboard shortcuts", async () => {
+      const { container } = render(
+        <DiagramCanvas
+          diagramId="shared-d1"
+          readOnly
+          initialDiagram={{
+            description: "",
+            graphData: SHARED_GRAPH,
+            title: "Shared Diagram",
+          }}
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+      );
+
+      const root = container.querySelector(".diagram-editor") as HTMLElement;
+      useDiagramStore.setState({
+        nodes: useDiagramStore
+          .getState()
+          .nodes.map((node) => ({ ...node, selected: true })),
+      });
+      fireEvent.keyDown(root, { key: "Delete" });
+      expect(useDiagramStore.getState().nodes).toHaveLength(1);
+    });
+
+    it("ignores a drop attempt on the read-only canvas", async () => {
+      render(
+        <DiagramCanvas
+          diagramId="shared-d1"
+          readOnly
+          initialDiagram={{
+            description: "",
+            graphData: EMPTY_GRAPH,
+            title: "Shared Diagram",
+          }}
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+      );
+
+      fireEvent.drop(screen.getByTestId("react-flow"), {
+        clientX: 10,
+        clientY: 20,
+        dataTransfer: { getData: () => "worker" },
+      });
+
+      expect(useDiagramStore.getState().nodes).toHaveLength(0);
+    });
+  });
 });

@@ -9,6 +9,7 @@ import { accessMiddleware } from "./middleware/access";
 import { upsertUserMiddleware } from "./middleware/upsert-user";
 import { diagramsRouter } from "./routes/diagrams";
 import { meRouter } from "./routes/me";
+import { sharesRouter } from "./routes/shares";
 
 // Only `/api/*` is routed to this Worker (see `wrangler.jsonc.tpl`'s `run_worker_first`); every
 // other path -- the public landing page and the authenticated `/app*` shell alike -- is served
@@ -21,6 +22,7 @@ app.use("/api/*", accessMiddleware, upsertUserMiddleware);
 
 app.route("/api/me", meRouter);
 app.route("/api/diagrams", diagramsRouter);
+app.route("/api/share", sharesRouter);
 
 app.onError(problemDetailsErrorHandler({ includeStack: import.meta.env.DEV }));
 app.notFound(notFoundHandler());

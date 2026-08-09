@@ -502,6 +502,10 @@ textarea {
   gap: 0.5rem;
 }
 
+.toolbar__group--end {
+  margin-left: auto;
+}
+
 .toolbar__logo {
   color: var(--cf-orange);
   font-weight: 700;
@@ -800,4 +804,52 @@ textarea {
   border-radius: 0.25rem;
   font-size: 0.75rem;
   padding: 0.0625rem 0.375rem;
+}
+
+/* Sharing --------------------------------------------------------------- */
+
+.share-modal__error {
+  color: var(--cf-danger);
+}
+
+.share-url-field {
+  margin-bottom: 1.5rem;
+}
+
+.share-url-field__row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.375rem;
+}
+
+.share-url-field__input {
+  background: var(--cf-surface-alt);
+  border: 1px solid var(--cf-border);
+  border-radius: 0.25rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.5rem;
+}
+
+.share-view {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+}
+
+.share-view__banner {
+  align-items: center;
+  background: var(--cf-surface-alt);
+  border-bottom: 1px solid var(--cf-border);
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+}
+
+.share-view__loading,
+.share-view__error {
+  padding: 1.5rem;
 }

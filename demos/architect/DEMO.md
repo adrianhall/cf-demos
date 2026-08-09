@@ -2,7 +2,7 @@
 
 See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 
-> This script covers Phases 1–2 (scaffolding/Access and the diagram library/editor) of `docs/09-ARCHITECT.md`. Later phases add sharing, admin, and export/print/dark-mode capabilities this script will grow to cover.
+> This script covers Phases 1–3 (scaffolding/Access, the diagram library/editor, and read-only sharing) of `docs/09-ARCHITECT.md`. Later phases add admin and export/print/dark-mode capabilities this script will grow to cover.
 
 ## Demonstration Prerequisites
 
@@ -10,12 +10,12 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 2. Confirm you can authenticate through the configured identity provider as at least two different identities, one of which matches this deployment's `ADMIN_EMAIL`.
 3. Open a second browser window or tab to the Cloudflare dashboard at **Zero Trust** > **Access controls** > **Applications**.
 4. Open a third browser window or tab to the Cloudflare dashboard's **D1** section, ready to open the `architect-db` database's console.
-5. Sign out of, or use a private/incognito window for, the demo hostname so the first step shows the unauthenticated experience.
+5. Sign out of, or use a private/incognito window for, the demo hostname so the first step shows the unauthenticated experience. Keep this window open throughout — it is reused later to demonstrate anonymous share viewing with no sign-in at all.
 
 ## Presentation Flow
 
 1. In the signed-out/incognito browser, open `https://architect.cfapps.uk/`. Show the public landing page loads with no Access challenge.
-2. Switch to the dashboard tab. Open **Zero Trust** > **Access controls** > **Applications** and show the two applications for this demo: a `bypass` application for the whole hostname, and an `allow` application scoped to `/app*` and `/api/*` destinations only.
+2. Switch to the dashboard tab. Open **Zero Trust** > **Access controls** > **Applications** and show the two applications for this demo: a `bypass` application for the whole hostname, and an `allow` application scoped to `/app*`, `/api/me`, and `/api/diagrams*` destinations only — deliberately narrower than a bare `/api/*`, so the anonymous share resolver added later in this script stays covered by the `bypass` application instead.
 3. Back in the browser, select **Open the editor**. Show that Cloudflare Access now intercepts the request with its login screen before the app shell renders.
 4. Sign in as a non-administrator identity (for example `alice@example.com`). Show the app shell displays that email with no `(administrator)` marker.
 5. Switch to the D1 tab. Open the `architect-db` database's console and run:
@@ -45,6 +45,18 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 17. Return to the dashboard (the toolbar's **Architect** logo). Show the new diagram's card with a live thumbnail preview matching the canvas.
 18. Open the card's overflow menu and select **Duplicate**. Show a second card appears titled "… (copy)" with an identical preview.
 19. Open the overflow menu on the original diagram and select **Delete**, confirm in the dialog, and show the card disappears from the grid.
+20. Open the duplicated diagram (or any remaining diagram) in the editor. Select **Share** in the toolbar, then **Create link**. Point out the dialog's copy: the link is shown here once, right now, and copy it.
+21. Switch to the signed-out/incognito window from the prerequisites and paste the link. Show the diagram renders read-only — no palette, no properties panel, no undo/redo — with no Access sign-in prompt at all.
+22. Back in the signed-in browser, drag another product onto the canvas and wait for the autosave. Switch to the incognito window and reload the share link. Show the new node now appears there too, with no re-share needed — the link always reflects the diagram's current state.
+23. Back in the signed-in browser, reopen **Share**. Point out it now shows the link is active without displaying the URL again (the server itself cannot recover it), then select **Revoke link**.
+24. Switch to the incognito window and reload the same share URL. Show it now reports the link was not found.
+25. Switch to the D1 tab and run:
+
+    ```sql
+    SELECT diagram_id, created_at, revoked_at FROM diagram_shares;
+    ```
+
+    Point out `token_digest` (select it too, if asked) is a 64-character SHA-256 hex digest, never the link's actual token — and that the row just revoked now has a `revoked_at` timestamp rather than being deleted.
 
 ## Expected Results
 
@@ -53,12 +65,14 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 - The `users` table in D1 gains one row per distinct identity that has ever signed in, with `last_seen_at` refreshed on every subsequent visit.
 - A signed-in identity can create a diagram from a blueprint or a blank canvas, edit its nodes/edges/properties, see changes autosave within about a second, and reload the page with no data loss.
 - The dashboard lists only the signed-in identity's own diagrams, and duplicate/delete act on exactly the selected diagram.
+- A share link renders any diagram read-only for an anonymous visitor with no Access challenge, always reflects the diagram's current graph (no separate snapshot to fall out of sync), and stops resolving immediately once revoked.
+- Only a SHA-256 digest of a share token is ever visible in D1 or Workers KV; the raw, working link is shown to the owner exactly once, at creation.
 
 ## Where To Observe State
 
-- **Worker logs:** Workers & Pages > `architect` > Logs — look for `diagram_created`, `diagram_opened`, and `diagram_updated` entries (never graph content or email).
+- **Worker logs:** Workers & Pages > `architect` > Logs — look for `diagram_created`, `diagram_opened`, `diagram_updated`, `diagram_shared`, and `diagram_share_revoked` entries (never graph content, tokens, or email).
 - **Traces:** Workers & Pages > `architect` > Observability > Traces (10% sampling).
-- **D1 data:** D1 > `architect-db` > Console; query the `users` and `diagrams` tables as shown above.
+- **D1 data:** D1 > `architect-db` > Console; query the `users`, `diagrams`, and `diagram_shares` tables as shown above.
 - **Access applications:** Zero Trust > Access controls > Applications > `architect public` and `architect app`.
 
 Run `npm run teardown` after the presentation; see README.md for details.

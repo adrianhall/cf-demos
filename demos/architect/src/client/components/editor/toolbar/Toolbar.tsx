@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { NODE_TYPE_MAP } from "../../../../catalog";
 import { useDiagramStore } from "../../../stores/diagramStore";
 import type { CFEdgeData, CFNodeData } from "../types";
+import { ShareModal } from "./ShareModal";
 
 /** Auto-layout direction: top-to-bottom or left-to-right. */
 type LayoutDirection = "DOWN" | "RIGHT";
@@ -74,12 +75,13 @@ export function remapEdgeHandles(
  */
 export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
   const { fitView, zoomIn, zoomOut } = useReactFlow();
-  const { undo, redo, undoStack, redoStack, title, setTitle } =
+  const { undo, redo, undoStack, redoStack, title, setTitle, diagramId } =
     useDiagramStore();
   const [layouting, setLayouting] = useState(false);
   const [layoutDirection, setLayoutDirection] =
     useState<LayoutDirection>("DOWN");
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const layoutGroupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -291,6 +293,28 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
             )}
           </div>
         </div>
+      )}
+
+      {!readOnly && (
+        <div className="toolbar__group toolbar__group--end">
+          <button
+            type="button"
+            onClick={() => setShareOpen(true)}
+            disabled={diagramId === null}
+            className="toolbar__button"
+            title="Share diagram"
+          >
+            Share
+          </button>
+        </div>
+      )}
+
+      {!readOnly && diagramId !== null && (
+        <ShareModal
+          diagramId={diagramId}
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+        />
       )}
     </div>
   );

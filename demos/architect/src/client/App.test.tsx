@@ -54,4 +54,20 @@ describe("App", () => {
       screen.getByRole("button", { name: /Blank Canvas/ }),
     ).toBeInTheDocument();
   });
+
+  it("renders the public read-only share viewer at /s/:token", () => {
+    window.history.pushState({}, "", "/s/abc123");
+
+    render(<App />);
+
+    expect(screen.getByText("Loading shared diagram…")).toBeInTheDocument();
+  });
+
+  it("renders the share viewer for a token with URL-encoded characters", () => {
+    window.history.pushState({}, "", "/s/abc%20123");
+
+    render(<App />);
+
+    expect(screen.getByText("Loading shared diagram…")).toBeInTheDocument();
+  });
 });

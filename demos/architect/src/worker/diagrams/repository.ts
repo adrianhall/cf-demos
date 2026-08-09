@@ -1,4 +1,5 @@
 import type { CreateDiagramInput, Diagram, UpdateDiagramInput } from "./types";
+import type { SharedDiagram } from "../shares/types";
 
 /** Raw snake-cased diagram row returned by D1. */
 interface DiagramRow {
@@ -201,5 +202,34 @@ export class DiagramRepository {
       .bind(id, ownerEmail)
       .run();
     return result.meta.changes > 0;
+  }
+
+  /**
+   * Load only the fields safe to show an anonymous share viewer -- deliberately never
+   * `ownerEmail` (docs/09-ARCHITECT.md's non-negotiable tests: a public share must never leak
+   * membership data). Callers must have already resolved a valid, unrevoked share token to `id`
+   * via `../shares/repository.ts`'s `ShareRepository.resolve()`; this method performs no
+   * authorization check of its own and must never be reachable from an id a caller merely
+   * guessed.
+   *
+   * @param id Diagram id resolved from a valid share token.
+   * @returns The diagram's public fields, or `null` if it no longer exists.
+   */
+  async findPublicFields(id: string): Promise<SharedDiagram | null> {
+    const row = await this.database
+      .prepare(
+        `SELECT id, title, description, graph_data FROM diagrams WHERE id = ? LIMIT 1`,
+      )
+      .bind(id)
+      .first<Pick<DiagramRow, "id" | "title" | "description" | "graph_data">>();
+    if (row === null) {
+      return null;
+    }
+    return {
+      description: row.description,
+      graphData: row.graph_data,
+      id: row.id,
+      title: row.title,
+    };
   }
 }

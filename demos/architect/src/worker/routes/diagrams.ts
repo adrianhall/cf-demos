@@ -12,6 +12,7 @@ import {
 import { readJsonBody } from "../lib/read-json-body";
 import { requestBodyLimit } from "../middleware/body-limit";
 import { enforceSameOriginJson } from "../middleware/same-origin";
+import { ShareRepository } from "../shares/repository";
 
 /**
  * Owner-scoped diagram directory and autosave API, mounted at `/api/diagrams` by `../index.ts`.
@@ -115,7 +116,13 @@ diagramsRouter.put("/:id/graph", async (context) => {
   return context.json({ updatedAt });
 });
 
-/** Delete a diagram owned by the signed-in identity. */
+/**
+ * Delete a diagram owned by the signed-in identity, cascading to revoke every share link for it
+ * -- a deleted diagram must never keep resolving through a link minted before it was removed
+ * (docs/09-ARCHITECT.md's non-negotiable tests). The cascade only ever runs after `remove()`
+ * itself reports a real deletion, so it can never be used to probe or revoke another owner's
+ * share by guessing at a diagram id.
+ */
 diagramsRouter.delete("/:id", async (context) => {
   const id = validateDiagramId(context.req.param("id"));
   const ownerEmail = context.get("Cloudflare_Access_Identity").email;
@@ -124,5 +131,76 @@ diagramsRouter.delete("/:id", async (context) => {
   if (!removed) {
     throw notFound({ detail: "Diagram not found." });
   }
+  await new ShareRepository(
+    context.env.DB,
+    context.env.SHARES,
+  ).revokeAllForDiagram(id);
+  return new Response(null, { status: 204 });
+});
+
+/**
+ * Owner-only share status: whether a read-only link is currently active for this diagram, and
+ * when it was created. Never returns the link itself -- see `../shares/types.ts`'s
+ * `ShareStatus` JSDoc for why the server cannot recover a token once minted.
+ */
+diagramsRouter.get("/:id/share", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  const ownerEmail = context.get("Cloudflare_Access_Identity").email;
+  const diagramRepository = new DiagramRepository(context.env.DB);
+  if ((await diagramRepository.findOwned(id, ownerEmail)) === null) {
+    throw notFound({ detail: "Diagram not found." });
+  }
+
+  const shareRepository = new ShareRepository(
+    context.env.DB,
+    context.env.SHARES,
+  );
+  return context.json(await shareRepository.getStatus(id));
+});
+
+/**
+ * Create (or rotate) the diagram's read-only share link. Any share link previously active for
+ * this diagram is revoked in the same operation -- at most one active link exists per diagram at
+ * a time (`../shares/repository.ts`'s class-level JSDoc) -- and the newly minted raw token is
+ * returned in this response only: per docs/09-ARCHITECT.md's Decisions #3, only a SHA-256
+ * digest of the token is ever persisted, so this is the one and only moment the owner can be
+ * handed a working link.
+ */
+diagramsRouter.post("/:id/share", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  const ownerEmail = context.get("Cloudflare_Access_Identity").email;
+  const diagramRepository = new DiagramRepository(context.env.DB);
+  if ((await diagramRepository.findOwned(id, ownerEmail)) === null) {
+    throw notFound({ detail: "Diagram not found." });
+  }
+
+  const shareRepository = new ShareRepository(
+    context.env.DB,
+    context.env.SHARES,
+  );
+  const share = await shareRepository.rotate(id);
+  context.get("LOGGER").info("diagram_shared", { diagramId: id });
+  const url = new URL(`/s/${share.token}`, context.req.url).toString();
+  return context.json({ ...share, url }, 201);
+});
+
+/** Revoke the diagram's active share link, if any. */
+diagramsRouter.delete("/:id/share", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  const ownerEmail = context.get("Cloudflare_Access_Identity").email;
+  const diagramRepository = new DiagramRepository(context.env.DB);
+  if ((await diagramRepository.findOwned(id, ownerEmail)) === null) {
+    throw notFound({ detail: "Diagram not found." });
+  }
+
+  const shareRepository = new ShareRepository(
+    context.env.DB,
+    context.env.SHARES,
+  );
+  const revoked = await shareRepository.revokeActive(id);
+  if (!revoked) {
+    throw notFound({ detail: "No active share link for this diagram." });
+  }
+  context.get("LOGGER").info("diagram_share_revoked", { diagramId: id });
   return new Response(null, { status: 204 });
 });

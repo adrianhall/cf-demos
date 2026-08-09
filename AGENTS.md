@@ -190,7 +190,22 @@ Terraform and Wrangler have separate responsibilities:
   and `CI=1 wrangler d1 migrations apply DB --local` for local development. Never omit either
   `--remote` or `--local`.
 - The generated `wrangler.jsonc` MUST NOT duplicate ownership of settings
-  managed by Terraform.
+  managed by Terraform — with one explicit, narrow exception: when
+  `wrangler deploy` itself overwrites a Cloudflare-side field the moment
+  `wrangler.jsonc`'s own config omits it, even though Terraform already set
+  that field (Workers `observability` is the confirmed case — see
+  `docs/DECISIONS.md` #24/#25), `wrangler.jsonc.tpl` MUST carry a literal,
+  value-for-value copy of that same Terraform-managed setting, with a comment
+  in both files pointing at the other so they are visibly kept in lockstep.
+  Terraform's resource remains the only place a human decides the value;
+  `wrangler.jsonc.tpl`'s copy is a same-value mirror, not a second,
+  independently-configurable source of truth, and it is what avoids needing a
+  second, purely reconciling `terraform apply` after every deploy just to
+  re-fix drift `wrangler deploy` itself caused. Do not thread a value like
+  this through a Terraform output/`{{placeholder}}` when it is a static demo
+  choice already fixed directly in the `.tf` file (not resource-generated
+  data such as a database or namespace ID) — that adds indirection with no
+  actual single-source-of-truth benefit.
 - `npm run deploy` and `npm run teardown` MUST orchestrate the entire lifecycle.
   A successful teardown leaves no named or billable demo resources behind.
   Compose each from small, independently runnable `package.json` scripts (for

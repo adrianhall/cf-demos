@@ -271,4 +271,30 @@ describe("DiagramRepository", () => {
 
     expect(removed).toBe(false);
   });
+
+  it("loads only public fields for a share viewer, never ownerEmail", async () => {
+    const { database } = databaseFor(rowFor({ title: "Shared Diagram" }));
+
+    const shared = await new DiagramRepository(database).findPublicFields(
+      "11111111-1111-1111-1111-111111111111",
+    );
+
+    expect(shared).toEqual({
+      description: null,
+      graphData: '{"edges":[],"nodes":[],"viewport":{"x":0,"y":0,"zoom":1}}',
+      id: "11111111-1111-1111-1111-111111111111",
+      title: "Shared Diagram",
+    });
+    expect(shared).not.toHaveProperty("ownerEmail");
+  });
+
+  it("returns null from findPublicFields when the diagram no longer exists", async () => {
+    const { database } = databaseFor(null);
+
+    const shared = await new DiagramRepository(database).findPublicFields(
+      "11111111-1111-1111-1111-111111111111",
+    );
+
+    expect(shared).toBeNull();
+  });
 });

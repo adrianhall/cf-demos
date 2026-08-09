@@ -27,9 +27,9 @@ resource "cloudflare_zero_trust_access_application" "public" {
   }]
 }
 
-# The editor app shell (/app*) and every API route require authentication from any identity
-# provider already configured on this account's Zero Trust team -- no Identity Provider is
-# provisioned by Terraform (see docs/09-ARCHITECT.md's Decisions #2). Admin authorization is a
+# The editor app shell (/app*) and the owner-facing diagram API require authentication from any
+# identity provider already configured on this account's Zero Trust team -- no Identity Provider
+# is provisioned by Terraform (see docs/09-ARCHITECT.md's Decisions #2). Admin authorization is a
 # separate, independent check the Worker performs against ADMIN_EMAIL -- see
 # src/worker/routes/me.ts -- not a second Access policy.
 resource "cloudflare_zero_trust_access_policy" "authenticated_users" {
@@ -42,6 +42,13 @@ resource "cloudflare_zero_trust_access_policy" "authenticated_users" {
   }]
 }
 
+# Destinations are deliberately narrower than a bare "/api/*" wildcard: `/api/share/*` (the
+# anonymous share-token resolver, `src/worker/routes/shares.ts`) is intentionally left off this
+# list so it falls through to the "public" application above instead -- Access routes each
+# request to the most specific matching application, and this application's own `domain` only
+# ever matches `/app*` to begin with, so any destination not listed here is simply not covered by
+# it. See docs/09-ARCHITECT.md's Access Model and `../src/access-policies.ts`'s matching
+# `authenticate: false` carve-out used for local development.
 resource "cloudflare_zero_trust_access_application" "app" {
   account_id = local.cloudflare_account_id
   name       = "${local.demo_name} app"
@@ -55,7 +62,11 @@ resource "cloudflare_zero_trust_access_application" "app" {
     },
     {
       type = "public"
-      uri  = "${local.hostname}/api/*"
+      uri  = "${local.hostname}/api/me"
+    },
+    {
+      type = "public"
+      uri  = "${local.hostname}/api/diagrams*"
     }
   ]
 

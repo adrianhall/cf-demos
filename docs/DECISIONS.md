@@ -1066,3 +1066,41 @@ a full `npm run deploy`: zero drift. Every other demo in this repository should 
 three-step `deploy` script the next time it is actually deployed for real, and AGENTS.md's
 Resource Ownership section should eventually fold this in as a baseline requirement rather than a
 per-demo discovery.
+
+**Superseded by #25** — the second `terraform apply` turned out not to be the only, or the best,
+fix; `wrangler.jsonc.tpl` mirroring the same `observability` values removes the need for it
+entirely.
+
+## 25. Mirror `observability` into `wrangler.jsonc.tpl` instead of a second `terraform apply`
+    (`demos/architect`, superseding #24)
+
+#24's `deploy:infra:reconcile` fix works, but a full extra `terraform apply` after every deploy
+just to reassert one field `wrangler deploy` insists on touching is more machinery than the
+problem needs. The simpler fix: give `wrangler.jsonc.tpl` an `observability` block whose values
+are a literal, value-for-value copy of `infra/architect.tf`'s `cloudflare_worker.demo.observability`
+block. Now `wrangler deploy` writes the *same* state Terraform already established instead of
+resetting it to disabled, so nothing drifts and no reconciling apply is needed — confirmed with a
+real `terraform plan -detailed-exitcode` immediately after `npm run deploy` (no second apply in
+that script anymore): zero drift, first try.
+
+This does not reintroduce the "generated `wrangler.jsonc` MUST NOT duplicate ownership of
+settings managed by Terraform" problem AGENTS.md warns against and #24 was careful to avoid:
+`architect.tf`'s resource remains the only place a human decides these values, and
+`wrangler.jsonc.tpl`'s block is a same-value mirror kept in sync by hand (both blocks carry a
+comment pointing at the other), not an independently-configurable second source of truth. This
+was deliberately *not* threaded through as a Terraform output/`{{placeholder}}` the way
+resource-generated values (a D1 database id, a KV namespace id) are: `1`/`0.1`/`true` here are
+static demo choices baked into the `.tf` file itself, not data that only exists after `apply`, so
+templating them through an output would add indirection without adding any actual
+single-source-of-truth benefit.
+
+`demos/architect/package.json`'s `deploy` script is back to the ordinary two-step
+`run-s deploy:infra deploy:worker`. Any other demo that adopts Terraform-managed `observability`
+in the future should mirror this fix directly rather than #24's — there is no longer a reason to
+reach for a second `apply`.
+
+**Rolled into AGENTS.md** — the Resource Ownership section's "generated `wrangler.jsonc` MUST NOT
+duplicate ownership of settings managed by Terraform" line now carries this as its one explicit,
+narrow exception, fulfilling #24's own suggestion that this stop being a per-demo discovery. Any
+future demo that hits the same `wrangler deploy`-resets-a-Terraform-managed-field problem should
+follow AGENTS.md directly; this entry (and #24) exist for the live-verified rationale.

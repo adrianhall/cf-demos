@@ -16,6 +16,7 @@ import {
   saveDiagramGraph,
   updateDiagram,
 } from "../../api/diagrams";
+import type { SharedDiagram } from "../../api/shares";
 import { useDiagramStore } from "../../stores/diagramStore";
 import { edgeTypes } from "./edges/edgeTypes";
 import { nodeTypes } from "./nodes/nodeTypes";
@@ -56,13 +57,32 @@ function parseGraphData(graphData: string): ParsedGraphData {
  * an unload guard for unsaved changes, drag-and-drop and click-to-add node creation from the
  * palette, keyboard shortcuts (Delete, Ctrl+Z, Ctrl+Shift+Z), and renders the full editor layout
  * (toolbar, palette, canvas, properties panel, status bar). Ported from CF-Architect's
- * `src/islands/DiagramCanvas.tsx`, scoped to this phase: read-only sharing, print mode, and
- * export are added in their own later phases.
+ * `src/islands/DiagramCanvas.tsx`.
+ *
+ * Also serves as the anonymous read-only share viewer (`../../views/ShareView.tsx`) via
+ * `readOnly`/`initialDiagram`, matching CF-Architect's own single-component design (its
+ * `readOnly` prop guards the same effects and hides the same editing UI this port's does) rather
+ * than a second, near-duplicate component: every editing effect below (autosave, title save, the
+ * unload guard, keyboard shortcuts) is a no-op in read-only mode, and the palette/properties
+ * panel simply are not rendered.
  *
  * @param diagramId Diagram id to load and autosave, taken from the current URL
- * (`../../views/EditorView.tsx`).
+ * (`../../views/EditorView.tsx`), or already known by `initialDiagram` in read-only mode.
+ * @param readOnly When `true`, disables every editing affordance (autosave, palette,
+ * properties panel, undo/redo, keyboard shortcuts) and renders an immutable graph.
+ * @param initialDiagram When `readOnly` is `true`, the diagram's fields already fetched by
+ * `GET /api/share/:token` (an anonymous, unauthenticated call) -- read-only mode never calls the
+ * owner-authenticated `getDiagram()` at all, since an anonymous viewer cannot.
  */
-export function DiagramCanvas({ diagramId }: { diagramId: string }) {
+export function DiagramCanvas({
+  diagramId,
+  readOnly = false,
+  initialDiagram,
+}: {
+  diagramId: string;
+  readOnly?: boolean;
+  initialDiagram?: Pick<SharedDiagram, "title" | "description" | "graphData">;
+}) {
   const { screenToFlowPosition } = useReactFlow();
 
   const {
@@ -89,6 +109,19 @@ export function DiagramCanvas({ diagramId }: { diagramId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (readOnly && initialDiagram) {
+      const parsed = parseGraphData(initialDiagram.graphData);
+      setDiagram(
+        diagramId,
+        initialDiagram.title,
+        initialDiagram.description ?? "",
+        parsed.nodes,
+        parsed.edges,
+        parsed.viewport,
+      );
+      return;
+    }
+
     let cancelled = false;
     getDiagram(diagramId)
       .then((diagram) => {
@@ -113,11 +146,14 @@ export function DiagramCanvas({ diagramId }: { diagramId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [diagramId, setDiagram]);
+  }, [diagramId, setDiagram, readOnly, initialDiagram]);
 
-  // Autosave the graph shortly after the last change.
+  // Autosave the graph shortly after the last change. `dirty` never becomes true in read-only
+  // mode -- nothing wires `onNodesChange`/`onEdgesChange`/`onConnect`/`addNode` there -- but the
+  // explicit `readOnly` guard documents that intent directly, matching CF-Architect's own
+  // structure, rather than relying on that indirectly.
   useEffect(() => {
-    if (!dirty) return;
+    if (readOnly || !dirty) return;
 
     const timer = setTimeout(() => {
       void (async () => {
@@ -140,10 +176,12 @@ export function DiagramCanvas({ diagramId }: { diagramId: string }) {
     }, AUTOSAVE_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [dirty, diagramId, markSaving, markSaved, markSaveError]);
+  }, [readOnly, dirty, diagramId, markSaving, markSaved, markSaveError]);
 
-  // Warn before leaving with unsaved changes.
+  // Warn before leaving with unsaved changes. Not attached at all in read-only mode, which never
+  // has any.
   useEffect(() => {
+    if (readOnly) return;
     const handler = (event: BeforeUnloadEvent) => {
       if (useDiagramStore.getState().dirty) {
         event.preventDefault();
@@ -151,14 +189,15 @@ export function DiagramCanvas({ diagramId }: { diagramId: string }) {
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, []);
+  }, [readOnly]);
 
   // Persist title changes independently of the graph autosave, matching CF-Architect's
   // separate, slightly longer debounce for the (much smaller, much less frequently updated)
-  // metadata write.
+  // metadata write. Never runs in read-only mode -- there is no `updateDiagram()` call an
+  // anonymous viewer is even authorized to make.
   const diagramLoaded = useDiagramStore((state) => state.diagramId !== null);
   useEffect(() => {
-    if (!diagramLoaded) return;
+    if (readOnly || !diagramLoaded) return;
     const timer = setTimeout(() => {
       updateDiagram(diagramId, { title }).catch(() => {
         /* the title autosave failing silently matches CF-Architect's own behavior; the
@@ -167,7 +206,7 @@ export function DiagramCanvas({ diagramId }: { diagramId: string }) {
       });
     }, TITLE_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [title, diagramLoaded, diagramId]);
+  }, [title, diagramLoaded, diagramId, readOnly]);
 
   /** Add a node dropped from the palette at the drop position. */
   const onDrop = useCallback(
@@ -231,6 +270,8 @@ export function DiagramCanvas({ diagramId }: { diagramId: string }) {
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
+      if (readOnly) return;
+
       const target = event.target as HTMLElement;
       const isEditing =
         target.tagName === "INPUT" ||
@@ -249,7 +290,7 @@ export function DiagramCanvas({ diagramId }: { diagramId: string }) {
         redo();
       }
     },
-    [removeSelected, undo, redo],
+    [readOnly, removeSelected, undo, redo],
   );
 
   if (loadError) {
@@ -279,19 +320,19 @@ export function DiagramCanvas({ diagramId }: { diagramId: string }) {
       // biome-ignore lint/a11y/noNoninteractiveTabindex: see the comment above this element.
       tabIndex={0}
     >
-      <Toolbar />
+      <Toolbar readOnly={readOnly} />
       <div className="diagram-editor__body">
-        <ServicePalette onAddNode={onAddNodeFromPalette} />
+        {!readOnly && <ServicePalette onAddNode={onAddNodeFromPalette} />}
         <div className="diagram-editor__canvas">
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
+            onNodesChange={readOnly ? undefined : onNodesChange}
+            onEdgesChange={readOnly ? undefined : onEdgesChange}
+            onConnect={readOnly ? undefined : onConnect}
             onViewportChange={onViewportChange}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
+            onDragOver={readOnly ? undefined : onDragOver}
+            onDrop={readOnly ? undefined : onDrop}
             onNodeClick={onNodeClick}
             onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
@@ -301,6 +342,8 @@ export function DiagramCanvas({ diagramId }: { diagramId: string }) {
             snapToGrid
             snapGrid={[16, 16]}
             deleteKeyCode={null}
+            nodesDraggable={!readOnly}
+            nodesConnectable={!readOnly}
             defaultEdgeOptions={{ type: "cf-edge" }}
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
@@ -313,12 +356,12 @@ export function DiagramCanvas({ diagramId }: { diagramId: string }) {
                 );
               }}
             />
-            <Controls />
+            <Controls showInteractive={!readOnly} />
           </ReactFlow>
         </div>
-        <PropertiesPanel />
+        {!readOnly && <PropertiesPanel />}
       </div>
-      <StatusBar readOnly={false} />
+      <StatusBar readOnly={readOnly} />
     </div>
   );
 }

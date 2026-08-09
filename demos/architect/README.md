@@ -4,7 +4,7 @@ A Cloudflare architecture diagram editor based on Cloudflare Workers, Static Ass
 
 See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches and how it works, and [`DEMO.md`](./DEMO.md) for a presenter's demo script.
 
-> **Status:** Phases 1–2 (scaffolding/Access and the diagram library/editor) of `docs/09-ARCHITECT.md` are implemented — an authenticated user can create, edit, autosave, duplicate, and delete diagrams from a Cloudflare product catalog and blueprint templates. Later phases add sharing, admin, and export/print/dark-mode features described in that plan.
+> **Status:** Phases 1–3 (scaffolding/Access, the diagram library/editor, and read-only sharing) of `docs/09-ARCHITECT.md` are implemented — an authenticated user can create, edit, autosave, duplicate, and delete diagrams from a Cloudflare product catalog and blueprint templates, and share a read-only link to any of their own diagrams. Later phases add admin and export/print/dark-mode features described in that plan.
 
 ## Prerequisites
 
@@ -83,25 +83,32 @@ Before provisioning for the first time, verify in the Cloudflare dashboard that 
 6. From the dashboard, select **+ New Diagram**, choose a blueprint (or a blank canvas), and confirm the editor opens with that diagram's graph.
 7. Drag a product from the palette onto the canvas, wait a moment, and confirm the status bar reports a save. Reload the page and confirm the change persisted.
 8. In the Cloudflare dashboard's D1 console, run `SELECT id, title, owner_email FROM diagrams;` and confirm the new row exists.
+9. In the toolbar, select **Share**, then **Create link**, and copy the shown URL. Open it in a private/incognito window and confirm the diagram renders read-only with no sign-in prompt.
+10. Back in the signed-in browser's share dialog, select **Revoke link**, then reload the private/incognito window's share URL and confirm it now reports the link was not found.
 
 ## Provisioned Resources
 
 - Worker (`<DEMO_NAME>`) serving the React app shell as static assets and a Hono API.
-- D1 database `<DEMO_NAME>-db`, bound as `DB` (tables: `diagrams`, `users`).
-- Workers KV namespace `<DEMO_NAME>-shares`, bound as `SHARES` (unused until sharing ships).
+- D1 database `<DEMO_NAME>-db`, bound as `DB` (tables: `diagrams`, `users`, `diagram_shares`).
+- Workers KV namespace `<DEMO_NAME>-shares`, bound as `SHARES` — the anonymous share-token
+  lookup, keyed by a SHA-256 digest of the token (never the raw token itself).
 - Custom domain `<DEMO_NAME>.<DEMO_DOMAIN>`.
-- Access application + bypass policy covering the whole hostname (the public landing page).
-- Access application + allow policy for any authenticated user, scoped to `/app*` and `/api/*`.
+- Access application + bypass policy covering the whole hostname (the public landing page,
+  `/blueprints`, and the read-only share viewer at `/s/:token`).
+- Access application + allow policy for any authenticated user, scoped to `/app*`, `/api/me`, and
+  `/api/diagrams*` — deliberately narrower than `/api/*` so the public `/api/share/*` resolver
+  stays covered by the bypass application above instead.
 - Workers Logs (100% sampling) and traces (10% sampling).
 
 ## Troubleshooting
 
 | Symptom | Cause and resolution |
 | --- | --- |
-| `/app` is public | Confirm the `app` Access application lists both `/app*` and `/api/*` destinations, then re-run `npm run deploy`. |
+| `/app` is public | Confirm the `app` Access application lists `/app*`, `/api/me`, and `/api/diagrams*` destinations, then re-run `npm run deploy`. |
 | Local sign-in loops or shows the wrong identity | Visit `/cdn-cgi/access/logout` and choose a different dev identity. |
-| `401` from `/api/me` | Sign in through Access at `https://<DEMO_NAME>.<DEMO_DOMAIN>/app`; every `/api/*` route requires a verified Access identity. |
+| `401` from `/api/me` | Sign in through Access at `https://<DEMO_NAME>.<DEMO_DOMAIN>/app`; every `/api/*` route except `/api/share/*` requires a verified Access identity. |
 | `isAdmin` is always `false` | Confirm the signed-in identity's email exactly matches `ADMIN_EMAIL` in `.env`, then re-run `npm run deploy`. |
+| The share dialog can't show a link that's already active | Expected: the server only ever returns a share's raw URL once, at creation. Select **Generate new link** to mint (and reveal) a fresh one, which revokes the old one. |
 | `generate:wrangler` fails during deploy | Run `npm run deploy:infra:apply` successfully first; every referenced Terraform output must exist. |
 | D1 migration fails during deploy | Confirm Terraform apply completed (the D1 database must exist) before `db:migrate:remote` runs; re-run `npm run deploy`. |
 
