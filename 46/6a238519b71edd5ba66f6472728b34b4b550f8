@@ -1,0 +1,130 @@
+demos/architect/src/worker/routes/shares.ts
+  s_b49cd3243456cf::t_10087f2d29d151 1-30,35-47
+  s_b49cd3243456cf::t_3d5cf9d1a537aa 31-34
+demos/architect/src/client/views/ShareView.test.tsx
+  s_b49cd3243456cf::t_3d5cf9d1a537aa 76-78
+  s_b49cd3243456cf::t_b603394f8a24fe 1-75,79-92
+demos/architect/src/worker/index.ts
+  s_b49cd3243456cf::t_509283d33ad0aa 25
+  s_b49cd3243456cf::t_78d354465fd5e7 12
+demos/architect/src/client/App.test.tsx
+  s_b49cd3243456cf::t_a9c846f6d1de0b 57-72
+demos/architect/src/client/components/editor/toolbar/Toolbar.tsx
+  s_b49cd3243456cf::t_b107734e3165df 297-318
+  s_b49cd3243456cf::t_93401b77eb29d7 6
+  s_b49cd3243456cf::t_7aa66bd2d227f7 78,84
+demos/architect/src/client/views/ShareView.tsx
+  s_b49cd3243456cf::t_bffab1a833e3e8 1,3-74
+  s_b49cd3243456cf::t_a1684c58c3004e 2
+demos/architect/infra/architect.tf
+  s_b49cd3243456cf::t_11d9cc7624c11e 14-19
+demos/architect/src/client/api/shares.ts
+  s_b49cd3243456cf::t_3d5cf9d1a537aa 77-79
+  s_b49cd3243456cf::t_c956e95f9e6b81 1-76,80-127
+demos/architect/src/client/App.tsx
+  s_b49cd3243456cf::t_9f8de7b1cfef9f 4,7-9,17-19,29-31
+  s_b49cd3243456cf::t_7bddf46c3535b3 32
+demos/architect/src/worker/shares/repository.ts
+  s_b49cd3243456cf::t_0d42430ae34140 1-18,23-133,137-206
+  s_b49cd3243456cf::t_3d5cf9d1a537aa 19-22,134-136
+demos/architect/src/worker/shares/types.ts
+  s_b49cd3243456cf::t_ef3da0fcefc057 1-42
+demos/architect/src/worker/routes/diagrams.ts
+  s_b49cd3243456cf::t_f495c052d72639 119-125,138-153,158-176,181-195,200-204
+  s_b49cd3243456cf::t_3d5cf9d1a537aa 134-137,154-157,177-180,196-199
+  s_b49cd3243456cf::t_1da00e883e613a 15
+demos/architect/src/worker/shares/repository.test.ts
+  s_b49cd3243456cf::t_f4075f2476ebef 168-174
+  s_b49cd3243456cf::t_45644b2256f530 1-95,99-146,148-167,175-216,220-264
+  s_b49cd3243456cf::t_61dd63cdffb221 147
+  s_b49cd3243456cf::t_3d5cf9d1a537aa 96-98,217-219
+demos/architect/src/worker/diagrams/repository.ts
+  s_b49cd3243456cf::t_1c8ca88adfcb2b 2
+  s_b49cd3243456cf::t_228c758cc9549a 206-234
+demos/architect/src/client/components/editor/toolbar/ShareModal.tsx
+  s_b49cd3243456cf::t_3d5cf9d1a537aa 2,156-157,178-181
+  s_b49cd3243456cf::t_d22f86f0812714 1,3-155,158-177,182-249
+demos/architect/infra/access.tf
+  s_b49cd3243456cf::t_c3cb649b12fce3 30-32,45-51,65-69
+demos/architect/src/client/components/editor/toolbar/ShareModal.test.tsx
+  s_b49cd3243456cf::t_9da7940600a649 78-101
+  s_b49cd3243456cf::t_a07a05b68b8bc1 1-54,56-71,75-77,102-116,120-193,242-255
+  s_b49cd3243456cf::t_3d5cf9d1a537aa 55,72-74,117-119
+  s_b49cd3243456cf::t_ba3f7968fe8c6a 194-241
+demos/architect/tests/integration/shares.test.ts
+  s_b49cd3243456cf::t_3d5cf9d1a537aa 71-74,109-112,117-121,126-132,258-260,263-265,298-300
+  s_b49cd3243456cf::t_b19c5ba6f558df 310-331
+  s_b49cd3243456cf::t_b5e57be8fbffbb 1-70,75-108,113-116,122-125,133-257,261-262,266-297,301-309,332-347
+AGENTS.md
+  s_b49cd3243456cf::t_5ed45a8d359341 193-208
+docs/DECISIONS.md
+  s_b49cd3243456cf::t_0322037456ee7c 1069-1100
+  s_b49cd3243456cf::t_104714d5e670a4 1101-1106
+demos/architect/src/client/app.css
+  s_b49cd3243456cf::t_a62dca43645167 808-855
+  s_b49cd3243456cf::t_e70448865a250d 505-508
+demos/architect/src/worker/shares/validation.ts
+  s_b49cd3243456cf::t_c7a8fe1bfb805b 1-24
+demos/architect/src/client/components/editor/toolbar/Toolbar.test.tsx
+  s_b49cd3243456cf::t_6f21433943fc50 258-293
+  s_b49cd3243456cf::t_318c1c473809a5 14-22
+  s_b49cd3243456cf::t_b4ea6748017dde 104,110
+demos/architect/src/client/api/shares.test.ts
+  s_b49cd3243456cf::t_659d77ec30273a 1-15,24-55,80-122,129,131-170,178-186
+  s_b49cd3243456cf::t_c68fc3e8224916 16-23,123-128,130
+  s_b49cd3243456cf::t_3d5cf9d1a537aa 171-177
+  s_b49cd3243456cf::t_d18a010ef30998 56-66
+  s_b49cd3243456cf::t_9cda19b89b6357 67-79
+demos/architect/wrangler.jsonc.tpl
+  s_b49cd3243456cf::t_eab9c2ce8efe54 33-54
+demos/architect/src/client/components/editor/DiagramCanvas.test.tsx
+  s_b49cd3243456cf::t_ba4f1f49a91fb2 404-563
+demos/architect/src/worker/diagrams/repository.test.ts
+  s_b49cd3243456cf::t_b255a96166c308 274-299
+demos/architect/src/worker/shares/validation.test.ts
+  s_b49cd3243456cf::t_258fb217902e27 1-41
+demos/architect/package.json
+  s_b49cd3243456cf::t_fe92e2e8eaaed1 22
+demos/architect/src/client/components/editor/DiagramCanvas.tsx
+  s_b49cd3243456cf::t_3e1dbfa1bdc097 60-67,70-75,77-85,112-124,149,151-154,156,179,181-182,184,192,196-197,200,209
+  s_b49cd3243456cf::t_10f30423ed7ad7 273-274,293
+  s_b49cd3243456cf::t_ece36cc987153a 323,325,330-332,334-335,345-346,359,362,364
+  s_b49cd3243456cf::t_8aa2eed9b151f2 19
+demos/architect/EXPLAIN-DEMO.md
+  s_b49cd3243456cf::t_7cdac54324ccfd 232-238
+  s_b49cd3243456cf::t_869378301742cb 248
+  s_b49cd3243456cf::t_8a77be44bc0787 137-170,176-177,179-189,201-202
+  s_b49cd3243456cf::t_a3936ec4100dd2 64-66,85-91,105-106
+  s_b49cd3243456cf::t_12acba369c2c74 3-5
+  s_b49cd3243456cf::t_f7ba00b0dc5139 12-24
+demos/architect/README.md
+  s_b49cd3243456cf::t_258267005393a7 86-87
+  s_b49cd3243456cf::t_79e950992636be 92-94,96-100,107,109,111
+  s_b49cd3243456cf::t_ea9b2ef08038dd 7
+demos/architect/DEMO.md
+  s_b49cd3243456cf::t_2502de3793079c 48-59
+  s_b49cd3243456cf::t_1b156df9db3065 68-69,73,75
+  s_b49cd3243456cf::t_e582d829678c81 13
+  s_b49cd3243456cf::t_fc6da3283132d9 5
+  s_b49cd3243456cf::t_6beaae2e19f578 18
+demos/architect/src/access-policies.ts
+  s_b49cd3243456cf::t_9a084d5f4b81b8 16-24,27
+demos/architect/migrations/0002_create_diagram_shares.sql
+  s_b49cd3243456cf::t_3311114016832d 1-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "466a238519b71edd5ba66f6472728b34b4b550f8",
+  "prompts": {},
+  "sessions": {
+    "s_b49cd3243456cf": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_01cbeb516ffePd77xqeVCwPlqd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
