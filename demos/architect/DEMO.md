@@ -2,7 +2,7 @@
 
 See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 
-> This script covers Phases 1–3 (scaffolding/Access, the diagram library/editor, and read-only sharing) of `docs/09-ARCHITECT.md`. Later phases add admin and export/print/dark-mode capabilities this script will grow to cover.
+> This script covers Phases 1–4 (scaffolding/Access, the diagram library/editor, read-only sharing, and admin) of `docs/09-ARCHITECT.md`. Later phases add export/print/dark-mode capabilities this script will grow to cover.
 
 ## Demonstration Prerequisites
 
@@ -57,6 +57,20 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
     ```
 
     Point out `token_digest` (select it too, if asked) is a 64-character SHA-256 hex digest, never the link's actual token — and that the row just revoked now has a `revoked_at` timestamp rather than being deleted.
+26. Back in the signed-in browser, use **Sign out**, then sign in as a non-administrator identity (for example `alice@example.com`) again. Show that no **Admin** link appears in the header, and that opening `/app/admin` directly shows a "not available" message instead of the admin view.
+27. Use **Sign out** again, then sign in as the identity matching `ADMIN_EMAIL`. Point out the **Admin** link now appears next to the `Architect` logo.
+28. Select **Admin**. Show the user directory table listing every identity that has signed in so far in this session, each row's diagram count matching what was created earlier in this script.
+29. Select **Next**/**Previous**, if enough identities exist to span a second page, to show the directory is paginated rather than loading every row at once.
+30. Switch to the D1 tab and run:
+
+    ```sql
+    SELECT id, title, owner_email FROM diagrams;
+    ```
+
+    Copy the `id` of a diagram owned by the non-administrator identity from step 26.
+31. Back in the admin view's **Diagram moderation** panel, paste that id into **Diagram id** and select **Open**. Show the diagram's title, description, and a read-only canvas preview render — and that no `owner_email` appears anywhere in this view.
+32. Select **Delete diagram**, confirm in the dialog, and show the "Diagram deleted." confirmation.
+33. Re-run the D1 query from step 30 and show the row is gone. Sign out and sign back in as the diagram's original owner; open `/app` and show the deleted diagram no longer appears in their dashboard.
 
 ## Expected Results
 
@@ -67,10 +81,13 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 - The dashboard lists only the signed-in identity's own diagrams, and duplicate/delete act on exactly the selected diagram.
 - A share link renders any diagram read-only for an anonymous visitor with no Access challenge, always reflects the diagram's current graph (no separate snapshot to fall out of sync), and stops resolving immediately once revoked.
 - Only a SHA-256 digest of a share token is ever visible in D1 or Workers KV; the raw, working link is shown to the owner exactly once, at creation.
+- The **Admin** nav link and `/app/admin` view are usable only by the identity matching `ADMIN_EMAIL`; every other identity is refused, both in the UI and by every `/api/admin/*` route (`403`).
+- The admin user directory lists every identity that has ever signed in with an accurate, live diagram count per identity, paginated rather than loaded all at once.
+- The admin diagram moderation panel can preview any diagram's title/description/graph by id without ever exposing its owner, and can delete it regardless of owner, cascading to revoke any of its active share links.
 
 ## Where To Observe State
 
-- **Worker logs:** Workers & Pages > `architect` > Logs — look for `diagram_created`, `diagram_opened`, `diagram_updated`, `diagram_shared`, and `diagram_share_revoked` entries (never graph content, tokens, or email).
+- **Worker logs:** Workers & Pages > `architect` > Logs — look for `diagram_created`, `diagram_opened`, `diagram_updated`, `diagram_shared`, `diagram_share_revoked`, and `admin_diagram_deleted` entries (never graph content, tokens, or email).
 - **Traces:** Workers & Pages > `architect` > Observability > Traces (10% sampling).
 - **D1 data:** D1 > `architect-db` > Console; query the `users`, `diagrams`, and `diagram_shares` tables as shown above.
 - **Access applications:** Zero Trust > Access controls > Applications > `architect public` and `architect app`.

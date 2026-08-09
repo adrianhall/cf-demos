@@ -16,3 +16,21 @@ export interface UserDirectoryEntry {
   /** ISO-8601 timestamp recorded on this identity's most recent authenticated request. */
   lastSeenAt: string;
 }
+
+/**
+ * One row of the admin user directory (`GET /api/admin/users`): a {@link UserDirectoryEntry} plus
+ * how many diagrams that identity currently owns. The count is computed at read time from the
+ * `diagrams` table -- there is no denormalized counter column to keep in sync.
+ */
+export interface AdminUserDirectoryEntry extends UserDirectoryEntry {
+  /** Number of diagrams currently owned by this identity. */
+  diagramCount: number;
+}
+
+/** A page of the admin user directory, plus the total row count for pagination. */
+export interface AdminUserDirectoryPage {
+  /** Up to `limit` directory entries, most recently active first. */
+  users: AdminUserDirectoryEntry[];
+  /** Total number of distinct identities in the directory, independent of pagination. */
+  total: number;
+}

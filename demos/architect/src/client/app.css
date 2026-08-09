@@ -82,7 +82,14 @@ textarea {
 }
 
 .app-shell__name {
+  color: inherit;
   font-weight: 700;
+  text-decoration: none;
+}
+
+.app-shell__admin-link {
+  color: inherit;
+  flex: 0 0 auto;
 }
 
 .app-shell__identity {
@@ -92,6 +99,11 @@ textarea {
 
 .app-shell__logout {
   flex: 0 0 auto;
+}
+
+.app-shell__loading,
+.app-shell__forbidden {
+  padding: 1.5rem;
 }
 
 .app-shell__main {
@@ -852,4 +864,126 @@ textarea {
 .share-view__loading,
 .share-view__error {
   padding: 1.5rem;
+}
+
+/* Admin ----------------------------------------------------------------- */
+
+.admin {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.admin__title {
+  margin: 0;
+}
+
+.admin__section-title {
+  margin: 0 0 0.75rem;
+}
+
+.admin__section-intro {
+  color: light-dark(#555, #aaa);
+  margin-top: 0;
+}
+
+.admin__loading,
+.admin__error {
+  padding: 1rem 0;
+}
+
+.admin__table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.admin__table-caption {
+  caption-side: top;
+  color: light-dark(#555, #aaa);
+  font-size: 0.875rem;
+  text-align: left;
+  padding-bottom: 0.5rem;
+}
+
+.admin__table th,
+.admin__table td {
+  border-bottom: 1px solid var(--cf-border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.admin__table td.admin__table-empty {
+  color: light-dark(#555, #aaa);
+  text-align: center;
+}
+
+.admin__pagination {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.admin__pagination-status {
+  color: light-dark(#555, #aaa);
+  font-size: 0.875rem;
+}
+
+.admin__moderation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  max-width: 32rem;
+}
+
+.admin__moderation-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.admin__moderation-input {
+  background: var(--cf-surface-alt);
+  border: 1px solid var(--cf-border);
+  border-radius: 0.25rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.5rem;
+}
+
+.admin__moderation-success {
+  color: light-dark(#1a7f37, #4ade80);
+}
+
+.admin__moderation-error {
+  color: var(--cf-danger);
+}
+
+.admin__moderation-preview {
+  background: var(--cf-surface);
+  border: 1px solid var(--cf-border);
+  border-radius: 0.5rem;
+  margin-top: 1rem;
+  overflow: hidden;
+}
+
+.admin__moderation-preview-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1rem;
+}
+
+.admin__moderation-preview-title {
+  margin: 0;
+}
+
+.admin__moderation-preview-description {
+  color: light-dark(#555, #aaa);
+  margin: 0.25rem 0 0;
+}
+
+.admin__moderation-preview-canvas {
+  background: var(--cf-surface-alt);
+  border-top: 1px solid var(--cf-border);
 }

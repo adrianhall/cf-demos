@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import type { AppBindings } from "./bindings";
 import { accessMiddleware } from "./middleware/access";
 import { upsertUserMiddleware } from "./middleware/upsert-user";
+import { adminRouter } from "./routes/admin";
 import { diagramsRouter } from "./routes/diagrams";
 import { meRouter } from "./routes/me";
 import { sharesRouter } from "./routes/shares";
@@ -23,6 +24,7 @@ app.use("/api/*", accessMiddleware, upsertUserMiddleware);
 app.route("/api/me", meRouter);
 app.route("/api/diagrams", diagramsRouter);
 app.route("/api/share", sharesRouter);
+app.route("/api/admin", adminRouter);
 
 app.onError(problemDetailsErrorHandler({ includeStack: import.meta.env.DEV }));
 app.notFound(notFoundHandler());

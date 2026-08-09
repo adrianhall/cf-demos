@@ -14,6 +14,9 @@ vi.mock("./EditorView", () => ({
     <div data-testid="editor-view" data-diagram-id={diagramId} />
   ),
 }));
+vi.mock("./AdminView", () => ({
+  AdminView: () => <div data-testid="admin-view" />,
+}));
 
 const { AppShellView } = await import("./AppShellView");
 
@@ -54,6 +57,52 @@ describe("AppShellView", () => {
         screen.getByText("admin@example.com (administrator)"),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("shows an Admin nav link only for the configured administrator", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ email: "admin@example.com", isAdmin: true }),
+            { status: 200 },
+          ),
+        ),
+    );
+
+    render(<AppShellView />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute(
+        "href",
+        "/app/admin",
+      ),
+    );
+  });
+
+  it("hides the Admin nav link for a non-administrator", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ email: "alice@example.com", isAdmin: false }),
+            { status: 200 },
+          ),
+        ),
+    );
+
+    render(<AppShellView />);
+
+    await waitFor(() =>
+      expect(screen.getByText("alice@example.com")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("link", { name: "Admin" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders the verified email with no admin marker for a non-administrator", async () => {
@@ -144,6 +193,64 @@ describe("AppShellView", () => {
       "data-diagram-id",
       "abc-123",
     );
+  });
+
+  it("renders the admin view at /app/admin for the configured administrator", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ email: "admin@example.com", isAdmin: true }),
+            { status: 200 },
+          ),
+        ),
+    );
+    window.history.pushState({}, "", "/app/admin");
+
+    render(<AppShellView />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("admin-view")).toBeInTheDocument(),
+    );
+  });
+
+  it("shows a not-allowed message at /app/admin for a non-administrator", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ email: "alice@example.com", isAdmin: false }),
+            { status: 200 },
+          ),
+        ),
+    );
+    window.history.pushState({}, "", "/app/admin");
+
+    render(<AppShellView />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "This page is only available to this demo's configured administrator.",
+      ),
+    );
+    expect(screen.queryByTestId("admin-view")).not.toBeInTheDocument();
+  });
+
+  it("shows a loading message at /app/admin while identity verification is pending", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+    window.history.pushState({}, "", "/app/admin");
+
+    render(<AppShellView />);
+
+    expect(screen.getAllByText("Verifying identity…")).toHaveLength(2);
+    expect(screen.queryByTestId("admin-view")).not.toBeInTheDocument();
   });
 
   it("applies the editor layout modifier only for the editor view", () => {

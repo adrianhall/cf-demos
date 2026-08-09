@@ -1,8 +1,8 @@
 # Architect — What This Demo Teaches
 
-> This file describes Phases 1–3 (scaffolding/Access, the diagram library/editor, and read-only
-> sharing) of `docs/09-ARCHITECT.md`, a Cloudflare architecture diagram editor ported from a
-> real, working prior art application (CF-Architect). Later phases add admin and
+> This file describes Phases 1–4 (scaffolding/Access, the diagram library/editor, read-only
+> sharing, and admin) of `docs/09-ARCHITECT.md`, a Cloudflare architecture diagram editor ported
+> from a real, working prior art application (CF-Architect). Later phases add
 > export/print/dark-mode capabilities the full plan describes.
 
 ## What This Demonstrates
@@ -27,18 +27,31 @@
   every Access application in a team shares the same JWKS, so a token minted for a *different*
   application in the same team would also be accepted here (cross-application token replay).
   This demo pins the Access application's own audience (`aud`) tag as defense against that, and
-  layers a second, independent comparison in `GET /api/me` against an operator-configured
-  `ADMIN_EMAIL` value — there is no D1 role column, and exactly one identity is ever the
-  administrator, set by the operator rather than by a first-user-wins bootstrap.
+  layers a second, independent comparison against an operator-configured `ADMIN_EMAIL` value:
+  `GET /api/me` reports `isAdmin` to every identity (for client-side UI conditionals), while
+  every `/api/admin/*` route's `requireAdmin` middleware (`src/worker/middleware/admin.ts`)
+  independently re-checks the same comparison server-side and rejects everyone else with `403`
+  — there is no D1 role column, and exactly one identity is ever the administrator, set by the
+  operator rather than by a first-user-wins bootstrap.
 - **React as a deliberate, scenario-scoped exception to this repository's Vue default.** This
   port's UI is React because the real prior art (CF-Architect) and the diagram library it needs
   (`@xyflow/react`) are both React; rewriting proven, working functionality in Vue first would be
   pure translation effort with no new teaching value.
 - **A lightweight identity directory that is explicitly never an authorization source.** Every
-  authenticated request upserts a `users` row keyed on the verified email. The table exists
-  solely to back a future read-only admin user directory (Phase 4) — no route ever reads it to
-  decide what a request is allowed to do, which is why `upsertUserMiddleware` performs no
-  authorization check of its own.
+  authenticated request upserts a `users` row keyed on the verified email. The table backs the
+  read-only admin user directory (`GET /api/admin/users`) — no route ever reads it to decide what
+  a request is allowed to do, which is why `upsertUserMiddleware` performs no authorization check
+  of its own, and why the admin route computes each row's diagram count with a live correlated
+  subquery against `diagrams` rather than trusting a stored counter.
+- **Diagram moderation that reuses the same owner-blind projection as anonymous sharing, rather
+  than inventing a second one.** `GET /api/admin/diagrams/:id` calls the exact same
+  `DiagramRepository.findPublicFields()` the public share viewer already uses (never selecting
+  `ownerEmail`), so the admin UI's "preview before delete" capability can never expose more about
+  a diagram than a random person already could by holding any diagram's share link — a
+  deliberately narrow reading of docs/09-ARCHITECT.md Phase 4's "diagram moderation (view/delete
+  any user's diagram)" that keeps the blanket "a non-owner cannot read another user's diagram"
+  test intact for content, while still allowing the one, explicitly-provisioned administrator to
+  moderate.
 - **A drag-and-drop diagram editor built entirely on raw D1 and a client-side graph library, with
   no ORM.** `@xyflow/react` owns the canvas; a small Zustand store
   (`src/client/stores/diagramStore.ts`) tracks nodes, edges, viewport, selection, and a
@@ -212,7 +225,46 @@ not a `403`. `isAdmin` is computed by one comparison, `identity.email === contex
 — there is no D1 role column, no first-user-becomes-admin bootstrap, and no promote/demote
 workflow. Exactly one identity is ever the administrator, and it is set by the operator through
 `.env`/Terraform, not by the application. The client (`src/client/hooks/useIdentity.ts`) uses
-`isAdmin` to conditionally render admin UI once Phase 4 adds it, without a separate round trip.
+`isAdmin` to conditionally render admin UI (`AppShellView`'s **Admin** nav link, and the route to
+`AdminView`) without a separate round trip.
+
+`GET /api/me` reporting `isAdmin` to everyone is a UI convenience only, never the actual security
+boundary: every route under `/api/admin` independently re-runs the identical `ADMIN_EMAIL`
+comparison through `requireAdmin` (`src/worker/middleware/admin.ts`), mounted ahead of every
+handler in `src/worker/routes/admin.ts`. A non-administrator who navigates straight to `/app/admin`
+(bypassing the hidden nav link entirely) still gets refused — `AppShellView` shows a "not
+available" message instead of mounting `AdminView`, and even if it didn't, every request
+`AdminView`'s components would make gets `403` from the Worker regardless.
+
+### User directory and diagram moderation (Phase 4)
+
+`GET /api/admin/users` (`src/worker/routes/admin.ts`) lists a page of the `users` directory,
+most recently active identity first, each annotated with a live diagram count computed by a
+correlated subquery (`UserRepository.listWithDiagramCounts()`) rather than a denormalized counter
+column that could drift. `limit`/`offset` query parameters are validated
+(`src/worker/users/validation.ts`) and capped at 100 rows per page to bound worst-case D1 read
+cost; the client's `UserDirectoryTable` renders this as a paginated table with Previous/Next
+controls.
+
+`DELETE /api/admin/diagrams/:id` deletes any user's diagram regardless of owner
+(`DiagramRepository.removeAny()`, deliberately unscoped by `owner_email` unlike every other
+diagrams-table query in this codebase) and cascades
+`ShareRepository.revokeAllForDiagram()` — the same cascade the owner's own delete route already
+performs — so a moderated diagram's share link can never keep resolving afterward.
+
+`GET /api/admin/diagrams/:id` is this port's one deliberate, documented extension beyond
+docs/09-ARCHITECT.md Phase 4's literal two-route list, added to support that same phase's UI
+requirement ("the ability to open ... any user's diagram"): it returns exactly the same
+owner-blind projection (`id`, `title`, `description`, `graphData` — never `ownerEmail`) that
+`GET /api/share/:token` already exposes to a completely anonymous visitor holding any diagram's
+share link. Reusing that existing, already-audited projection is what keeps this route from
+becoming a second, broader way to discover who owns a diagram — the actual guarantee
+docs/09-ARCHITECT.md's non-negotiable tests care about — while still letting the administrator
+see what a diagram actually contains before deciding whether to delete it. The client's
+`DiagramModerationPanel` takes a diagram id typed or pasted in by the administrator (found, for
+example, via the D1 console's `diagrams` table, exactly as `DEMO.md`'s script does) rather than
+picking one from a list, because `GET /api/admin/users` deliberately reports only a diagram
+*count* per identity, not the diagrams themselves.
 
 ### Dropped: a provisioned Identity Provider
 

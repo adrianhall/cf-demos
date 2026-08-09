@@ -205,6 +205,24 @@ export class DiagramRepository {
   }
 
   /**
+   * Delete a diagram regardless of owner -- the admin moderation delete
+   * (`DELETE /api/admin/diagrams/:id`, docs/09-ARCHITECT.md Phase 4). Unlike `remove()`, this
+   * performs no ownership scoping of its own: callers must only reach this method from a route
+   * already gated by `../middleware/admin.ts`'s `requireAdmin`, never from an ordinary owner-
+   * scoped request.
+   *
+   * @param id Diagram id from the request path.
+   * @returns Whether a row was actually deleted.
+   */
+  async removeAny(id: string): Promise<boolean> {
+    const result = await this.database
+      .prepare(`DELETE FROM diagrams WHERE id = ?`)
+      .bind(id)
+      .run();
+    return result.meta.changes > 0;
+  }
+
+  /**
    * Load only the fields safe to show an anonymous share viewer -- deliberately never
    * `ownerEmail` (docs/09-ARCHITECT.md's non-negotiable tests: a public share must never leak
    * membership data). Callers must have already resolved a valid, unrevoked share token to `id`

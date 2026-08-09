@@ -272,6 +272,30 @@ describe("DiagramRepository", () => {
     expect(removed).toBe(false);
   });
 
+  it("removes a diagram by id alone, with no owner scoping", async () => {
+    const { database, statements } = databaseFor(null, { changes: 1 });
+
+    const removed = await new DiagramRepository(database).removeAny(
+      "11111111-1111-1111-1111-111111111111",
+    );
+
+    expect(removed).toBe(true);
+    expect(statements[0]?.sql).toContain("DELETE FROM diagrams WHERE id = ?");
+    expect(statements[0]?.parameters).toEqual([
+      "11111111-1111-1111-1111-111111111111",
+    ]);
+  });
+
+  it("reports failure removing a diagram id that does not exist", async () => {
+    const { database } = databaseFor(null, { changes: 0 });
+
+    const removed = await new DiagramRepository(database).removeAny(
+      "11111111-1111-1111-1111-111111111111",
+    );
+
+    expect(removed).toBe(false);
+  });
+
   it("loads only public fields for a share viewer, never ownerEmail", async () => {
     const { database } = databaseFor(rowFor({ title: "Shared Diagram" }));
 
