@@ -1,0 +1,146 @@
+demos/architect/src/client/components/editor/DiagramCanvas.test.tsx
+  s_f89cf57d18240e::t_cdbfb78efb7093 47
+  s_f89cf57d18240e::t_f2d4919f40f62b 1-7
+  s_f89cf57d18240e::t_9ee2a79cd83061 619
+  s_f89cf57d18240e::t_cd6550e424190e 607,622,625,641,659,669,678-681,683,696,701-703,718
+  s_f89cf57d18240e::t_bea89d7d85d81f 571-581,588-606,608-618,620-621,623-624,626-640,642,644-658,660,662-668,670,673-677,682,684-695,697-700,704-717,719-724
+  s_f89cf57d18240e::t_3518d1ce9d451b 643,661
+  s_f89cf57d18240e::t_488278939e111c 671-672
+  s_f89cf57d18240e::t_95e5f9cf7eca6c 582-587
+demos/architect/src/client/lib/theme.test.ts
+  s_f89cf57d18240e::t_3ffb8b99609c70 1-74,76-79,81-86,88-92,94-97
+  s_f89cf57d18240e::t_3518d1ce9d451b 75,80,87,93
+demos/architect/src/client/lib/scaffold-templates/vanilla/src/index.ts
+  s_f89cf57d18240e::t_18a8e596f34247 1-23
+demos/architect/src/client/lib/scaffold.ts
+  s_f89cf57d18240e::t_369e4f81eac7cc 1-122,124-428
+  s_f89cf57d18240e::t_3518d1ce9d451b 123
+demos/architect/src/client/app.css
+  s_f89cf57d18240e::t_434da5bfd75f93 498-563
+  s_f89cf57d18240e::t_35b22225424c3e 678-728
+demos/architect/src/client/components/DarkModeToggle.tsx
+  s_f89cf57d18240e::t_95bf9a95d15949 1-69
+demos/architect/src/client/components/editor/toolbar/Toolbar.test.tsx
+  s_f89cf57d18240e::t_9b6450bd3ec883 269-283
+demos/architect/src/client/lib/scaffold-templates/drizzle/src/db/client.ts
+  s_f89cf57d18240e::t_18a8e596f34247 1-15
+demos/architect/src/client/lib/scaffold-templates/migrations/0001_initial.sql
+  s_f89cf57d18240e::t_18a8e596f34247 1-8
+demos/architect/src/client/components/editor/toolbar/ExportButton.tsx
+  s_f89cf57d18240e::t_3518d1ce9d451b 74
+  s_f89cf57d18240e::t_be49823fd9832d 1-73,75-208
+demos/architect/src/client/main.tsx
+  s_f89cf57d18240e::t_0af99a758a759e 5,8-15,22-26
+demos/architect/biome.json
+  s_f89cf57d18240e::t_adce64a16aa0ed 12-13
+demos/architect/src/client/components/editor/toolbar/PrintButton.test.tsx
+  s_f89cf57d18240e::t_ac959de0829fbb 1-18
+demos/architect/src/client/lib/scaffold.test.ts
+  s_f89cf57d18240e::t_3a87d8c2389c51 1,7-371
+  s_f89cf57d18240e::t_3518d1ce9d451b 2-6
+demos/architect/src/client/stores/diagramStore.test.ts
+  s_f89cf57d18240e::t_7059a1f85d588c 239-246
+demos/architect/tsconfig.json
+  s_f89cf57d18240e::t_8f1365e050ffcc 26-33
+demos/architect/src/client/main.test.tsx
+  s_f89cf57d18240e::t_c161a6d225fb2b 44-60
+  s_f89cf57d18240e::t_f5c6f3a8c73274 16-17
+demos/architect/src/client/lib/scaffold-templates/drizzle/src/db/schema.ts
+  s_f89cf57d18240e::t_18a8e596f34247 1-13
+demos/architect/src/client/views/AppShellView.tsx
+  s_f89cf57d18240e::t_e3e27ddc538ed6 1
+  s_f89cf57d18240e::t_9e0e361a618301 45-47
+  s_f89cf57d18240e::t_f56b9580a6743b 76
+demos/architect/src/client/components/editor/toolbar/ExportButton.test.tsx
+  s_f89cf57d18240e::t_7de983f08e3b69 118-122
+  s_f89cf57d18240e::t_d707117cc97af6 1-117,123-188,194-209,211-248
+  s_f89cf57d18240e::t_3518d1ce9d451b 189-193,210
+demos/architect/src/client/components/editor/DiagramCanvas.tsx
+  s_f89cf57d18240e::t_5b22cfd7fb3419 376,383,385-387,389-406,408-411,434-449,452,454
+  s_f89cf57d18240e::t_cc298fcc454d29 407
+  s_f89cf57d18240e::t_1baab6f4aa054a 67-69
+  s_f89cf57d18240e::t_f3c697b081fe0d 34-41
+  s_f89cf57d18240e::t_9988d361e0a30b 6
+  s_f89cf57d18240e::t_202bf23aa1692e 95,116-118
+  s_f89cf57d18240e::t_2fc20f6a43e7ec 223-270
+demos/architect/src/client/lib/export.test.ts
+  s_f89cf57d18240e::t_b1c9f533987504 1-15,17-73
+  s_f89cf57d18240e::t_f3f8f7f47eddd6 16
+demos/architect/src/client/lib/scaffold-templates/tsconfig.json
+  s_f89cf57d18240e::t_18a8e596f34247 1-18
+demos/architect/vitest.config.ts
+  s_f89cf57d18240e::t_020730c4d2f247 23-28
+demos/architect/EXPLAIN-DEMO.md
+  s_f89cf57d18240e::t_7cd385848d1e67 376-379
+  s_f89cf57d18240e::t_70e7efc4ef5a18 289-340
+  s_f89cf57d18240e::t_6c8374853fbf88 72-82
+  s_f89cf57d18240e::t_4452adf19d6297 3-6
+demos/architect/src/client/components/editor/toolbar/PrintButton.tsx
+  s_f89cf57d18240e::t_caa2627f9bc240 1-27
+demos/architect/src/client/lib/scaffold-templates/drizzle/drizzle.config.ts
+  s_f89cf57d18240e::t_18a8e596f34247 1-7
+demos/architect/src/client/stores/diagramStore.ts
+  s_f89cf57d18240e::t_475a8914f16232 133-136
+  s_f89cf57d18240e::t_6d8f39edc76008 63-65
+  s_f89cf57d18240e::t_6283f13d9f451b 177
+  s_f89cf57d18240e::t_e74492895b2bc8 295-296
+demos/architect/src/client/test/setup.ts
+  s_f89cf57d18240e::t_916bbfd50e9db1 28-50
+demos/architect/src/client/lib/theme.ts
+  s_f89cf57d18240e::t_3578a9bc79cd70 1-77
+demos/architect/src/client/lib/scaffold-templates/astro/astro.config.mjs
+  s_f89cf57d18240e::t_18a8e596f34247 1-7
+demos/architect/src/client/lib/scaffold-templates/hono/src/index.ts
+  s_f89cf57d18240e::t_18a8e596f34247 1-19
+demos/architect/src/client/lib/scaffold-templates/README.md.tmpl
+  s_f89cf57d18240e::t_49b766fd38c35e 1-81
+demos/architect/package.json
+  s_f89cf57d18240e::t_65f89d43147930 53,55
+demos/architect/README.md
+  s_f89cf57d18240e::t_572cb16588061c 7
+demos/architect/src/client/test/mock-xyflow.tsx
+  s_f89cf57d18240e::t_fb77ed35a8eb52 28-30
+  s_f89cf57d18240e::t_851df6e7333aa9 95
+demos/architect/src/client/components/editor/toolbar/Toolbar.tsx
+  s_f89cf57d18240e::t_079acfaf4fd30b 72
+  s_f89cf57d18240e::t_bc21307f413860 70-71,73
+  s_f89cf57d18240e::t_6e0ac06c31eaef 4,7-8
+  s_f89cf57d18240e::t_7d5a46098b4a95 301-306,316-320
+demos/architect/src/client/views/BlueprintsView.tsx
+  s_f89cf57d18240e::t_b9473b8f58bc95 2,12-15,27
+demos/architect/src/client/lib/scaffold-templates/astro/src/pages/index.astro
+  s_f89cf57d18240e::t_18a8e596f34247 1-16
+demos/architect/src/client/views/AppShellView.test.tsx
+  s_f89cf57d18240e::t_0538ed81ab55f3 142-152
+demos/architect/src/client/App.test.tsx
+  s_f89cf57d18240e::t_27c6c0b75c9a5d 56
+demos/architect/DEMO.md
+  s_f89cf57d18240e::t_93db7559f9a83e 74-80
+  s_f89cf57d18240e::t_3becf203801c04 94-96
+  s_f89cf57d18240e::t_1fbad90d2e6d61 5
+demos/architect/src/client/components/DarkModeToggle.test.tsx
+  s_f89cf57d18240e::t_7ac4b68f010f96 147
+  s_f89cf57d18240e::t_c20384f9c93a49 2-26,31-44,49-63,67-84,88-92,96-141,145,148,152-190
+  s_f89cf57d18240e::t_3518d1ce9d451b 27-30,45-48,64-66,85-87,93-95,142-144,146,149-151
+  s_f89cf57d18240e::t_92b4317e147c64 1
+demos/architect/src/client/lib/export.ts
+  s_f89cf57d18240e::t_95f50d1ebfb3e9 1-59
+demos/architect/package-lock.json
+  s_f89cf57d18240e::t_092688097e105a 14,16,3822-3827,3953-3958
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ee5a72453c0446faa214a68858237421a297cca4",
+  "prompts": {},
+  "sessions": {
+    "s_f89cf57d18240e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_019a33352ffeS6HS2rA7LP3igf",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
