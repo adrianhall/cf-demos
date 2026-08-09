@@ -60,6 +60,9 @@ interface DiagramState {
   /** Human-readable error message from the most recent failed save, or null. */
   saveError: string | null;
 
+  /** Whether the canvas is currently in its print-optimized view mode (Phase 5). */
+  printMode: boolean;
+
   /** Stack of previous states for undo. Most recent entry is at the end. */
   undoStack: HistoryEntry[];
   /** Stack of undone states for redo. Most recent entry is at the end. */
@@ -127,6 +130,10 @@ interface DiagramActions {
   /** Record a save failure. */
   markSaveError: (error: string) => void;
 
+  /** Enter or exit print mode. Side effects (forcing light mode, orientation, `window.print()`)
+   * live in `../components/editor/DiagramCanvas.tsx`'s print-mode effect, not here. */
+  setPrintMode: (printMode: boolean) => void;
+
   /** Revert to the most recent undo snapshot. No-op if the stack is empty. */
   undo: () => void;
   /** Re-apply the most recently undone snapshot. No-op if the stack is empty. */
@@ -167,6 +174,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   saving: false,
   lastSavedAt: null,
   saveError: null,
+  printMode: false,
   undoStack: [],
   redoStack: [],
 
@@ -283,6 +291,8 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       saveError: null,
     }),
   markSaveError: (error) => set({ saving: false, saveError: error }),
+
+  setPrintMode: (printMode) => set({ printMode }),
 
   pushHistory: () =>
     set((state) => ({

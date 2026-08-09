@@ -25,6 +25,9 @@ export const mockScreenToFlowPosition = vi
 export const mockGetNodesBounds = vi
   .fn()
   .mockReturnValue({ height: 300, width: 400, x: 0, y: 0 });
+export const mockGetViewportForBounds = vi
+  .fn()
+  .mockReturnValue({ x: 0, y: 0, zoom: 1 });
 
 /** Enum stand-ins matching `@xyflow/react`'s real string-valued enums. */
 export const Position = {
@@ -89,6 +92,7 @@ export function useReactFlow() {
 }
 
 export const getNodesBounds = mockGetNodesBounds;
+export const getViewportForBounds = mockGetViewportForBounds;
 
 /** Minimal `<ReactFlow>` stand-in exposing the callbacks tests need to invoke. */
 export function ReactFlow({

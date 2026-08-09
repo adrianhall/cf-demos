@@ -3,6 +3,7 @@ import {
   BackgroundVariant,
   Controls,
   type Edge,
+  getNodesBounds,
   MiniMap,
   type Node,
   ReactFlow,
@@ -30,6 +31,14 @@ import type { CFEdgeData, CFNodeData } from "./types";
 const AUTOSAVE_DEBOUNCE_MS = 500;
 /** Debounce interval, in milliseconds, before a title change is persisted. */
 const TITLE_SAVE_DEBOUNCE_MS = 1_000;
+/** Delay, in milliseconds, between fitting the view for print and opening the print dialog --
+ * gives the browser one paint to apply the fitted viewport before `window.print()` snapshots it. */
+const PRINT_DIALOG_DELAY_MS = 300;
+/** Body class applied while the canvas is in print mode; toggled print-only rules in
+ * `../app.css` key off of it. */
+const PRINT_MODE_BODY_CLASS = "diagram-editor-print-mode";
+/** DOM id for the injected `@page` orientation `<style>` element, removed again on exit. */
+const PRINT_ORIENTATION_STYLE_ID = "diagram-editor-print-orientation";
 
 /** Parsed shape of a diagram's `graphData` JSON string. */
 interface ParsedGraphData {
@@ -55,9 +64,9 @@ function parseGraphData(graphData: string): ParsedGraphData {
 /**
  * Main diagram editor: loads a diagram by id, wires autosave (debounced graph and title saves),
  * an unload guard for unsaved changes, drag-and-drop and click-to-add node creation from the
- * palette, keyboard shortcuts (Delete, Ctrl+Z, Ctrl+Shift+Z), and renders the full editor layout
- * (toolbar, palette, canvas, properties panel, status bar). Ported from CF-Architect's
- * `src/islands/DiagramCanvas.tsx`.
+ * palette, keyboard shortcuts (Delete, Ctrl+Z, Ctrl+Shift+Z), print mode (Phase 5), and renders
+ * the full editor layout (toolbar, palette, canvas, properties panel, status bar). Ported from
+ * CF-Architect's `src/islands/DiagramCanvas.tsx`.
  *
  * Also serves as the anonymous read-only share viewer (`../../views/ShareView.tsx`) via
  * `readOnly`/`initialDiagram`, matching CF-Architect's own single-component design (its
@@ -83,7 +92,7 @@ export function DiagramCanvas({
   readOnly?: boolean;
   initialDiagram?: Pick<SharedDiagram, "title" | "description" | "graphData">;
 }) {
-  const { screenToFlowPosition } = useReactFlow();
+  const { fitView, getNodes, screenToFlowPosition } = useReactFlow();
 
   const {
     nodes,
@@ -104,6 +113,9 @@ export function DiagramCanvas({
     markSaved,
     markSaveError,
     title,
+    description,
+    printMode,
+    setPrintMode,
   } = useDiagramStore();
 
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -207,6 +219,54 @@ export function DiagramCanvas({
     }, TITLE_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [title, diagramLoaded, diagramId, readOnly]);
+
+  // Print mode side effects: force a light color scheme, choose a page orientation matching the
+  // diagram's own aspect ratio, fit the view, and trigger the browser print dialog. Ported from
+  // CF-Architect's own `DiagramCanvas` effect (docs/09-ARCHITECT.md Phase 5), adapted for this
+  // port's `color-scheme`-driven theming (`../../lib/theme.ts`) instead of CF-Architect's `.dark`
+  // class toggle. Runs identically in read-only mode -- print mode is available to anonymous
+  // share viewers too (`./toolbar/PrintButton.tsx`).
+  useEffect(() => {
+    if (!printMode) return;
+
+    const previousColorScheme = document.documentElement.style.colorScheme;
+    document.documentElement.style.colorScheme = "light";
+    document.body.classList.add(PRINT_MODE_BODY_CLASS);
+
+    const flowNodes = getNodes();
+    let isLandscape = true;
+    if (flowNodes.length > 0) {
+      const bounds = getNodesBounds(flowNodes);
+      isLandscape = bounds.width > bounds.height;
+    }
+    const orientationStyle = document.createElement("style");
+    orientationStyle.id = PRINT_ORIENTATION_STYLE_ID;
+    orientationStyle.textContent = `@page { size: ${isLandscape ? "landscape" : "portrait"}; margin: 0.5in; }`;
+    document.head.appendChild(orientationStyle);
+
+    const cleanup = () => {
+      document.documentElement.style.colorScheme = previousColorScheme;
+      document.body.classList.remove(PRINT_MODE_BODY_CLASS);
+      document.getElementById(PRINT_ORIENTATION_STYLE_ID)?.remove();
+    };
+
+    const exitPrintMode = () => {
+      cleanup();
+      setPrintMode(false);
+    };
+    window.addEventListener("afterprint", exitPrintMode);
+
+    const rafId = requestAnimationFrame(() => {
+      void fitView({ duration: 0 });
+      setTimeout(() => window.print(), PRINT_DIALOG_DELAY_MS);
+    });
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("afterprint", exitPrintMode);
+      cleanup();
+    };
+  }, [printMode, fitView, getNodes, setPrintMode]);
 
   /** Add a node dropped from the palette at the drop position. */
   const onDrop = useCallback(
@@ -313,17 +373,42 @@ export function DiagramCanvas({
     // allowlist for this rule does not happen to include "application", but a real screen
     // reader/keyboard user's experience is unaffected by that gap.
     <div
-      className="diagram-editor"
+      className={`diagram-editor${printMode ? " diagram-editor--print" : ""}`}
       role="application"
       aria-label="Diagram editor"
       onKeyDown={onKeyDown}
       // biome-ignore lint/a11y/noNoninteractiveTabindex: see the comment above this element.
       tabIndex={0}
     >
-      <Toolbar readOnly={readOnly} />
+      {!printMode && <Toolbar readOnly={readOnly} />}
       <div className="diagram-editor__body">
-        {!readOnly && <ServicePalette onAddNode={onAddNodeFromPalette} />}
+        {!readOnly && !printMode && (
+          <ServicePalette onAddNode={onAddNodeFromPalette} />
+        )}
         <div className="diagram-editor__canvas">
+          {printMode && (
+            <div className="diagram-editor__print-overlay">
+              <div className="diagram-editor__print-title-box">
+                <h2 className="diagram-editor__print-title">{title}</h2>
+                {description && (
+                  <p className="diagram-editor__print-description">
+                    {description}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          {printMode && (
+            <button
+              type="button"
+              className="diagram-editor__print-exit"
+              onClick={() => setPrintMode(false)}
+              title="Exit print mode"
+              aria-label="Exit print mode"
+            >
+              ← Back
+            </button>
+          )}
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -346,22 +431,27 @@ export function DiagramCanvas({
             nodesConnectable={!readOnly}
             defaultEdgeOptions={{ type: "cf-edge" }}
           >
-            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-            <MiniMap
-              nodeColor={(node) => {
-                const data = node.data as CFNodeData;
-                const typeDef = NODE_TYPE_MAP.get(data?.typeId);
-                return (
-                  CATEGORY_COLORS[typeDef?.category ?? "external"] ?? "#6B7280"
-                );
-              }}
-            />
-            <Controls showInteractive={!readOnly} />
+            {!printMode && (
+              <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+            )}
+            {!printMode && (
+              <MiniMap
+                nodeColor={(node) => {
+                  const data = node.data as CFNodeData;
+                  const typeDef = NODE_TYPE_MAP.get(data?.typeId);
+                  return (
+                    CATEGORY_COLORS[typeDef?.category ?? "external"] ??
+                    "#6B7280"
+                  );
+                }}
+              />
+            )}
+            {!printMode && <Controls showInteractive={!readOnly} />}
           </ReactFlow>
         </div>
-        {!readOnly && <PropertiesPanel />}
+        {!readOnly && !printMode && <PropertiesPanel />}
       </div>
-      <StatusBar readOnly={readOnly} />
+      {!printMode && <StatusBar readOnly={readOnly} />}
     </div>
   );
 }

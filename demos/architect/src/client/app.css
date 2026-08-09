@@ -495,6 +495,72 @@ textarea {
 .diagram-editor__canvas {
   flex: 1 1 auto;
   min-width: 0;
+  position: relative;
+}
+
+/* Print mode -------------------------------------------------------------- */
+
+.diagram-editor--print .react-flow__background {
+  display: none;
+}
+
+.diagram-editor__print-overlay {
+  left: 0;
+  padding: 1rem;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  z-index: 10;
+}
+
+.diagram-editor__print-title-box {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  color: #111827;
+  max-width: 22rem;
+  padding: 0.75rem 1.25rem;
+}
+
+.diagram-editor__print-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.diagram-editor__print-description {
+  color: #6b7280;
+  font-size: 0.8125rem;
+  margin: 0.375rem 0 0;
+}
+
+.diagram-editor__print-exit {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  color: #111827;
+  cursor: pointer;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+  z-index: 10;
+}
+
+@media print {
+  .diagram-editor__print-exit {
+    display: none;
+  }
+
+  .react-flow__minimap,
+  .react-flow__controls {
+    display: none;
+  }
+
+  body {
+    background: #ffffff;
+  }
 }
 
 /* Toolbar ---------------------------------------------------------------- */
@@ -607,6 +673,57 @@ textarea {
 
 .toolbar__layout-option:hover {
   background: var(--cf-surface-alt);
+}
+
+.toolbar__export-group {
+  position: relative;
+}
+
+.toolbar__export-menu {
+  background: var(--cf-surface);
+  border: 1px solid var(--cf-border);
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 12rem;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 10;
+}
+
+.toolbar__export-option {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: block;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  width: 100%;
+}
+
+.toolbar__export-option:hover:not(:disabled) {
+  background: var(--cf-surface-alt);
+}
+
+.toolbar__export-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.toolbar__export-error {
+  background: var(--cf-surface);
+  border: 1px solid var(--cf-danger);
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  color: var(--cf-danger);
+  font-size: 0.8125rem;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  white-space: nowrap;
+  z-index: 10;
 }
 
 /* Service palette ---------------------------------------------------------- */

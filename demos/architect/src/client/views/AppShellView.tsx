@@ -1,3 +1,4 @@
+import { DarkModeToggle } from "../components/DarkModeToggle";
 import { useIdentity } from "../hooks/useIdentity";
 import { AdminView } from "./AdminView";
 import { DashboardView } from "./DashboardView";
@@ -41,7 +42,9 @@ function resolveRoute(pathname: string): AppRoute {
  * The header (identity + sign-out) is always rendered, in both sub-views, per AGENTS.md's Public
  * Access requirement for an unconditional logout control -- the editor's own `Toolbar`
  * (`../components/editor/toolbar/Toolbar.tsx`) has no sign-out affordance of its own, relying on
- * this shared header instead.
+ * this shared header instead. The same header carries the one `../components/DarkModeToggle.tsx`
+ * instance covering both the dashboard and the editor (docs/09-ARCHITECT.md Phase 5) -- see that
+ * component's own JSDoc for why this port needs only one instance where CF-Architect needed two.
  */
 export function AppShellView() {
   const identity = useIdentity();
@@ -70,6 +73,7 @@ export function AppShellView() {
             {identity.error}
           </span>
         )}
+        <DarkModeToggle />
         {/* Unconditionally rendered per AGENTS.md's Public Access section, so a presenter who
             signs in as the wrong identity locally can always recover without clearing cookies. */}
         <a className="app-shell__logout" href="/cdn-cgi/access/logout">

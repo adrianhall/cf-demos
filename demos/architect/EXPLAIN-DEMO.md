@@ -1,9 +1,9 @@
 # Architect — What This Demo Teaches
 
-> This file describes Phases 1–4 (scaffolding/Access, the diagram library/editor, read-only
-> sharing, and admin) of `docs/09-ARCHITECT.md`, a Cloudflare architecture diagram editor ported
-> from a real, working prior art application (CF-Architect). Later phases add
-> export/print/dark-mode capabilities the full plan describes.
+> This file describes Phases 1–5 (scaffolding/Access, the diagram library/editor, read-only
+> sharing, admin, and export/print/dark mode) of `docs/09-ARCHITECT.md`, a Cloudflare architecture
+> diagram editor ported from a real, working prior art application (CF-Architect). Phase 6 (final
+> verification, coverage, and documentation polish) remains.
 
 ## What This Demonstrates
 
@@ -69,6 +69,17 @@
   (alongside `src/access-policies.ts`, Phase 1's own precedent for a module both layers import)
   because the palette/canvas render from it in the browser and `POST /api/diagrams` resolves a
   `blueprintId` against it on the server — the same data, never duplicated.
+- **A generated artifact that deliberately does not follow this repository's own conventions.**
+  Phase 5's "export as project" produces a downloadable, ordinary `wrangler.toml`-based starter
+  project (`src/client/lib/scaffold.ts`) for whoever downloads it to build on — not code this
+  demo itself runs. It uses Drizzle ORM and a hand-edited `wrangler.toml`, exactly what the rest
+  of this repository replaces with raw D1 and a Terraform-generated config, because the generated
+  project is a teaching artifact aimed at an ordinary Wrangler user, not a second instance of this
+  repository's own infrastructure.
+- **A client-side-only feature set needing no Worker or Terraform changes at all.** Export, print,
+  and dark mode (this section, Phase 5) are the first phase of this plan that adds no new API
+  route, D1 table, or Cloudflare resource — every line of it lives in `src/client/`, exercised by
+  the `client` Vitest project alone.
 
 ## How It Works
 
@@ -275,6 +286,58 @@ repository. That is also why `users.display_name` has no data source yet — Git
 was the only name source CF-Architect had, and this demo intentionally does not reintroduce a
 GitHub-specific dependency to get one back.
 
+### Export, print, and dark mode (Phase 5)
+
+`src/client/components/editor/toolbar/ExportButton.tsx` offers three export formats, all
+client-side, needing no Worker route: PNG and SVG rasterize the React Flow viewport element
+directly with `html-to-image`, computing a bounding box and matching zoom/pan transform from the
+current node positions (`getNodesBounds()`/`getViewportForBounds()`) so the exported image matches
+a fitted view regardless of the canvas's current on-screen pan/zoom. "Export as project" instead
+calls `src/client/lib/scaffold.ts`'s `generateScaffold()`, which walks the diagram's nodes for a
+catalog `wranglerBinding` (`src/catalog.ts`) and produces an ordinary, downloadable
+`wrangler.toml`-based starter project — a `package.json`, `tsconfig.json`, a `src/index.ts`
+matching whichever Worker node type is present (plain, Hono, or Astro SSR), and, if a D1 node is
+present, a Drizzle schema/client/migration. This generated project deliberately does *not* follow
+this repository's own Terraform/raw-D1/`cloudflare-toolkit` conventions (see "A generated artifact
+that deliberately does not follow this repository's own conventions" above): it targets whoever
+downloads it, building an ordinary Wrangler project from scratch, not a second copy of this demo's
+own infrastructure. `fflate`'s `zipSync()` packages the generated files into a ZIP entirely in the
+browser; disabled (with an explanatory `title`) when the diagram has no node with a catalog
+`wranglerBinding` at all, since there would be nothing to scaffold. Export, print, and the dark
+mode toggle below are rendered unconditionally in `Toolbar.tsx`, including in read-only mode — an
+anonymous share viewer (`../../views/ShareView.tsx`) can export or print a diagram it cannot edit,
+matching CF-Architect's own toolbar (only the Share button itself stays owner-only).
+
+Print mode (`PrintButton.tsx`, `DiagramCanvas.tsx`'s print-mode effect) hides every editing
+affordance (toolbar, palette, properties panel, minimap, controls), shows a title/description
+overlay instead, forces a light color scheme for the duration, injects a `<style>` tag choosing a
+landscape or portrait `@page` orientation from the diagram's own aspect ratio, fits the view, and
+calls `window.print()` — reverting every one of those overrides automatically on the browser's
+`afterprint` event (or immediately via the mode's own "← Back" control) so print mode is never a
+state a user can get stuck in.
+
+Dark mode (`src/client/lib/theme.ts`, `src/client/components/DarkModeToggle.tsx`) is a deliberate
+adaptation, not a literal port, of CF-Architect's own `.dark`-class toggle: `src/client/app.css`
+already themes every surface with the CSS `light-dark()` function driven by the `color-scheme`
+property (`:root { color-scheme: light dark; }`, following the OS preference by default), so
+overriding it here means setting an explicit `color-scheme` value on `<html>` rather than toggling
+a class over a second, hand-maintained set of dark-mode variable overrides. The preference persists
+in `localStorage` under the same `"theme"` key CF-Architect used, applied once in `main.tsx` before
+the first render (there is no server-rendered markup for an inline `<head>` script to prevent a
+flash for, unlike CF-Architect's Astro pages). CF-Architect mounts two independent toggle
+instances — a shared `Navbar` for its dashboard/admin/blueprints pages, and a second instance
+inside the editor `Toolbar`, since its editor page renders no `Navbar` at all. This port's
+`AppShellView` header, by contrast, already wraps *both* the dashboard and the editor (Phase 1's
+own precedent, carrying the sign-out control across both), so one `DarkModeToggle` instance there
+covers what CF-Architect needed two components for; `BlueprintsView`'s own header and the editor
+`Toolbar` each get their own instance for the same reason CF-Architect's `blueprints.astro` and
+`Toolbar.tsx` did.
+
+ELK remains the only heavy, lazy-loaded dependency in this editor (Phase 2's note on its ~540 KB
+gzip cost bundled eagerly); `html-to-image` and `fflate` are small enough (roughly 15 KB and 8 KB
+gzip respectively) to import eagerly in `ExportButton.tsx`, matching CF-Architect's own choice not
+to defer them.
+
 ### Observability
 
 `cloudflareLogger()` provides request-scoped structured logging on every request.
@@ -310,4 +373,8 @@ tried).
 - [Zustand](https://zustand.docs.pmnd.rs/) — the editor's client-side state store.
 - [ELK.js](https://github.com/kieler/elkjs) — the automatic graph layout engine, lazy-loaded on first use.
 - [Fetch metadata request headers (`Sec-Fetch-Site`)](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site) — the primary signal `enforceSameOriginJson()` relies on.
+- [`color-scheme` CSS property](https://developer.mozilla.org/en-US/docs/Web/CSS/color-scheme) and [`light-dark()`](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/light-dark) — what `src/client/lib/theme.ts`'s dark mode toggle actually overrides.
+- [`Window.print()`](https://developer.mozilla.org/en-US/docs/Web/API/Window/print) and the [`@page` at-rule](https://developer.mozilla.org/en-US/docs/Web/CSS/@page) — print mode's orientation override.
+- [html-to-image](https://github.com/bubkoo/html-to-image#readme) — rasterizes the React Flow viewport for PNG/SVG export.
+- [fflate](https://101arrowz.github.io/fflate) — zips the generated project scaffold entirely in the browser.
 - `spikes/06-architect-reactflow-host/REPORT.md` — this repository's Phase 0 spike confirming the plain Vite/React/Cloudflare host architecture.

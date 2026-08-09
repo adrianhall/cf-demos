@@ -2,7 +2,7 @@
 
 See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 
-> This script covers Phases 1–4 (scaffolding/Access, the diagram library/editor, read-only sharing, and admin) of `docs/09-ARCHITECT.md`. Later phases add export/print/dark-mode capabilities this script will grow to cover.
+> This script covers Phases 1–5 (scaffolding/Access, the diagram library/editor, read-only sharing, admin, and export/print/dark mode) of `docs/09-ARCHITECT.md`. Phase 6 is final verification and documentation polish, not a new user-facing capability, so it adds nothing further for this script to demonstrate.
 
 ## Demonstration Prerequisites
 
@@ -71,6 +71,13 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 31. Back in the admin view's **Diagram moderation** panel, paste that id into **Diagram id** and select **Open**. Show the diagram's title, description, and a read-only canvas preview render — and that no `owner_email` appears anywhere in this view.
 32. Select **Delete diagram**, confirm in the dialog, and show the "Diagram deleted." confirmation.
 33. Re-run the D1 query from step 30 and show the row is gone. Sign out and sign back in as the diagram's original owner; open `/app` and show the deleted diagram no longer appears in their dashboard.
+34. Open any diagram with at least one node in the editor. Select **Export** in the toolbar, then **Export as PNG**. Open the downloaded file and show it matches the canvas, cropped tightly to the diagram's own bounds rather than the current on-screen pan/zoom.
+35. Select **Export** again, then **Export as SVG**. Show the downloaded file opens as a crisp vector image at any zoom level.
+36. Add a **Workers** node and a **D1 Database** node to the canvas if the current diagram doesn't already have both. Select **Export**, then **Export as project**. Show the download is a `.zip`; extract it and open `wrangler.toml` and `package.json` to point out the generated D1 binding section and the `db:migrate:local`/`deploy:db` scripts — a downloadable starter project, not this demo's own configuration.
+37. Remove every Cloudflare service node from a diagram (or open a blank canvas), select **Export**, and show **Export as project** is disabled with a tooltip explaining there is nothing to scaffold.
+38. Back in a diagram with content, select **Print** in the toolbar. Show the toolbar, palette, and properties panel disappear, replaced by a title/description overlay and a browser print dialog; select **Cancel** in that dialog, then select **← Back** to confirm the editor returns to normal.
+39. Select the dark mode toggle in the toolbar (labeled **Dark mode** or **Light mode** depending on the current OS preference). Show the whole editor's colors invert immediately. Navigate to the dashboard (`/app`) and show the same preference already applied there — it is a single, page-independent preference, not reset by navigation.
+40. Reload the page entirely (a full browser refresh, not a client-side navigation). Show the chosen theme is still applied immediately, with no visible flash of the other theme first.
 
 ## Expected Results
 
@@ -84,6 +91,9 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 - The **Admin** nav link and `/app/admin` view are usable only by the identity matching `ADMIN_EMAIL`; every other identity is refused, both in the UI and by every `/api/admin/*` route (`403`).
 - The admin user directory lists every identity that has ever signed in with an accurate, live diagram count per identity, paginated rather than loaded all at once.
 - The admin diagram moderation panel can preview any diagram's title/description/graph by id without ever exposing its owner, and can delete it regardless of owner, cascading to revoke any of its active share links.
+- Export as PNG/SVG downloads an image cropped to the diagram's own bounds, independent of the canvas's current pan/zoom; export as project downloads a `.zip` containing a working `wrangler.toml`-based starter project matching the diagram's Cloudflare service nodes, and is disabled when a diagram has no such node.
+- Print mode replaces the editing UI with a title/description overlay, opens the browser's print dialog, and fully restores the normal editor on cancel or on returning from print preview.
+- The dark mode preference applies instantly, persists across navigation and a full page reload with no flash of the other theme, and requires no sign-in — it works identically on the public landing/blueprints pages and the authenticated app.
 
 ## Where To Observe State
 

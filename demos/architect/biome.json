@@ -9,7 +9,8 @@
       "!.wrangler",
       "!worker-configuration.d.ts",
       "!test-results",
-      "!public"
+      "!public",
+      "!src/client/lib/scaffold-templates"
     ]
   },
   "formatter": {

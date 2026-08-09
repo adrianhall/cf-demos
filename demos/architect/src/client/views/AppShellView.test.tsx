@@ -139,6 +139,17 @@ describe("AppShellView", () => {
     );
   });
 
+  it("renders a dark mode toggle in the header unconditionally, even while loading", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+
+    render(<AppShellView />);
+
+    expect(screen.getByTitle("Toggle dark mode")).toBeInTheDocument();
+  });
+
   it("shows the error message when identity verification fails", async () => {
     vi.stubGlobal(
       "fetch",

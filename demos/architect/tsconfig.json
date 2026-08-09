@@ -23,5 +23,13 @@
     "vitest.config.ts",
     "src/worker/vitest.config.ts",
     "worker-configuration.d.ts"
+  ],
+  "exclude": [
+    // Downloaded-project starter templates (`src/client/lib/scaffold.ts`, Phase 5), imported
+    // only as raw text via Vite's `?raw` suffix and never compiled or executed by this project.
+    // They target a standalone project with its own dependencies (Drizzle, Hono) this project
+    // does not install, and are intentionally minimal boilerplate this project's own strictness
+    // settings (`noUnusedParameters`, for example) do not apply to.
+    "src/client/lib/scaffold-templates"
   ]
 }

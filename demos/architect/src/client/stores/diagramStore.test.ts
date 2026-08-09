@@ -236,6 +236,14 @@ describe("useDiagramStore", () => {
     expect(state.saveError).toBe("Network error");
   });
 
+  it("toggles print mode", () => {
+    expect(useDiagramStore.getState().printMode).toBe(false);
+    useDiagramStore.getState().setPrintMode(true);
+    expect(useDiagramStore.getState().printMode).toBe(true);
+    useDiagramStore.getState().setPrintMode(false);
+    expect(useDiagramStore.getState().printMode).toBe(false);
+  });
+
   it("caps the undo stack at 50 entries", () => {
     for (let i = 0; i < 60; i += 1) {
       useDiagramStore.getState().addNode(makeNode(`n${i}`));

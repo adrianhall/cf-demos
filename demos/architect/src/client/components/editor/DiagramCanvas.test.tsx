@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as mockXyflow from "../../test/mock-xyflow";
 
@@ -38,6 +44,7 @@ describe("DiagramCanvas", () => {
       saving: false,
       saveError: null,
       lastSavedAt: null,
+      printMode: false,
       undoStack: [],
       redoStack: [],
     });
@@ -559,6 +566,160 @@ describe("DiagramCanvas", () => {
       });
 
       expect(useDiagramStore.getState().nodes).toHaveLength(0);
+    });
+  });
+
+  describe("print mode", () => {
+    beforeEach(() => {
+      mockXyflow.mockGetNodes.mockReset().mockReturnValue([]);
+      mockXyflow.mockGetNodesBounds
+        .mockReset()
+        .mockReturnValue({ height: 300, width: 400, x: 0, y: 0 });
+      mockXyflow.mockFitView.mockClear();
+      document.body.classList.remove("diagram-editor-print-mode");
+      document.getElementById("diagram-editor-print-orientation")?.remove();
+      document.documentElement.style.colorScheme = "";
+      // Every sub-test below may trigger the print effect's real (unmocked)
+      // requestAnimationFrame -> setTimeout -> window.print() chain, whether or not that chain
+      // is what the test is actually asserting on; stub it globally here so jsdom's "not
+      // implemented" console noise from a real, un-awaited call never leaks into an unrelated
+      // test.
+      vi.spyOn(window, "print").mockImplementation(() => {});
+    });
+
+    async function renderLoaded() {
+      mockGetDiagram.mockResolvedValue({
+        description: "A test diagram",
+        graphData: EMPTY_GRAPH,
+        id: "d1",
+        title: "My Diagram",
+      });
+      const view = render(<DiagramCanvas diagramId="d1" />);
+      await waitFor(() =>
+        expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+      );
+      return view;
+    }
+
+    it("hides the toolbar, palette, properties panel, and status bar while printing", async () => {
+      await renderLoaded();
+
+      act(() => useDiagramStore.getState().setPrintMode(true));
+
+      expect(screen.queryByLabelText("Diagram title")).not.toBeInTheDocument();
+      expect(screen.queryByTitle("Share diagram")).not.toBeInTheDocument();
+      expect(screen.getByText("My Diagram")).toBeInTheDocument();
+      expect(screen.getByText("A test diagram")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Exit print mode" }),
+      ).toBeInTheDocument();
+    });
+
+    it("forces a light color scheme and restores the previous one on exit", async () => {
+      document.documentElement.style.colorScheme = "dark";
+      await renderLoaded();
+
+      act(() => useDiagramStore.getState().setPrintMode(true));
+      expect(document.documentElement.style.colorScheme).toBe("light");
+
+      act(() => useDiagramStore.getState().setPrintMode(false));
+      expect(document.documentElement.style.colorScheme).toBe("dark");
+    });
+
+    it("chooses a landscape page orientation for a wider-than-tall diagram", async () => {
+      mockXyflow.mockGetNodes.mockReturnValue([
+        { data: { label: "A", typeId: "worker" }, id: "a" },
+      ]);
+      mockXyflow.mockGetNodesBounds.mockReturnValue({
+        height: 100,
+        width: 500,
+        x: 0,
+        y: 0,
+      });
+      await renderLoaded();
+
+      act(() => useDiagramStore.getState().setPrintMode(true));
+
+      const style = document.getElementById("diagram-editor-print-orientation");
+      expect(style?.textContent).toContain("landscape");
+    });
+
+    it("chooses a portrait page orientation for a taller-than-wide diagram", async () => {
+      mockXyflow.mockGetNodes.mockReturnValue([
+        { data: { label: "A", typeId: "worker" }, id: "a" },
+      ]);
+      mockXyflow.mockGetNodesBounds.mockReturnValue({
+        height: 500,
+        width: 100,
+        x: 0,
+        y: 0,
+      });
+      await renderLoaded();
+
+      act(() => useDiagramStore.getState().setPrintMode(true));
+
+      const style = document.getElementById("diagram-editor-print-orientation");
+      expect(style?.textContent).toContain("portrait");
+    });
+
+    it("fits the view and opens the print dialog shortly after entering print mode", async () => {
+      const printSpy = vi.spyOn(window, "print").mockImplementation(() => {});
+      await renderLoaded();
+
+      act(() => useDiagramStore.getState().setPrintMode(true));
+
+      await waitFor(() => expect(mockXyflow.mockFitView).toHaveBeenCalled());
+      await waitFor(() => expect(printSpy).toHaveBeenCalledTimes(1));
+    });
+
+    it("exits print mode and restores state when the browser reports afterprint", async () => {
+      await renderLoaded();
+
+      act(() => useDiagramStore.getState().setPrintMode(true));
+      expect(
+        document.body.classList.contains("diagram-editor-print-mode"),
+      ).toBe(true);
+
+      act(() => window.dispatchEvent(new Event("afterprint")));
+
+      expect(useDiagramStore.getState().printMode).toBe(false);
+      expect(
+        document.body.classList.contains("diagram-editor-print-mode"),
+      ).toBe(false);
+      expect(
+        document.getElementById("diagram-editor-print-orientation"),
+      ).toBeNull();
+    });
+
+    it("exits print mode via the exit button", async () => {
+      await renderLoaded();
+      act(() => useDiagramStore.getState().setPrintMode(true));
+
+      fireEvent.click(screen.getByRole("button", { name: "Exit print mode" }));
+
+      expect(useDiagramStore.getState().printMode).toBe(false);
+      expect(
+        document.body.classList.contains("diagram-editor-print-mode"),
+      ).toBe(false);
+    });
+
+    it("omits the description box when the diagram has none", async () => {
+      mockGetDiagram.mockResolvedValue({
+        description: "",
+        graphData: EMPTY_GRAPH,
+        id: "d1",
+        title: "My Diagram",
+      });
+      render(<DiagramCanvas diagramId="d1" />);
+      await waitFor(() =>
+        expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+      );
+
+      act(() => useDiagramStore.getState().setPrintMode(true));
+
+      expect(
+        document.querySelector(".diagram-editor__print-description"),
+      ).toBeNull();
     });
   });
 });

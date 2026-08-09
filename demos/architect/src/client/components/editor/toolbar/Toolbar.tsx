@@ -1,8 +1,11 @@
 import { type Edge, type Node as FlowNode, useReactFlow } from "@xyflow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NODE_TYPE_MAP } from "../../../../catalog";
+import { DarkModeToggle } from "../../../components/DarkModeToggle";
 import { useDiagramStore } from "../../../stores/diagramStore";
 import type { CFEdgeData, CFNodeData } from "../types";
+import { ExportButton } from "./ExportButton";
+import { PrintButton } from "./PrintButton";
 import { ShareModal } from "./ShareModal";
 
 /** Auto-layout direction: top-to-bottom or left-to-right. */
@@ -64,10 +67,10 @@ export function remapEdgeHandles(
 }
 
 /**
- * Top toolbar: back-to-dashboard link, editable diagram title, undo/redo, zoom controls, and an
- * auto-layout button. Ported from CF-Architect's `src/islands/toolbar/Toolbar.tsx`, scoped down
- * to this phase: the share button (Phase 3) and export/print/dark-mode controls (Phase 5) are
- * added in their own phases, not here.
+ * Top toolbar: back-to-dashboard link, editable diagram title, undo/redo, zoom controls, an
+ * auto-layout button, sharing (`./ShareModal.tsx`), export (`./ExportButton.tsx`), print
+ * (`./PrintButton.tsx`), and a dark mode toggle (`../../../components/DarkModeToggle.tsx`). Ported from
+ * CF-Architect's `src/islands/toolbar/Toolbar.tsx`.
  *
  * ELK (`elkjs`) is dynamically imported only when auto-layout is actually used
  * (docs/09-ARCHITECT.md's catalog table note: this repository's prior Vue attempt measured a
@@ -295,8 +298,12 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
         </div>
       )}
 
-      {!readOnly && (
-        <div className="toolbar__group toolbar__group--end">
+      {/* Export, print, and dark mode are always available, including in read-only mode -- an
+          anonymous share viewer can export or print a diagram it cannot edit
+          (docs/09-ARCHITECT.md Phase 5). Share is the one control here still gated to the
+          owner. */}
+      <div className="toolbar__group toolbar__group--end">
+        {!readOnly && (
           <button
             type="button"
             onClick={() => setShareOpen(true)}
@@ -306,8 +313,11 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
           >
             Share
           </button>
-        </div>
-      )}
+        )}
+        <ExportButton />
+        <PrintButton />
+        <DarkModeToggle className="toolbar__button" />
+      </div>
 
       {!readOnly && diagramId !== null && (
         <ShareModal

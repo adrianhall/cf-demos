@@ -13,6 +13,8 @@ vi.mock("react-dom/client", () => ({ createRoot: mocks.createRoot }));
 describe("startClient", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+    document.documentElement.style.colorScheme = "";
     document.body.innerHTML = '<div id="root"></div>';
   });
 
@@ -38,5 +40,22 @@ describe("startClient", () => {
     document.body.innerHTML = "";
 
     expect(() => startClient()).toThrow("#root element not found");
+  });
+
+  it("applies a stored theme preference before mounting", async () => {
+    localStorage.setItem("theme", "dark");
+    const { startClient } = await import("./main");
+
+    startClient();
+
+    expect(document.documentElement.style.colorScheme).toBe("dark");
+  });
+
+  it("applies no color-scheme override with no stored preference", async () => {
+    const { startClient } = await import("./main");
+
+    startClient();
+
+    expect(document.documentElement.style.colorScheme).toBe("");
   });
 });

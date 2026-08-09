@@ -53,6 +53,7 @@ describe("App", () => {
     expect(
       screen.getByRole("button", { name: /Blank Canvas/ }),
     ).toBeInTheDocument();
+    expect(screen.getByTitle("Toggle dark mode")).toBeInTheDocument();
   });
 
   it("renders the public read-only share viewer at /s/:token", () => {

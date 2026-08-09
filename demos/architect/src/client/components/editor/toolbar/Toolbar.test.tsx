@@ -266,6 +266,21 @@ describe("Toolbar", () => {
     expect(screen.queryByTitle("Share diagram")).not.toBeInTheDocument();
   });
 
+  it("renders export, print, and dark mode controls even in read-only mode", () => {
+    render(<Toolbar readOnly />);
+    expect(screen.getByTitle("Export")).toBeInTheDocument();
+    expect(screen.getByTitle("Print")).toBeInTheDocument();
+    expect(screen.getByTitle("Toggle dark mode")).toBeInTheDocument();
+  });
+
+  it("renders export, print, share, and dark mode controls together when not read-only", () => {
+    render(<Toolbar />);
+    expect(screen.getByTitle("Export")).toBeInTheDocument();
+    expect(screen.getByTitle("Print")).toBeInTheDocument();
+    expect(screen.getByTitle("Share diagram")).toBeInTheDocument();
+    expect(screen.getByTitle("Toggle dark mode")).toBeInTheDocument();
+  });
+
   it("opens the share modal for the loaded diagram", async () => {
     useDiagramStore.setState({ diagramId: "d1" });
     mockGetShareStatus.mockResolvedValue({ active: false, createdAt: null });
