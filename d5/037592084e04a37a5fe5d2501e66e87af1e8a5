@@ -1,0 +1,120 @@
+demos/architect/src/client/components/editor/toolbar/Toolbar.test.tsx
+  s_3d9f41da8afa23::t_acca6bd2edb0a8 94,102,105-113,115,117-119,140-157
+  s_3d9f41da8afa23::t_7e94cd557a6f02 95-101,103-104,114,116
+  s_3d9f41da8afa23::t_98abb2c8ba628f 120-139
+  s_3d9f41da8afa23::t_6d9cd0c40bf489 281-314,316-365
+  s_3d9f41da8afa23::t_4dc7cae64a172a 315
+demos/architect/src/client/components/editor/DiagramCanvas.test.tsx
+  s_3d9f41da8afa23::t_7b79aaae5f86d7 100-137,167-219
+  s_3d9f41da8afa23::t_4b4974268da542 442-466
+  s_3d9f41da8afa23::t_1a4213a8cc4e3e 220,575-594
+  s_3d9f41da8afa23::t_59c112f96923b0 284-312
+  s_3d9f41da8afa23::t_66de4ebd922e92 138-153
+  s_3d9f41da8afa23::t_45f2cedab25d03 629-647
+  s_3d9f41da8afa23::t_7362704130a4fb 221
+demos/architect/src/client/components/editor/panels/PropertiesPanel.tsx
+  s_3d9f41da8afa23::t_78deb035a81532 46
+demos/architect/EXPLAIN-DEMO.md
+  s_3d9f41da8afa23::t_7fc281ea375675 241
+  s_3d9f41da8afa23::t_5df135aaa6fbdc 82-83
+  s_3d9f41da8afa23::t_0427d8316d0b27 332
+  s_3d9f41da8afa23::t_56cadd3c89f89b 224-231
+  s_3d9f41da8afa23::t_b51402d376742a 269,271-277,279
+  s_3d9f41da8afa23::t_8ff5234f35b91a 14-23
+  s_3d9f41da8afa23::t_b7938dcfae1d60 49-51
+  s_3d9f41da8afa23::t_3b8b3bd4b830b9 290-296,306-319
+  s_3d9f41da8afa23::t_10a76821f38d4c 111-123
+  s_3d9f41da8afa23::t_e1669e2011c397 257-263
+  s_3d9f41da8afa23::t_f269665ada99aa 144-145,149-151
+  s_3d9f41da8afa23::t_87d393f8402e4d 3-6
+  s_3d9f41da8afa23::t_b5b4fcffabfa5a 68-73,75-76
+  s_3d9f41da8afa23::t_47ea5276b4651f 164
+  s_3d9f41da8afa23::t_1b3aa422b1b6af 35-38
+  s_3d9f41da8afa23::t_0763dfab1db8e1 155-162
+  s_3d9f41da8afa23::t_e14009aead4a11 128-130
+  s_3d9f41da8afa23::t_e22e23401ed2e9 200
+  s_3d9f41da8afa23::t_14fb6858f55ae1 163
+demos/architect/src/client/api/shares.test.ts
+  s_3d9f41da8afa23::t_4dc7cae64a172a 5,84-86
+  s_3d9f41da8afa23::t_d4ef2c9e932041 80-83,87-92
+demos/architect/src/client/components/editor/toolbar/ShareModal.test.tsx
+  s_3d9f41da8afa23::t_4dc7cae64a172a 235,259-262
+  s_3d9f41da8afa23::t_8b05577769b2ca 178-189,206-234,236-237,258,263-296
+  s_3d9f41da8afa23::t_a4b67b93634201 238,297
+demos/architect/src/client/components/admin/UserDirectoryTable.test.tsx
+  s_3d9f41da8afa23::t_1f3adaeea2eaca 100-111
+demos/architect/src/client/components/editor/panels/PropertiesPanel.test.tsx
+  s_3d9f41da8afa23::t_c00974102fae98 110-129
+  s_3d9f41da8afa23::t_cdedfa52c6f990 192-211,213-218,220-231
+  s_3d9f41da8afa23::t_4dc7cae64a172a 212
+  s_3d9f41da8afa23::t_310a6cedc00054 219
+  s_3d9f41da8afa23::t_2bd8a8cbb06516 3
+demos/architect/src/client/test/mock-xyflow.tsx
+  s_3d9f41da8afa23::t_fec5c6304162e8 146-147,156,161-168,178
+  s_3d9f41da8afa23::t_93cf0a4ab75522 183-185,202-203,224-225
+  s_3d9f41da8afa23::t_ac6b2a166c85c4 32,39,46-47,61,75-76,84,89-90
+demos/architect/src/client/components/editor/toolbar/ExportButton.test.tsx
+  s_3d9f41da8afa23::t_90c39e304b3ad6 115-124
+demos/architect/src/client/lib/scaffold.test.ts
+  s_3d9f41da8afa23::t_8c0bcb4e9e3a0b 397-432
+  s_3d9f41da8afa23::t_2289b9abc917ac 2,7-8
+  s_3d9f41da8afa23::t_7af10e3f2e6095 38-59
+demos/architect/src/client/components/blueprints/CreateDiagramModal.test.tsx
+  s_3d9f41da8afa23::t_4b947fd94c7373 129-141
+demos/architect/src/client/views/ShareView.test.tsx
+  s_3d9f41da8afa23::t_fffe52d3a03ee5 92-131
+demos/architect/src/client/components/editor/nodes/CFNode.tsx
+  s_3d9f41da8afa23::t_6d6afeb66c64ed 30-33
+demos/architect/src/worker/diagrams/repository.ts
+  s_3d9f41da8afa23::t_4dc7cae64a172a 2
+demos/architect/src/client/stores/diagramStore.test.ts
+  s_3d9f41da8afa23::t_d91fd68bf4441f 94-104,122-143
+  s_3d9f41da8afa23::t_6962281d2c2f99 144,195
+  s_3d9f41da8afa23::t_6754633f56b543 145,186-194,196-216
+  s_3d9f41da8afa23::t_216bce32a157eb 146
+demos/architect/src/client/lib/scaffold.ts
+  s_3d9f41da8afa23::t_98a401cfe792e7 90
+  s_3d9f41da8afa23::t_9cda5a65e475f9 241-254
+  s_3d9f41da8afa23::t_10419a5dc11fbf 323-333
+  s_3d9f41da8afa23::t_74a63161c38d8c 101
+  s_3d9f41da8afa23::t_74db9c031f1ca2 200-209
+  s_3d9f41da8afa23::t_4dc7cae64a172a 22
+  s_3d9f41da8afa23::t_53cc937ecc3555 293-296
+  s_3d9f41da8afa23::t_0ee9d822fad55b 115
+docs/09-ARCHITECT.md
+  s_3d9f41da8afa23::t_c9e6dc33474de1 445-569
+  s_3d9f41da8afa23::t_8f5fa703146a8c 570-592
+demos/architect/src/client/stores/diagramStore.ts
+  s_3d9f41da8afa23::t_874b0c32e89368 182-185,189
+demos/architect/src/client/api/diagrams.test.ts
+  s_3d9f41da8afa23::t_4dc7cae64a172a 4
+demos/architect/src/blueprints.ts
+  s_3d9f41da8afa23::t_dcfe570562b58f 28,30,32,34,36,38,42,44,46,48,50,52,56-64
+demos/architect/src/client/components/editor/panels/ServicePalette.tsx
+  s_3d9f41da8afa23::t_78f499141f5829 10,12
+demos/architect/src/client/components/dashboard/DiagramGrid.test.tsx
+  s_3d9f41da8afa23::t_7f8227ae933c27 155-164,183-200,218-235
+demos/architect/src/client/components/editor/edges/CFEdge.tsx
+  s_3d9f41da8afa23::t_4dc7cae64a172a 4
+demos/architect/src/client/components/editor/nodes/CFNode.test.tsx
+  s_3d9f41da8afa23::t_0bd6032f4710e1 65,74-76
+  s_3d9f41da8afa23::t_6979141bea0740 77
+demos/architect/src/client/components/blueprints/BlueprintGallery.tsx
+  s_3d9f41da8afa23::t_4dc7cae64a172a 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d5037592084e04a37a5fe5d2501e66e87af1e8a5",
+  "prompts": {},
+  "sessions": {
+    "s_3d9f41da8afa23": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0195aa469ffeEZvfjH1gDvZasL",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
