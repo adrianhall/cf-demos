@@ -3,4 +3,9 @@
 .env.*
 !.env.example
 
+# Root-level tooling (scripts/update-env.mjs) has no dependencies, but
+# ignore node_modules here defensively so nothing at the repo root can ever
+# shadow module resolution inside an individual demo.
+node_modules/
+
 # Gitignore for individual demos are handled at the demo level.
