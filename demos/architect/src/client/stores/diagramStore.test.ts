@@ -19,6 +19,8 @@ describe("useDiagramStore", () => {
       diagramId: null,
       title: "Untitled Diagram",
       description: "",
+      updatedAt: null,
+      liveUpdateNotice: false,
       nodes: [],
       edges: [],
       viewport: { x: 0, y: 0, zoom: 1 },
@@ -30,6 +32,7 @@ describe("useDiagramStore", () => {
       saveError: null,
       paletteOpen: true,
       propertiesOpen: false,
+      minimapOpen: true,
       undoStack: [],
       redoStack: [],
     });
@@ -46,12 +49,14 @@ describe("useDiagramStore", () => {
         [makeNode("b")],
         [],
         { x: 1, y: 2, zoom: 1.5 },
+        "2026-01-01T00:00:00.000Z",
       );
 
     const state = useDiagramStore.getState();
     expect(state.diagramId).toBe("diagram-1");
     expect(state.title).toBe("My Diagram");
     expect(state.description).toBe("A description");
+    expect(state.updatedAt).toBe("2026-01-01T00:00:00.000Z");
     expect(state.nodes).toHaveLength(1);
     expect(state.dirty).toBe(false);
     expect(state.undoStack).toHaveLength(0);
@@ -397,6 +402,15 @@ describe("useDiagramStore", () => {
     expect(useDiagramStore.getState().propertiesOpen).toBe(false);
   });
 
+  it("toggles the minimap visibility without marking the graph dirty", () => {
+    expect(useDiagramStore.getState().minimapOpen).toBe(true);
+    useDiagramStore.getState().toggleMinimap();
+    expect(useDiagramStore.getState().minimapOpen).toBe(false);
+    expect(useDiagramStore.getState().dirty).toBe(false);
+    useDiagramStore.getState().toggleMinimap();
+    expect(useDiagramStore.getState().minimapOpen).toBe(true);
+  });
+
   it("marks dirty when the title or description changes", () => {
     useDiagramStore.getState().setTitle("New Title");
     expect(useDiagramStore.getState().title).toBe("New Title");
@@ -411,11 +425,12 @@ describe("useDiagramStore", () => {
     useDiagramStore.getState().markSaving();
     expect(useDiagramStore.getState().saving).toBe(true);
 
-    useDiagramStore.getState().markSaved();
+    useDiagramStore.getState().markSaved("2026-01-01T00:00:00.000Z");
     let state = useDiagramStore.getState();
     expect(state.saving).toBe(false);
     expect(state.dirty).toBe(false);
     expect(state.lastSavedAt).not.toBeNull();
+    expect(state.updatedAt).toBe("2026-01-01T00:00:00.000Z");
 
     useDiagramStore.getState().markSaveError("Network error");
     state = useDiagramStore.getState();
@@ -442,5 +457,96 @@ describe("useDiagramStore", () => {
     useDiagramStore.getState().setNodes([makeNode("z")]);
     useDiagramStore.getState().setEdges([]);
     expect(useDiagramStore.getState().nodes.map((n) => n.id)).toEqual(["z"]);
+  });
+
+  describe("applyRemoteGraphUpdate", () => {
+    it("replaces the graph, clears dirty/history, and shows the live update notice", () => {
+      useDiagramStore.setState({ updatedAt: "2026-01-01T00:00:00.000Z" });
+      useDiagramStore.getState().addNode(makeNode("a"));
+
+      useDiagramStore.getState().applyRemoteGraphUpdate(
+        JSON.stringify({
+          nodes: [makeNode("b")],
+          edges: [],
+          viewport: { x: 1, y: 2, zoom: 1 },
+        }),
+        "2026-01-02T00:00:00.000Z",
+      );
+
+      const state = useDiagramStore.getState();
+      expect(state.nodes.map((n) => n.id)).toEqual(["b"]);
+      expect(state.updatedAt).toBe("2026-01-02T00:00:00.000Z");
+      expect(state.dirty).toBe(false);
+      expect(state.undoStack).toHaveLength(0);
+      expect(state.redoStack).toHaveLength(0);
+      expect(state.liveUpdateNotice).toBe(true);
+    });
+
+    it("ignores a push that is not newer than the store's own updatedAt", () => {
+      useDiagramStore.setState({ updatedAt: "2026-01-02T00:00:00.000Z" });
+      useDiagramStore.getState().addNode(makeNode("a"));
+
+      useDiagramStore.getState().applyRemoteGraphUpdate(
+        JSON.stringify({
+          nodes: [],
+          edges: [],
+          viewport: { x: 0, y: 0, zoom: 1 },
+        }),
+        "2026-01-02T00:00:00.000Z",
+      );
+
+      const state = useDiagramStore.getState();
+      expect(state.nodes.map((n) => n.id)).toEqual(["a"]);
+      expect(state.liveUpdateNotice).toBe(false);
+    });
+
+    it("defaults missing nodes, edges, and viewport in the pushed graph", () => {
+      useDiagramStore.setState({ updatedAt: "2026-01-01T00:00:00.000Z" });
+
+      useDiagramStore
+        .getState()
+        .applyRemoteGraphUpdate("{}", "2026-01-02T00:00:00.000Z");
+
+      const state = useDiagramStore.getState();
+      expect(state.nodes).toEqual([]);
+      expect(state.edges).toEqual([]);
+      expect(state.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
+    });
+
+    it("applies a push when no updatedAt has been recorded yet", () => {
+      useDiagramStore.setState({ updatedAt: null });
+
+      useDiagramStore.getState().applyRemoteGraphUpdate(
+        JSON.stringify({
+          nodes: [makeNode("a")],
+          edges: [],
+          viewport: { x: 0, y: 0, zoom: 1 },
+        }),
+        "2026-01-01T00:00:00.000Z",
+      );
+
+      expect(useDiagramStore.getState().nodes).toHaveLength(1);
+    });
+
+    it("ignores a push whose graphData fails to parse, mutating nothing", () => {
+      useDiagramStore.setState({ updatedAt: "2026-01-01T00:00:00.000Z" });
+      useDiagramStore.getState().addNode(makeNode("a"));
+
+      useDiagramStore
+        .getState()
+        .applyRemoteGraphUpdate("not json", "2026-01-02T00:00:00.000Z");
+
+      const state = useDiagramStore.getState();
+      expect(state.nodes.map((n) => n.id)).toEqual(["a"]);
+      expect(state.liveUpdateNotice).toBe(false);
+    });
+  });
+
+  describe("dismissLiveUpdateNotice", () => {
+    it("clears the live update notice", () => {
+      useDiagramStore.setState({ liveUpdateNotice: true });
+      useDiagramStore.getState().dismissLiveUpdateNotice();
+      expect(useDiagramStore.getState().liveUpdateNotice).toBe(false);
+    });
   });
 });

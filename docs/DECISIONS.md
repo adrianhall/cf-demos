@@ -1270,3 +1270,141 @@ non-drag connection UI as a first-class requirement, not an afterthought, given 
 handles are not independently keyboard-accessible; and any demo rendering `@xyflow/react` purely
 as a thumbnail/preview should set all three of `elementsSelectable`, `nodesFocusable`, and
 `edgesFocusable` to `false` together.
+
+## NEW DECISIONS
+
+## 29. `docs/09B-ARCHITECT-MCP.md` Phase 11 spike findings — MCP server mechanism confirmed,
+    `elkjs` does not run in `workerd`, OpenCode's MCP OAuth redirect is a fixed loopback default
+    (`spikes/07-architect-mcp-spike`)
+
+Four open questions from `docs/09B-ARCHITECT-MCP.md`'s Phase 11 spike, researched and (for the
+`elkjs` question) executed against a real local `workerd` instance. Full detail, citations, and
+code in `spikes/07-architect-mcp-spike/REPORT.md`; summary here per the Spike Conventions.
+
+**1–2. Stateless MCP server mechanism: `createMcpHandler` confirmed, no correction.**
+`createMcpHandler` (`agents/mcp/server`) paired with `@modelcontextprotocol/server` is Cloudflare's
+current mechanism, confirmed independently across all three sources Phase 11 named: the Cloudflare
+blog's 2026-08-06 post ["The next generation of
+MCP"](https://blog.cloudflare.com/mcp-v2/) states `createMcpHandler` has "graduate[d] into the
+official MCP TypeScript SDK" with the new MCP 2026-07-28 (fully stateless) specification and that
+`McpAgent` is no longer needed for protocol state; `cloudflare/agents`' own current
+`examples/mcp-worker` (as distinct from the legacy `examples/mcp`) uses the identical pattern; and
+`npm view` confirms current published versions (`agents@0.20.1`,
+`@modelcontextprotocol/server@2.0.0`) matching the document's stated dependencies, with no
+superseding first-party `@cloudflare`-scoped MCP-server-building package found in that npm org.
+**DCR-vs-CIMD investigated in depth, following a direct question about it: not a scope change, and
+not merely a client-readiness call either — it is currently impossible to do differently.** The
+same blog post notes MCP authorization now prefers Client ID Metadata Documents (CIMD) over
+Dynamic Client Registration (DCR), and DCR is "deprecated for new implementations" (removal after
+summer 2027). Three checks, each independent: (a) **a real harness has already fully migrated** —
+`anthropics/claude-code#84263` (2026-08-05) documents Claude Code authenticating to MCP servers
+via the CIMD client id `https://claude.ai/oauth/claude-code-client-metadata`, including a real
+production bug (Cloudflare's own bot protection 403ing some cloud egress IPs' fetches of that
+document); (b) **OpenCode has not**, and this part is a genuine, if currently harmless, gap — its
+bundled `@modelcontextprotocol/sdk` already contains generic CIMD-detection logic
+(`client_id_metadata_document_supported`, a `clientMetadataUrl` provider property), but OpenCode's
+own custom `OAuthClientProvider` implementation never sets `clientMetadataUrl`, so that path is
+dead code today and OpenCode always falls through to DCR; (c) **decisively, Cloudflare Access
+itself does not support CIMD at all** — checked against both the pinned Terraform provider schema
+(`cloudflare/cloudflare@5.22.0`, via `terraform providers schema -json`) and the live [Access
+applications API
+reference](https://developers.cloudflare.com/api/resources/zero%5Ftrust/subresources/access/subresources/applications/methods/update/):
+`oauth_configuration` has exactly `enabled`/`dynamic_client_registration`/`grant`, no CIMD field,
+and the whole feature is explicitly labeled **Beta**. Per the MCP spec's own client priority order
+(pre-registered → CIMD *only if the server advertises it* → DCR fallback), finding (c) overrides
+(a): **even a fully CIMD-migrated client like Claude Code will use DCR against an Access-fronted
+MCP server**, because Access gives it nothing else to prefer. `dynamic_client_registration.enabled
+= true` is therefore not a stopgap chosen for OpenCode's current limitations — it is the only
+mechanism Access's (Beta) Managed OAuth offers, for any client, today. Worth tracking as an
+external dependency, not a Demo 9B design gap: if MCP clients broadly drop DCR before Cloudflare
+ships CIMD support on Access, every Access-fronted MCP server loses its non-browser auth path, not
+just this one. Also worth citing directly: Cloudflare's [Managed
+OAuth](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/)
+doc's "Enable managed OAuth on an MCP server application" section is the precise match for this
+document's first-party, JWT-validating design — the separate "Secure MCP servers" doc's two
+documented setups are both for *third-party* MCP server code and do not apply here.
+
+**3. `elkjs` does not run inside `workerd` — confirmed by execution, and this is a correction.**
+Two independent, real (non-mocked) `@cloudflare/vitest-pool-workers` tests in
+`spikes/07-architect-mcp-spike/tests/` both fail as expected: `new ELK()` from
+`elkjs/lib/elk.bundled.js` (the exact entry point `demos/architect`'s real client-side auto-layout
+already uses) throws `TypeError: _Worker is not a constructor` immediately, because that "bundled"
+file is actually elkjs's own Node-targeted browserify bundle, whose internal
+`require('./elk-worker.min.js')` resolves to an object with no usable `Worker` export once
+re-bundled a second time by Wrangler/esbuild for `workerd`. The natural workaround — importing
+`elkjs/lib/elk-worker.min.js` directly ourselves and passing it as an explicit `workerFactory` —
+fails too, independently: that file (a GWT/Java-compiled-to-JS blob) resolves to a completely
+empty module once bundled for `workerd`, with or without the `nodejs_compat` compatibility flag
+(tried both). **Decision**: `docs/09B-ARCHITECT-MCP.md`'s planned `autoLayout()` graph-mutation
+function must ship the deterministic grid-placement fallback that document already named as its
+own contingency for exactly this outcome — this is now the confirmed, required implementation for
+Phase 13, not a re-evaluation to defer. Any other Workers demo (or later phase of this one)
+considering `elkjs` server-side should assume it needs the same fallback rather than re-discovering
+this.
+
+**4. OpenCode's MCP OAuth client: fixed loopback redirect, DCR (not CIMD), RFC 8707 + PKCE.**
+Read directly from OpenCode's own compiled CLI binary (`opencode@1.18.15`) plus its published
+docs. OpenCode's MCP OAuth redirect defaults to a **fixed, hardcoded** `http://127.0.0.1:19876/mcp/oauth/callback`
+(overridable per-server via `opencode.json`'s `mcp.<name>.oauth.callbackPort`/`redirectUri`, but
+this is the un-configured default, not a randomly-chosen ephemeral port) — the local callback
+server binds literally to `127.0.0.1`, not `0.0.0.0`/`localhost`. This **confirms**
+`docs/09B-ARCHITECT-MCP.md`'s `allow_any_on_loopback: true` choice, and clarifies that the
+document's own suggested alternative ("narrow to an explicit `allowed_uris` entry instead if the
+redirect URI is stable enough") is **not actually available** for this client: Cloudflare's Managed
+OAuth `allowed_uris` field requires `https://`, and OpenCode's loopback redirect is plain `http://`
+by design (OAuth 2.1's native-app loopback exception) — there is no way to allow-list a specific
+`http://127.0.0.1:PORT` URI through that field, so `allow_any_on_loopback` is the only mechanism
+that can admit this client, not one option among several. OpenCode's client registration is plain
+RFC 7591 Dynamic Client Registration with `token_endpoint_auth_method: "none"` (a public client) —
+confirming DCR, not the newer CIMD mechanism, must stay enabled in the Access application's
+`oauth_configuration` for this client to work. Also confirmed present: PKCE (`code_challenge`)
+and an RFC 8707 `resource=` parameter on authorization/token requests (satisfying Managed OAuth's
+stated client-support prerequisite), and MCP protocol version strings up to `2026-07-28` in
+OpenCode's bundled client SDK (confirming it already speaks the new stateless protocol a
+`createMcpHandler` server serves). **Decision**: no change to the document's
+`oauth_configuration` block; drop its "narrow to `allowed_uris` instead" framing as a live option
+for OpenCode specifically (keep it as general advice for a hypothetical https-redirect client);
+cite the exact default redirect URI in `DEMO.md`'s presenter script so a presenter knows what the
+browser prompt will show. **Not done as part of this spike, and intentionally left open**: the
+real, deployed-account end-to-end round trip (`opencode mcp auth` against a live scratch Access
+application) Phase 11's item 4 also asks for — this repository's standing rule against touching
+real account infrastructure without explicit request applies, so that live check remains a manual
+pre-Phase-12 step, not something this spike closes.
+
+## NEW DECISIONS
+
+## 30. `docs/09B-ARCHITECT-MCP.md` Phase 12 implementation findings — `createMcpHandler` built
+    fresh per request (not module scope), and `nodejs_compat` is required
+
+Two corrections/clarifications surfaced implementing Phase 12 (`demos/architect/src/worker/routes/mcp.ts`,
+`demos/architect/src/worker/mcp/server.ts`) that Phase 11's spike did not need to answer, since it
+never actually wired the handler into a real Access-fronted Worker route:
+
+**1. `createMcpHandler(...)` must be built fresh per `/mcp` request in this demo, not cached at
+module scope, despite the document's "module scope per current guidance" phrasing.** Reading
+`agents`'s actual `createStatelessMcpHandler` source (`node_modules/agents/dist/handler-stateless-*.js`)
+shows its only per-request-varying identity mechanisms are: (a) a **static** `authContext` option
+fixed at handler-creation time (would freeze whichever identity built a module-scope singleton
+into every later request that reuses it — a real cross-tenant leak for this demo's Access-native
+design, not a hypothetical one); or (b) `ExecutionContext.props`, which is `readonly` on
+Cloudflare's own `ExecutionContext` type and is never populated for a plain Access-fronted Worker
+in the first place (it is a `@cloudflare/workers-oauth-provider`-specific convention this demo does
+not use — Managed OAuth resolves a client's bearer token into a `Cf-Access-Jwt-Assertion` header
+*before* the request reaches the Worker, never into `ctx.props`). Neither mechanism can safely
+carry this demo's already-verified `Cloudflare_Access_Identity` (Hono context) into a module-scope
+handler instance. **Decision**: build `createMcpHandler(() => createServer({ ownerEmail, ... }))`
+fresh inside the `/mcp` route handler, once per request, closing over that request's own resolved
+identity — correct for this demo's Access-native (not OAuth-provider-fronted) architecture, not a
+shortcut. Phases 13/14's additional tool registrations should extend the same `createServer()`
+factory rather than introduce a second identity-plumbing mechanism.
+
+**2. `agents/mcp/server` requires the `nodejs_compat` compatibility flag.** `createMcpHandler`
+imports `AsyncLocalStorage` from `node:async_hooks` at module scope (to track its own internal
+per-request auth-context storage, unrelated to and unused by this demo's own identity wiring
+above). `vite build` flags this plainly ("Unexpected Node.js imports... node:async_hooks... Do you
+need to enable the nodejs_compat compatibility flag?") even though the locally available
+`workerd`/Miniflare release this repository's pinned Wrangler bundles happened to tolerate the
+import without the flag during `@cloudflare/vitest-pool-workers` integration tests — that
+tolerance is not something to rely on for a real deployment. Added `"nodejs_compat"` to
+`demos/architect/wrangler.jsonc.tpl`'s `compatibility_flags`, satisfying AGENTS.md's "Enable
+`nodejs_compat` only when application dependencies require Node APIs" now that one genuinely does.

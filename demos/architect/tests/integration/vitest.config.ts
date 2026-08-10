@@ -28,6 +28,12 @@ export default defineProject(async () => {
     test: {
       name: "integration",
       include: ["**/*.test.ts"],
+      // `diagram-session.test.ts` opens real hibernatable WebSocket connections against this
+      // shared workerd runtime. Running test files concurrently can intermittently starve
+      // hibernatable WebSocket delivery in this pool -- see the testing-durable-objects skill
+      // (`docs/DECISIONS.md` item 8) and `demos/chat`'s own precedent -- so file execution is
+      // serialized for this project.
+      fileParallelism: false,
     },
   };
 });

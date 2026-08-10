@@ -75,6 +75,13 @@ resource "cloudflare_zero_trust_access_application" "app" {
     {
       type = "public"
       uri  = "${local.hostname}/api/admin*"
+    },
+    # docs/09B-ARCHITECT-MCP.md's remote MCP server: a non-browser MCP client (OpenCode or any
+    # other MCP-compliant harness) authenticates through this same application via Managed OAuth
+    # (below) instead of a browser cookie -- no new Access application, and no new policy.
+    {
+      type = "public"
+      uri  = "${local.hostname}/mcp*"
     }
   ]
 
@@ -82,4 +89,31 @@ resource "cloudflare_zero_trust_access_application" "app" {
     id         = cloudflare_zero_trust_access_policy.authenticated_users.id
     precedence = 1
   }]
+
+  # Turns Access itself into the OAuth 2.1 authorization server a non-browser MCP client needs --
+  # without this, a client that cannot complete a browser login redirect gets an un-completable
+  # 302 (docs/09B-ARCHITECT-MCP.md's Access Model, confirmed against the pinned provider schema
+  # and the live Access applications API reference in spikes/07-architect-mcp-spike/REPORT.md).
+  oauth_configuration = {
+    enabled = true
+    dynamic_client_registration = {
+      enabled = true
+      # `allow_any_on_loopback`/`allow_any_on_localhost` are not a narrower fallback here: Managed
+      # OAuth's `allowed_uris` field requires an `https://` URL, and OpenCode's MCP OAuth client
+      # -- like any OAuth 2.1 native-app client using the loopback exception -- redirects to a
+      # plain `http://127.0.0.1:19876/mcp/oauth/callback` by default. There is no way to
+      # allow-list that specific loopback URI through `allowed_uris`, so these two flags are the
+      # *only* mechanism that can admit this client, not a broader choice made for convenience.
+      allow_any_on_loopback  = true
+      allow_any_on_localhost = true
+    }
+    grant = {
+      # Short-lived access token + long-lived refresh grant is Cloudflare's own recommended shape
+      # for CLI/agent use cases: the client refreshes silently in the background and Access
+      # re-evaluates policy on every refresh, so a revoked identity is cut off within one token
+      # lifetime, not just at initial login.
+      access_token_lifetime = "15m"
+      session_duration      = "336h" # 14 days
+    }
+  }
 }

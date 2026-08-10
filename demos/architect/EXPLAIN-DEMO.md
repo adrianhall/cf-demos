@@ -5,6 +5,14 @@ product icons onto a canvas, connects them, and gets an autosaved, shareable, ex
 diagram. This file explains the Cloudflare capabilities it demonstrates and the key design
 decisions behind how it works.
 
+This document also covers a follow-on extension, described in full in
+`docs/09B-ARCHITECT-MCP.md`: a remote [Model Context Protocol](https://modelcontextprotocol.io)
+(MCP) server at `POST /mcp` that lets an external agentic harness (OpenCode, or any other
+MCP-compliant client) create, edit, share, and export a signed-in user's own diagrams — plus a
+small Durable Object that pushes an agent's edits live into any browser editor tab the user
+already has open. It adds no new deployable unit, domain, or D1 table; it is the same demo,
+extended with an agent-facing surface on top of the application described above.
+
 ## What This Demonstrates
 
 - **A mixed public/authenticated hostname with two Cloudflare Access applications.** One
@@ -74,6 +82,32 @@ decisions behind how it works.
 - **A client-side-only feature set needing no Worker or Terraform changes at all.** Export, print,
   and dark mode add no new API route, D1 table, or Cloudflare resource — every line of it lives in
   `src/client/`, exercised by the `client` Vitest project alone.
+- **A non-browser OAuth 2.1 client authenticating through the same Cloudflare Access application
+  as a browser, via Managed OAuth.** Rather than a second Access application, a separate
+  allow-list, or a service-token/machine-identity path, Access's Managed OAuth capability turns
+  the *existing* `app` application into a real OAuth 2.1 authorization server: a remote MCP
+  client (OpenCode, or any other MCP-compliant harness) completes the same login, against the
+  same identity provider, under the same policy, as a person opening `/app`. Anyone who can sign
+  in to the editor can sign in to the MCP server, and nobody else can.
+- **A remote MCP server reusing its host application's data-access layer in-process, not over a
+  second network hop.** Every MCP tool calls the same `DiagramRepository`/`ShareRepository`/
+  `generateScaffold()` functions the REST API already uses, as ordinary function calls — there is
+  no internal HTTP round trip from the MCP handler back into this Worker's own API, and no
+  forked or duplicated data-access code for agent-driven traffic to fall out of sync with.
+- **A deliberately narrow, justified Durable Object: coordination for open connections, not a
+  second copy of the data.** `DiagramSession` holds no durable state of its own — D1 remains the
+  only source of truth for a diagram's graph — it exists purely as a live fan-out point for
+  browser WebSocket connections on one diagram, because "push the instant something changes to
+  every currently-connected client" is a real persistent-connection coordination problem, the one
+  case in this demo that polling (this repository's usual first choice — see `docs/DECISIONS.md`
+  and `docs/10-OPENCODE-BROWSER.md`'s own precedent) cannot satisfy well enough to be worth
+  choosing anyway.
+- **A read-only, single-owner live-sync channel, deliberately not real-time multi-user
+  collaboration.** `DiagramSession` never accepts writes from the browser side of its socket, and
+  conflict resolution is plain last-write-wins — sufficient because the only two writers are one
+  owner's browser tab and that same owner's own agent, never two different people. Real
+  concurrent-editor collaboration remains its own, separately-scoped future work (see "Live sync
+  and concurrency" below).
 
 ## How It Works
 
@@ -340,6 +374,12 @@ read-only mode — an anonymous share viewer (`../../views/ShareView.tsx`) can e
 diagram it cannot edit, since neither action can change the diagram (only the Share button itself
 stays owner-only).
 
+The canvas minimap (`DiagramCanvas.tsx`'s `<MiniMap>`) can be hidden and shown again through a
+map-icon toggle in `Toolbar.tsx`, next to the existing service-palette/properties-panel sidebar
+toggles (Bug 4) — a purely session-scoped view preference (`diagramStore.ts`'s `minimapOpen`,
+defaulting to visible) rather than a saved graph or `localStorage` setting, since it affects
+nothing about the diagram itself.
+
 Print mode (`PrintButton.tsx`, `DiagramCanvas.tsx`'s print-mode effect) hides every editing
 affordance (toolbar, palette, properties panel, minimap, controls), shows a title/description
 overlay instead, forces a light color scheme for the duration, injects a `<style>` tag choosing a
@@ -364,6 +404,146 @@ toolbar, not a stacked app-shell header" note below).
 ELK remains the only heavy, lazy-loaded dependency in this editor; `html-to-image` and `fflate`
 are small enough (roughly 15 KB and 8 KB gzip respectively) to import eagerly in
 `ExportButton.tsx` without meaningfully affecting the initial load.
+
+### The remote MCP server
+
+`src/worker/mcp/server.ts`'s `createServer()` builds a fresh `McpServer` (`@modelcontextprotocol/server`,
+via `agents/mcp/server`'s `createMcpHandler`) for every `/mcp` request, closing over that
+request's already-verified Cloudflare Access identity. This is deliberate, not an
+under-optimization: `createMcpHandler`'s only mechanisms for carrying per-request identity into
+its handler are a static `authContext` fixed at handler-creation time, or `ExecutionContext.props`
+(a `@cloudflare/workers-oauth-provider` convention this Access-native demo does not use) — a
+module-scope singleton handler would freeze the *first* caller's identity into every later request
+that reuses it, a real cross-tenant leak for a demo whose entire teaching moment is a live,
+multi-actor edit. `agents/mcp/server` also requires the `nodejs_compat` compatibility flag
+(`wrangler.jsonc.tpl`): it imports `node:async_hooks`'s `AsyncLocalStorage` at module scope for its
+own internal request tracking.
+
+Every tool in `src/worker/mcp/tools.ts` is a thin wrapper over the *exact same*
+`DiagramRepository`/`ShareRepository`/`generateScaffold()` functions `src/worker/routes/diagrams.ts`
+and `src/worker/routes/shares.ts` already call — in-process function calls, never a second HTTP
+round trip back into this Worker's own REST API — so an MCP-driven mutation and a browser-driven
+one are indistinguishable to D1 beyond the structured log's own `via: "api" | "mcp"` field
+(`context.logger.info(...)`, threaded through every mutating tool and route handler). A tool that
+throws a `ProblemDetailsError` (a `notFound()` for a missing or not-owned diagram id, matching
+every REST route's behavior) needs no explicit try/catch of its own: the MCP SDK's `tools/call`
+handler already converts a thrown error's `.message` into `{ content: [...], isError: true }`
+automatically.
+
+Every graph-mutating tool (`add_node`, `update_node`, `remove_node`, `add_edge`, `update_edge`,
+`remove_edge`, `auto_layout_diagram`) funnels through one shared shape:
+`DiagramRepository.findOwned()` an owned diagram, apply one pure function from
+`src/worker/diagrams/graph-mutations.ts` to its parsed graph, re-canonicalize with the same
+`validateGraphDataInput()`-equivalent helper `src/worker/diagrams/validation.ts` already exposes
+to the REST `PUT .../graph` route, `saveGraphData()`, then push the fresh graph to any open editor
+tab (see "Live sync and concurrency" below). `graph-mutations.ts`'s functions are pure and unit-
+tested against fixture `GraphData` values with no D1, Worker, or MCP involvement at all —
+`removeNode()` cascades removal of every edge referencing the removed node (an orphaned edge is a
+worse failure mode than an over-eager cascade), and `addEdge()` validates both endpoints exist
+before creating anything.
+
+`auto_layout_diagram` does **not** reuse the editor's own ELK-based layout: a real
+`@cloudflare/vitest-pool-workers` spike (`spikes/07-architect-mcp-spike/`, `docs/DECISIONS.md` #29)
+found `elkjs`'s bundled entry point throws immediately inside `workerd` — its "bundled" file is
+actually a Node-targeted browserify bundle whose internal `require()` of a co-bundled worker file
+resolves to nothing usable once re-bundled a second time for `workerd`, with or without
+`nodejs_compat`. `graph-mutations.ts`'s `autoLayout()` instead implements a deterministic
+grid-placement fallback (fixed-spacing rows/columns, breadth-first-ordered from the graph's
+edges) — visibly simpler than the editor's own **Layout ↓** toolbar button, which the tool's own
+MCP description says plainly, so a calling model does not over-promise the result to a user.
+
+### Authenticating a non-browser client: Cloudflare Access Managed OAuth
+
+`infra/access.tf`'s existing `app` Access application (the same one gating `/app*`, `/api/me`,
+`/api/diagrams*`, and `/api/admin*`) gains a fourth destination, `/mcp*`, and an
+`oauth_configuration` block turning Access itself into the OAuth 2.1 authorization server a
+non-browser MCP client needs — without it, a client that cannot complete a browser login redirect
+gets an un-completable `302`. This is deliberately **not** a second Access application, a separate
+allow-list, a service token, or a new Identity Provider: the same `authenticated_users` policy
+(`decision = "allow"`, any identity from an already-configured provider) still governs `/mcp*`, so
+whoever can sign in to the editor can sign in to the MCP server, and no one else can. Managed OAuth
+resolves a client's opaque bearer token into the same `Cf-Access-Jwt-Assertion` header
+server-side, before the request ever reaches the Worker — `cloudflareAccess()` (mounted on `/mcp`
+in `src/worker/index.ts`, via the shared `src/access-policies.ts` array with `authenticate: true,
+redirect: false`, matching `/api`'s reasoning that an MCP client is never a browser navigation)
+cannot tell, and does not need to tell, whether a request arrived via a browser cookie or via
+Managed OAuth.
+
+`oauth_configuration.dynamic_client_registration` is enabled with both
+`allow_any_on_loopback`/`allow_any_on_localhost` set — confirmed against a real client
+(`spikes/07-architect-mcp-spike/REPORT.md`, `docs/DECISIONS.md` #29) to be the *only* mechanism
+that can admit OpenCode's MCP OAuth client, not a convenience choice among several: Managed
+OAuth's `allowed_uris` field requires an `https://` URL, and OpenCode's default redirect
+(`http://127.0.0.1:19876/mcp/oauth/callback`) is plain `http://` by design (OAuth 2.1's native-app
+loopback exception), so there is no way to allow-list that specific URI instead. Dynamic Client
+Registration (DCR), not the newer Client ID Metadata Documents (CIMD) mechanism the MCP
+specification now prefers, is enabled for a similar reason, not a client-readiness gap this demo
+chose to ignore: Cloudflare Access's `oauth_configuration` (confirmed against both the pinned
+Terraform provider schema and the live Access applications API reference, both Beta) has no CIMD
+field at all, so per the MCP spec's own client priority order, *every* client — even one that has
+already migrated to CIMD elsewhere — falls back to DCR against this application regardless of its
+own CIMD support. The access-token/session shape (`access_token_lifetime = "15m"`,
+`session_duration = "336h"`) is Cloudflare's own recommended shape for CLI/agent use cases: a
+client refreshes silently in the background, and Access re-evaluates policy on every refresh, so a
+revoked identity is cut off within one token lifetime rather than only at initial login.
+
+### Live sync and concurrency
+
+`DiagramSession` (`src/worker/diagram-session/diagram-session.ts`) is a small, narrowly-scoped
+Durable Object — one instance per diagram id (`env.DIAGRAM_SESSIONS.getByName(diagramId)`, no
+separate mapping table) — that holds no durable data of its own. D1 remains the single source of
+truth for a diagram's graph; this object exists purely as a live fan-out point for whichever
+browser tabs currently have that diagram open. `GET /api/diagrams/:id/live`
+(`src/worker/routes/diagrams.ts`) performs the same `DiagramRepository.findOwned()` ownership
+check every other diagram route performs *before* forwarding the WebSocket upgrade to the Durable
+Object — the object itself never re-derives authorization, matching this repository's usual
+pattern of authorization living at the Worker/API boundary. It accepts sockets with the
+[WebSocket Hibernation API](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)
+(`ctx.acceptWebSocket()`, not `server.accept()`), so an idle open editor tab does not keep billing
+the object while nothing is happening — consistent with this demo's existing cost-consciousness
+elsewhere (ELK's lazy import, `demos/opencode-browser`'s `sleepAfter`). Its one RPC method,
+`notifyGraphUpdated(graphData, updatedAt)`, is called by the Worker (never the browser) immediately
+after a graph-mutating MCP tool call persists to D1, and sends a `graph_updated` frame to every
+currently-accepted socket, skipping any socket no longer in the `OPEN` state rather than throwing.
+
+On the client, `useDiagramLiveSync.ts` opens this WebSocket when `DiagramCanvas` mounts and closes
+it on unmount; on a `graph_updated` frame newer than the store's own last-known `updatedAt`, it
+replaces the Zustand store's graph state — reusing the same state-replacement the store already
+performs after its own initial load, rather than a second code path — and `LiveUpdateToast.tsx`
+shows a brief, dismissible "Updated by an agent" notice so the user understands why their canvas
+just changed, rather than silently rewriting their screen with no explanation.
+
+This channel is strictly server-to-client push: `DiagramSession` never accepts writes from the
+browser side of the socket at all. The browser's own edits keep using the existing debounced `PUT
+/api/diagrams/:id/graph` autosave path unchanged. Concurrency is plain last-write-wins, matching
+this demo's existing autosave model (there is no partial-patch protocol; every autosave already
+replaces the whole graph) — acceptable specifically because the only two writers on a diagram are
+one owner's browser tab and that same owner's own agent, never two different people. If the user
+is mid-edit when an agent's change arrives, the push replaces their canvas and their own in-flight
+debounced autosave fires shortly after, overwriting the agent's change right back — a brief visual
+flicker at worst, not data loss, since D1's `updated_at` always reflects whichever write actually
+landed last; D1's own `UPDATE ... WHERE id = ? AND owner_email = ?` (already how `saveGraphData()`
+works) makes the last statement to commit win outright if an agent's tool call and the browser's
+autosave land in the same instant. Real concurrent-*editor* conflict resolution (two different
+people editing the same diagram) remains explicitly out of scope, deferred to the same Post-MVP
+collaboration work `docs/09-ARCHITECT.md` already named, which this design intentionally sets up
+for: this identity/connection-lifecycle shape (one instance per diagram, Worker-side owner check
+ahead of the upgrade, hibernated accept, fan-out to every connected socket) is the foundation that
+future work would extend with a bidirectional channel and presence/cursor messages, not a second
+Durable Object built from scratch.
+
+Not implemented, and deliberately so: raster (PNG/SVG) export through the MCP server. Demo 9's
+export is a client-side, DOM/canvas-based operation (`html-to-image` against the live React Flow
+canvas) with no server-side browser-rendering step in this demo (Browser Run is not a listed
+product for this add-on) — `export_diagram`'s `"json"` and `"scaffold"` formats are both pure data
+transforms with no DOM dependency, so pixel-perfect raster export stays a browser-only action via
+the editor's own toolbar button. Also deliberately not built: bridging these same tools into the
+browser's own `navigator.modelContext` (the experimental [WebMCP](https://github.com/webmachinelearning/webmcp)
+standard) via Cloudflare's `agents/experimental/webmcp` adapter — both the adapter and the
+underlying browser API are explicitly experimental and unshipped as of this writing (Cloudflare's
+own README: "this adapter **will break** between releases"), so this demo does not build against
+either moving target; if WebMCP matures, it would layer on top of the remote MCP server already
+built here, reusing these same tool implementations rather than rewriting them.
 
 ### Observability
 
@@ -403,3 +583,13 @@ traces again.
 - [`Window.print()`](https://developer.mozilla.org/en-US/docs/Web/API/Window/print) and the [`@page` at-rule](https://developer.mozilla.org/en-US/docs/Web/CSS/@page) — print mode's orientation override.
 - [html-to-image](https://github.com/bubkoo/html-to-image#readme) — rasterizes the React Flow viewport for PNG/SVG export.
 - [fflate](https://101arrowz.github.io/fflate) — zips the generated project scaffold entirely in the browser.
+- [Model Context Protocol](https://modelcontextprotocol.io)
+- [Cloudflare Agents: Model Context Protocol](https://developers.cloudflare.com/agents/model-context-protocol/)
+- [MCP handler APIs (`createMcpHandler`)](https://developers.cloudflare.com/agents/model-context-protocol/apis/handler-api/)
+- [MCP Tools](https://developers.cloudflare.com/agents/model-context-protocol/protocol/tools/)
+- [MCP Authorization](https://developers.cloudflare.com/agents/model-context-protocol/protocol/authorization/)
+- [Secure MCP servers with Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/access-controls/ai-controls/secure-mcp-servers/)
+- [Managed OAuth](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/)
+- [`cloudflare_zero_trust_access_application` resource (`oauth_configuration`)](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/zero_trust_access_application)
+- [Durable Objects: WebSockets and hibernation](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)
+- [ELK.js](https://github.com/kieler/elkjs) — why this demo's server-side `auto_layout_diagram` MCP tool uses a grid-placement fallback instead (does not run inside `workerd`; see `docs/DECISIONS.md` #29).

@@ -1,4 +1,4 @@
-import { notFound } from "@adrianhall/cloudflare-toolkit/errors";
+import { badRequest, notFound } from "@adrianhall/cloudflare-toolkit/errors";
 import { Hono } from "hono";
 import { BLUEPRINT_MAP } from "../../blueprints";
 import type { AppBindings } from "../bindings";
@@ -54,7 +54,9 @@ diagramsRouter.post("/", async (context) => {
 
   const repository = new DiagramRepository(context.env.DB);
   const diagram = await repository.create(ownerEmail, { ...input, graphData });
-  context.get("LOGGER").info("diagram_created", { diagramId: diagram.id });
+  context
+    .get("LOGGER")
+    .info("diagram_created", { diagramId: diagram.id, via: "api" });
   return context.json({ diagram }, 201);
 });
 
@@ -78,6 +80,31 @@ diagramsRouter.get("/:id", async (context) => {
   return context.json({ diagram });
 });
 
+/**
+ * Live-sync WebSocket upgrade (docs/09B-ARCHITECT-MCP.md's Live Sync Architecture): the editor's
+ * `DiagramCanvas` opens this connection when a diagram loads and receives a `graph_updated` push
+ * the instant a remote MCP tool call changes the diagram's graph. Ownership is verified here,
+ * before the request ever reaches the `DiagramSession` Durable Object -- that object performs no
+ * authorization of its own, matching this repository's usual pattern of authorization living at
+ * the Worker/API boundary. This channel never accepts writes from the browser side of the
+ * socket; the browser's own edits keep using the existing `PUT /api/diagrams/:id/graph` autosave
+ * path unchanged.
+ */
+diagramsRouter.get("/:id/live", async (context) => {
+  const id = validateDiagramId(context.req.param("id"));
+  if (context.req.header("Upgrade")?.toLowerCase() !== "websocket") {
+    throw badRequest({ detail: "Expected a WebSocket upgrade request." });
+  }
+
+  const ownerEmail = context.get("Cloudflare_Access_Identity").email;
+  const repository = new DiagramRepository(context.env.DB);
+  if ((await repository.findOwned(id, ownerEmail)) === null) {
+    throw notFound({ detail: "Diagram not found." });
+  }
+
+  return context.env.DIAGRAM_SESSIONS.getByName(id).fetch(context.req.raw);
+});
+
 /** Rename a diagram and/or change its description. */
 diagramsRouter.patch("/:id", async (context) => {
   const id = validateDiagramId(context.req.param("id"));
@@ -91,7 +118,7 @@ diagramsRouter.patch("/:id", async (context) => {
   }
   context
     .get("LOGGER")
-    .info("diagram_updated", { diagramId: id, kind: "metadata" });
+    .info("diagram_updated", { diagramId: id, kind: "metadata", via: "api" });
   return context.json({ diagram });
 });
 
@@ -112,7 +139,7 @@ diagramsRouter.put("/:id/graph", async (context) => {
   }
   context
     .get("LOGGER")
-    .info("diagram_updated", { diagramId: id, kind: "graph" });
+    .info("diagram_updated", { diagramId: id, kind: "graph", via: "api" });
   return context.json({ updatedAt });
 });
 
@@ -179,7 +206,7 @@ diagramsRouter.post("/:id/share", async (context) => {
     context.env.SHARES,
   );
   const share = await shareRepository.rotate(id);
-  context.get("LOGGER").info("diagram_shared", { diagramId: id });
+  context.get("LOGGER").info("diagram_shared", { diagramId: id, via: "api" });
   const url = new URL(`/s/${share.token}`, context.req.url).toString();
   return context.json({ ...share, url }, 201);
 });
@@ -201,6 +228,8 @@ diagramsRouter.delete("/:id/share", async (context) => {
   if (!revoked) {
     throw notFound({ detail: "No active share link for this diagram." });
   }
-  context.get("LOGGER").info("diagram_share_revoked", { diagramId: id });
+  context
+    .get("LOGGER")
+    .info("diagram_share_revoked", { diagramId: id, via: "api" });
   return new Response(null, { status: 204 });
 });

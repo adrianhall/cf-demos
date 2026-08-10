@@ -9,6 +9,7 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 3. Open a second browser window or tab to the Cloudflare dashboard at **Zero Trust** > **Access controls** > **Applications**.
 4. Open a third browser window or tab to the Cloudflare dashboard's **D1** section, ready to open the `architect-db` database's console.
 5. Sign out of, or use a private/incognito window for, the demo hostname so the first step shows the unauthenticated experience. Keep this window open throughout — it is reused later to demonstrate anonymous share viewing with no sign-in at all.
+6. Have a terminal ready with an MCP-compliant client installed (this script uses [OpenCode](https://opencode.ai)) and configured to reach `https://architect.cfapps.uk/mcp` — not yet signed in, so the presentation flow's Managed OAuth login prompt is genuine.
 
 ## Presentation Flow
 
@@ -32,7 +33,7 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 12. Drag a product (for example **D1 Database**) from the left palette onto the canvas. Click it, and in the right-hand properties panel change its label and pick a documentation link to show it opens the real Cloudflare docs page.
 13. Draw a new connection between two nodes by dragging from one node's handle to another's. Select the new edge and change its **Edge Type** in the properties panel; show the stroke style update live.
 14. Select the **Connect nodes** toolbar button (a chain-link icon). Point out this is a fully keyboard-operable alternative to dragging between handles — WCAG 2.2 SC 2.5.7/2.1.1 flag drag-only interactions, and `@xyflow/react`'s own click-to-connect fallback still has no keyboard path (`docs/DECISIONS.md` #28). Using only Tab and the keyboard, choose a **Source**, a **Target**, and a **Connection type**, then activate **Connect**. Show the new edge appears on the canvas, already selected, with its properties panel open.
-15. Select **Layout ↓** in the toolbar. Show ELK auto-layout re-arranges the nodes, and that **Undo** reverts it back to the manual layout.
+15. Select **Layout ↓** in the toolbar. Show ELK auto-layout re-arranges the nodes, and that **Undo** reverts it back to the manual layout. Then select the map-icon **Toggle minimap** button next to the sidebar toggles; show the minimap disappears from the canvas's corner, and select it again to bring it back.
 16. Watch the status bar report "Saving…" then "Saved just now" a moment after the last change, with no explicit save action taken.
 17. Switch to the D1 tab and run:
 
@@ -77,6 +78,13 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 39. Back in a diagram with content, select **Print** in the toolbar. Show the toolbar, palette, and properties panel disappear, replaced by a title/description overlay and a browser print dialog; select **Cancel** in that dialog, then select **← Back** to confirm the editor returns to normal.
 40. Select the dark mode toggle in the toolbar (labeled **Dark mode** or **Light mode** depending on the current OS preference). Show the whole editor's colors invert immediately. Navigate to the dashboard (`/app`) and show the same preference already applied there — it is a single, page-independent preference, not reset by navigation.
 41. Reload the page entirely (a full browser refresh, not a client-side navigation). Show the chosen theme is still applied immediately, with no visible flash of the other theme first.
+42. Open a diagram (new or existing) in the browser editor and leave this tab visible for the remainder of the script. Note its current nodes, or its empty canvas.
+43. Switch to the prepared terminal and start the MCP client's sign-in flow (in OpenCode, `opencode mcp auth architect` or the equivalent for the configured server). Show the browser opens Cloudflare Access's real login screen — the same one used in step 3 — at a `127.0.0.1` loopback redirect. Complete sign-in as the same identity already signed in to the editor tab.
+44. Back in the terminal, start an OpenCode session against this MCP server and ask it: "List my diagrams." Show the response includes the diagram opened in step 42.
+45. Ask OpenCode: "Add a Worker node called API and a D1 node called Database to \<that diagram's title\>, and connect them with a service-binding edge." While it works, switch to the still-open browser tab from step 42 — do not touch or reload it — and show the two new nodes and the edge between them appear live, with an "Updated by an agent" toast in the corner.
+46. Ask OpenCode: "Create a share link for this diagram." Read back the returned URL and open it in the signed-out/incognito window from the prerequisites. Show the anonymous read-only viewer already reflects the nodes the agent just added.
+47. Ask OpenCode: "Download this diagram's Cloudflare project scaffold." Extract the resulting local ZIP and open `wrangler.toml` to show it already contains the D1 binding the agent added in step 45 — the same generator the editor's own **Export as project** button uses.
+48. Switch to the Workers Logs dashboard tab (or open one now) for this Worker, filter for `diagram_updated`, and point out the two most recent entries: one with `"via":"mcp"` from step 45's agent edit, distinguishable from every earlier, browser-driven `"via":"api"` entry in this same script.
 
 ## Expected Results
 
@@ -94,12 +102,16 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 - Export as PNG/SVG downloads an image cropped to the diagram's own bounds, independent of the canvas's current pan/zoom; export as project downloads a `.zip` containing a working `wrangler.toml`-based starter project matching the diagram's Cloudflare service nodes, and is disabled when a diagram has no such node.
 - Print mode replaces the editing UI with a title/description overlay, opens the browser's print dialog, and fully restores the normal editor on cancel or on returning from print preview.
 - The dark mode preference applies instantly, persists across navigation and a full page reload with no flash of the other theme, and requires no sign-in — it works identically on the public landing/blueprints pages and the authenticated app.
+- An MCP client signs in through the same Cloudflare Access login screen and identity provider as the browser editor, with no separate credential or allow-list.
+- An MCP tool call that mutates a diagram's graph is reflected, within a couple of seconds and with no manual reload, in any browser tab that already has that diagram open — including a share link opened after the change, and a downloaded project scaffold reflecting the change.
+- Every diagram mutation performed through the MCP server is logged with `"via":"mcp"`, distinguishable from an ordinary browser edit's `"via":"api"`.
 
 ## Where To Observe State
 
-- **Worker logs:** Workers & Pages > `architect` > Logs — look for `diagram_created`, `diagram_opened`, `diagram_updated`, `diagram_shared`, `diagram_share_revoked`, and `admin_diagram_deleted` entries (never graph content, tokens, or email).
+- **Worker logs:** Workers & Pages > `architect` > Logs — look for `diagram_created`, `diagram_opened`, `diagram_updated`, `diagram_shared`, `diagram_share_revoked`, and `admin_diagram_deleted` entries (never graph content, tokens, or email), each carrying a `via: "api" | "mcp"` field.
 - **Traces:** Workers & Pages > `architect` > Observability > Traces (10% sampling).
 - **D1 data:** D1 > `architect-db` > Console; query the `users`, `diagrams`, and `diagram_shares` tables as shown above.
-- **Access applications:** Zero Trust > Access controls > Applications > `architect public` and `architect app`.
+- **Access applications:** Zero Trust > Access controls > Applications > `architect public` and `architect app` — the latter's **Authentication** tab shows the Managed OAuth configuration an MCP client authenticates through.
+- **Durable Objects:** Workers & Pages > `architect` > Durable Objects > `DIAGRAM_SESSIONS` — one active instance per diagram id with an open editor tab, holding that diagram's live-sync WebSocket(s).
 
 Run `npm run teardown` after the presentation; see README.md for details.

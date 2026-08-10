@@ -12,7 +12,7 @@ for what that means for a future collaboration/AI specification.
 `spikes/06-architect-reactflow-host/REPORT.md`; no `demos/architect` code exists
 yet.
 
-**Sequencing note:** `docs/09B-ARCHITECT-MCP.md` (an MCP server + WebMCP follow-on to this MVP)
+**Sequencing note:** `docs/09B-ARCHITECT-MCP.md` (a remote MCP server follow-on to this MVP)
 is scheduled to ship **before** the Post-MVP collaboration work below, and it introduces this
 demo's first Durable Object — a per-diagram `DiagramSession` used to push live graph updates to
 an open editor tab. See [Post-MVP](#post-mvp-live-collaboration-and-ai-proposals) for why that
@@ -927,7 +927,7 @@ migration cost, not a detail to gloss over when that work is scoped.
 
 ### Reuse `DiagramSession` — Do Not Design A Second Per-Diagram Durable Object
 
-`docs/09B-ARCHITECT-MCP.md` (an MCP server + WebMCP follow-on scheduled to ship **before** this
+`docs/09B-ARCHITECT-MCP.md` (a remote MCP server follow-on scheduled to ship **before** this
 Post-MVP work) already introduces exactly the "one Durable Object per diagram, hibernatable
 WebSockets" primitive this section originally asked for — it is called `DiagramSession`, and it
 exists there to push an MCP tool's graph edits live to an open editor tab. When this Post-MVP

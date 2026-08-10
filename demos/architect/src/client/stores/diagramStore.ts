@@ -42,6 +42,22 @@ interface DiagramState {
   title: string;
   /** User-editable diagram description. */
   description: string;
+  /**
+   * ISO-8601 timestamp of the most recent graph state this store knows about -- either from the
+   * diagram's initial load, this tab's own most recent autosave, or a `graph_updated` live-sync
+   * push (`../hooks/useDiagramLiveSync.ts`, docs/09B-ARCHITECT-MCP.md's Live Sync Architecture).
+   * `null` before a diagram has loaded, or in read-only share-viewer mode (which never receives
+   * a live-sync push and has no `updatedAt` of its own to compare against -- see
+   * `../api/shares.ts`'s `SharedDiagram`).
+   */
+  updatedAt: string | null;
+  /**
+   * Whether to show the "Updated by an agent" toast (`../components/editor/LiveUpdateToast.tsx`)
+   * after {@link DiagramActions.applyRemoteGraphUpdate} replaced the canvas with a remote MCP
+   * tool call's own change -- without this, the canvas would silently rewrite itself under the
+   * user with no explanation.
+   */
+  liveUpdateNotice: boolean;
 
   /** React Flow node array (each node carries {@link CFNodeData}). */
   nodes: Node<CFNodeData>[];
@@ -78,6 +94,11 @@ interface DiagramState {
    * auto-closing, so a user who just closed it by deselecting isn't fighting the panel to keep
    * it open for the next selection. */
   propertiesOpen: boolean;
+  /** Whether the canvas minimap (`../components/editor/DiagramCanvas.tsx`'s `<MiniMap>`) is
+   * visible. Defaults to `true`, matching the minimap's pre-existing always-on behavior before
+   * this toggle existed. A view preference only -- deliberately not persisted to `localStorage`
+   * or saved graph data, unlike `../lib/palette-preferences.ts`'s collapsed-category list. */
+  minimapOpen: boolean;
 
   /** Stack of previous states for undo. Most recent entry is at the end. */
   undoStack: HistoryEntry[];
@@ -96,6 +117,11 @@ interface DiagramActions {
    * @param nodes Parsed React Flow nodes.
    * @param edges Parsed React Flow edges.
    * @param viewport Parsed viewport state.
+   * @param updatedAt The diagram's own `updatedAt`, or `null` in read-only share-viewer mode
+   * (`../api/shares.ts`'s `SharedDiagram` carries no `updatedAt` field at all). Seeds
+   * {@link DiagramState.updatedAt} so a later live-sync push
+   * (`../hooks/useDiagramLiveSync.ts`) can tell whether it is actually newer than what this tab
+   * already has.
    */
   setDiagram: (
     id: string,
@@ -104,6 +130,7 @@ interface DiagramActions {
     nodes: Node<CFNodeData>[],
     edges: Edge<CFEdgeData>[],
     viewport: Viewport,
+    updatedAt: string | null,
   ) => void;
 
   /** React Flow `onNodesChange` handler. Pushes history on structural changes (add/remove). */
@@ -157,6 +184,8 @@ interface DiagramActions {
   togglePalette: () => void;
   /** Toggle the properties panel sidebar's visibility. */
   toggleProperties: () => void;
+  /** Toggle the canvas minimap's visibility. */
+  toggleMinimap: () => void;
 
   /** Update the diagram title and mark dirty. */
   setTitle: (title: string) => void;
@@ -170,10 +199,35 @@ interface DiagramActions {
 
   /** Set `saving` to true and clear any previous save error. */
   markSaving: () => void;
-  /** Set `saving` to false, clear `dirty`, record `lastSavedAt`, clear error. */
-  markSaved: () => void;
+  /**
+   * Set `saving` to false, clear `dirty`, record `lastSavedAt`, clear error, and record the new
+   * `updatedAt` this tab's own autosave just produced -- so a later live-sync push
+   * (`../hooks/useDiagramLiveSync.ts`) that raced this same save is correctly recognised as not
+   * actually newer than what this tab already has.
+   *
+   * @param updatedAt The new `updated_at` timestamp `PUT /api/diagrams/:id/graph` returned.
+   */
+  markSaved: (updatedAt: string) => void;
   /** Record a save failure. */
   markSaveError: (error: string) => void;
+
+  /**
+   * Replace the canvas with a graph pushed by `../hooks/useDiagramLiveSync.ts`'s live-sync
+   * WebSocket (docs/09B-ARCHITECT-MCP.md's Live Sync Architecture), if -- and only if --
+   * `updatedAt` is strictly newer than this store's own {@link DiagramState.updatedAt}. A stale
+   * or duplicate push (for example this tab's own autosave racing the same MCP tool call) is
+   * silently ignored rather than rewinding the canvas. Clears `dirty` and the undo/redo history:
+   * the pushed graph is already persisted, and a stale undo entry from before this external
+   * change would restore graph state D1 no longer has. Does not mutate anything if `graphData`
+   * fails to parse -- a malformed push must never corrupt the current canvas.
+   *
+   * @param graphData Canonical JSON string from the `graph_updated` message.
+   * @param updatedAt The pushed graph's own `updatedAt`.
+   */
+  applyRemoteGraphUpdate: (graphData: string, updatedAt: string) => void;
+  /** Dismiss the "Updated by an agent" toast, whether by its own auto-dismiss timer or a manual
+   * click (`../components/editor/LiveUpdateToast.tsx`). */
+  dismissLiveUpdateNotice: () => void;
 
   /** Enter or exit print mode. Side effects (forcing light mode, orientation, `window.print()`)
    * live in `../components/editor/DiagramCanvas.tsx`'s print-mode effect, not here. */
@@ -210,6 +264,8 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   diagramId: null,
   title: "Untitled Diagram",
   description: "",
+  updatedAt: null,
+  liveUpdateNotice: false,
   nodes: [],
   edges: [],
   viewport: { x: 0, y: 0, zoom: 1 },
@@ -222,10 +278,11 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   printMode: false,
   paletteOpen: true,
   propertiesOpen: false,
+  minimapOpen: true,
   undoStack: [],
   redoStack: [],
 
-  setDiagram: (id, title, description, nodes, edges, viewport) =>
+  setDiagram: (id, title, description, nodes, edges, viewport, updatedAt) =>
     // `description` is declared as a plain `string` (see `DiagramActions.setDiagram`'s JSDoc),
     // and both real call sites (`../components/editor/DiagramCanvas.tsx`) already normalize a
     // `string | null` API value to `""` before calling this action, so no further fallback is
@@ -234,6 +291,8 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       diagramId: id,
       title,
       description,
+      updatedAt,
+      liveUpdateNotice: false,
       nodes,
       edges,
       viewport,
@@ -388,6 +447,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   togglePalette: () => set((state) => ({ paletteOpen: !state.paletteOpen })),
   toggleProperties: () =>
     set((state) => ({ propertiesOpen: !state.propertiesOpen })),
+  toggleMinimap: () => set((state) => ({ minimapOpen: !state.minimapOpen })),
 
   setTitle: (title) => set({ title, dirty: true }),
   setDescription: (description) => set({ description, dirty: true }),
@@ -396,14 +456,57 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   setEdges: (edges) => set({ edges, dirty: true }),
 
   markSaving: () => set({ saving: true, saveError: null }),
-  markSaved: () =>
+  markSaved: (updatedAt) =>
     set({
       saving: false,
       dirty: false,
       lastSavedAt: Date.now(),
       saveError: null,
+      updatedAt,
     }),
   markSaveError: (error) => set({ saving: false, saveError: error }),
+
+  applyRemoteGraphUpdate: (graphData, updatedAt) => {
+    const state = get();
+    // ISO-8601 timestamps from `new Date().toISOString()` compare correctly as plain strings --
+    // matching every other `updatedAt` comparison in this demo.
+    if (state.updatedAt !== null && updatedAt <= state.updatedAt) {
+      return;
+    }
+
+    let parsed: {
+      nodes: Node<CFNodeData>[];
+      edges: Edge<CFEdgeData>[];
+      viewport: Viewport;
+    };
+    try {
+      const decoded = JSON.parse(graphData) as Partial<{
+        nodes: Node<CFNodeData>[];
+        edges: Edge<CFEdgeData>[];
+        viewport: Viewport;
+      }>;
+      parsed = {
+        nodes: decoded.nodes ?? [],
+        edges: decoded.edges ?? [],
+        viewport: decoded.viewport ?? { x: 0, y: 0, zoom: 1 },
+      };
+    } catch {
+      return;
+    }
+
+    set({
+      nodes: parsed.nodes,
+      edges: parsed.edges,
+      viewport: parsed.viewport,
+      updatedAt,
+      dirty: false,
+      undoStack: [],
+      redoStack: [],
+      liveUpdateNotice: true,
+    });
+  },
+
+  dismissLiveUpdateNotice: () => set({ liveUpdateNotice: false }),
 
   setPrintMode: (printMode) => set({ printMode }),
 

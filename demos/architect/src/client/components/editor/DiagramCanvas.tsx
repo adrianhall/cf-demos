@@ -11,6 +11,7 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { valueOrDefault } from "@adrianhall/cloudflare-toolkit";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CATEGORY_COLORS, NODE_TYPE_MAP } from "../../../catalog";
 import {
@@ -19,15 +20,16 @@ import {
   updateDiagram,
 } from "../../api/diagrams";
 import type { SharedDiagram } from "../../api/shares";
+import { useDiagramLiveSync } from "../../hooks/useDiagramLiveSync";
 import { useDiagramStore } from "../../stores/diagramStore";
 import { edgeTypes } from "./edges/edgeTypes";
+import { LiveUpdateToast } from "./LiveUpdateToast";
 import { nodeTypes } from "./nodes/nodeTypes";
 import { PropertiesPanel } from "./panels/PropertiesPanel";
 import { ServicePalette } from "./panels/ServicePalette";
 import { StatusBar } from "./toolbar/StatusBar";
 import { Toolbar } from "./toolbar/Toolbar";
 import type { CFEdgeData, CFNodeData } from "./types";
-import { valueOrDefault } from "@adrianhall/cloudflare-toolkit";
 
 /** Debounce interval, in milliseconds, before an unsaved change autosaves. */
 const AUTOSAVE_DEBOUNCE_MS = 500;
@@ -121,6 +123,7 @@ export function DiagramCanvas({
     setPrintMode,
     paletteOpen,
     propertiesOpen,
+    minimapOpen,
   } = useDiagramStore();
 
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -128,6 +131,10 @@ export function DiagramCanvas({
   useEffect(() => {
     if (readOnly && initialDiagram) {
       const parsed = parseGraphData(initialDiagram.graphData);
+      // A read-only share viewer has no `updatedAt` of its own to seed
+      // (`../../api/shares.ts`'s `SharedDiagram`) and never opens the live-sync WebSocket
+      // (`useDiagramLiveSync` below is disabled for `readOnly`), so `null` is never compared
+      // against here.
       setDiagram(
         diagramId,
         initialDiagram.title,
@@ -135,6 +142,7 @@ export function DiagramCanvas({
         parsed.nodes,
         parsed.edges,
         parsed.viewport,
+        null,
       );
       return;
     }
@@ -151,6 +159,7 @@ export function DiagramCanvas({
           parsed.nodes,
           parsed.edges,
           parsed.viewport,
+          diagram.updatedAt,
         );
       })
       .catch((error: unknown) => {
@@ -182,8 +191,8 @@ export function DiagramCanvas({
             edges: state.edges,
             viewport: state.viewport,
           });
-          await saveDiagramGraph(diagramId, graphData);
-          markSaved();
+          const updatedAt = await saveDiagramGraph(diagramId, graphData);
+          markSaved(updatedAt);
         } catch (error) {
           markSaveError(
             error instanceof Error ? error.message : "Failed to save.",
@@ -224,6 +233,12 @@ export function DiagramCanvas({
     }, TITLE_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [title, diagramLoaded, diagramId, readOnly]);
+
+  // Live-sync: an open editor tab visibly updates the instant a remote MCP tool call changes
+  // this diagram (docs/09B-ARCHITECT-MCP.md's Live Sync Architecture). Disabled in read-only
+  // mode -- the anonymous share viewer authenticates via a share token, not a Cloudflare Access
+  // identity, and could never pass `/api/diagrams/:id/live`'s owner check anyway.
+  useDiagramLiveSync(diagramLoaded ? diagramId : null, !readOnly);
 
   // Fit the freshly loaded diagram's nodes into view once, covering both a brand-new diagram
   // (e.g. created from a blueprint like "API Gateway") and reopening an existing one (Bug 29,
@@ -418,6 +433,7 @@ export function DiagramCanvas({
           <ServicePalette onAddNode={onAddNodeFromPalette} />
         )}
         <div className="diagram-editor__canvas">
+          {!readOnly && !printMode && <LiveUpdateToast />}
           {printMode && (
             <div className="diagram-editor__print-overlay">
               <div className="diagram-editor__print-title-box">
@@ -469,7 +485,7 @@ export function DiagramCanvas({
             {!printMode && (
               <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
             )}
-            {!printMode && (
+            {!printMode && minimapOpen && (
               <MiniMap
                 nodeColor={(node) => {
                   const data = node.data as CFNodeData;
