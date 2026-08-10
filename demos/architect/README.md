@@ -4,8 +4,6 @@ A Cloudflare architecture diagram editor based on Cloudflare Workers, Static Ass
 
 See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches and how it works, and [`DEMO.md`](./DEMO.md) for a presenter's demo script.
 
-> **Status:** Phases 1–5 (scaffolding/Access, the diagram library/editor, read-only sharing, admin, and export/print/dark mode) of `docs/09-ARCHITECT.md` are implemented — an authenticated user can create, edit, autosave, duplicate, and delete diagrams from a Cloudflare product catalog and blueprint templates; export a diagram as a PNG, an SVG, or a downloadable project scaffold; print it; and toggle dark mode. A read-only link can be shared for any of a user's own diagrams, and the identity matching `ADMIN_EMAIL` can browse a read-only user directory and moderate (preview/delete) any diagram. Phase 6 (final verification, coverage, and documentation polish) remains.
-
 ## Prerequisites
 
 - Node.js 24 or newer and npm 11 or newer.

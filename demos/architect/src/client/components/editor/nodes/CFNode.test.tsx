@@ -62,7 +62,7 @@ describe("CFNode", () => {
     );
   });
 
-  it("falls back to the worker icon for an unknown typeId", () => {
+  it("falls back to the worker icon and external category color for an unknown typeId", () => {
     const { container } = renderCFNode({
       typeId: "does-not-exist",
       label: "X",
@@ -70,6 +70,10 @@ describe("CFNode", () => {
     expect(container.querySelector("img.cf-node__icon")).toHaveAttribute(
       "src",
       "/icons/worker.svg",
+    );
+    const node = container.querySelector(".cf-node") as HTMLElement;
+    expect(node.style.borderColor).toBe(
+      unselectedBorderColor(CATEGORY_COLORS.external),
     );
   });
 

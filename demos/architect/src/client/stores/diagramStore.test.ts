@@ -91,6 +91,17 @@ describe("useDiagramStore", () => {
     expect(useDiagramStore.getState().nodes[0]?.data.label).toBe("Renamed");
   });
 
+  it("leaves every other node untouched when updating one node's data", () => {
+    useDiagramStore.getState().addNode(makeNode("a"));
+    const untouched = makeNode("b");
+    useDiagramStore.getState().addNode(untouched);
+
+    useDiagramStore.getState().updateNodeData("a", { label: "Renamed" });
+
+    const nodes = useDiagramStore.getState().nodes;
+    expect(nodes.find((n) => n.id === "b")?.data).toEqual(untouched.data);
+  });
+
   it("merges partial data into an edge via updateEdgeData", () => {
     useDiagramStore.setState({
       edges: [
@@ -106,6 +117,31 @@ describe("useDiagramStore", () => {
     useDiagramStore.getState().updateEdgeData("e1", { label: "New label" });
 
     expect(useDiagramStore.getState().edges[0]?.data?.label).toBe("New label");
+  });
+
+  it("leaves every other edge untouched when updating one edge's data", () => {
+    const untouchedEdge = {
+      data: { edgeType: "data-flow" },
+      id: "e2",
+      source: "b",
+      target: "c",
+    } as Edge<CFEdgeData>;
+    useDiagramStore.setState({
+      edges: [
+        {
+          data: { edgeType: "data-flow" },
+          id: "e1",
+          source: "a",
+          target: "b",
+        } as Edge<CFEdgeData>,
+        untouchedEdge,
+      ],
+    });
+
+    useDiagramStore.getState().updateEdgeData("e1", { label: "New label" });
+
+    const edges = useDiagramStore.getState().edges;
+    expect(edges.find((e) => e.id === "e2")?.data).toEqual(untouchedEdge.data);
   });
 
   it("applies node position changes without pushing undo history", () => {
@@ -145,6 +181,37 @@ describe("useDiagramStore", () => {
     const state = useDiagramStore.getState();
     expect(state.edges).toHaveLength(0);
     expect(state.undoStack).toHaveLength(1);
+  });
+
+  it("pushes undo history for a structural (add) edge change", () => {
+    useDiagramStore.setState({ edges: [], undoStack: [] });
+    const added = {
+      data: { edgeType: "data-flow" },
+      id: "e1",
+      source: "a",
+      target: "b",
+    } as Edge<CFEdgeData>;
+
+    useDiagramStore.getState().onEdgesChange([{ item: added, type: "add" }]);
+
+    const state = useDiagramStore.getState();
+    expect(state.edges).toHaveLength(1);
+    expect(state.undoStack).toHaveLength(1);
+  });
+
+  it("applies a non-structural edge change without pushing undo history", () => {
+    useDiagramStore.setState({
+      edges: [
+        { data: { edgeType: "data-flow" }, id: "e1", source: "a", target: "b" },
+      ],
+      undoStack: [],
+    });
+
+    useDiagramStore
+      .getState()
+      .onEdgesChange([{ id: "e1", selected: true, type: "select" }]);
+
+    expect(useDiagramStore.getState().undoStack).toHaveLength(0);
   });
 
   it("updates the viewport without marking dirty or pushing history", () => {

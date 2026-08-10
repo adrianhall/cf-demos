@@ -26,6 +26,7 @@ import { ServicePalette } from "./panels/ServicePalette";
 import { StatusBar } from "./toolbar/StatusBar";
 import { Toolbar } from "./toolbar/Toolbar";
 import type { CFEdgeData, CFNodeData } from "./types";
+import { valueOrDefault } from "@adrianhall/cloudflare-toolkit";
 
 /** Debounce interval, in milliseconds, before an unsaved change autosaves. */
 const AUTOSAVE_DEBOUNCE_MS = 500;
@@ -439,10 +440,11 @@ export function DiagramCanvas({
                 nodeColor={(node) => {
                   const data = node.data as CFNodeData;
                   const typeDef = NODE_TYPE_MAP.get(data?.typeId);
-                  return (
-                    CATEGORY_COLORS[typeDef?.category ?? "external"] ??
-                    "#6B7280"
+                  const category = valueOrDefault(
+                    typeDef?.category,
+                    "external",
                   );
+                  return CATEGORY_COLORS[category];
                 }}
               />
             )}

@@ -152,6 +152,16 @@ describe("DiagramGrid", () => {
     expect(screen.getByText("Keep Me")).toBeInTheDocument();
   });
 
+  it("shows a generic message when the load failure is not an Error instance", async () => {
+    mockListDiagrams.mockRejectedValue("boom");
+    render(<DiagramGrid />);
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Could not load your diagrams.",
+      ),
+    );
+  });
+
   it("closes the card menu on Escape", async () => {
     mockListDiagrams.mockResolvedValue([
       diagram({ id: "d1", title: "Menu Test" }),
@@ -170,6 +180,24 @@ describe("DiagramGrid", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
+  it("leaves the card menu open on a non-Escape key", async () => {
+    mockListDiagrams.mockResolvedValue([
+      diagram({ id: "d1", title: "Menu Test" }),
+    ]);
+    render(<DiagramGrid />);
+    await waitFor(() =>
+      expect(screen.getByText("Menu Test")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Actions for Menu Test" }),
+    );
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Enter" });
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+  });
+
   it("closes the card menu when clicking outside it", async () => {
     mockListDiagrams.mockResolvedValue([
       diagram({ id: "d1", title: "Menu Test" }),
@@ -186,5 +214,23 @@ describe("DiagramGrid", () => {
 
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("leaves the card menu open when clicking inside it", async () => {
+    mockListDiagrams.mockResolvedValue([
+      diagram({ id: "d1", title: "Menu Test" }),
+    ]);
+    render(<DiagramGrid />);
+    await waitFor(() =>
+      expect(screen.getByText("Menu Test")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Actions for Menu Test" }),
+    );
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByRole("menu"));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
   });
 });

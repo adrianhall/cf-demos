@@ -91,6 +91,70 @@ describe("remapEdgeHandles", () => {
     const [remapped] = remapEdgeHandles(edges, clientNodes, "DOWN");
     expect(remapped.targetHandle).toBe("custom");
   });
+
+  it("leaves an edge unchanged when its source node has an unrecognized catalog type", () => {
+    // Every current catalog product has at least one of "source-bottom"/"source-right" among
+    // its default handles (see `../../../../catalog.ts`), so a *known* type never actually
+    // fails this match on the source side -- only an unrecognized/legacy `typeId` (an old
+    // diagram referencing a since-removed catalog product) can, mirroring how this same
+    // function already tolerates an unrecognized *target* type.
+    const mixedNodes = [
+      {
+        data: { label: "Legacy", typeId: "not-a-real-type" },
+        id: "legacy",
+        position: { x: 0, y: 0 },
+      },
+      {
+        data: { label: "D", typeId: "worker" },
+        id: "d",
+        position: { x: 0, y: 0 },
+      },
+    ];
+    const edges = [
+      { id: "e1", source: "legacy", sourceHandle: "custom", target: "d" },
+    ];
+    const [remapped] = remapEdgeHandles(edges, mixedNodes, "DOWN");
+    expect(remapped.sourceHandle).toBe("custom");
+  });
+
+  it("leaves an edge unchanged when its target node has an unrecognized catalog type", () => {
+    const mixedNodes = [
+      {
+        data: { label: "D", typeId: "worker" },
+        id: "d",
+        position: { x: 0, y: 0 },
+      },
+      {
+        data: { label: "Legacy", typeId: "not-a-real-type" },
+        id: "legacy",
+        position: { x: 0, y: 0 },
+      },
+    ];
+    const edges = [
+      { id: "e1", source: "d", target: "legacy", targetHandle: "custom" },
+    ];
+    const [remapped] = remapEdgeHandles(edges, mixedNodes, "DOWN");
+    expect(remapped.targetHandle).toBe("custom");
+  });
+
+  it("leaves an edge unchanged when it references a node id not present in the diagram", () => {
+    // An edge can reference a node id no longer in `nodes` (for example, mid-delete); both
+    // lookups fail closed and the edge keeps its existing handles.
+    const edges = [
+      {
+        id: "e1",
+        source: "missing-source",
+        sourceHandle: "custom-source",
+        target: "missing-target",
+        targetHandle: "custom-target",
+      },
+    ];
+    const [remapped] = remapEdgeHandles(edges, nodes, "DOWN");
+    expect(remapped).toMatchObject({
+      sourceHandle: "custom-source",
+      targetHandle: "custom-target",
+    });
+  });
 });
 
 describe("Toolbar", () => {
@@ -212,6 +276,91 @@ describe("Toolbar", () => {
 
     fireEvent.mouseDown(document.body);
     expect(screen.queryByText("→ Left to right")).not.toBeInTheDocument();
+  });
+
+  it("leaves the layout direction menu open when clicking inside it", () => {
+    render(<Toolbar />);
+
+    const menuButton = screen.getByLabelText("Choose layout direction");
+    fireEvent.click(menuButton);
+    expect(screen.getByText("→ Left to right")).toBeInTheDocument();
+
+    fireEvent.mouseDown(menuButton);
+    expect(screen.getByText("→ Left to right")).toBeInTheDocument();
+  });
+
+  it("threads the current edges into the ELK graph", async () => {
+    useDiagramStore.setState({
+      nodes: [
+        {
+          data: { label: "A", typeId: "worker" },
+          id: "a",
+          position: { x: 0, y: 0 },
+        },
+        {
+          data: { label: "B", typeId: "worker" },
+          id: "b",
+          position: { x: 0, y: 0 },
+        },
+      ],
+      edges: [{ id: "e1", source: "a", target: "b" }],
+    });
+    mockElkLayout.mockResolvedValue({ children: [] });
+
+    render(<Toolbar />);
+    fireEvent.click(screen.getByTitle(/Auto layout/));
+
+    await waitFor(() => expect(mockElkLayout).toHaveBeenCalled());
+    const graph = mockElkLayout.mock.calls[0]?.[0];
+    expect(graph.edges).toEqual([{ id: "e1", sources: ["a"], targets: ["b"] }]);
+  });
+
+  it("leaves the store untouched when ELK returns no children", async () => {
+    useDiagramStore.setState({
+      nodes: [
+        {
+          data: { label: "A", typeId: "worker" },
+          id: "a",
+          position: { x: 1, y: 2 },
+        },
+      ],
+      edges: [],
+    });
+    mockElkLayout.mockResolvedValue({});
+
+    render(<Toolbar />);
+    fireEvent.click(screen.getByTitle(/Auto layout/));
+
+    await waitFor(() => expect(mockElkLayout).toHaveBeenCalled());
+    // No `children` in ELK's response means the store's nodes are never replaced.
+    expect(useDiagramStore.getState().nodes[0]?.position).toEqual({
+      x: 1,
+      y: 2,
+    });
+  });
+
+  it("defaults a computed position's missing x/y to 0", async () => {
+    useDiagramStore.setState({
+      nodes: [
+        {
+          data: { label: "A", typeId: "worker" },
+          id: "a",
+          position: { x: 9, y: 9 },
+        },
+      ],
+      edges: [],
+    });
+    mockElkLayout.mockResolvedValue({ children: [{ id: "a" }] });
+
+    render(<Toolbar />);
+    fireEvent.click(screen.getByTitle(/Auto layout/));
+
+    await waitFor(() =>
+      expect(useDiagramStore.getState().nodes[0]?.position).toEqual({
+        x: 0,
+        y: 0,
+      }),
+    );
   });
 
   it("threads catalog handle ports into the ELK graph for a node with default handles", async () => {

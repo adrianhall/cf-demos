@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createShare,
-  getShareStatus,
   getSharedDiagram,
+  getShareStatus,
   revokeShare,
 } from "./shares";
 
@@ -76,6 +76,19 @@ describe("shares API client", () => {
       );
 
       await expect(getShareStatus("d1")).rejects.toThrow("Not Found");
+    });
+
+    it("falls back to a generic message when the problem body has neither detail nor title", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValue(new Response(JSON.stringify({}), { status: 500 })),
+      );
+
+      await expect(getShareStatus("d1")).rejects.toThrow(
+        "The request could not be completed.",
+      );
     });
   });
 

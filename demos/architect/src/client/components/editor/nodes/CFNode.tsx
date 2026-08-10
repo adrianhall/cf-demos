@@ -27,8 +27,10 @@ function CFNodeComponent({ data, selected }: NodeProps) {
   const nodeData = data as unknown as CFNodeData;
   const typeDef = NODE_TYPE_MAP.get(nodeData.typeId);
   const category = typeDef?.category ?? "external";
-  const accentColor =
-    nodeData.style?.accentColor ?? CATEGORY_COLORS[category] ?? "#6B7280";
+  // No trailing `?? "#6B7280"` here: `CATEGORY_COLORS` is a `Record<NodeCategory, string>`, so
+  // it is exhaustive over every possible `category` value and this lookup can never itself be
+  // `undefined`.
+  const accentColor = nodeData.style?.accentColor ?? CATEGORY_COLORS[category];
   const handles = typeDef?.defaultHandles ?? [];
 
   return (

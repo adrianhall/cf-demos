@@ -97,6 +97,60 @@ describe("DiagramCanvas", () => {
     expect(useDiagramStore.getState().nodes).toHaveLength(0);
   });
 
+  it("tolerates an empty graphData string by loading an empty graph", async () => {
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: "",
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    render(<DiagramCanvas diagramId="d1" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+    expect(useDiagramStore.getState().nodes).toHaveLength(0);
+  });
+
+  it("defaults nodes, edges, and viewport when graphData is valid JSON missing those fields", async () => {
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: "{}",
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    render(<DiagramCanvas diagramId="d1" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+    expect(useDiagramStore.getState().nodes).toEqual([]);
+    expect(useDiagramStore.getState().edges).toEqual([]);
+    expect(useDiagramStore.getState().viewport).toEqual({
+      x: 0,
+      y: 0,
+      zoom: 1,
+    });
+  });
+
+  it("defaults a null owner-authenticated description to an empty string", async () => {
+    mockGetDiagram.mockResolvedValue({
+      description: null,
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    render(<DiagramCanvas diagramId="d1" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+    expect(useDiagramStore.getState().description).toBe("");
+  });
+
   it("shows an error state when the diagram fails to load", async () => {
     mockGetDiagram.mockRejectedValue(new Error("Diagram not found."));
 
@@ -108,6 +162,61 @@ describe("DiagramCanvas", () => {
     expect(
       screen.getByRole("link", { name: "Back to dashboard" }),
     ).toHaveAttribute("href", "/app");
+  });
+
+  it("shows a generic message when the load failure is not an Error instance", async () => {
+    mockGetDiagram.mockRejectedValue("boom");
+
+    render(<DiagramCanvas diagramId="missing" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Could not load diagram.",
+      ),
+    );
+  });
+
+  it("ignores a diagram fetch that resolves after the component has unmounted", async () => {
+    let resolveGetDiagram!: (value: {
+      description: string;
+      graphData: string;
+      id: string;
+      title: string;
+    }) => void;
+    mockGetDiagram.mockReturnValue(
+      new Promise((resolve) => {
+        resolveGetDiagram = resolve;
+      }),
+    );
+
+    const { unmount } = render(<DiagramCanvas diagramId="d1" />);
+    unmount();
+
+    // Resolving after unmount (the effect's cleanup already set `cancelled = true`) must not
+    // call `setDiagram` on a store no live component reads from anymore.
+    resolveGetDiagram({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+    await Promise.resolve();
+    expect(useDiagramStore.getState().diagramId).toBeNull();
+  });
+
+  it("ignores a diagram fetch that rejects after the component has unmounted", async () => {
+    let rejectGetDiagram!: (reason: unknown) => void;
+    mockGetDiagram.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectGetDiagram = reject;
+      }),
+    );
+
+    const { unmount } = render(<DiagramCanvas diagramId="d1" />);
+    unmount();
+
+    rejectGetDiagram(new Error("too late"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 
   it("autosaves the graph after a debounced change", async () => {
@@ -169,6 +278,35 @@ describe("DiagramCanvas", () => {
 
     await vi.waitFor(() =>
       expect(useDiagramStore.getState().saveError).toBe("Network error"),
+    );
+  });
+
+  it("records a generic save error when autosave fails with a non-Error rejection", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+    mockSaveDiagramGraph.mockRejectedValue("boom");
+
+    render(<DiagramCanvas diagramId="d1" />);
+    await vi.waitFor(() =>
+      expect(useDiagramStore.getState().diagramId).toBe("d1"),
+    );
+
+    useDiagramStore.getState().addNode({
+      data: { label: "Workers", typeId: "worker" },
+      id: "n1",
+      position: { x: 0, y: 0 },
+      type: "cf-node",
+    });
+
+    await vi.advanceTimersByTimeAsync(500);
+
+    await vi.waitFor(() =>
+      expect(useDiagramStore.getState().saveError).toBe("Failed to save."),
     );
   });
 
@@ -301,6 +439,31 @@ describe("DiagramCanvas", () => {
     expect(useDiagramStore.getState().nodes).toHaveLength(0);
   });
 
+  it("ignores a drop that carries no node type data at all", async () => {
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    render(<DiagramCanvas diagramId="d1" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+
+    // A drag originating outside the palette (a browser tab, a file from the OS) carries no
+    // "application/cf-node-type" data at all, unlike a drop with a recognizable-but-unknown
+    // type string.
+    fireEvent.drop(screen.getByTestId("react-flow"), {
+      clientX: 10,
+      clientY: 20,
+      dataTransfer: { getData: () => "" },
+    });
+
+    expect(useDiagramStore.getState().nodes).toHaveLength(0);
+  });
+
   it("selects and deselects nodes/edges via canvas interactions", async () => {
     mockGetDiagram.mockResolvedValue({
       description: "",
@@ -409,6 +572,26 @@ describe("DiagramCanvas", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
+  it("does not warn before unload when there are no unsaved changes", async () => {
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    render(<DiagramCanvas diagramId="d1" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+
+    useDiagramStore.setState({ dirty: false });
+
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   describe("read-only mode (the public share viewer)", () => {
     const SHARED_GRAPH = JSON.stringify({
       edges: [],
@@ -441,6 +624,25 @@ describe("DiagramCanvas", () => {
       expect(mockGetDiagram).not.toHaveBeenCalled();
       expect(useDiagramStore.getState().nodes).toHaveLength(1);
       expect(screen.getByText("Shared Diagram")).toBeInTheDocument();
+    });
+
+    it("defaults a null shared description to an empty string", async () => {
+      render(
+        <DiagramCanvas
+          diagramId="shared-d1"
+          readOnly
+          initialDiagram={{
+            description: null,
+            graphData: EMPTY_GRAPH,
+            title: "Shared Diagram",
+          }}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+      );
+      expect(useDiagramStore.getState().description).toBe("");
     });
 
     it("hides the palette and properties panel, and shows a read-only status", async () => {

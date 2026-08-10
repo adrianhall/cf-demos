@@ -43,6 +43,7 @@ function VideoIcon() {
   );
 }
 
+/** Icon renderer for each catalog {@link DocLinkIcon} value. */
 const DOC_LINK_ICONS: Record<DocLinkIcon, () => ReactNode> = {
   doc: BookIcon,
   video: VideoIcon,

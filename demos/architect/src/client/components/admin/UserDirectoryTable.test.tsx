@@ -97,6 +97,18 @@ describe("UserDirectoryTable", () => {
     );
   });
 
+  it("shows a generic message when the load failure is not an Error instance", async () => {
+    mockListUsers.mockRejectedValue("boom");
+
+    render(<UserDirectoryTable />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Could not load the user directory.",
+      ),
+    );
+  });
+
   it("disables Previous on the first page and Next when every row is shown", async () => {
     mockListUsers.mockResolvedValue({
       limit: 20,

@@ -29,20 +29,22 @@ export const mockGetViewportForBounds = vi
   .fn()
   .mockReturnValue({ x: 0, y: 0, zoom: 1 });
 
-/** Enum stand-ins matching `@xyflow/react`'s real string-valued enums. */
+/** Enum stand-in matching `@xyflow/react`'s real `Position` string enum. */
 export const Position = {
   Bottom: "bottom",
   Left: "left",
   Right: "right",
   Top: "top",
 };
+/** Enum stand-in matching `@xyflow/react`'s real `BackgroundVariant` string enum. */
 export const BackgroundVariant = {
   Cross: "cross",
   Dots: "dots",
   Lines: "lines",
 };
 
-/** Renders every node/edge change helper `../stores/diagramStore.ts` depends on. */
+/** Applies `"add"`/`"remove"` node changes; other change types (e.g. `"position"`, `"select"`)
+ * are no-ops, matching what `../stores/diagramStore.ts`'s tests actually exercise. */
 export function applyNodeChanges(changes: unknown[], nodes: unknown[]) {
   let result = [...nodes];
   for (const change of changes as Record<string, unknown>[]) {
@@ -56,6 +58,7 @@ export function applyNodeChanges(changes: unknown[], nodes: unknown[]) {
   return result;
 }
 
+/** Applies `"add"`/`"remove"` edge changes; other change types (e.g. `"select"`) are no-ops. */
 export function applyEdgeChanges(changes: unknown[], edges: unknown[]) {
   let result = [...edges];
   for (const change of changes as Record<string, unknown>[]) {
@@ -69,6 +72,8 @@ export function applyEdgeChanges(changes: unknown[], edges: unknown[]) {
   return result;
 }
 
+/** Appends a new edge with an id derived from its source/target, matching `@xyflow/react`'s
+ * real `addEdge` shape closely enough for `../stores/diagramStore.ts`'s `onConnect` tests. */
 export function addEdge(edge: Record<string, unknown>, edges: unknown[]) {
   return [
     ...edges,
@@ -76,10 +81,13 @@ export function addEdge(edge: Record<string, unknown>, edges: unknown[]) {
   ];
 }
 
+/** Fixed stand-in path/label-position tuple; no test asserts on the actual path geometry. */
 export function getSmoothStepPath(): [string, number, number] {
   return ["M0,0 L100,100", 50, 50];
 }
 
+/** Stand-in `useReactFlow()` returning the shared `mock*` spies above, so tests can assert on
+ * calls to `fitView`/`getNodes`/`screenToFlowPosition`/`zoomIn`/`zoomOut` directly. */
 export function useReactFlow() {
   return {
     fitView: mockFitView,
@@ -135,6 +143,8 @@ export function ReactFlow({
   );
 }
 
+/** No-op provider stand-in; the real `<ReactFlowProvider>` sets up context this mock's
+ * components never read. */
 export function ReactFlowProvider({
   children,
 }: {
@@ -143,10 +153,19 @@ export function ReactFlowProvider({
   return createElement(Fragment, null, children);
 }
 
+/** Minimal `<Background>` stand-in; renders no visible pattern. */
 export function Background() {
   return createElement("div", { "data-testid": "rf-background" });
 }
 
+/**
+ * Minimal `<MiniMap>` stand-in. Always invokes `nodeColor` with a single hardcoded
+ * `{ data: { typeId: "worker" } }` node rather than the diagram's real current nodes, since the
+ * real `<MiniMap>` reads nodes from `@xyflow/react`'s internal store context, which this mock
+ * does not reproduce. This means a test cannot exercise `nodeColor`'s behavior for any node
+ * type other than `"worker"` (for example, an unrecognized/legacy `typeId`'s category-color
+ * fallback) without this mock being extended to accept and forward real node data.
+ */
 export function MiniMap({
   nodeColor,
 }: {
@@ -156,10 +175,14 @@ export function MiniMap({
   return createElement("div", { "data-testid": "rf-minimap" });
 }
 
+/** Minimal `<Controls>` stand-in; renders no interactive zoom/fit buttons. */
 export function Controls() {
   return createElement("div", { "data-testid": "rf-controls" });
 }
 
+/** Minimal `<Handle>` stand-in exposing its position/type as `data-*` attributes and its id as
+ * `handle-${id}` for `getByTestId` lookups, instead of rendering a real draggable connection
+ * point. */
 export function Handle({
   id,
   position,
@@ -176,6 +199,8 @@ export function Handle({
   });
 }
 
+/** Minimal `<BaseEdge>` stand-in rendering a real `<path>` with the given `path`/`style`/
+ * `className`, so `CFEdge.tsx` tests can assert on the computed stroke path and styling. */
 export function BaseEdge({
   className,
   markerEnd,
@@ -196,6 +221,8 @@ export function BaseEdge({
   });
 }
 
+/** Minimal `<EdgeLabelRenderer>` stand-in; renders children directly rather than portalling
+ * them into a separate overlay layer as the real implementation does. */
 export function EdgeLabelRenderer({
   children,
 }: {

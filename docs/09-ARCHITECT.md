@@ -442,6 +442,154 @@ resources.
 
 ### Issue 7: Validate product set against the current Cloudflare product set and explicitly via ~/repos/adrianhall/cloudflare-docs/src/icons
 
+### Bug 8 (critical): Diagram edges can only be created by mouse-drag, with no keyboard alternative
+
+WCAG 2.2 SC 2.5.7 (Dragging Movements, AA) / 2.1.1 (Keyboard, A). Creating an edge between two
+nodes is only possible by dragging from one `Handle` to another
+(`src/client/components/editor/DiagramCanvas.tsx`'s `onConnect`, wired straight to
+`@xyflow/react`'s pointer-drag connection flow) — there is no click/keyboard-activatable
+alternative anywhere in the store or UI. Node repositioning is partially mitigated by the
+"Auto layout" button, but connecting nodes has zero alternative. Since building an architecture
+diagram *is* connecting nodes, this makes the primary workflow fully inoperable for
+keyboard-only and switch-access users. Fix: add a click-to-connect mode (click a source handle
+or select a node then press a "Connect" toolbar action, then click a target handle/node to
+complete the edge), mirroring `ServicePalette`'s existing click-fallback pattern for node
+creation.
+
+### Bug 9 (high): Form field borders fail non-text contrast (1.4.11)
+
+Every text input/select/textarea (Properties panel fields, palette search, toolbar title,
+admin moderation input, share-URL field) uses `var(--cf-border)` as its only visible boundary,
+with a background matching the surrounding surface. Computed contrast is ~1.4:1 (light) and
+~1.9:1 (dark) against the required 3:1 minimum for a UI-component boundary. Fix: darken/lighten
+the border or add a background-color difference from the surrounding surface.
+
+### Bug 10 (high): Unselected node borders fail non-text contrast (1.4.11)
+
+`src/client/components/editor/nodes/CFNode.tsx`'s unselected node border uses each category's
+accent color at 40% alpha (`${accentColor}66`). Computed against a white canvas, every category
+color fails the 3:1 minimum (e.g. `compute` blue ≈1.5:1, `external` gray ≈1.2:1); only the
+full-opacity selected state passes. Since a node's fill matches the canvas background, this
+border is the only cue a node is a discrete object — the app's core visual metaphor. Fix: raise
+the unselected-state alpha (e.g. 80%+) or use a darker/desaturated variant meeting 3:1 in both
+themes.
+
+### Bug 11 (high): `--cf-danger` is not theme-aware, failing dark-mode text contrast (1.4.3)
+
+`app.css`'s `--cf-danger: #c0392b` is a flat hex, unlike every other themed color which uses
+`light-dark()`. Against the dark surface (`#1c1c1e`) it computes to ~3.1:1, below the 4.5:1
+minimum for normal-size text — used for every save/form error message (status bar, share modal,
+admin moderation, create-diagram modal). Fix: give `--cf-danger` a `light-dark()` pair with a
+lighter red for the dark variant, verified ≥4.5:1 against `#1c1c1e`.
+
+### Bug 12 (high): No visible focus indicator on the diagram canvas (2.4.7)
+
+`.diagram-editor` (the `role="application" tabIndex={0}` wrapper owning the Delete/Ctrl+Z/
+Ctrl+Shift+Z shortcuts) sets `outline: none` with no `:focus-visible` replacement, so a keyboard
+user tabbing in gets no indication they've entered the custom interaction context. Fix: add
+`.diagram-editor:focus-visible { outline: 2px solid var(--cf-orange); outline-offset: -2px; }`.
+
+### Bug 13 (high): Modals don't manage focus (2.4.3 / 4.1.2)
+
+`ShareModal`, `CreateDiagramModal`, and `ConfirmDeleteModal` all set `aria-modal="true"` but
+none move focus into the dialog on open, trap Tab/Shift+Tab within it, or restore focus to the
+trigger on close, and the background isn't `inert` — so Tab can walk out of the dialog into the
+page behind it, contradicting `aria-modal`. Fix: a shared `useModalFocus(open, dialogRef)` hook
+handling initial focus, Tab-trapping, and focus restoration; consider `inert` on the app root
+while a dialog is open.
+
+### Bug 14 (moderate): Layout-direction menu has different menu semantics than the other two overflow menus
+
+`Toolbar.tsx`'s layout-direction chevron button (only `aria-expanded`, no `aria-haspopup`) opens
+a popup with no `role="menu"`/`role="menuitem"`, unlike `ExportButton` and `DiagramGrid`'s
+`CardMenu`, which both correctly pair `aria-haspopup="menu"` with `role="menu"`/`"menuitem"`.
+Fix: match the other two menus' semantics.
+
+### Bug 15 (moderate): Export menu and layout-direction menu can't be dismissed by keyboard
+
+`DiagramGrid`'s `CardMenu` closes on Escape in addition to outside click; `ExportButton`'s menu
+and the toolbar's layout-direction menu only close on outside `mousedown`, leaving a
+keyboard-only user with no way to dismiss either without tabbing away while it stays visually
+open. Fix: add the same `keydown`/Escape handler `CardMenu` already uses to both.
+
+### Bug 16 (moderate): Diagram card nests an interactive button inside an anchor
+
+`DiagramGrid.tsx` wraps `<CardMenu>` (which renders a `<button>`) inside the card's `<a>`,
+violating the HTML content model (no interactive elements nested inside `<a>`) even though
+`stopPropagation()` mostly works around it for pointer clicks. Fix: restructure so the card is a
+non-interactive container with only the title wrapped in the `<a>` and `CardMenu` as a sibling
+`<button>`, or use a "block link" pattern instead of nesting.
+
+### Bug 17 (moderate): Modal close buttons are under the 24x24 CSS px minimum target size (2.5.8)
+
+`.modal__close` (used identically in `ShareModal`, `CreateDiagramModal`, `ConfirmDeleteModal`)
+has no explicit width/height; its computed box is ≈20×28 CSS px, under the target-size minimum
+on the width axis. Fix: add `min-width: 24px; min-height: 24px;` with centered content; also
+verify `.diagram-card__menu-button` at runtime.
+
+### Bug 18 (moderate): Catalog item descriptions are only exposed via a hover tooltip (1.3.1)
+
+`ServicePalette.tsx` exposes each catalog item's description only via the native `title`
+attribute — not visible text, not `aria-describedby`, unreachable to touch/keyboard-only sighted
+users without a mouse hover. Fix: show the description as visible secondary text (matching
+`.cf-node__description`'s pattern) or wire it through `aria-describedby`, in addition to keeping
+`title` as a hover hint.
+
+### Bug 19 (moderate): Editor page has no top-level heading, and skips a heading level (2.4.6 / 1.3.1)
+
+The editor page (`/app/diagram/:id`) has no `<h1>` anywhere; the first heading a screen-reader
+user encounters is `ServicePalette`'s `<h2>` ("Services"), skipping a level. The diagram's own
+title is only ever a plain `<input>` value (`Toolbar.tsx`), never exposed as a heading. Fix: add
+a visually-hidden `<h1>` (e.g. "{title} — Diagram editor") at the top of `DiagramCanvas.tsx`,
+kept in sync with the store's `title`.
+
+### Bug 20 (moderate): Share viewer page has no landmark (1.3.1)
+
+Every other top-level view wraps its content in a `<main>` landmark; `ShareView.tsx` returns a
+bare `<div className="share-view">` with no `<main>`/`<h1>`/landmark at all, so an anonymous
+visitor on `/s/:token` has no landmark to jump to. Fix: wrap the banner + `DiagramCanvas` in
+`<main className="share-view">`.
+
+### Bug 21 (moderate): Editor sidebars have no responsive breakpoint (1.4.10)
+
+`.service-palette` (16rem) and `.properties-panel` (18rem) are fixed-width with no narrowing or
+collapsing below any breakpoint, unlike `.create-diagram-modal__layout`, which does have a
+640px breakpoint. Combined, both sidebars alone (544px) already exceed a 320 CSS px viewport
+before the canvas gets any space. Fix: collapse both into off-canvas drawers/bottom sheets below
+a mobile breakpoint, consistent with the create-diagram modal's existing responsive pattern.
+Verify at runtime before implementing.
+
+### Bug 22 (minor): Animated data-flow edges ignore `prefers-reduced-motion`
+
+"Data-flow" edges render with a continuously animated dashed stroke via `@xyflow/react`'s
+default CSS (`react-flow__edge-animated`), with no local override for
+`prefers-reduced-motion: reduce`. Fix: add
+`@media (prefers-reduced-motion: reduce) { .react-flow__edge-animated path { animation: none; } }`
+to `app.css`.
+
+## Phase 8: Catalog Video Doc Links
+
+`catalog.ts`'s `DocLinkIcon` type (`"doc" | "video"`) and `PropertiesPanel.tsx`'s `VideoIcon`/
+`DOC_LINK_ICONS` were ported faithfully from CF-Architect, but neither this port's catalog nor
+CF-Architect's own ever actually sets `icon: "video"` on any product's `docLinks` — the video
+icon has been dead, uncovered code in both apps since the original. Phase 6's test review
+surfaced this as `PropertiesPanel.tsx`'s only remaining coverage gap with no defensible
+"leave uncovered" justification (see Bug 8's siblings above; this one is a real content gap, not
+a provably-unreachable branch).
+
+1. Pick a handful of catalog products (`src/catalog.ts`'s `NODE_TYPES`) that have a genuinely
+   useful official Cloudflare tutorial/overview video, not just written docs — a demo/tutorial
+   video, not a marketing page.
+2. Add one `{ icon: "video", title, url }` entry to each chosen product's `docLinks` array,
+   alongside its existing `icon: "doc"` entries.
+3. Extend `PropertiesPanel.test.tsx`'s existing "renders documentation links for a node type that
+   has them" test (or add a sibling test) to select a node with a video doc link and assert the
+   video icon renders, closing the coverage gap with a real assertion instead of a workaround.
+
+**Definition of done:** at least one real catalog product has a working `icon: "video"` doc
+link, `VideoIcon` is exercised by a real test, and `PropertiesPanel.tsx` has no remaining
+coverage gap for either doc-link icon variant.
+
 ## Post-MVP: Live Collaboration And AI Proposals
 
 Live multi-user collaboration (one Durable Object per diagram, hibernatable

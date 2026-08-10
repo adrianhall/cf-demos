@@ -25,22 +25,43 @@ export interface Blueprint {
 // Helper to build graphData JSON strings
 // ---------------------------------------------------------------------------
 
+/** Terse authoring shape for a blueprint node, expanded into full React Flow JSON by {@link buildGraphData}. */
 interface NodeDef {
+  /** Node id, unique within the blueprint. */
   id: string;
+  /** Canvas x position. */
   x: number;
+  /** Canvas y position. */
   y: number;
+  /** Catalog product type id (`../catalog.ts`'s `NodeTypeDef.typeId`). */
   typeId: string;
+  /** Display label shown on the node. */
   label: string;
 }
 
+/** Terse authoring shape for a blueprint edge, expanded into full React Flow JSON by {@link buildGraphData}. */
 interface EdgeDef {
+  /** Edge id, unique within the blueprint. */
   id: string;
+  /** Source node id. */
   source: string;
+  /** Target node id. */
   target: string;
+  /** Catalog edge type (`../catalog.ts`'s `EDGE_TYPES`). */
   edgeType: "data-flow" | "service-binding" | "trigger" | "external";
+  /** Optional edge label; omitted from the generated `data` entirely when unset. */
   label?: string;
 }
 
+/**
+ * Expand a blueprint's terse {@link NodeDef}/{@link EdgeDef} authoring shape into the full
+ * React Flow JSON (`nodes`/`edges`/`viewport`) stored as `Blueprint.graphData` and, once a
+ * diagram is created from a blueprint, as a diagram's own `graph_data` column.
+ *
+ * @param nodes Blueprint nodes to expand.
+ * @param edges Blueprint edges to expand.
+ * @returns Serialized `{ nodes, edges, viewport }` JSON, ready to store as `graphData`.
+ */
 function buildGraphData(nodes: NodeDef[], edges: EdgeDef[]): string {
   return JSON.stringify({
     nodes: nodes.map((n) => ({

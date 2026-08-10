@@ -18,8 +18,8 @@ import { NODE_TYPE_MAP } from "../../catalog";
 
 import astroConfig from "./scaffold-templates/astro/astro.config.mjs?raw";
 import astroIndex from "./scaffold-templates/astro/src/pages/index.astro?raw";
-import drizzleClient from "./scaffold-templates/drizzle/src/db/client.ts?raw";
 import drizzleConfig from "./scaffold-templates/drizzle/drizzle.config.ts?raw";
+import drizzleClient from "./scaffold-templates/drizzle/src/db/client.ts?raw";
 import drizzleSchema from "./scaffold-templates/drizzle/src/db/schema.ts?raw";
 import honoIndex from "./scaffold-templates/hono/src/index.ts?raw";
 import migrationStub from "./scaffold-templates/migrations/0001_initial.sql?raw";
@@ -87,7 +87,7 @@ export function toBindingName(label: string): string {
  *
  * @example toResourceName("My D1 Database") // "my-d1-database"
  */
-function toResourceName(label: string): string {
+export function toResourceName(label: string): string {
   return (
     label
       .replace(/[^a-zA-Z0-9\s]/g, "")
@@ -98,7 +98,7 @@ function toResourceName(label: string): string {
 }
 
 /** Sanitize a title into a valid npm package / wrangler project name. */
-function toProjectName(title: string): string {
+export function toProjectName(title: string): string {
   return (
     title
       .replace(/[^a-zA-Z0-9\s-]/g, "")
@@ -112,6 +112,7 @@ function toProjectName(title: string): string {
 // Binding section generators for wrangler.toml
 // ---------------------------------------------------------------------------
 
+/** A function that renders one `wrangler.toml` section for every resolved binding of its type. */
 type SectionEmitter = (bindings: ResolvedBinding[]) => string;
 
 /** One `wrangler.toml` section emitter per catalog `wranglerBinding` value. */
@@ -196,6 +197,16 @@ const sectionEmitters: Record<string, SectionEmitter> = {
 // wrangler.toml generation
 // ---------------------------------------------------------------------------
 
+/**
+ * Render the generated project's `wrangler.toml`: the base name/main/compatibility fields, an
+ * Astro-specific `[assets]` block when `scaffoldTemplate` is `"astro"`, and one section per
+ * resolved binding type via {@link sectionEmitters}.
+ *
+ * @param projectName Sanitized project name for the `name` field.
+ * @param bindingsByType Resolved bindings grouped by their catalog `wranglerBinding` value.
+ * @param scaffoldTemplate Catalog `scaffoldTemplate` value driving `main`/`[assets]`.
+ * @returns The complete `wrangler.toml` file contents.
+ */
 function generateWranglerToml(
   projectName: string,
   bindingsByType: Map<string, ResolvedBinding[]>,
@@ -227,6 +238,20 @@ function generateWranglerToml(
 // package.json generation
 // ---------------------------------------------------------------------------
 
+/**
+ * Render the generated project's `package.json`: base dependencies plus template-specific
+ * dependencies (Hono, Astro), and D1-specific scripts (migration/deploy commands) when the
+ * diagram has at least one D1 database node.
+ *
+ * @param projectName Sanitized project name for the `name` field.
+ * @param scaffoldTemplate Catalog `scaffoldTemplate` value selecting which framework dependency
+ * set to include.
+ * @param hasD1 Whether the diagram has at least one D1 database node; adds Drizzle and D1
+ * migration scripts when `true`.
+ * @param d1Bindings Every resolved D1 binding, used only for `deploy:db`'s target binding name
+ * (the first D1 database's).
+ * @returns The complete `package.json` file contents, pretty-printed.
+ */
 function generatePackageJson(
   projectName: string,
   scaffoldTemplate: string,
@@ -265,7 +290,10 @@ function generatePackageJson(
   }
 
   if (hasD1) {
-    const firstD1 = d1Bindings[0]?.bindingName ?? "DB";
+    // `hasD1` is only true when `bindingsByType.get("d1_databases")` is a non-empty array (it
+    // is only ever populated via a `.push()` immediately followed by `.set()` above), so its
+    // first element is always present here.
+    const firstD1 = d1Bindings[0].bindingName;
     scripts["deploy:db"] = `wrangler d1 migrations apply ${firstD1} --remote`;
     scripts.deploy = "run-s deploy:db deploy:cf";
     scripts["db:generate"] = "drizzle-kit generate";
@@ -292,6 +320,17 @@ function generatePackageJson(
 // README generation
 // ---------------------------------------------------------------------------
 
+/**
+ * Render the generated project's `README.md` from `scaffold-templates/README.md.tmpl` by
+ * substituting `{{PROJECT_NAME}}` and stripping whichever of the template's D1/no-D1 marker
+ * sections don't apply, keeping the surviving section's own start/end markers themselves
+ * stripped too so no literal `{{...}}` marker ever reaches the downloaded file.
+ *
+ * @param projectName Sanitized project name substituted into the template.
+ * @param hasD1 Whether the diagram has at least one D1 database node; selects which marked
+ * sections survive.
+ * @returns The complete `README.md` file contents.
+ */
 function generateReadme(projectName: string, hasD1: boolean): string {
   let readme = readmeTemplate
     .replace(/\r\n/g, "\n")

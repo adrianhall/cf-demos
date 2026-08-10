@@ -2,8 +2,6 @@
 
 See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 
-> This script covers Phases 1–5 (scaffolding/Access, the diagram library/editor, read-only sharing, admin, and export/print/dark mode) of `docs/09-ARCHITECT.md`. Phase 6 is final verification and documentation polish, not a new user-facing capability, so it adds nothing further for this script to demonstrate.
-
 ## Demonstration Prerequisites
 
 1. Deploy the demo with `npm run deploy` from `demos/architect`.

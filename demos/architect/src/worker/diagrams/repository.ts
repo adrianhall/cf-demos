@@ -1,5 +1,5 @@
-import type { CreateDiagramInput, Diagram, UpdateDiagramInput } from "./types";
 import type { SharedDiagram } from "../shares/types";
+import type { CreateDiagramInput, Diagram, UpdateDiagramInput } from "./types";
 
 /** Raw snake-cased diagram row returned by D1. */
 interface DiagramRow {

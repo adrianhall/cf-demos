@@ -126,6 +126,19 @@ describe("CreateDiagramModal", () => {
     ).not.toBeDisabled();
   });
 
+  it("shows a generic message when the creation failure is not an Error instance", async () => {
+    mockCreateDiagram.mockRejectedValue("boom");
+
+    render(<CreateDiagramModal open onClose={vi.fn()} blueprint={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Create Diagram" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Could not create the diagram.",
+      ),
+    );
+  });
+
   it("closes when Cancel is clicked", () => {
     const onClose = vi.fn();
     render(<CreateDiagramModal open onClose={onClose} blueprint={null} />);

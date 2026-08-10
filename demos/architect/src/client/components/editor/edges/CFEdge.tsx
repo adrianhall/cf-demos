@@ -1,7 +1,7 @@
 import {
   BaseEdge,
-  type EdgeProps,
   EdgeLabelRenderer,
+  type EdgeProps,
   getSmoothStepPath,
 } from "@xyflow/react";
 import { memo } from "react";

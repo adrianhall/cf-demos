@@ -7,7 +7,9 @@ import {
   type NodeTypeDef,
 } from "../../../../catalog";
 
+/** Every catalog node type grouped by category, computed once at module load. */
 const grouped = getNodesByCategory();
+/** Category keys present in {@link grouped}, in catalog-declaration order. */
 const categories = Object.keys(grouped) as NodeCategory[];
 
 /**

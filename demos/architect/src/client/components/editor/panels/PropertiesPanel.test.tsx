@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { CATEGORY_COLORS } from "../../../../catalog";
+import { CATEGORY_COLORS, CATEGORY_LABELS } from "../../../../catalog";
 import { useDiagramStore } from "../../../stores/diagramStore";
 import { PropertiesPanel } from "./PropertiesPanel";
 
@@ -107,6 +107,26 @@ describe("PropertiesPanel", () => {
     );
   });
 
+  it("falls back to the external category and the raw typeId for an unrecognized node type", () => {
+    useDiagramStore.setState({
+      nodes: [
+        {
+          data: { label: "Legacy", typeId: "not-a-real-type" },
+          id: "n1",
+          position: { x: 0, y: 0 },
+        },
+      ],
+      selectedNodeId: "n1",
+    });
+    render(<PropertiesPanel />);
+
+    expect(screen.getByText(CATEGORY_LABELS.external)).toBeInTheDocument();
+    expect(screen.getByText("not-a-real-type")).toBeInTheDocument();
+    expect(screen.getByLabelText("Accent Color")).toHaveValue(
+      CATEGORY_COLORS.external.toLowerCase(),
+    );
+  });
+
   it("renders documentation links for a node type that has them", () => {
     useDiagramStore.setState({
       nodes: [
@@ -167,6 +187,46 @@ describe("PropertiesPanel", () => {
     expect(edgeData?.label).toBe("HTTPS");
     expect(edgeData?.protocol).toBe("http");
     expect(edgeData?.description).toBe("Primary request path");
+  });
+
+  it("clears the protocol when reset to 'None'", () => {
+    useDiagramStore.setState({
+      edges: [
+        {
+          data: { edgeType: "data-flow", protocol: "http" },
+          id: "e1",
+          source: "a",
+          target: "b",
+        },
+      ],
+      selectedEdgeId: "e1",
+    });
+    render(<PropertiesPanel />);
+
+    expect(screen.getByLabelText("Protocol")).toHaveValue("http");
+
+    fireEvent.change(screen.getByLabelText("Protocol"), {
+      target: { value: "" },
+    });
+
+    expect(useDiagramStore.getState().edges[0]?.data?.protocol).toBeUndefined();
+  });
+
+  it("defaults to a data-flow edge when the selected edge carries no data", () => {
+    useDiagramStore.setState({
+      edges: [
+        {
+          data: undefined,
+          id: "e1",
+          source: "a",
+          target: "b",
+        },
+      ],
+      selectedEdgeId: "e1",
+    });
+    render(<PropertiesPanel />);
+
+    expect(screen.getByLabelText("Edge Type")).toHaveValue("data-flow");
   });
 
   it("prioritizes the node panel when both a node and an edge are selected", () => {

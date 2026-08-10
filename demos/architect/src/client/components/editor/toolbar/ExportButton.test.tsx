@@ -112,6 +112,16 @@ describe("ExportButton", () => {
     expect(screen.queryByText("Export as PNG")).not.toBeInTheDocument();
   });
 
+  it("leaves the menu open when clicking inside it", () => {
+    render(<ExportButton />);
+
+    fireEvent.click(screen.getByTitle("Export"));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByRole("menu"));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+  });
+
   it("disables 'Export as project' when no node has a catalog wrangler binding", () => {
     useDiagramStore.setState({
       nodes: [

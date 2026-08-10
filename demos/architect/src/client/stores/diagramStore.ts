@@ -179,10 +179,14 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   redoStack: [],
 
   setDiagram: (id, title, description, nodes, edges, viewport) =>
+    // `description` is declared as a plain `string` (see `DiagramActions.setDiagram`'s JSDoc),
+    // and both real call sites (`../components/editor/DiagramCanvas.tsx`) already normalize a
+    // `string | null` API value to `""` before calling this action, so no further fallback is
+    // needed -- or reachable -- here.
     set({
       diagramId: id,
       title,
-      description: description ?? "",
+      description,
       nodes,
       edges,
       viewport,

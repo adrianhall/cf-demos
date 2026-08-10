@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { type Blueprint, BLUEPRINTS } from "../../../blueprints";
+import { BLUEPRINTS, type Blueprint } from "../../../blueprints";
 import { BlueprintPreview } from "./BlueprintPreview";
 import { CreateDiagramModal } from "./CreateDiagramModal";
 

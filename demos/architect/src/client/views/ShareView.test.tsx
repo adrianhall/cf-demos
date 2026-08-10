@@ -89,4 +89,44 @@ describe("ShareView", () => {
       ),
     );
   });
+
+  it("ignores a share fetch that resolves after the component has unmounted", async () => {
+    let resolveShare!: (value: {
+      description: string;
+      graphData: string;
+      id: string;
+      title: string;
+    }) => void;
+    mockGetSharedDiagram.mockReturnValue(
+      new Promise((resolve) => {
+        resolveShare = resolve;
+      }),
+    );
+
+    const { unmount } = render(<ShareView token="tok" />);
+    unmount();
+
+    resolveShare({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "shared-d1",
+      title: "Shared Diagram",
+    });
+    await Promise.resolve();
+  });
+
+  it("ignores a share fetch that rejects after the component has unmounted", async () => {
+    let rejectShare!: (reason: unknown) => void;
+    mockGetSharedDiagram.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectShare = reject;
+      }),
+    );
+
+    const { unmount } = render(<ShareView token="tok" />);
+    unmount();
+
+    rejectShare(new Error("too late"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 });

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { NODE_TYPE_MAP } from "../../catalog";
 import {
   generateScaffold,
   type ScaffoldInput,
   toBindingName,
+  toProjectName,
+  toResourceName,
 } from "./scaffold";
 
 function makeInput(overrides: Partial<ScaffoldInput> = {}): ScaffoldInput {
@@ -29,6 +32,28 @@ describe("toBindingName", () => {
   it("falls back to BINDING for empty/special-only labels", () => {
     expect(toBindingName("")).toBe("BINDING");
     expect(toBindingName("!!!")).toBe("BINDING");
+  });
+});
+
+describe("toResourceName", () => {
+  it("converts a normal label to lowercase-kebab-case", () => {
+    expect(toResourceName("My D1 Database")).toBe("my-d1-database");
+  });
+
+  it("falls back to 'resource' for empty/special-only labels", () => {
+    expect(toResourceName("")).toBe("resource");
+    expect(toResourceName("!!!")).toBe("resource");
+  });
+});
+
+describe("toProjectName", () => {
+  it("converts a normal title to lowercase-kebab-case", () => {
+    expect(toProjectName("My Vanilla App")).toBe("my-vanilla-app");
+  });
+
+  it("falls back to 'my-cloudflare-project' for empty/special-only titles", () => {
+    expect(toProjectName("")).toBe("my-cloudflare-project");
+    expect(toProjectName("!!!")).toBe("my-cloudflare-project");
   });
 });
 
@@ -367,5 +392,41 @@ describe("generateScaffold — every remaining catalog binding type", () => {
       }),
     ).get("wrangler.toml") as string;
     expect(toml).toContain("<INSERT_NAMESPACE_ID>");
+  });
+});
+
+describe("generateScaffold — forward compatibility", () => {
+  it("skips a wrangler binding type the generator has no section emitter for yet", () => {
+    // Every `wranglerBinding` value the catalog uses today has a matching entry in this
+    // module's internal `sectionEmitters` map, so this branch cannot be reached with real
+    // catalog data. It guards against a future catalog product introducing a new
+    // `wranglerBinding` string (`../../catalog.ts`'s field is a plain `string`, not a closed
+    // union TypeScript could check for us) before this generator has been taught to emit a
+    // matching `wrangler.toml` section for it. Exercised here by registering a temporary
+    // synthetic catalog entry directly on the real `NODE_TYPE_MAP`, since `generateScaffold`
+    // always resolves node types from it and there is no injectable seam otherwise.
+    NODE_TYPE_MAP.set("test-only-future-binding", {
+      category: "compute",
+      defaultHandles: [],
+      description: "",
+      iconPath: "",
+      label: "Future Product",
+      typeId: "test-only-future-binding",
+      wranglerBinding: "future-binding-type",
+    });
+    try {
+      const files = generateScaffold(
+        makeInput({
+          nodes: [
+            { label: "Worker", typeId: "worker" },
+            { label: "Future Product", typeId: "test-only-future-binding" },
+          ],
+        }),
+      );
+      const toml = files.get("wrangler.toml") as string;
+      expect(toml).not.toContain("future-binding-type");
+    } finally {
+      NODE_TYPE_MAP.delete("test-only-future-binding");
+    }
   });
 });

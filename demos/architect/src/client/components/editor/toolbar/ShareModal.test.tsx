@@ -175,6 +175,18 @@ describe("ShareModal", () => {
     );
   });
 
+  it("falls back to a generic message when the status request fails with a non-Error rejection", async () => {
+    mockGetShareStatus.mockRejectedValue("boom");
+
+    render(<ShareModal diagramId="d1" open onClose={vi.fn()} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Could not load share status.",
+      ),
+    );
+  });
+
   it("shows an error state when creating a link fails", async () => {
     mockGetShareStatus.mockResolvedValue({ active: false, createdAt: null });
     mockCreateShare.mockRejectedValue(new Error("Could not create link."));
@@ -188,6 +200,39 @@ describe("ShareModal", () => {
       expect(screen.getByRole("alert")).toHaveTextContent(
         "Could not create link.",
       ),
+    );
+  });
+
+  it("falls back to a generic message when creating a link fails with a non-Error rejection", async () => {
+    mockGetShareStatus.mockResolvedValue({ active: false, createdAt: null });
+    mockCreateShare.mockRejectedValue("boom");
+
+    render(<ShareModal diagramId="d1" open onClose={vi.fn()} />);
+    await waitFor(() => screen.getByRole("button", { name: "Create link" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Create link" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Could not create link.",
+      ),
+    );
+  });
+
+  it("shows the revoke failure's own message when it rejects with an Error", async () => {
+    mockGetShareStatus.mockResolvedValue({
+      active: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    mockRevokeShare.mockRejectedValue(new Error("Share not found."));
+
+    render(<ShareModal diagramId="d1" open onClose={vi.fn()} />);
+    await waitFor(() => screen.getByRole("button", { name: "Revoke link" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Revoke link" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("Share not found."),
     );
   });
 
@@ -208,6 +253,46 @@ describe("ShareModal", () => {
         "Could not revoke link.",
       ),
     );
+  });
+
+  it("ignores a status success that resolves after the modal has already closed", async () => {
+    let resolveStatus!: (value: {
+      active: boolean;
+      createdAt: string | null;
+    }) => void;
+    mockGetShareStatus.mockReturnValue(
+      new Promise((resolve) => {
+        resolveStatus = resolve;
+      }),
+    );
+
+    const { rerender } = render(
+      <ShareModal diagramId="d1" open onClose={vi.fn()} />,
+    );
+    rerender(<ShareModal diagramId="d1" open={false} onClose={vi.fn()} />);
+
+    // Resolving after the modal closed (the effect's cleanup already ran) must not throw or
+    // update state for an unmounted view; there is nothing user-visible to assert here beyond
+    // "this does not blow up."
+    resolveStatus({ active: false, createdAt: null });
+    await Promise.resolve();
+  });
+
+  it("ignores a status failure that rejects after the modal has already closed", async () => {
+    let rejectStatus!: (reason: unknown) => void;
+    mockGetShareStatus.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectStatus = reject;
+      }),
+    );
+
+    const { rerender } = render(
+      <ShareModal diagramId="d1" open onClose={vi.fn()} />,
+    );
+    rerender(<ShareModal diagramId="d1" open={false} onClose={vi.fn()} />);
+
+    rejectStatus(new Error("too late"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 
   it("shows a transient busy label while a revoke request is in flight", async () => {
