@@ -1,0 +1,147 @@
+demos/architect/README.md
+  s_75c178c49fa82d::t_38ad2a347500dd 80
+demos/architect/src/client/components/editor/connect.test.ts
+  s_61c843d97e9f60::t_2a348fab1728ea 1-156
+demos/architect/src/client/components/editor/toolbar/ConnectNodesModal.test.tsx
+  s_61c843d97e9f60::t_e2226c85a1d956 44-62,65-66
+  s_61c843d97e9f60::t_ed787e1a2b000f 138,143-147,154
+  s_61c843d97e9f60::t_457954e8835863 63-64
+  s_61c843d97e9f60::t_c7cbb3fc7441be 69-71
+  s_61c843d97e9f60::t_08f8baf0086605 1-43,67-68,73-78,87-98,102-107,114-121,123-124,126-137,139-142,155-165
+  s_61c843d97e9f60::t_49841b4778ee8e 72,99-101,108-113,122,125,148-153
+  s_61c843d97e9f60::t_ec14566e28884c 79-86
+demos/architect/src/client/components/editor/toolbar/Toolbar.test.tsx
+  s_61c843d97e9f60::t_0c6e9815b16357 508-535
+  s_61c843d97e9f60::t_0d9f566582f17c 474-507
+demos/architect/src/client/views/AppShellView.tsx
+  s_75c178c49fa82d::t_6e9a92a9126a6e 1
+  s_75c178c49fa82d::t_6e3ae9634e3efd 43-50,55,59-62,64-86,88-92
+  s_75c178c49fa82d::t_27ee791602ee38 87
+demos/architect/DEMO.md
+  s_61c843d97e9f60::t_8a1c4e2ca4368d 34
+  s_75c178c49fa82d::t_4e67b577d60d0e 18
+  s_75c178c49fa82d::t_550b0bf3bbd06c 27
+  s_61c843d97e9f60::t_81665c2cddf4b3 35-37,44-52,59-63,70-79,87
+  s_75c178c49fa82d::t_2452f180cf7313 84
+demos/architect/src/client/stores/diagramStore.test.ts
+  s_61c843d97e9f60::t_55eef25f2700ed 285-287
+  s_61c843d97e9f60::t_f1610c5bf437ec 240-284,288-319
+demos/architect/src/client/app.css
+  s_75c178c49fa82d::t_0f1c81d0d16c75 29-41
+  s_61c843d97e9f60::t_b3455ec9dff08a 320-327,332
+  s_61c843d97e9f60::t_a7ee65e2c879aa 344-350,355-359
+  s_75c178c49fa82d::t_6abee55748f776 189-203,205
+  s_75c178c49fa82d::t_d0256e92e253b2 163-169,171
+  s_61c843d97e9f60::t_57bc840e5a9c5a 605-614
+  s_61c843d97e9f60::t_b0de70c8094f37 76-80
+demos/architect/src/client/components/blueprints/BlueprintPreview.tsx
+  s_61c843d97e9f60::t_68b9bb7cf1136f 44-51
+docs/09B-ARCHITECT-MCP.md
+  s_170a600b7fad65::t_aa118de062012d 457,477,503,532,545,567
+  s_170a600b7fad65::t_2a238804c5c355 241-247
+  s_170a600b7fad65::t_2a3ad7ded573b8 109-110
+  s_170a600b7fad65::t_76317d8a808857 1-45,52-108,111-114,116-203,205-232,234-240,248-283,294-337,339-413,415-456,458-476,478-502,504-531,533-544,546-554,556-566,568-655
+  s_170a600b7fad65::t_d25e8c20d821da 115,204,233,338,414,555
+  s_170a600b7fad65::t_9d98d02c97a39e 284-293
+  s_170a600b7fad65::t_8141e69a95e73b 46-51
+demos/architect/src/client/components/editor/DiagramCanvas.test.tsx
+  s_75c178c49fa82d::t_ac67be72f95f53 86-134
+demos/architect/src/client/views/AppShellView.test.tsx
+  s_75c178c49fa82d::t_a7b2151a972be5 40-60,79-80
+  s_75c178c49fa82d::t_9cc74dd64d5bc7 129
+  s_75c178c49fa82d::t_1ded89504cf2c8 301-349
+demos/architect/src/client/components/editor/panels/ServicePalette.test.tsx
+  s_61c843d97e9f60::t_e97ddd8dccdce6 2-3,7-10
+  s_61c843d97e9f60::t_55eef25f2700ed 95,107
+  s_61c843d97e9f60::t_f4029c5761316d 69-71,82-94,96-106,108-127
+demos/architect/src/client/components/blueprints/BlueprintPreview.test.tsx
+  s_61c843d97e9f60::t_4702bf61da0b9a 28-34
+demos/architect/src/client/stores/diagramStore.ts
+  s_61c843d97e9f60::t_c9d7ee216ab62d 115-136
+  s_61c843d97e9f60::t_55eef25f2700ed 25-28
+  s_61c843d97e9f60::t_0438782e3a4878 284-305,316-323,326-331
+  s_61c843d97e9f60::t_80ca6594bd3f27 306-315,324-325
+docs/DECISIONS.md
+  s_61c843d97e9f60::t_c1e02bbff9fb03 1213-1272
+demos/architect/src/client/components/editor/panels/ServicePalette.tsx
+  s_61c843d97e9f60::t_3b967a493465c2 9-12
+  s_61c843d97e9f60::t_e2c23cda695fea 23-29,40-42
+  s_61c843d97e9f60::t_74dcb71e7cc687 53-57
+  s_61c843d97e9f60::t_870e8090cc3d77 69-70,72-73
+demos/architect/src/client/components/editor/connect.ts
+  s_61c843d97e9f60::t_19cb8bb4f42255 1-11,13-24,40-45,48-69,74-122
+  s_61c843d97e9f60::t_e1c23dbabe4728 12
+  s_61c843d97e9f60::t_66b86121d3f8f9 25-39,46-47,70-73
+demos/architect/src/client/test/mock-xyflow.tsx
+  s_75c178c49fa82d::t_5c4a14aad7b2fc 31-35
+  s_61c843d97e9f60::t_9b5ffcbd60bfd1 115-121,124-125,133-134,143-149
+  s_75c178c49fa82d::t_ec8aaf707af220 107-111
+demos/architect/src/client/components/editor/toolbar/ConnectNodesModal.tsx
+  s_61c843d97e9f60::t_dfb97d888d281a 61-65
+  s_61c843d97e9f60::t_add6beb509b711 11
+  s_61c843d97e9f60::t_ef83129cc44430 1-10,12-60,66-104,106-119,121-137,139-167,169-189
+  s_61c843d97e9f60::t_55eef25f2700ed 105
+  s_61c843d97e9f60::t_645287d6a5a3f5 120,138
+  s_61c843d97e9f60::t_a864bf5547a6db 168
+demos/architect/src/client/components/editor/DiagramCanvas.tsx
+  s_75c178c49fa82d::t_7febe52ea8bfee 98
+  s_75c178c49fa82d::t_17a9493df0ac0f 10,14
+  s_75c178c49fa82d::t_853b4ceedbb805 228-248
+  s_75c178c49fa82d::t_625307ddb641d3 458-461
+demos/architect/EXPLAIN-DEMO.md
+  s_61c843d97e9f60::t_1cd85ae5078e7f 146-162
+  s_75c178c49fa82d::t_52bb4bc3537155 186-196
+  s_75c178c49fa82d::t_399f5751fded89 170-185,197
+  s_75c178c49fa82d::t_310c73b59a6dfb 358,360-362
+demos/architect/src/client/lib/palette-preferences.ts
+  s_61c843d97e9f60::t_f22053ef35f2c1 1-103
+docs/09-ARCHITECT.md
+  s_61c843d97e9f60::t_583408c5250771 824-903
+  s_170a600b7fad65::t_87495d82d8483a 928-981
+  s_75c178c49fa82d::t_2f1fdecc1bf87c 776-802
+  s_170a600b7fad65::t_c59036e45476ce 15-21
+  s_75c178c49fa82d::t_c119c2570ccfcf 803-822
+  s_75c178c49fa82d::t_4467396f992041 733-740,745-751,756-759,764-771
+  s_61c843d97e9f60::t_f3cb36919e16ac 823,904
+demos/architect/src/client/components/editor/toolbar/Toolbar.tsx
+  s_61c843d97e9f60::t_4ed4d5a3678d5a 409-414
+  s_61c843d97e9f60::t_ec052bf3ae4540 7,21
+  s_61c843d97e9f60::t_bf4603eb58e0a0 106,117
+  s_61c843d97e9f60::t_d49ba10abca045 261-276
+  s_61c843d97e9f60::t_2c0cf545dd3c95 86-90
+demos/architect/src/client/lib/palette-preferences.test.ts
+  s_61c843d97e9f60::t_55eef25f2700ed 58-60,98
+  s_61c843d97e9f60::t_18105783f6362e 1-57,61-97,99-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "158ddfef13986e424e18b891ce831ac82df4e58e",
+  "prompts": {},
+  "sessions": {
+    "s_170a600b7fad65": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0147e0eb4ffeUTjFBN747ehxUb",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_61c843d97e9f60": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0148dfe8bffeN4vGgrz0qByHF7",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    },
+    "s_75c178c49fa82d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_014b0bcd0ffeNjHBbq9zBxfGee",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
