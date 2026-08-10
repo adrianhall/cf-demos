@@ -117,6 +117,8 @@ export function DiagramCanvas({
     description,
     printMode,
     setPrintMode,
+    paletteOpen,
+    propertiesOpen,
   } = useDiagramStore();
 
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -381,9 +383,15 @@ export function DiagramCanvas({
       // biome-ignore lint/a11y/noNoninteractiveTabindex: see the comment above this element.
       tabIndex={0}
     >
+      {/* Visually hidden top-level heading (Bug 19): without it, the first heading a
+          screen-reader user reaches is `ServicePalette`'s "Services" <h2>, skipping a level,
+          and the diagram's own title (`Toolbar.tsx`'s <input>) is never exposed as a heading at
+          all. Kept in sync with the store's `title`; also covers the read-only share viewer
+          (`../../views/ShareView.tsx`), which renders this same component. */}
+      <h1 className="visually-hidden">{title} — Diagram editor</h1>
       {!printMode && <Toolbar readOnly={readOnly} />}
       <div className="diagram-editor__body">
-        {!readOnly && !printMode && (
+        {!readOnly && !printMode && paletteOpen && (
           <ServicePalette onAddNode={onAddNodeFromPalette} />
         )}
         <div className="diagram-editor__canvas">
@@ -451,7 +459,7 @@ export function DiagramCanvas({
             {!printMode && <Controls showInteractive={!readOnly} />}
           </ReactFlow>
         </div>
-        {!readOnly && !printMode && <PropertiesPanel />}
+        {!readOnly && !printMode && propertiesOpen && <PropertiesPanel />}
       </div>
       {!printMode && <StatusBar readOnly={readOnly} />}
     </div>

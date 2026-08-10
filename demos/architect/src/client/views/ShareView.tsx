@@ -57,7 +57,9 @@ export function ShareView({ token }: { token: string }) {
   }
 
   return (
-    <div className="share-view">
+    // Every other top-level view wraps its content in a `<main>` landmark; this is the one that
+    // did not, leaving an anonymous visitor on `/s/:token` with no landmark to jump to (Bug 20).
+    <main className="share-view">
       <div className="share-view__banner">
         <span>You&rsquo;re viewing a shared diagram, read-only.</span>
         <a href="/app">Create your own diagram &rarr;</a>
@@ -69,6 +71,6 @@ export function ShareView({ token }: { token: string }) {
           initialDiagram={state.diagram}
         />
       </ReactFlowProvider>
-    </div>
+    </main>
   );
 }

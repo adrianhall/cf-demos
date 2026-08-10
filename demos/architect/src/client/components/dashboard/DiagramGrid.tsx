@@ -5,6 +5,7 @@ import {
   duplicateDiagram,
   listDiagrams,
 } from "../../api/diagrams";
+import { useDismissableMenu } from "../../hooks/useDismissableMenu";
 import { BlueprintPreview } from "../blueprints/BlueprintPreview";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 
@@ -32,23 +33,11 @@ function CardMenu({
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const handleOutsideClick = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", handleOutsideClick);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [open]);
+  useDismissableMenu(
+    open,
+    menuRef,
+    useCallback(() => setOpen(false), []),
+  );
 
   const runAction = (event: React.MouseEvent, action: () => void) => {
     event.preventDefault();
@@ -182,13 +171,18 @@ export function DiagramGrid() {
       ) : (
         <div className="dashboard__grid">
           {diagrams.map((diagram) => (
-            <a
-              key={diagram.id}
-              href={`/app/diagram/${diagram.id}`}
-              className="diagram-card"
-            >
+            // A non-interactive container, not an <a> -- see `.diagram-card`'s Bug 16 comment
+            // in `../../app.css`. The title's own <a> is stretched to cover the whole card.
+            <div key={diagram.id} className="diagram-card">
               <div className="diagram-card__header">
-                <div className="diagram-card__title">{diagram.title}</div>
+                <div className="diagram-card__title">
+                  <a
+                    href={`/app/diagram/${diagram.id}`}
+                    className="diagram-card__link"
+                  >
+                    {diagram.title}
+                  </a>
+                </div>
                 <span
                   className="diagram-card__timestamp"
                   title={`Created ${formatDate(diagram.createdAt)}\nUpdated ${formatDate(diagram.updatedAt)}`}
@@ -204,7 +198,7 @@ export function DiagramGrid() {
               <div className="diagram-card__preview">
                 <BlueprintPreview graphData={diagram.graphData} height={140} />
               </div>
-            </a>
+            </div>
           ))}
         </div>
       )}

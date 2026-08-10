@@ -409,7 +409,7 @@ describe("generateScaffold — forward compatibility", () => {
       category: "compute",
       defaultHandles: [],
       description: "",
-      iconPath: "",
+      icon: { kind: "feather", name: "Box" },
       label: "Future Product",
       typeId: "test-only-future-binding",
       wranglerBinding: "future-binding-type",

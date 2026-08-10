@@ -21,6 +21,17 @@ describe("PropertiesPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("closes the panel via the close button, regardless of what is selected (Bug 4)", () => {
+    useDiagramStore.setState({ propertiesOpen: true });
+    render(<PropertiesPanel />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close properties panel" }),
+    );
+
+    expect(useDiagramStore.getState().propertiesOpen).toBe(false);
+  });
+
   it("shows node properties, including its catalog type and category", () => {
     useDiagramStore.setState({
       nodes: [

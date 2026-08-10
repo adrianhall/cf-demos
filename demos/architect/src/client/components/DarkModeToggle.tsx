@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Moon, Sun } from "react-feather";
 import {
   applyTheme,
   getStoredTheme,
@@ -62,8 +63,13 @@ export function DarkModeToggle({
       onClick={toggle}
       title="Toggle dark mode"
       aria-pressed={dark}
+      aria-label={dark ? "Light mode" : "Dark mode"}
     >
-      {dark ? "Light mode" : "Dark mode"}
+      {dark ? (
+        <Sun size={18} aria-hidden="true" />
+      ) : (
+        <Moon size={18} aria-hidden="true" />
+      )}
     </button>
   );
 }

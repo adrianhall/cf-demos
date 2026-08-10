@@ -76,7 +76,14 @@ function CFEdgeComponent({
           strokeDasharray,
         }}
         markerEnd={markerEnd}
-        className={animated ? "react-flow__edge-animated" : ""}
+        // `cf-edge-animated` (defined in `../../../app.css`, alongside its
+        // `prefers-reduced-motion` guard) is this app's own class, not `@xyflow/react`'s built-in
+        // `.react-flow__edge.animated path` selector (Bug 24, docs/09-ARCHITECT.md Phase 7):
+        // that selector keys off the top-level React Flow `Edge.animated` property on the
+        // wrapping `<g>` this component never renders (`EdgeWrapper` owns it), which nothing in
+        // this app ever sets -- so a class of that exact name here, on `BaseEdge`'s `<path>`,
+        // never actually matched any rule in `@xyflow/react/dist/style.css`.
+        className={animated ? "cf-edge-animated" : undefined}
       />
       {edgeData?.label && (
         <EdgeLabelRenderer>

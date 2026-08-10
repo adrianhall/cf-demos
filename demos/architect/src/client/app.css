@@ -4,10 +4,26 @@
 
   --cf-orange: #f6821f;
   --cf-orange-dark: #c96812;
+  /* Decorative-only divider borders (~1.4:1 / ~1.9:1) -- never used as a UI-component boundary
+     needing WCAG 1.4.11's 3:1 non-text contrast minimum. Form fields and other interactive
+     boundaries use --cf-field-border instead (see Bug 9 in docs/09-ARCHITECT.md). */
   --cf-border: light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
+  /* Boundary color for form fields (inputs/selects/textareas) and other UI components that need
+     to be visually discoverable as their own element (1.4.11), not merely a section divider.
+     Computed at ~3.3:1 in both themes against both --cf-surface and --cf-surface-alt. */
+  --cf-field-border: light-dark(rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.35));
   --cf-surface: light-dark(#ffffff, #1c1c1e);
   --cf-surface-alt: light-dark(#f4f4f5, #2a2a2d);
-  --cf-danger: #c0392b;
+  /* Text/icon color for danger messaging on a surface background -- theme-aware because it sits
+     directly on --cf-surface, which itself flips between themes. Computed at ~5.4:1 (light) and
+     ~7.4:1 (dark) against --cf-surface. Distinct from --cf-danger-solid below because a solid
+     filled button's own background does not need to track the surrounding page theme. */
+  --cf-danger: light-dark(#c0392b, #ff8a75);
+  /* Filled danger-button background paired with white text (`.button--danger`). Intentionally
+     not theme-aware: unlike --cf-danger's text-on-surface use, a solid button supplies its own
+     contrast context regardless of the surrounding page theme. Computed at ~5.4:1 against white
+     text. */
+  --cf-danger-solid: #c0392b;
 }
 
 body {
@@ -19,6 +35,20 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+/* Without this, some browsers (notably Safari/WebKit) render a <button>'s native OS chrome
+   using the *system's* actual light/dark appearance rather than this page's `color-scheme`
+   override (`../lib/theme.ts`'s `applyTheme()`, which sets `document.documentElement.style
+   .colorScheme` directly) -- so an explicit `background`/`border-color` set anywhere below can
+   still be silently overridden by native chrome that doesn't match. This surfaced as buttons
+   staying visually "stuck" in one scheme's background after switching themes, while their inner
+   icon content (plain SVG, unaffected by native button chrome) updated correctly via
+   `currentColor` -- e.g. a dark background behind a dark icon after explicitly choosing light
+   mode. `appearance: none` opts every <button> in this app out of native chrome entirely, so
+   every background/border/color rule below is the only thing painting it, in both themes. */
+button {
+  appearance: none;
 }
 
 /* Buttons ------------------------------------------------------------ */
@@ -45,9 +75,23 @@ textarea {
 }
 
 .button--danger {
-  background: var(--cf-danger);
-  border-color: var(--cf-danger);
+  background: var(--cf-danger-solid);
+  border-color: var(--cf-danger-solid);
   color: #fff;
+}
+
+/* Visually hidden but still reachable by assistive technology -- see
+   https://www.w3.org/WAI/tutorials/forms/labels/#hiding-the-label-text. Shared by every label,
+   heading, or status text that must exist in the accessibility tree without taking up visible
+   layout space (e.g. `.toolbar__title-label`, `.service-palette__search-label`, an editor page's
+   hidden `<h1>`, the admin-shield icon's text equivalent). */
+.visually-hidden {
+  clip: rect(0 0 0 0);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 /* Landing -------------------------------------------------------------- */
@@ -191,18 +235,21 @@ textarea {
   grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
 }
 
+/* A non-interactive container -- the card itself is no longer an <a> (Bug 16: the HTML content
+   model forbids nesting an interactive element, `CardMenu`'s <button>, inside an <a>). Its title
+   is the real link (`.diagram-card__link`), stretched to cover the whole card via a "block
+   link" ::after overlay, so clicking anywhere on the card still opens the diagram. `position:
+   relative` anchors that overlay to the card's own bounds rather than just the title text. */
 .diagram-card {
   background: var(--cf-surface);
   border: 1px solid var(--cf-border);
   border-radius: 0.5rem;
-  color: inherit;
-  display: block;
   overflow: hidden;
-  text-decoration: none;
+  position: relative;
 }
 
 .diagram-card:hover,
-.diagram-card:focus-visible {
+.diagram-card:focus-within {
   border-color: var(--cf-orange);
 }
 
@@ -216,9 +263,25 @@ textarea {
 .diagram-card__title {
   flex: 1 1 auto;
   font-weight: 600;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.diagram-card__link {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* The stretched-link overlay: covers the entire `.diagram-card`, not just the title text, so
+   the whole card remains clickable. `CardMenu`'s button (`.diagram-card__menu`, later in DOM
+   order within the same stacking context) still receives clicks in the region where the two
+   overlap, since it paints after this overlay and additionally sets its own `z-index`. */
+.diagram-card__link::after {
+  content: "";
+  inset: 0;
+  position: absolute;
 }
 
 .diagram-card__timestamp {
@@ -234,15 +297,21 @@ textarea {
 
 .diagram-card__menu {
   position: relative;
+  z-index: 1;
 }
 
 .diagram-card__menu-button {
+  align-items: center;
   background: none;
   border: none;
   border-radius: 0.25rem;
   cursor: pointer;
+  display: flex;
   font-size: 1.1rem;
+  justify-content: center;
   line-height: 1;
+  min-height: 24px;
+  min-width: 24px;
   padding: 0.25rem 0.5rem;
 }
 
@@ -398,11 +467,16 @@ textarea {
 }
 
 .modal__close {
+  align-items: center;
   background: none;
   border: none;
   cursor: pointer;
+  display: flex;
   font-size: 1.25rem;
+  justify-content: center;
   line-height: 1;
+  min-height: 24px;
+  min-width: 24px;
   padding: 0.25rem;
   position: absolute;
   right: 0.75rem;
@@ -481,6 +555,11 @@ textarea {
   width: 100%;
 }
 
+.diagram-editor:focus-visible {
+  outline: 2px solid var(--cf-orange);
+  outline-offset: -2px;
+}
+
 .diagram-editor__error,
 .diagram-editor__loading {
   padding: 1.5rem;
@@ -490,6 +569,9 @@ textarea {
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
+  /* Containing block for the sidebars' `position: absolute` overlay below the Bug 21
+     breakpoint, so they float over `.diagram-editor__canvas` only, not the whole page. */
+  position: relative;
 }
 
 .diagram-editor__canvas {
@@ -584,26 +666,15 @@ textarea {
   margin-left: auto;
 }
 
+/* Combined with .toolbar__button for consistent icon-button sizing/border (Bug 6); the orange
+   `color` tints the icon's `currentColor` stroke, echoing the original text logo's brand color. */
 .toolbar__logo {
   color: var(--cf-orange);
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.toolbar__title-label {
-  /* Visually hidden, but present for assistive technology -- the input's placeholder text
-     is not itself an accessible name. */
-  clip: rect(0 0 0 0);
-  height: 1px;
-  overflow: hidden;
-  position: absolute;
-  white-space: nowrap;
-  width: 1px;
 }
 
 .toolbar__title {
   background: var(--cf-surface-alt);
-  border: 1px solid transparent;
+  border: 1px solid var(--cf-field-border);
   border-radius: 0.25rem;
   min-width: 12rem;
   padding: 0.375rem 0.5rem;
@@ -611,7 +682,7 @@ textarea {
 
 .toolbar__title:hover,
 .toolbar__title:focus-visible {
-  border-color: var(--cf-border);
+  border-color: var(--cf-orange);
 }
 
 .toolbar__title-readonly {
@@ -631,6 +702,13 @@ textarea {
   opacity: 0.5;
 }
 
+/* Visual state for a toggle-style toolbar button (the palette/properties-panel toggles) while
+   its controlled panel is open. */
+.toolbar__button[aria-pressed="true"] {
+  background: var(--cf-surface-alt);
+  border-color: var(--cf-orange);
+}
+
 .toolbar__separator {
   background: var(--cf-border);
   display: inline-block;
@@ -647,6 +725,12 @@ textarea {
   border-left: none;
   border-bottom-left-radius: 0;
   border-top-left-radius: 0;
+}
+
+/* Mirrors the properties-panel toggle's icon horizontally, distinguishing it from the palette
+   toggle since react-feather has no distinct left/right sidebar glyph. */
+.toolbar__button--flipped svg {
+  transform: scaleX(-1);
 }
 
 .toolbar__layout-menu {
@@ -736,26 +820,63 @@ textarea {
   overflow-y: auto;
 }
 
+/* Bug 21 (docs/09-ARCHITECT.md Phase 7): below this breakpoint the two sidebars alone (16rem +
+   18rem = 544px) already exceed a 320 CSS px viewport before the canvas gets any space at all.
+   Below it, both become off-canvas overlay drawers -- absolutely positioned over
+   `.diagram-editor__canvas` instead of sitting side-by-side with it -- so the canvas always gets
+   the viewport's full width regardless of which sidebars are open, consistent with
+   `.create-diagram-modal__layout`'s existing 640px breakpoint. Each remains toggleable with the
+   same Bug 4 toolbar controls that show/hide it above the breakpoint. */
+@media (max-width: 900px) {
+  .service-palette,
+  .properties-panel {
+    background: var(--cf-surface);
+    bottom: 0;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
+    max-width: 85vw;
+    position: absolute;
+    top: 0;
+    z-index: 20;
+  }
+
+  .service-palette {
+    left: 0;
+  }
+
+  .properties-panel {
+    right: 0;
+  }
+}
+
 .service-palette__header {
   border-bottom: 1px solid var(--cf-border);
   padding: 0.75rem;
 }
 
-.service-palette__title {
-  margin: 0 0 0.5rem;
+.service-palette__header-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
 }
 
-.service-palette__search-label {
-  clip: rect(0 0 0 0);
-  height: 1px;
-  overflow: hidden;
-  position: absolute;
-  white-space: nowrap;
-  width: 1px;
+.service-palette__title {
+  margin: 0;
+}
+
+/* Bug 3: collapses or expands every category section at once. */
+.service-palette__collapse-all {
+  background: none;
+  border: none;
+  color: var(--cf-orange);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0;
 }
 
 .service-palette__search {
-  border: 1px solid var(--cf-border);
+  border: 1px solid var(--cf-field-border);
   border-radius: 0.25rem;
   padding: 0.375rem 0.5rem;
   width: 100%;
@@ -779,7 +900,7 @@ textarea {
 }
 
 .service-palette__item {
-  align-items: center;
+  align-items: flex-start;
   background: none;
   border: none;
   cursor: grab;
@@ -795,6 +916,35 @@ textarea {
   background: var(--cf-surface-alt);
 }
 
+.service-palette__item img {
+  /* Aligns the icon with the label's first line instead of the whole (now taller,
+     description-including) item block. */
+  margin-top: 0.125rem;
+}
+
+.service-palette__item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.service-palette__item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Bug 18: the catalog description as visible, 2-line-clamped text, not only through `title`. */
+.service-palette__item-description {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: light-dark(#555, #aaa);
+  display: -webkit-box;
+  font-size: 0.75rem;
+  overflow: hidden;
+}
+
 /* Properties panel --------------------------------------------------------- */
 
 .properties-panel {
@@ -802,14 +952,31 @@ textarea {
   flex: 0 0 18rem;
   overflow-y: auto;
   padding: 1rem;
+  position: relative;
+}
+
+.properties-panel__close {
+  align-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0.25rem;
+  position: absolute;
+  right: 0.5rem;
+  top: 0.5rem;
 }
 
 .properties-panel__empty {
   color: light-dark(#555, #aaa);
+  margin-right: 1.75rem;
 }
 
 .properties-panel__title {
-  margin: 0 0 1rem;
+  margin: 0 1.75rem 1rem 0;
 }
 
 .properties-panel__facts {
@@ -840,7 +1007,7 @@ textarea {
 
 .properties-panel__input {
   background: var(--cf-surface);
-  border: 1px solid var(--cf-border);
+  border: 1px solid var(--cf-field-border);
   border-radius: 0.25rem;
   padding: 0.375rem 0.5rem;
   width: 100%;
@@ -914,6 +1081,17 @@ textarea {
   flex: 0 0 auto;
 }
 
+/* `ProductIcon.tsx`'s vendored-SVG branch: these files have no `fill`/`stroke` attribute of
+   their own (SVG's implicit default is opaque black), so force `currentColor` here to make them
+   theme-aware and recolorable via the wrapper's inline `color` style, matching `react-feather`'s
+   own `stroke="currentColor"` default. */
+.product-icon--svg svg {
+  display: block;
+  fill: currentColor;
+  height: 100%;
+  width: 100%;
+}
+
 .cf-node__label {
   font-weight: 600;
   overflow: hidden;
@@ -935,6 +1113,27 @@ textarea {
   padding: 0.0625rem 0.375rem;
 }
 
+/* "Data-flow" edges' animated dashed stroke (Bug 24/22, docs/09-ARCHITECT.md Phase 7). This
+   app's own class/keyframes, applied directly to the edge `<path>` by `CFEdge.tsx` -- not
+   `@xyflow/react`'s built-in `.react-flow__edge.animated` mechanism, which keys off a top-level
+   `Edge.animated` property this app never sets. */
+@keyframes cf-edge-dashdraw {
+  from {
+    stroke-dashoffset: 10;
+  }
+}
+
+.cf-edge-animated {
+  animation: cf-edge-dashdraw 0.5s linear infinite;
+  stroke-dasharray: 5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-edge-animated {
+    animation: none;
+  }
+}
+
 /* Sharing --------------------------------------------------------------- */
 
 .share-modal__error {
@@ -953,7 +1152,7 @@ textarea {
 
 .share-url-field__input {
   background: var(--cf-surface-alt);
-  border: 1px solid var(--cf-border);
+  border: 1px solid var(--cf-field-border);
   border-radius: 0.25rem;
   flex: 1 1 auto;
   min-width: 0;
@@ -1060,7 +1259,7 @@ textarea {
 
 .admin__moderation-input {
   background: var(--cf-surface-alt);
-  border: 1px solid var(--cf-border);
+  border: 1px solid var(--cf-field-border);
   border-radius: 0.25rem;
   flex: 1 1 auto;
   min-width: 0;

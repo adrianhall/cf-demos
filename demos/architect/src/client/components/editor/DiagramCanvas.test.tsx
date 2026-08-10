@@ -45,6 +45,8 @@ describe("DiagramCanvas", () => {
       saveError: null,
       lastSavedAt: null,
       printMode: false,
+      paletteOpen: true,
+      propertiesOpen: false,
       undoStack: [],
       redoStack: [],
     });
@@ -79,6 +81,43 @@ describe("DiagramCanvas", () => {
       expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
     );
     expect(screen.getByLabelText("Diagram title")).toHaveValue("My Diagram");
+  });
+
+  it("hides the service palette when paletteOpen is false (Bug 4)", async () => {
+    useDiagramStore.setState({ paletteOpen: false });
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    render(<DiagramCanvas diagramId="d1" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+    expect(screen.queryByLabelText("Service palette")).not.toBeInTheDocument();
+  });
+
+  it("hides the properties panel until propertiesOpen is true (Bug 4)", async () => {
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    render(<DiagramCanvas diagramId="d1" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+    expect(screen.queryByLabelText("Properties")).not.toBeInTheDocument();
+
+    act(() => useDiagramStore.getState().setSelectedNode("n1"));
+
+    expect(screen.getByLabelText("Properties")).toBeInTheDocument();
   });
 
   it("tolerates malformed graphData by loading an empty graph", async () => {

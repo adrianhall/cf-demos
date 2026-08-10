@@ -1,7 +1,20 @@
 import { type Edge, type Node as FlowNode, useReactFlow } from "@xyflow/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  Layout as LayoutIcon,
+  Maximize,
+  RotateCcw,
+  RotateCw,
+  Share2,
+  Sidebar,
+  ZoomIn,
+  ZoomOut,
+} from "react-feather";
 import { NODE_TYPE_MAP } from "../../../../catalog";
 import { DarkModeToggle } from "../../../components/DarkModeToggle";
+import { useDismissableMenu } from "../../../hooks/useDismissableMenu";
 import { useDiagramStore } from "../../../stores/diagramStore";
 import type { CFEdgeData, CFNodeData } from "../types";
 import { ExportButton } from "./ExportButton";
@@ -78,8 +91,19 @@ export function remapEdgeHandles(
  */
 export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
   const { fitView, zoomIn, zoomOut } = useReactFlow();
-  const { undo, redo, undoStack, redoStack, title, setTitle, diagramId } =
-    useDiagramStore();
+  const {
+    undo,
+    redo,
+    undoStack,
+    redoStack,
+    title,
+    setTitle,
+    diagramId,
+    paletteOpen,
+    togglePalette,
+    propertiesOpen,
+    toggleProperties,
+  } = useDiagramStore();
   const [layouting, setLayouting] = useState(false);
   const [layoutDirection, setLayoutDirection] =
     useState<LayoutDirection>("DOWN");
@@ -87,19 +111,11 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
   const [shareOpen, setShareOpen] = useState(false);
   const layoutGroupRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!layoutMenuOpen) return;
-    const handleClick = (event: MouseEvent) => {
-      if (
-        layoutGroupRef.current &&
-        !layoutGroupRef.current.contains(event.target as Node)
-      ) {
-        setLayoutMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [layoutMenuOpen]);
+  useDismissableMenu(
+    layoutMenuOpen,
+    layoutGroupRef,
+    useCallback(() => setLayoutMenuOpen(false), []),
+  );
 
   /**
    * Dynamically import ELK, build a layered graph description from the current nodes/edges, run
@@ -178,14 +194,24 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
   return (
     <div className="toolbar">
       <div className="toolbar__group">
-        <a href="/app" className="toolbar__logo" title="Back to dashboard">
-          Architect
+        {/* Bug 6 (docs/09-ARCHITECT.md Phase 7): this was a text "Architect" logo, duplicating
+            `AppShellView.tsx`'s own "Architect" header brand whenever both are visible at once
+            (the authenticated editor route). Icon-only here removes the duplicate text while
+            keeping the same back-to-dashboard link and destination -- see the deferred Bug 23
+            in Phase 9 for the fuller fix of merging this toolbar into that header entirely. */}
+        <a
+          href="/app"
+          className="toolbar__button toolbar__logo"
+          title="Back to dashboard"
+          aria-label="Back to dashboard"
+        >
+          <ArrowLeft size={18} aria-hidden="true" />
         </a>
         {readOnly ? (
           <span className="toolbar__title-readonly">{title}</span>
         ) : (
           <>
-            <label className="toolbar__title-label" htmlFor="diagram-title">
+            <label className="visually-hidden" htmlFor="diagram-title">
               Diagram title
             </label>
             <input
@@ -202,14 +228,39 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
 
       {!readOnly && (
         <div className="toolbar__group">
+          {/* Bug 4 (docs/09-ARCHITECT.md Phase 7): toggles for the two collapsible sidebars.
+              `.toolbar__button--flipped` mirrors the same `Sidebar` glyph horizontally for the
+              properties panel, since react-feather has no distinct left/right sidebar icon. */}
+          <button
+            type="button"
+            onClick={togglePalette}
+            className="toolbar__button"
+            title="Toggle service palette"
+            aria-label="Toggle service palette"
+            aria-pressed={paletteOpen}
+          >
+            <Sidebar size={18} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={toggleProperties}
+            className="toolbar__button toolbar__button--flipped"
+            title="Toggle properties panel"
+            aria-label="Toggle properties panel"
+            aria-pressed={propertiesOpen}
+          >
+            <Sidebar size={18} aria-hidden="true" />
+          </button>
+          <span className="toolbar__separator" aria-hidden="true" />
           <button
             type="button"
             onClick={undo}
             disabled={undoStack.length === 0}
             className="toolbar__button"
             title="Undo (Ctrl+Z)"
+            aria-label="Undo"
           >
-            Undo
+            <RotateCcw size={18} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -217,8 +268,9 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
             disabled={redoStack.length === 0}
             className="toolbar__button"
             title="Redo (Ctrl+Shift+Z)"
+            aria-label="Redo"
           >
-            Redo
+            <RotateCw size={18} aria-hidden="true" />
           </button>
           <span className="toolbar__separator" aria-hidden="true" />
           <button
@@ -226,24 +278,27 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
             onClick={() => void zoomIn()}
             className="toolbar__button"
             title="Zoom in"
+            aria-label="Zoom in"
           >
-            Zoom in
+            <ZoomIn size={18} aria-hidden="true" />
           </button>
           <button
             type="button"
             onClick={() => void zoomOut()}
             className="toolbar__button"
             title="Zoom out"
+            aria-label="Zoom out"
           >
-            Zoom out
+            <ZoomOut size={18} aria-hidden="true" />
           </button>
           <button
             type="button"
             onClick={() => void fitView({ duration: 300 })}
             className="toolbar__button"
             title="Fit view"
+            aria-label="Fit view"
           >
-            Fit view
+            <Maximize size={18} aria-hidden="true" />
           </button>
           <span className="toolbar__separator" aria-hidden="true" />
           <div className="toolbar__layout-group" ref={layoutGroupRef}>
@@ -253,10 +308,9 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
               disabled={layouting}
               className="toolbar__button"
               title={`Auto layout (${layoutDirection === "DOWN" ? "top to bottom" : "left to right"})`}
+              aria-label="Auto layout"
             >
-              {layouting
-                ? "Laying out…"
-                : `Layout ${layoutDirection === "DOWN" ? "↓" : "→"}`}
+              <LayoutIcon size={18} aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -264,14 +318,16 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
               disabled={layouting}
               onClick={() => setLayoutMenuOpen((prev) => !prev)}
               aria-expanded={layoutMenuOpen}
+              aria-haspopup="menu"
               aria-label="Choose layout direction"
             >
-              ▾
+              <ChevronDown size={14} aria-hidden="true" />
             </button>
             {layoutMenuOpen && (
-              <div className="toolbar__layout-menu">
+              <div className="toolbar__layout-menu" role="menu">
                 <button
                   type="button"
+                  role="menuitem"
                   className="toolbar__layout-option"
                   onClick={() => {
                     setLayoutDirection("DOWN");
@@ -283,6 +339,7 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
                 </button>
                 <button
                   type="button"
+                  role="menuitem"
                   className="toolbar__layout-option"
                   onClick={() => {
                     setLayoutDirection("RIGHT");
@@ -310,8 +367,9 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
             disabled={diagramId === null}
             className="toolbar__button"
             title="Share diagram"
+            aria-label="Share diagram"
           >
-            Share
+            <Share2 size={18} aria-hidden="true" />
           </button>
         )}
         <ExportButton />

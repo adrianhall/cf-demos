@@ -1,3 +1,4 @@
+import { LogOut, Shield } from "react-feather";
 import { DarkModeToggle } from "../components/DarkModeToggle";
 import { useIdentity } from "../hooks/useIdentity";
 import { AdminView } from "./AdminView";
@@ -66,7 +67,19 @@ export function AppShellView() {
         ) : identity.email !== null ? (
           <span className="app-shell__identity">
             {identity.email}
-            {identity.isAdmin ? " (administrator)" : ""}
+            {identity.isAdmin && (
+              // Bug 5 (docs/09-ARCHITECT.md Phase 7): the literal " (administrator)" text
+              // suffix is replaced by an icon. `role="img"` + `aria-label` (rather than a
+              // visually-hidden text node) is the standard accessible-icon pattern -- it gives
+              // the shield its own accessible name without duplicating "administrator" as a
+              // second text node next to the visible email.
+              <Shield
+                className="app-shell__admin-badge"
+                size={14}
+                role="img"
+                aria-label="Administrator"
+              />
+            )}
           </span>
         ) : (
           <span className="app-shell__identity" role="alert">
@@ -75,8 +88,11 @@ export function AppShellView() {
         )}
         <DarkModeToggle />
         {/* Unconditionally rendered per AGENTS.md's Public Access section, so a presenter who
-            signs in as the wrong identity locally can always recover without clearing cookies. */}
-        <a className="app-shell__logout" href="/cdn-cgi/access/logout">
+            signs in as the wrong identity locally can always recover without clearing cookies.
+            A real, visible `.button` with an icon (Bug 1, docs/09-ARCHITECT.md Phase 7) rather
+            than a bare text link. */}
+        <a className="app-shell__logout button" href="/cdn-cgi/access/logout">
+          <LogOut size={16} aria-hidden="true" />
           Sign out
         </a>
       </header>

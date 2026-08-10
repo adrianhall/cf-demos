@@ -1,7 +1,12 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import { memo } from "react";
+import type { ProductIcon as ProductIconDef } from "../../../../catalog";
 import { CATEGORY_COLORS, NODE_TYPE_MAP } from "../../../../catalog";
+import { ProductIcon } from "../../ProductIcon";
 import type { CFNodeData } from "../types";
+
+/** Icon shown for an unrecognized `typeId` -- matches the catalog's own "worker" entry. */
+const FALLBACK_ICON: ProductIconDef = { kind: "svg", name: "workers" };
 
 /** Map a catalog handle position to React Flow's `Position` enum. */
 function toPosition(position: "top" | "bottom" | "left" | "right"): Position {
@@ -37,7 +42,12 @@ function CFNodeComponent({ data, selected }: NodeProps) {
     <div
       className="cf-node"
       style={{
-        borderColor: selected ? accentColor : `${accentColor}66`,
+        // Full opacity in both selected and unselected states -- a 40%-alpha unselected border
+        // failed WCAG 1.4.11's 3:1 non-text contrast minimum against a white canvas for every
+        // category color (the node's fill matches the canvas background, so this border is the
+        // only cue it is a discrete object). Selection is still visually distinct via the
+        // box-shadow ring below.
+        borderColor: accentColor,
         boxShadow: selected ? `0 0 0 2px ${accentColor}44` : "none",
       }}
     >
@@ -45,12 +55,11 @@ function CFNodeComponent({ data, selected }: NodeProps) {
         className="cf-node__header"
         style={{ backgroundColor: `${accentColor}14` }}
       >
-        <img
-          src={typeDef?.iconPath ?? "/icons/worker.svg"}
-          alt=""
+        <ProductIcon
+          icon={typeDef?.icon ?? FALLBACK_ICON}
           className="cf-node__icon"
-          width={24}
-          height={24}
+          size={24}
+          color={accentColor}
         />
         <span className="cf-node__label" title={nodeData.label}>
           {nodeData.label}

@@ -23,15 +23,17 @@ function renderCFNode(data: Record<string, unknown>, selected = false) {
 }
 
 /**
- * Convert a `#rrggbb` color plus a `66` (40%) alpha suffix -- the unselected border style
- * `CFNode` always renders -- into the `rgba(...)` string jsdom's `CSSStyleDeclaration` getter
- * normalises inline hex-with-alpha colors to, so assertions can compare against it directly.
+ * Convert a `#rrggbb` color into the `rgb(...)` string jsdom's `CSSStyleDeclaration` getter
+ * normalises an inline hex color to, so assertions can compare against it directly. `CFNode`
+ * renders its border at full opacity in both the selected and unselected states (see
+ * `CFNode.tsx`'s Bug 10 fix comment) -- selection is distinguished by the box-shadow ring
+ * instead, covered by the "shows a selection box-shadow only when selected" test below.
  */
-function unselectedBorderColor(hex: string): string {
+function borderColor(hex: string): string {
   const r = Number.parseInt(hex.slice(1, 3), 16);
   const g = Number.parseInt(hex.slice(3, 5), 16);
   const b = Number.parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, 0.4)`;
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 describe("CFNode", () => {
@@ -55,26 +57,24 @@ describe("CFNode", () => {
   });
 
   it("renders the catalog icon for a known typeId", () => {
+    // `d1.svg`'s own `viewBox` ("0 0 65 64") uniquely identifies it among the vendored icons
+    // (`../../../../catalog.ts`'s Issue 7 fix), distinguishing it from the "workers" glyph
+    // (`viewBox="0 0 48 49"`) the fallback test below asserts against.
     const { container } = renderCFNode({ typeId: "d1", label: "DB" });
-    expect(container.querySelector("img.cf-node__icon")).toHaveAttribute(
-      "src",
-      "/icons/d1.svg",
-    );
+    const icon = container.querySelector(".cf-node__icon");
+    expect(icon).toHaveClass("product-icon--svg");
+    expect(icon?.innerHTML).toContain('viewBox="0 0 65 64"');
   });
 
-  it("falls back to the worker icon and external category color for an unknown typeId", () => {
+  it("falls back to the workers icon and external category color for an unknown typeId", () => {
     const { container } = renderCFNode({
       typeId: "does-not-exist",
       label: "X",
     });
-    expect(container.querySelector("img.cf-node__icon")).toHaveAttribute(
-      "src",
-      "/icons/worker.svg",
-    );
+    const icon = container.querySelector(".cf-node__icon");
+    expect(icon?.innerHTML).toContain('viewBox="0 0 48 49"');
     const node = container.querySelector(".cf-node") as HTMLElement;
-    expect(node.style.borderColor).toBe(
-      unselectedBorderColor(CATEGORY_COLORS.external),
-    );
+    expect(node.style.borderColor).toBe(borderColor(CATEGORY_COLORS.external));
   });
 
   it("renders one handle per catalog default handle", () => {
@@ -89,9 +89,7 @@ describe("CFNode", () => {
   it("uses the category color when no accent override is set", () => {
     const { container } = renderCFNode({ typeId: "d1", label: "DB" });
     const node = container.querySelector(".cf-node") as HTMLElement;
-    expect(node.style.borderColor).toBe(
-      unselectedBorderColor(CATEGORY_COLORS.storage),
-    );
+    expect(node.style.borderColor).toBe(borderColor(CATEGORY_COLORS.storage));
   });
 
   it("prefers a custom accentColor over the category color", () => {
@@ -101,7 +99,7 @@ describe("CFNode", () => {
       style: { accentColor: "#ff0000" },
     });
     const node = container.querySelector(".cf-node") as HTMLElement;
-    expect(node.style.borderColor).toBe(unselectedBorderColor("#ff0000"));
+    expect(node.style.borderColor).toBe(borderColor("#ff0000"));
   });
 
   it("shows a selection box-shadow only when selected", () => {

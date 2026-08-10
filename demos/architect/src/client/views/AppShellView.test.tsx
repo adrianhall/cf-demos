@@ -37,7 +37,7 @@ describe("AppShellView", () => {
     expect(screen.getByText("Verifying identity…")).toBeInTheDocument();
   });
 
-  it("renders the verified email and admin marker after loading", async () => {
+  it("renders the verified email with an administrator badge after loading", async () => {
     vi.stubGlobal(
       "fetch",
       vi
@@ -53,10 +53,11 @@ describe("AppShellView", () => {
     render(<AppShellView />);
 
     await waitFor(() =>
-      expect(
-        screen.getByText("admin@example.com (administrator)"),
-      ).toBeInTheDocument(),
+      expect(screen.getByText("admin@example.com")).toBeInTheDocument(),
     );
+    expect(
+      screen.getByRole("img", { name: "Administrator" }),
+    ).toBeInTheDocument();
   });
 
   it("shows an Admin nav link only for the configured administrator", async () => {
@@ -105,7 +106,7 @@ describe("AppShellView", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the verified email with no admin marker for a non-administrator", async () => {
+  it("renders the verified email with no administrator badge for a non-administrator", async () => {
     vi.stubGlobal(
       "fetch",
       vi
@@ -123,6 +124,9 @@ describe("AppShellView", () => {
     await waitFor(() =>
       expect(screen.getByText("alice@example.com")).toBeInTheDocument(),
     );
+    expect(
+      screen.queryByRole("img", { name: "Administrator" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders a logout control unconditionally, even while loading", () => {

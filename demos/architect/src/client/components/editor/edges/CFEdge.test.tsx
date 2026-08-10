@@ -99,10 +99,13 @@ describe("CFEdge", () => {
     expect(path.style.stroke).toBe("rgb(246, 130, 31)");
   });
 
-  it("marks the edge as animated only for edge types configured as animated", () => {
+  it("marks the edge as animated only for edge types configured as animated (Bug 24)", () => {
+    // `cf-edge-animated` (not `@xyflow/react`'s own `react-flow__edge-animated`-shaped naming)
+    // is this app's own class -- see `CFEdge.tsx`'s Bug 24 comment for why a class matching
+    // `@xyflow/react`'s naming convention never actually took visual effect here.
     const { container: dataFlow } = renderCFEdge({ edgeType: "data-flow" });
     expect(dataFlow.querySelector("path[data-testid='base-edge']")).toHaveClass(
-      "react-flow__edge-animated",
+      "cf-edge-animated",
     );
 
     const { container: binding } = renderCFEdge({
@@ -110,6 +113,6 @@ describe("CFEdge", () => {
     });
     expect(
       binding.querySelector("path[data-testid='base-edge']"),
-    ).not.toHaveClass("react-flow__edge-animated");
+    ).not.toHaveClass("cf-edge-animated");
   });
 });

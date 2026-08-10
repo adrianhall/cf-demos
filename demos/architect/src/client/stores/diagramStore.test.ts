@@ -28,6 +28,8 @@ describe("useDiagramStore", () => {
       saving: false,
       lastSavedAt: null,
       saveError: null,
+      paletteOpen: true,
+      propertiesOpen: false,
       undoStack: [],
       redoStack: [],
     });
@@ -275,6 +277,44 @@ describe("useDiagramStore", () => {
     useDiagramStore.getState().setSelectedEdge("e1");
     expect(useDiagramStore.getState().selectedEdgeId).toBe("e1");
     expect(useDiagramStore.getState().selectedNodeId).toBeNull();
+  });
+
+  it("opens the properties panel when a node is selected (Bug 4)", () => {
+    expect(useDiagramStore.getState().propertiesOpen).toBe(false);
+    useDiagramStore.getState().setSelectedNode("a");
+    expect(useDiagramStore.getState().propertiesOpen).toBe(true);
+  });
+
+  it("opens the properties panel when an edge is selected (Bug 4)", () => {
+    expect(useDiagramStore.getState().propertiesOpen).toBe(false);
+    useDiagramStore.getState().setSelectedEdge("e1");
+    expect(useDiagramStore.getState().propertiesOpen).toBe(true);
+  });
+
+  it("leaves the properties panel open when deselecting rather than auto-closing it", () => {
+    useDiagramStore.getState().setSelectedNode("a");
+    useDiagramStore.getState().setSelectedNode(null);
+    expect(useDiagramStore.getState().propertiesOpen).toBe(true);
+  });
+
+  it("does not reopen the properties panel when deselecting from a closed state", () => {
+    useDiagramStore.setState({ propertiesOpen: false });
+    useDiagramStore.getState().setSelectedEdge(null);
+    expect(useDiagramStore.getState().propertiesOpen).toBe(false);
+  });
+
+  it("toggles the palette and properties panel visibility", () => {
+    expect(useDiagramStore.getState().paletteOpen).toBe(true);
+    useDiagramStore.getState().togglePalette();
+    expect(useDiagramStore.getState().paletteOpen).toBe(false);
+    useDiagramStore.getState().togglePalette();
+    expect(useDiagramStore.getState().paletteOpen).toBe(true);
+
+    expect(useDiagramStore.getState().propertiesOpen).toBe(false);
+    useDiagramStore.getState().toggleProperties();
+    expect(useDiagramStore.getState().propertiesOpen).toBe(true);
+    useDiagramStore.getState().toggleProperties();
+    expect(useDiagramStore.getState().propertiesOpen).toBe(false);
   });
 
   it("marks dirty when the title or description changes", () => {

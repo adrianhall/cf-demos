@@ -428,144 +428,226 @@ resources.
 
 ## Phase 7: Bugs
 
+Every bug below except Bug 8 was fixed in one pass; Bug 8 was explicitly excluded from that pass
+(it needs its own, larger, dedicated fix) and is carried forward, unresolved, in
+[Phase 9](#phase-9-carried-forward-bugs). That pass also surfaced two more issues while verifying
+the ones listed here -- Bug 23 (two still-stacked editor banners) and Bug 24 (the data-flow edge
+animation this port inherited from CF-Architect never actually rendered) -- also recorded in
+Phase 9 and Bug 22 respectively; see those entries for detail. A third issue, Bug 25 (icon-only
+buttons showing the wrong background in light mode), was found and fixed after this phase had
+already shipped.
+
 ### Bug 1: Sign out should be a clear button with an icon
 
-### Bug 2: Zoom in/out, fit view, share, undo/redo, export, print, etc. should be made into a toolbar in the top banner rather than creating their own banner.  The toolbar should also be made of icons.
+**Fixed.** `AppShellView.tsx`'s sign-out control is now a visible `.button` with a `react-feather`
+`LogOut` icon plus the "Sign out" text, instead of a bare text link.
+
+### Bug 2: Zoom in/out, fit view, share, undo/redo, export, print, etc. should be made into a toolbar in the top banner rather than creating their own banner.  The toolbar should also be made of icons
+
+**Fixed in place, banner merge deferred.** Every `Toolbar.tsx`/`ExportButton.tsx`/
+`PrintButton.tsx`/`DarkModeToggle.tsx` control is now icon-only (`react-feather`), grouped with
+separators, each keeping its original `title` string as a tooltip and matching `aria-label`.
+Moving this toolbar into `AppShellView.tsx`'s single top banner was **not** done in this pass --
+`ReactFlowProvider` currently wraps only `EditorView.tsx`, one level below `AppShellView`'s
+header, so the toolbar's `useReactFlow()` calls (zoom/fit/export) aren't reachable from there
+without restructuring which component owns the provider. See Bug 23 in
+[Phase 9](#phase-9-carried-forward-bugs) for that follow-up.
 
 ### Bug 3: There should be a collapse all / uncollapse all in product catalog
 
+**Fixed.** `ServicePalette.tsx` has a "Collapse all"/"Expand all" control above the category
+list, toggling every category section at once.
+
 ### Bug 4: Node editor (panel on right hand side) should be collapsed initially, collapsible or closeable with a close icon button, and open automatically when a node is selected.
+
+**Fixed.** `diagramStore.ts`'s `propertiesOpen` defaults to `false` and is set to `true` by
+`setSelectedNode`/`setSelectedEdge` whenever a non-null id is passed; deselecting leaves it open
+showing its empty state rather than auto-closing. `PropertiesPanel.tsx` has its own close button
+(a `react-feather` `X`), and the toolbar has an explicit toggle for it (and a matching one for
+the service palette, `paletteOpen`).
 
 ### Bug 5: (administrator) replaced by icon (maybe shield?)
 
+**Fixed.** `AppShellView.tsx` renders a `react-feather` `Shield` (`role="img"`,
+`aria-label="Administrator"`) next to the verified email instead of the literal
+`" (administrator)"` text suffix.
+
 ### Bug 6: "Architect" title is repeated in banner and header
+
+**Fixed.** `Toolbar.tsx`'s text "Architect" logo/back-to-dashboard link is now an icon-only
+`ArrowLeft` (same destination, same `title="Back to dashboard"`), so "Architect" no longer
+appears twice when the app shell header and the editor toolbar are both visible at once.
 
 ### Issue 7: Validate product set against the current Cloudflare product set and explicitly via ~/repos/adrianhall/cloudflare-docs/src/icons
 
+**Fixed.** `catalog.ts` was reconciled against Cloudflare's current product set and its own
+`cloudflare-docs` icon set:
+
+- Renamed two products that Cloudflare itself renamed: AutoRAG → AI Search, Browser Rendering →
+  Browser Run (`typeId` kept as `autorag`/`browser-rendering` so previously saved diagrams still
+  resolve to a valid catalog entry).
+- Added ten current products with no prior catalog entry: Containers, Sandbox, Pipelines, R2 SQL,
+  R2 Data Catalog, Secrets Store, Realtime, Workers VPC, Turnstile, and Email Service (distinct
+  from the existing Email Routing).
+- Replaced every hand-drawn placeholder icon with a byte-identical vendored copy of Cloudflare's
+  own official icon (`src/client/icons/`, sourced from
+  `~/repos/adrianhall/cloudflare-docs/src/icons/`), rendered inline via the new
+  `src/client/components/ProductIcon.tsx` so they can be recolored with `currentColor` and survive
+  `ExportButton.tsx`'s `html-to-image` PNG/SVG capture (a CSS `mask-image` approach does not --
+  see `docs/DECISIONS.md`). The four "External / Generic" node types, which aren't Cloudflare
+  products, use `react-feather` icons instead, as does `cron-trigger` (a Workers trigger
+  configuration, not a standalone product with its own official icon).
+- Documented, rather than papered over, five icon collisions already present in Cloudflare's own
+  icon set (Workers/Workflows/Workers VPC, R2/R2 Data Catalog, Containers/Sandbox,
+  Agents/AI Gateway, Email Routing/Email Service) -- each pair still reads as distinct on canvas
+  via category color, accent border, and label.
+
 ### Bug 8 (critical): Diagram edges can only be created by mouse-drag, with no keyboard alternative
 
-WCAG 2.2 SC 2.5.7 (Dragging Movements, AA) / 2.1.1 (Keyboard, A). Creating an edge between two
-nodes is only possible by dragging from one `Handle` to another
-(`src/client/components/editor/DiagramCanvas.tsx`'s `onConnect`, wired straight to
-`@xyflow/react`'s pointer-drag connection flow) — there is no click/keyboard-activatable
-alternative anywhere in the store or UI. Node repositioning is partially mitigated by the
-"Auto layout" button, but connecting nodes has zero alternative. Since building an architecture
-diagram *is* connecting nodes, this makes the primary workflow fully inoperable for
-keyboard-only and switch-access users. Fix: add a click-to-connect mode (click a source handle
-or select a node then press a "Connect" toolbar action, then click a target handle/node to
-complete the edge), mirroring `ServicePalette`'s existing click-fallback pattern for node
-creation.
+**Not fixed in this pass -- see [Phase 9](#phase-9-carried-forward-bugs).**
 
 ### Bug 9 (high): Form field borders fail non-text contrast (1.4.11)
 
-Every text input/select/textarea (Properties panel fields, palette search, toolbar title,
-admin moderation input, share-URL field) uses `var(--cf-border)` as its only visible boundary,
-with a background matching the surrounding surface. Computed contrast is ~1.4:1 (light) and
-~1.9:1 (dark) against the required 3:1 minimum for a UI-component boundary. Fix: darken/lighten
-the border or add a background-color difference from the surrounding surface.
+**Fixed.** Every text input/select/textarea now uses a new `--cf-field-border` custom property
+(`light-dark(rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.35))`, ≥3.3:1 against both `--cf-surface`
+and `--cf-surface-alt` in both themes) instead of the decorative-only `--cf-border`, which stays
+reserved for section dividers.
 
 ### Bug 10 (high): Unselected node borders fail non-text contrast (1.4.11)
 
-`src/client/components/editor/nodes/CFNode.tsx`'s unselected node border uses each category's
-accent color at 40% alpha (`${accentColor}66`). Computed against a white canvas, every category
-color fails the 3:1 minimum (e.g. `compute` blue ≈1.5:1, `external` gray ≈1.2:1); only the
-full-opacity selected state passes. Since a node's fill matches the canvas background, this
-border is the only cue a node is a discrete object — the app's core visual metaphor. Fix: raise
-the unselected-state alpha (e.g. 80%+) or use a darker/desaturated variant meeting 3:1 in both
-themes.
+**Fixed.** `CFNode.tsx` now renders its border at full opacity in both the selected and
+unselected states (selection is distinguished by the existing box-shadow ring instead), and
+`CATEGORY_COLORS`'s `storage`/`network` values were darkened from Cloudflare's original brand hex
+(`#10B981`/`#F59E0B`, ~2.5:1/~2.2:1 against white) to `#0D9467`/`#B87608` (≥3.85:1/≥3.3:1 against
+both `--cf-surface` values in both themes); the other four category colors already cleared 3:1
+at full opacity.
 
 ### Bug 11 (high): `--cf-danger` is not theme-aware, failing dark-mode text contrast (1.4.3)
 
-`app.css`'s `--cf-danger: #c0392b` is a flat hex, unlike every other themed color which uses
-`light-dark()`. Against the dark surface (`#1c1c1e`) it computes to ~3.1:1, below the 4.5:1
-minimum for normal-size text — used for every save/form error message (status bar, share modal,
-admin moderation, create-diagram modal). Fix: give `--cf-danger` a `light-dark()` pair with a
-lighter red for the dark variant, verified ≥4.5:1 against `#1c1c1e`.
+**Fixed.** `--cf-danger` is now `light-dark(#c0392b, #ff8a75)` (≥5.4:1/≥7.4:1 against
+`--cf-surface` in both themes). `.button--danger`'s solid fill uses a new, separate
+`--cf-danger-solid: #c0392b` instead, since a filled button supplies its own contrast context
+independent of the surrounding page theme.
 
 ### Bug 12 (high): No visible focus indicator on the diagram canvas (2.4.7)
 
-`.diagram-editor` (the `role="application" tabIndex={0}` wrapper owning the Delete/Ctrl+Z/
-Ctrl+Shift+Z shortcuts) sets `outline: none` with no `:focus-visible` replacement, so a keyboard
-user tabbing in gets no indication they've entered the custom interaction context. Fix: add
-`.diagram-editor:focus-visible { outline: 2px solid var(--cf-orange); outline-offset: -2px; }`.
+**Fixed.** Added `.diagram-editor:focus-visible { outline: 2px solid var(--cf-orange);
+outline-offset: -2px; }` to `app.css`.
 
 ### Bug 13 (high): Modals don't manage focus (2.4.3 / 4.1.2)
 
-`ShareModal`, `CreateDiagramModal`, and `ConfirmDeleteModal` all set `aria-modal="true"` but
-none move focus into the dialog on open, trap Tab/Shift+Tab within it, or restore focus to the
-trigger on close, and the background isn't `inert` — so Tab can walk out of the dialog into the
-page behind it, contradicting `aria-modal`. Fix: a shared `useModalFocus(open, dialogRef)` hook
-handling initial focus, Tab-trapping, and focus restoration; consider `inert` on the app root
-while a dialog is open.
+**Fixed.** A new shared `useModalFocus(open, dialogRef, onClose)` hook (initial focus,
+Tab/Shift+Tab trap, `Escape`-to-close, focus restoration on close) is wired into `ShareModal`,
+`CreateDiagramModal`, and `ConfirmDeleteModal`. Each modal's backdrop-dismiss button is
+`tabIndex={-1}` and excluded from the trap -- it remains a pointer/touch-only dismissal target,
+with `Escape` and the dialog's own visible controls as the keyboard paths. `inert` on the app root
+was not used: these modals render inline in the app tree rather than through a portal, so
+inerting the app root would inert the dialog itself.
 
 ### Bug 14 (moderate): Layout-direction menu has different menu semantics than the other two overflow menus
 
-`Toolbar.tsx`'s layout-direction chevron button (only `aria-expanded`, no `aria-haspopup`) opens
-a popup with no `role="menu"`/`role="menuitem"`, unlike `ExportButton` and `DiagramGrid`'s
-`CardMenu`, which both correctly pair `aria-haspopup="menu"` with `role="menu"`/`"menuitem"`.
-Fix: match the other two menus' semantics.
+**Fixed.** The layout-direction chevron button now has `aria-haspopup="menu"`, and its popup has
+`role="menu"`/`"menuitem"`, matching `ExportButton` and `DiagramGrid`'s `CardMenu`.
 
 ### Bug 15 (moderate): Export menu and layout-direction menu can't be dismissed by keyboard
 
-`DiagramGrid`'s `CardMenu` closes on Escape in addition to outside click; `ExportButton`'s menu
-and the toolbar's layout-direction menu only close on outside `mousedown`, leaving a
-keyboard-only user with no way to dismiss either without tabbing away while it stays visually
-open. Fix: add the same `keydown`/Escape handler `CardMenu` already uses to both.
+**Fixed.** A shared `useDismissableMenu(open, containerRef, onDismiss)` hook (outside `mousedown`
+and `Escape`) replaced the three near-duplicate effects in `CardMenu`, `ExportButton`, and the
+toolbar's layout-direction menu.
 
 ### Bug 16 (moderate): Diagram card nests an interactive button inside an anchor
 
-`DiagramGrid.tsx` wraps `<CardMenu>` (which renders a `<button>`) inside the card's `<a>`,
-violating the HTML content model (no interactive elements nested inside `<a>`) even though
-`stopPropagation()` mostly works around it for pointer clicks. Fix: restructure so the card is a
-non-interactive container with only the title wrapped in the `<a>` and `CardMenu` as a sibling
-`<button>`, or use a "block link" pattern instead of nesting.
+**Fixed.** `DiagramGrid.tsx`'s card is now a non-interactive `<div>`; only the title is wrapped in
+an `<a>`, stretched via a `::after` overlay to cover the whole card (a "block link" pattern), with
+`CardMenu` as a sibling `<button>` that still receives clicks in the overlapping region.
 
 ### Bug 17 (moderate): Modal close buttons are under the 24x24 CSS px minimum target size (2.5.8)
 
-`.modal__close` (used identically in `ShareModal`, `CreateDiagramModal`, `ConfirmDeleteModal`)
-has no explicit width/height; its computed box is ≈20×28 CSS px, under the target-size minimum
-on the width axis. Fix: add `min-width: 24px; min-height: 24px;` with centered content; also
-verify `.diagram-card__menu-button` at runtime.
+**Fixed.** `.modal__close` and `.diagram-card__menu-button` both have explicit
+`min-width: 24px; min-height: 24px;` with centered content.
 
 ### Bug 18 (moderate): Catalog item descriptions are only exposed via a hover tooltip (1.3.1)
 
-`ServicePalette.tsx` exposes each catalog item's description only via the native `title`
-attribute — not visible text, not `aria-describedby`, unreachable to touch/keyboard-only sighted
-users without a mouse hover. Fix: show the description as visible secondary text (matching
-`.cf-node__description`'s pattern) or wire it through `aria-describedby`, in addition to keeping
-`title` as a hover hint.
+**Fixed.** `ServicePalette.tsx`'s palette items show the description as visible, 2-line-clamped
+text below the label. The button's accessible name stays just the product label (`aria-label`),
+with the description linked via `aria-describedby` rather than concatenated into the name, so a
+screen reader announces the label and then, after a pause, the description. `title` is kept as a
+hover hint.
 
 ### Bug 19 (moderate): Editor page has no top-level heading, and skips a heading level (2.4.6 / 1.3.1)
 
-The editor page (`/app/diagram/:id`) has no `<h1>` anywhere; the first heading a screen-reader
-user encounters is `ServicePalette`'s `<h2>` ("Services"), skipping a level. The diagram's own
-title is only ever a plain `<input>` value (`Toolbar.tsx`), never exposed as a heading. Fix: add
-a visually-hidden `<h1>` (e.g. "{title} — Diagram editor") at the top of `DiagramCanvas.tsx`,
-kept in sync with the store's `title`.
+**Fixed.** `DiagramCanvas.tsx` renders a visually-hidden `<h1>{title} — Diagram editor</h1>` at
+its top, kept in sync with the store's `title` -- covering both the authenticated editor and the
+read-only share viewer, which renders the same component.
 
 ### Bug 20 (moderate): Share viewer page has no landmark (1.3.1)
 
-Every other top-level view wraps its content in a `<main>` landmark; `ShareView.tsx` returns a
-bare `<div className="share-view">` with no `<main>`/`<h1>`/landmark at all, so an anonymous
-visitor on `/s/:token` has no landmark to jump to. Fix: wrap the banner + `DiagramCanvas` in
-`<main className="share-view">`.
+**Fixed.** `ShareView.tsx` now wraps its banner and `DiagramCanvas` in `<main
+className="share-view">`.
 
 ### Bug 21 (moderate): Editor sidebars have no responsive breakpoint (1.4.10)
 
-`.service-palette` (16rem) and `.properties-panel` (18rem) are fixed-width with no narrowing or
-collapsing below any breakpoint, unlike `.create-diagram-modal__layout`, which does have a
-640px breakpoint. Combined, both sidebars alone (544px) already exceed a 320 CSS px viewport
-before the canvas gets any space. Fix: collapse both into off-canvas drawers/bottom sheets below
-a mobile breakpoint, consistent with the create-diagram modal's existing responsive pattern.
-Verify at runtime before implementing.
+**Fixed.** Below a 900px breakpoint, `.service-palette` and `.properties-panel` become
+absolutely-positioned overlay drawers over `.diagram-editor__canvas` (`.diagram-editor__body`
+gained `position: relative` as their containing block) instead of sitting side-by-side with it,
+so the canvas always gets the viewport's full width regardless of which sidebars are open. Each
+remains toggleable with the same Bug 4 toolbar controls above the breakpoint.
 
 ### Bug 22 (minor): Animated data-flow edges ignore `prefers-reduced-motion`
 
-"Data-flow" edges render with a continuously animated dashed stroke via `@xyflow/react`'s
-default CSS (`react-flow__edge-animated`), with no local override for
-`prefers-reduced-motion: reduce`. Fix: add
-`@media (prefers-reduced-motion: reduce) { .react-flow__edge-animated path { animation: none; } }`
-to `app.css`.
+**Fixed -- and misdiagnosed above.** The original description assumed the animation worked and
+only needed a `prefers-reduced-motion` guard; verification found the animation itself was dead
+code (see Bug 24). Fix, once the animation actually rendered: `app.css` defines a `cf-edge-animated`
+class/`@keyframes cf-edge-dashdraw` pair applied directly to the edge `<path>`
+(`CFEdge.tsx`), guarded by `@media (prefers-reduced-motion: reduce) { .cf-edge-animated {
+animation: none; } }`.
+
+### Bug 24 (found during Bug 22's verification, now fixed): Data-flow edge animation never actually rendered
+
+`CFEdge.tsx` set a `react-flow__edge-animated` class on `BaseEdge`'s `<path>`, but
+`@xyflow/react`'s real stylesheet only defines `.react-flow__edge.animated path` -- a selector
+keyed off the *parent* `<g>` wrapper's class, which `EdgeWrapper` (a `@xyflow/react` internal,
+outside this app's control) only adds when the edge's own top-level `Edge.animated` property is
+`true`. Nothing in this app ever set that property, so the class name on the `<path>` matched
+nothing, and "data-flow" edges have never actually animated in this port. Fixed by defining this
+app's own `cf-edge-animated` class/`@keyframes cf-edge-dashdraw` pair in `app.css`, applied
+directly to the `<path>` `CFEdge.tsx` already controls, sidestepping `@xyflow/react`'s
+wrapper-class mechanism entirely -- see Bug 22 above for the accompanying
+`prefers-reduced-motion` guard.
+
+### Bug 25 (high, found and fixed after this phase shipped): Icon-only buttons show the wrong background in light mode
+
+Reported after Bug 2/6's icon-only toolbar conversion shipped, against a real production build:
+buttons rendered with a dark background behind a dark icon in light mode -- effectively invisible
+-- while the icon itself tracked the active theme correctly; toggling the in-app dark-mode
+control changed the icon's color immediately but left every button's background stuck.
+
+Two things were tried before finding the real cause. First, `appearance: none` on every
+`<button>` (a real, independently-worth-keeping fix for a different, unrelated class of bug --
+native OS button chrome overriding author styles -- but not what was actually happening here,
+confirmed by testing didn't fix the symptom). Second, `vite dev` was tested directly and rendered
+every button correctly in both themes, in both Chromium and WebKit (via a throwaway Playwright
+script) -- ruling out `app.css`'s actual color logic and pointing at something specific to a
+*production build*.
+
+Root cause, found by diffing the built CSS: Vite 8's `build.cssMinify` defaults to Lightning CSS,
+which -- independent of configured browser targets -- downlevels every `light-dark()` value
+(`app.css`'s entire theming system, e.g. `--cf-surface: light-dark(#fff, #1c1c1e)`) into a pair
+of custom properties toggled by a `@media (prefers-color-scheme: dark)` rule. That media query
+evaluates against the browser/OS's *raw* preference and has no way to see the `color-scheme` CSS
+property this app sets programmatically (`../lib/theme.ts`'s `applyTheme()`, via
+`document.documentElement.style.colorScheme`) to let a user override the OS preference in-app --
+so every `light-dark()`-based background/border silently stopped responding to the in-app toggle
+the moment the app was built for production, while unset `color` properties (relying on the
+browser's own *native*, non-polyfilled `color-scheme` handling for default text color) kept
+working, producing exactly this symptom. `vite dev` never minifies CSS, so this was invisible in
+local development. Fixed in `vite.config.ts` with `css.lightningcss.exclude: Features.LightDark`
+(from the `lightningcss` package, now an explicit `devDependency`), which keeps `light-dark()`
+passed through as native CSS unconditionally -- justified because every browser this demo needs
+to support already ships it natively (Chrome/Edge 123+, Safari 17.5+, Firefox 120+). Verified by
+rebuilding, confirming zero polyfill artifacts in the output CSS, and re-running the same
+Playwright script against the built, `vite preview`-served bundle. See `docs/DECISIONS.md` #27
+for the full writeup, including why the `appearance: none` fix was kept anyway.
 
 ## Phase 8: Catalog Video Doc Links
 
@@ -589,6 +671,87 @@ a provably-unreachable branch).
 **Definition of done:** at least one real catalog product has a working `icon: "video"` doc
 link, `VideoIcon` is exercised by a real test, and `PropertiesPanel.tsx` has no remaining
 coverage gap for either doc-link icon variant.
+
+### List of video links
+
+- Workers: <https://www.youtube.com/watch?v=42E8DWdZgYc>
+- Workers: <https://www.youtube.com/watch?v=H7Qe96fqg1M>
+- D1: <https://www.youtube.com/watch?v=egBdW6vBIhM>
+- D1: <https://www.youtube.com/watch?v=9brMQnc01Yc>
+- D1: <https://databaseschool.com/series/high-performance-sqlite/videos/1>
+- Hyperdrive: <https://www.youtube.com/watch?v=TQyPeDejcEI>
+- Workflows: <https://www.youtube.com/watch?v=1EhbW2UI3W0>
+- Durable Objects: <https://www.youtube.com/watch?v=k4UXEfZf3sc>
+- Queues: <https://www.youtube.com/watch?v=ZDv4iYaLbpI>
+- Email Service: <https://www.youtube.com/watch?v=Bf_cEzAIUPU>
+- Email Service: <https://www.youtube.com/watch?v=0pil4xQXIVE>
+- Browser Run: <https://www.youtube.com/watch?v=s5PQE8bklNY>
+- Dynamic Workers: <https://www.youtube.com/watch?v=Z9-wwXaoA68>
+- AI Search: <https://www.youtube.com/watch?v=Z8LtULldcyQ>
+- AI Gateway: <https://www.youtube.com/watch?v=hkJ_dglOlV8>
+- RealTimeKit: <https://www.youtube.com/watch?v=z4ZQIjN3I7k>
+- Turnstile: <https://www.youtube.com/watch?v=QKFiN_cyeMc>
+- Containers: <https://www.youtube.com/watch?v=MFA1RRuTxqY>
+- Containers: <https://www.youtube.com/watch?v=oyOaxMY4eNo>
+- Vectorize: <https://www.youtube.com/watch?v=A4b_qgNzlSw>
+- Workers AI: <https://www.youtube.com/watch?v=A4b_qgNzlSw>
+- R2: <https://www.youtube.com/watch?v=ywIZmfMk138>
+- R2: <https://www.youtube.com/watch?v=d4gDBQlC-Ro>
+- R2: <https://www.youtube.com/watch?v=ohfg-lCt6hc>
+- R2: <https://www.youtube.com/watch?v=TIp5sUZO4Uo>
+- Durable Objects: <https://databaseschool.com/series/durable-objects/videos/328>
+
+## Phase 9: Carried-Forward Bugs
+
+Every Phase 7 bug except the two below was fixed in that phase's own pass; these are the ones
+that weren't, carried forward here rather than left silently unresolved in a phase already marked
+complete.
+
+### Bug 8 (critical): Diagram edges can only be created by mouse-drag, with no keyboard alternative
+
+Moved from Phase 7 unchanged -- deliberately excluded from that phase's fix pass because it needs
+its own, larger, dedicated design (a click-to-connect mode, not a small isolated change like its
+Phase 7 siblings).
+
+WCAG 2.2 SC 2.5.7 (Dragging Movements, AA) / 2.1.1 (Keyboard, A). Creating an edge between two
+nodes is only possible by dragging from one `Handle` to another
+(`src/client/components/editor/DiagramCanvas.tsx`'s `onConnect`, wired straight to
+`@xyflow/react`'s pointer-drag connection flow) — there is no click/keyboard-activatable
+alternative anywhere in the store or UI. Node repositioning is partially mitigated by the
+"Auto layout" button, but connecting nodes has zero alternative. Since building an architecture
+diagram *is* connecting nodes, this makes the primary workflow fully inoperable for
+keyboard-only and switch-access users. Fix: add a click-to-connect mode (click a source handle
+or select a node then press a "Connect" toolbar action, then click a target handle/node to
+complete the edge), mirroring `ServicePalette`'s existing click-fallback pattern for node
+creation.
+
+### Bug 23 (moderate): Editor still shows two stacked banners
+
+Found while fixing Phase 7's Bug 2, which fixed everything about that bug *except* this: the
+authenticated editor route renders both `AppShellView.tsx`'s app-shell header (identity,
+dark-mode toggle, sign-out) and `Toolbar.tsx`'s own banner immediately below it (now icon-only
+per Bug 2, but still a second, separate bar) — Bug 2 asked for one unified toolbar in the top
+banner, not two banners where one merely looks more like a toolbar now.
+
+The fix is a real structural change, not a small one: `Toolbar.tsx` calls `useReactFlow()`
+(zoom/fit/export), which requires a `ReactFlowProvider` ancestor; that provider currently wraps
+only `EditorView.tsx`, one level *below* `AppShellView.tsx`'s header in the component tree, so the
+header has no access to it today. Fixing this means hoisting `ReactFlowProvider` up into
+`AppShellView` for the editor route, collapsing `EditorView.tsx` into `AppShellView.tsx`, moving
+`Toolbar`'s rendering out of `DiagramCanvas.tsx` into that hoisted header, and having
+`ShareView.tsx` render `<Toolbar readOnly />` in its own single banner instead of the two
+separate ones it also currently has (its own `.share-view__banner` plus `Toolbar`). Every
+existing icon button's `title`/`aria-label` from the Bug 2 fix should carry over unchanged.
+
+Request is that the very top bar (which includes the title, admin link, username, and sign-out button) is removed from the editor view; this can just be removed - no buttons need to be moved into the editor toolbar for this (including the signout button)
+
+### Bug 26 Sign-out button is malformed
+
+The sign-out button contains a sign-out icon followed by the words "Sign out".  The icon is not vertically centered, so it appears slightly above the "Sign out" words.  In addition, there is no gap between the icon and the words, resulting in a compressed look.
+
+### Bug 27 Remove the "admin" icon next to the email address in the banner
+
+the "shield" admin icon is not required, nor is the old "administrator" wording - the fact that there is an "Admin" link in the banner is enough to denote the admin capabilities.
 
 ## Post-MVP: Live Collaboration And AI Proposals
 

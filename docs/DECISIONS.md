@@ -1104,3 +1104,109 @@ duplicate ownership of settings managed by Terraform" line now carries this as i
 narrow exception, fulfilling #24's own suggestion that this stop being a per-demo discovery. Any
 future demo that hits the same `wrangler deploy`-resets-a-Terraform-managed-field problem should
 follow AGENTS.md directly; this entry (and #24) exist for the live-verified rationale.
+
+## 26. Inline vendored SVG via `import.meta.glob(..., { query: "?raw" })`, not `<img>` or CSS
+    `mask-image`, for official Cloudflare product icons (`demos/architect`, Issue 7,
+    docs/09-ARCHITECT.md Phase 7)
+
+Issue 7 replaced `demos/architect`'s ~30 hand-drawn placeholder product icons with byte-identical
+copies of Cloudflare's own official icons (`~/repos/adrianhall/cloudflare-docs/src/icons/`,
+vendored into `src/client/icons/`). Those files have no `fill`/`stroke` attribute of their own
+(SVG's implicit default is opaque black), which ruled out the two more obvious rendering
+approaches:
+
+- **Plain `<img src="...">`** (what the hand-drawn placeholders used): renders every icon as a
+  flat black shape, with no way to recolor it via CSS at all — invisible-by-poor-contrast in dark
+  mode, and unable to pick up a node's category/accent color the way the placeholders' own
+  hand-authored `stroke="..."` did.
+- **CSS `mask-image: url(...)`** (theme-aware without inlining any markup): would have worked for
+  on-screen rendering, but `ExportButton.tsx`'s PNG/SVG export
+  (`html-to-image`) does not inline `mask-image` when it serializes the DOM subtree to a
+  data URL — the icons render on screen but silently vanish from every exported diagram image,
+  discovered by manually exporting a diagram containing the affected node types during Phase 7
+  verification.
+
+**Fix:** a shared `src/client/components/ProductIcon.tsx` component loads every vendored file's
+raw text at build time via `import.meta.glob("../icons/*.svg", { eager: true, import: "default",
+query: "?raw" })` and inlines it directly into the DOM via `dangerouslySetInnerHTML` (biome's
+`noDangerouslySetInnerHtml` is suppressed there with a comment explaining the source is a static,
+vendored, build-time-only asset map — never user input, catalog data, or a runtime/network
+value). `app.css`'s `.product-icon--svg svg { fill: currentColor; }` then forces every vendored
+icon to pick up the wrapper's inline `color` style, the same `currentColor` pattern
+`react-feather`'s own icons already use via `stroke`. Because the icon is now real inlined SVG
+markup in the DOM (not a CSS background effect), `html-to-image` captures it in PNG/SVG exports
+exactly as rendered on screen.
+
+The four "External / Generic" category node types (not real Cloudflare products) and
+`cron-trigger` (a Workers trigger configuration with no official product icon of its own) use
+`react-feather` icons instead, resolved through a small explicit `Record<string, Icon>` map in
+`ProductIcon.tsx` — deliberately not `import * as FeatherIcons from "react-feather"` with a
+dynamic `FeatherIcons[name]` lookup, which was tried first and reverted: a namespace import
+defeats tree-shaking for a dynamic property access, since the bundler can no longer tell which of
+the library's ~280 icons are reachable and must include all of them. The initial version of this
+fix (before switching to named imports) measured a production `client` build at 188.71 kB gzip
+for the main JS chunk, against a 149.21 kB baseline before this port added any `react-feather`
+icon at all; switching to five explicit named imports (`Clock`, `Database`, `Globe`, `Monitor`,
+`Smartphone` — the only feather icons the catalog actually references) brought that back down to
+164.21 kB gzip, confirmed by rebuilding and comparing `dist/client/assets/index-*.js` before and
+after.
+
+## 27. Vite 8's default CSS minifier (Lightning CSS) silently breaks `light-dark()` against a
+    JS-driven `color-scheme` override, unless a specific feature is excluded from its downlevel
+    transform (`demos/architect`, Phase 7's icon-only toolbar)
+
+After Phase 7 converted every toolbar/dashboard/modal control to an icon-only `<button>`, a real
+bug was reported in light mode: several buttons rendered with a dark background behind a dark
+icon — effectively invisible — while the icon itself (a plain inline SVG, `currentColor`-driven)
+tracked the active theme correctly. Toggling the in-app dark-mode control changed the icon's
+color immediately but left the button's own background stuck.
+
+**First attempt (wrong): `appearance: none`.** The initial theory was that native `<button>`
+chrome (`appearance: auto` is the default UA style) was painting using the browser/OS's actual
+light/dark setting rather than this page's `color-scheme` override
+(`demos/architect/src/client/lib/theme.ts`'s `applyTheme()`, which sets
+`document.documentElement.style.colorScheme` directly) — a real, independently-worth-keeping
+class of bug in general (it's why essentially every CSS reset neutralizes native button
+appearance), but confirmed *not* the cause here: adding `button { appearance: none; }` to
+`app.css` did not fix the reported symptom.
+
+**Second check: was `light-dark()` itself broken?** Running `vite dev` and testing directly with
+a throwaway Playwright script (both Chromium and WebKit, OS light and dark, with and without the
+in-app toggle) rendered every button correctly in every combination — ruling out `app.css`'s
+color logic and pointing squarely at something specific to a *production build*, since `vite dev`
+never minifies CSS.
+
+**Actual root cause, found by diffing the built CSS:** Vite 8's `build.cssMinify` defaults to
+`'lightningcss'`. Lightning CSS's minifier — independent of any configured browser targets —
+downlevels every `light-dark()` value (`app.css`'s entire theming system, e.g. `--cf-surface:
+light-dark(#fff, #1c1c1e)`) into a pair of `--lightningcss-light`/`--lightningcss-dark` custom
+properties toggled by an injected `@media (prefers-color-scheme: dark) { :root { ... } }` rule.
+That media query evaluates against the browser/OS's *raw* preference and has no way to observe
+the `color-scheme` *CSS property* this app sets programmatically to let a user override the OS
+preference in-app — so after minification, every `light-dark()`-based background/border silently
+stopped responding to the in-app toggle, while unset `color` properties (relying on the browser's
+own native, non-polyfilled `color-scheme` handling for default text color) kept working. This
+reproduced identically in a real `vite preview` of the built output and was invisible in `vite
+dev` for the reason above.
+
+**Fix:** `vite.config.ts` sets `css.lightningcss.exclude: Features.LightDark` (`Features` is an
+enum exported by the `lightningcss` package, now an explicit `devDependency` here rather than a
+transitively-installed one now that `vite.config.ts` imports from it directly). Lightning CSS's
+own `exclude` option is documented as "features that should never be compiled, even when
+unsupported by targets" — exactly what's needed here, since every browser this demo needs to
+support already ships `light-dark()` natively (Chrome/Edge 123+, Safari 17.5+, Firefox 120+, all
+older than this repository's other baseline requirements) and never needed the polyfill at all.
+Verified by rebuilding, `grep`-ing the output CSS for zero `lightningcss-light`/`lightningcss-dark`
+artifacts (down from one per `light-dark()` use site), and re-running the same Playwright script
+against the built bundle served via `vite preview` — background and color both now track the
+in-app toggle correctly.
+
+The `button { appearance: none; }` rule from the first attempt was kept in `app.css` regardless:
+it fixes a real, separate, well-documented class of cross-browser button-styling bug, it's a
+zero-risk, standard, defensive addition (every major CSS reset includes an equivalent rule), and
+removing it would have provided no benefit once the actual cause was found elsewhere.
+
+Any other demo in this repository that uses `light-dark()` for theming and lets JavaScript
+override `color-scheme` at runtime (rather than relying purely on `prefers-color-scheme`) should
+apply the same `css.lightningcss.exclude: Features.LightDark` fix in its own `vite.config.ts` —
+this is a Vite/Lightning-CSS default behavior, not something specific to `demos/architect`'s CSS.

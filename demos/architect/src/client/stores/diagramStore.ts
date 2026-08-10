@@ -63,6 +63,18 @@ interface DiagramState {
   /** Whether the canvas is currently in its print-optimized view mode (Phase 5). */
   printMode: boolean;
 
+  /** Whether the service palette sidebar is visible. Defaults to `true` -- unlike
+   * {@link DiagramState.propertiesOpen}, the palette starts open since adding a node is the
+   * editor's first action, not a response to a selection. */
+  paletteOpen: boolean;
+  /** Whether the properties panel sidebar is visible. Defaults to `false` (Bug 4,
+   * docs/09-ARCHITECT.md Phase 7): the panel is collapsed until a node or edge is selected --
+   * see {@link DiagramActions.setSelectedNode}/{@link DiagramActions.setSelectedEdge}, which open
+   * it automatically -- and stays open (showing its empty state) after deselecting, rather than
+   * auto-closing, so a user who just closed it by deselecting isn't fighting the panel to keep
+   * it open for the next selection. */
+  propertiesOpen: boolean;
+
   /** Stack of previous states for undo. Most recent entry is at the end. */
   undoStack: HistoryEntry[];
   /** Stack of undone states for redo. Most recent entry is at the end. */
@@ -108,10 +120,17 @@ interface DiagramActions {
   /** Remove all currently selected nodes and edges. Pushes history. */
   removeSelected: () => void;
 
-  /** Set the selected node (clears any edge selection). */
+  /** Set the selected node (clears any edge selection). Opens the properties panel when `id` is
+   * non-null; deselecting (`id === null`) leaves the panel's current open state unchanged. */
   setSelectedNode: (id: string | null) => void;
-  /** Set the selected edge (clears any node selection). */
+  /** Set the selected edge (clears any node selection). Opens the properties panel when `id` is
+   * non-null; deselecting (`id === null`) leaves the panel's current open state unchanged. */
   setSelectedEdge: (id: string | null) => void;
+
+  /** Toggle the service palette sidebar's visibility. */
+  togglePalette: () => void;
+  /** Toggle the properties panel sidebar's visibility. */
+  toggleProperties: () => void;
 
   /** Update the diagram title and mark dirty. */
   setTitle: (title: string) => void;
@@ -175,6 +194,8 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   lastSavedAt: null,
   saveError: null,
   printMode: false,
+  paletteOpen: true,
+  propertiesOpen: false,
   undoStack: [],
   redoStack: [],
 
@@ -277,8 +298,22 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
     }));
   },
 
-  setSelectedNode: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
-  setSelectedEdge: (id) => set({ selectedEdgeId: id, selectedNodeId: null }),
+  setSelectedNode: (id) =>
+    set((state) => ({
+      selectedNodeId: id,
+      selectedEdgeId: null,
+      propertiesOpen: id !== null ? true : state.propertiesOpen,
+    })),
+  setSelectedEdge: (id) =>
+    set((state) => ({
+      selectedEdgeId: id,
+      selectedNodeId: null,
+      propertiesOpen: id !== null ? true : state.propertiesOpen,
+    })),
+
+  togglePalette: () => set((state) => ({ paletteOpen: !state.paletteOpen })),
+  toggleProperties: () =>
+    set((state) => ({ propertiesOpen: !state.propertiesOpen })),
 
   setTitle: (title) => set({ title, dirty: true }),
   setDescription: (description) => set({ description, dirty: true }),

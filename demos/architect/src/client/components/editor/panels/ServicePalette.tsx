@@ -6,6 +6,7 @@ import {
   type NodeCategory,
   type NodeTypeDef,
 } from "../../../../catalog";
+import { ProductIcon } from "../../ProductIcon";
 
 /** Every catalog node type grouped by category, computed once at module load. */
 const grouped = getNodesByCategory();
@@ -44,14 +45,34 @@ export function ServicePalette({
     setCollapsed((prev) => ({ ...prev, [category]: !prev[category] }));
   };
 
+  // Bug 3 (docs/09-ARCHITECT.md Phase 7): a single control to collapse or expand every category
+  // at once, rather than clicking each of the six category headers individually. `allCollapsed`
+  // drives both the button's label and which direction it toggles; it ignores `filterTerm` since
+  // a search always force-expands every matching category regardless of its stored collapsed
+  // state (see `isCollapsed` below), so "collapsed" here reflects the underlying preference, not
+  // what's currently visible while searching.
+  const allCollapsed = categories.every((category) => collapsed[category]);
+  const toggleAllCategories = () => {
+    const next = !allCollapsed;
+    setCollapsed(
+      Object.fromEntries(categories.map((category) => [category, next])),
+    );
+  };
+
   return (
     <aside className="service-palette" aria-label="Service palette">
       <div className="service-palette__header">
-        <h2 className="service-palette__title">Services</h2>
-        <label
-          className="service-palette__search-label"
-          htmlFor="palette-search"
-        >
+        <div className="service-palette__header-row">
+          <h2 className="service-palette__title">Services</h2>
+          <button
+            type="button"
+            className="service-palette__collapse-all"
+            onClick={toggleAllCategories}
+          >
+            {allCollapsed ? "Expand all" : "Collapse all"}
+          </button>
+        </div>
+        <label className="visually-hidden" htmlFor="palette-search">
           Search services
         </label>
         <input
@@ -114,6 +135,14 @@ export function ServicePalette({
  * canvas positions the new node at the drop point (`../DiagramCanvas.tsx`'s `onDrop`); clicking
  * or pressing Enter/Space adds it at a default position via `onAddNode` -- the keyboard/
  * screen-reader equivalent of the same action.
+ *
+ * The description is rendered as visible, 2-line-clamped text (Bug 18, docs/09-ARCHITECT.md
+ * Phase 7) rather than only through the `title` attribute -- a native `title` tooltip is
+ * unreachable to touch/keyboard-only sighted users with no mouse to hover with. `title` is kept
+ * alongside it as a hover hint that also surfaces the full, unclamped text. The button's
+ * accessible name stays just the product label (`aria-label`), with the description linked via
+ * `aria-describedby` instead of being concatenated into the name -- a screen reader announces
+ * "Workers, button" and then, after a pause, its description, rather than one long run-on name.
  */
 function PaletteItem({
   node,
@@ -124,6 +153,7 @@ function PaletteItem({
   onDragStart: (event: React.DragEvent, typeId: string) => void;
   onAddNode: (typeId: string) => void;
 }) {
+  const descriptionId = `palette-item-description-${node.typeId}`;
   return (
     <button
       type="button"
@@ -132,9 +162,22 @@ function PaletteItem({
       onDragStart={(event) => onDragStart(event, node.typeId)}
       onClick={() => onAddNode(node.typeId)}
       title={`${node.description} (drag onto the canvas, or activate to add at the center)`}
+      aria-label={node.label}
+      aria-describedby={descriptionId}
     >
-      <img src={node.iconPath} alt="" width={20} height={20} />
-      <span>{node.label}</span>
+      <ProductIcon
+        icon={node.icon}
+        size={20}
+        color={CATEGORY_COLORS[node.category]}
+      />
+      <span className="service-palette__item-text">
+        <span className="service-palette__item-label" aria-hidden="true">
+          {node.label}
+        </span>
+        <span id={descriptionId} className="service-palette__item-description">
+          {node.description}
+        </span>
+      </span>
     </button>
   );
 }

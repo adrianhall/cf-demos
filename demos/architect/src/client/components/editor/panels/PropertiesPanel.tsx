@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { BookOpen, Video, X } from "react-feather";
 import {
   CATEGORY_COLORS,
   CATEGORY_LABELS,
@@ -9,45 +9,35 @@ import {
 import { useDiagramStore } from "../../../stores/diagramStore";
 import type { CFEdgeData, CFNodeData } from "../types";
 
-/** Open-book documentation link icon. */
-function BookIcon() {
-  return (
-    <svg
-      className="properties-panel__doc-icon"
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M2 2.5A1.5 1.5 0 0 1 3.5 1h2A1.5 1.5 0 0 1 7 2.5V4h2V2.5A1.5 1.5 0 0 1 10.5 1h2A1.5 1.5 0 0 1 14 2.5v10a1.5 1.5 0 0 1-1.5 1.5h-2A1.5 1.5 0 0 1 9 12.5V11H7v1.5A1.5 1.5 0 0 1 5.5 14h-2A1.5 1.5 0 0 1 2 12.5v-10ZM5.5 2.5h-2v10h2v-10Zm5 0v10h2v-10h-2ZM7 5.5v4h2v-4H7Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-/** Video tutorial link icon. */
-function VideoIcon() {
-  return (
-    <svg
-      className="properties-panel__doc-icon"
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M3 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9.5l2.4 1.8A.75.75 0 0 0 14.6 11V5a.75.75 0 0 0-1.2-.6L11 6.2V5a2 2 0 0 0-2-2H3Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-/** Icon renderer for each catalog {@link DocLinkIcon} value. */
-const DOC_LINK_ICONS: Record<DocLinkIcon, () => ReactNode> = {
-  doc: BookIcon,
-  video: VideoIcon,
+/**
+ * Icon component for each catalog {@link DocLinkIcon} value, from `react-feather`
+ * (AGENTS.md's Browser Applications section) rather than a hand-drawn SVG.
+ */
+const DOC_LINK_ICONS: Record<DocLinkIcon, typeof BookOpen> = {
+  doc: BookOpen,
+  video: Video,
 };
+
+/**
+ * Close button shown in every panel state (empty, node, edge) -- Bug 4 (docs/09-ARCHITECT.md
+ * Phase 7): the panel is collapsible/closeable, not just auto-opened by selection. Toggling
+ * (rather than an explicit "set closed" action) is safe here because this component is only ever
+ * rendered while `propertiesOpen` is already `true` (`../DiagramCanvas.tsx`).
+ */
+function CloseButton() {
+  const toggleProperties = useDiagramStore((state) => state.toggleProperties);
+  return (
+    <button
+      type="button"
+      className="properties-panel__close"
+      onClick={toggleProperties}
+      aria-label="Close properties panel"
+      title="Close"
+    >
+      <X size={16} aria-hidden="true" />
+    </button>
+  );
+}
 
 /**
  * Right sidebar showing editable properties for the currently selected node or edge: for nodes,
@@ -81,6 +71,7 @@ export function PropertiesPanel() {
   if (!selectedNode && !selectedEdge) {
     return (
       <aside className="properties-panel" aria-label="Properties">
+        <CloseButton />
         <p className="properties-panel__empty">
           Select a node or edge to view its properties.
         </p>
@@ -95,6 +86,7 @@ export function PropertiesPanel() {
 
     return (
       <aside className="properties-panel" aria-label="Node properties">
+        <CloseButton />
         <h3 className="properties-panel__title">Node Properties</h3>
 
         <dl className="properties-panel__facts">
@@ -174,7 +166,11 @@ export function PropertiesPanel() {
                       rel="noopener noreferrer"
                       className="properties-panel__doc-link"
                     >
-                      <Icon />
+                      <Icon
+                        className="properties-panel__doc-icon"
+                        size={16}
+                        aria-hidden="true"
+                      />
                       <span>{link.title}</span>
                     </a>
                   </li>
@@ -187,6 +183,13 @@ export function PropertiesPanel() {
     );
   }
 
+  // Provably always true when reached, for the same reason the final `return null` below is
+  // provably unreachable: the empty-state check above already returned unless at least one of
+  // `selectedNode`/`selectedEdge` is set, and the `if (selectedNode)` block above this one always
+  // returns first when it is. So by this line, `selectedNode` is falsy and `selectedEdge` must be
+  // truthy -- but TypeScript's control-flow analysis can't see that across the two independent
+  // `if` blocks, so this condition still needs to be written for the code to type-check.
+  /* istanbul ignore else */
   if (selectedEdge) {
     const data = (selectedEdge.data as unknown as CFEdgeData) ?? {
       edgeType: "data-flow",
@@ -194,6 +197,7 @@ export function PropertiesPanel() {
 
     return (
       <aside className="properties-panel" aria-label="Edge properties">
+        <CloseButton />
         <h3 className="properties-panel__title">Edge Properties</h3>
 
         <div className="properties-panel__field">

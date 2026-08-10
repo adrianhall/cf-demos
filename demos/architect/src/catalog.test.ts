@@ -1,3 +1,6 @@
+import { readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import * as FeatherIcons from "react-feather";
 import { describe, expect, it } from "vitest";
 import {
   CATEGORY_COLORS,
@@ -8,6 +11,11 @@ import {
   NODE_TYPE_MAP,
   NODE_TYPES,
 } from "./catalog";
+
+/** Every vendored icon filename under `src/client/icons/` (Issue 7, docs/09-ARCHITECT.md Phase 7). */
+const vendoredIconFiles = new Set(
+  readdirSync(fileURLToPath(new URL("./client/icons", import.meta.url))),
+);
 
 describe("catalog", () => {
   it("has a unique typeId for every node type", () => {
@@ -46,6 +54,20 @@ describe("catalog", () => {
       label: "Data Flow",
     });
     expect(EDGE_TYPE_MAP.get("does-not-exist")).toBeUndefined();
+  });
+
+  it("resolves every svg-kind icon to a vendored file under src/client/icons/", () => {
+    for (const node of NODE_TYPES) {
+      if (node.icon.kind !== "svg") continue;
+      expect(vendoredIconFiles.has(`${node.icon.name}.svg`)).toBe(true);
+    }
+  });
+
+  it("resolves every feather-kind icon to a real react-feather export", () => {
+    for (const node of NODE_TYPES) {
+      if (node.icon.kind !== "feather") continue;
+      expect(FeatherIcons).toHaveProperty(node.icon.name);
+    }
   });
 
   it("groups every node type under its category with none dropped or duplicated", () => {

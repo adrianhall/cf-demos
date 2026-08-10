@@ -166,6 +166,8 @@ describe("Toolbar", () => {
       nodes: [],
       edges: [],
       diagramId: null,
+      paletteOpen: true,
+      propertiesOpen: false,
     });
     mockXyflow.mockFitView.mockClear();
     mockXyflow.mockZoomIn.mockClear();
@@ -189,6 +191,20 @@ describe("Toolbar", () => {
     expect(
       screen.queryByRole("button", { name: "Undo (Ctrl+Z)" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("toggles the service palette and properties panel through the store (Bug 4)", () => {
+    render(<Toolbar />);
+
+    const paletteToggle = screen.getByTitle("Toggle service palette");
+    expect(paletteToggle).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(paletteToggle);
+    expect(useDiagramStore.getState().paletteOpen).toBe(false);
+
+    const propertiesToggle = screen.getByTitle("Toggle properties panel");
+    expect(propertiesToggle).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(propertiesToggle);
+    expect(useDiagramStore.getState().propertiesOpen).toBe(true);
   });
 
   it("disables undo/redo when their stacks are empty", () => {

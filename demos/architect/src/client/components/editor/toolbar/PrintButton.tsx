@@ -1,3 +1,4 @@
+import { Printer } from "react-feather";
 import { useDiagramStore } from "../../../stores/diagramStore";
 
 /**
@@ -20,8 +21,9 @@ export function PrintButton() {
       className="toolbar__button"
       onClick={() => setPrintMode(true)}
       title="Print"
+      aria-label="Print"
     >
-      Print
+      <Printer size={18} aria-hidden="true" />
     </button>
   );
 }

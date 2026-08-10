@@ -1,6 +1,11 @@
+import { useRef } from "react";
+import { useModalFocus } from "../../hooks/useModalFocus";
+
 /**
  * Confirmation modal shown before deleting a diagram. Ported from CF-Architect's
- * `src/islands/dashboard/ConfirmDeleteModal.tsx`.
+ * `src/islands/dashboard/ConfirmDeleteModal.tsx`, plus this port's `useModalFocus()` addition
+ * (Bug 13, docs/09-ARCHITECT.md Phase 7) for initial focus, Tab-trapping, `Escape`-to-close, and
+ * focus restoration on close.
  *
  * @param open Whether the modal is visible.
  * @param diagramTitle Title of the diagram about to be deleted, shown in the confirmation copy.
@@ -18,24 +23,32 @@ export function ConfirmDeleteModal({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useModalFocus(open, dialogRef, onCancel);
+
   if (!open) return null;
 
   return (
     <div className="modal-overlay">
       {/* A real, natively keyboard-operable button behind the dialog, rather than a click
           handler on a non-interactive `<div>` -- gives click-outside-to-close for free with no
-          `useKeyWithClickEvents` suppression needed. */}
+          `useKeyWithClickEvents` suppression needed. `tabIndex={-1}` keeps it out of the Tab
+          order entirely -- see `useModalFocus.ts`'s JSDoc for why -- leaving Escape and the
+          dialog's own Cancel/Close controls as the keyboard dismissal paths. */}
       <button
         type="button"
         className="modal-overlay__backdrop"
         aria-label="Close dialog"
         onClick={onCancel}
+        tabIndex={-1}
       />
       <div
+        ref={dialogRef}
         className="modal"
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-delete-title"
+        tabIndex={-1}
       >
         <button
           className="modal__close"

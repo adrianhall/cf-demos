@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createShare, getShareStatus, revokeShare } from "../../../api/shares";
+import { useModalFocus } from "../../../hooks/useModalFocus";
 
 /**
  * The modal's possible phases. There is no phase carrying a *known-active* share's URL loaded
@@ -23,7 +24,9 @@ type ShareModalState =
  * token storage (docs/09-ARCHITECT.md's Decisions #3): CF-Architect could always redisplay an
  * existing link's URL because it stored the raw token; this port cannot, so a share that is
  * already active when the modal opens shows a "link already active" message with no URL,
- * rather than silently re-fetching one that does not exist server-side.
+ * rather than silently re-fetching one that does not exist server-side. Also uses this port's
+ * `useModalFocus()` (Bug 13, docs/09-ARCHITECT.md Phase 7) for initial focus, Tab-trapping,
+ * `Escape`-to-close, and focus restoration on close.
  *
  * @param diagramId Diagram this modal manages sharing for.
  * @param open Whether the modal is visible.
@@ -41,6 +44,8 @@ export function ShareModal({
   const [state, setState] = useState<ShareModalState>({ phase: "loading" });
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useModalFocus(open, dialogRef, onClose);
 
   useEffect(() => {
     if (!open) return;
@@ -117,18 +122,23 @@ export function ShareModal({
     <div className="modal-overlay">
       {/* A real, natively keyboard-operable button behind the dialog, rather than a click
           handler on a non-interactive `<div>` -- gives click-outside-to-close for free with no
-          `useKeyWithClickEvents` suppression needed. */}
+          `useKeyWithClickEvents` suppression needed. `tabIndex={-1}` keeps it out of the Tab
+          order entirely -- see `useModalFocus.ts`'s JSDoc for why -- leaving Escape and the
+          dialog's own Cancel/Close controls as the keyboard dismissal paths. */}
       <button
         type="button"
         className="modal-overlay__backdrop"
         aria-label="Close dialog"
         onClick={onClose}
+        tabIndex={-1}
       />
       <div
+        ref={dialogRef}
         className="modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="share-modal-title"
+        tabIndex={-1}
       >
         <button
           className="modal__close"

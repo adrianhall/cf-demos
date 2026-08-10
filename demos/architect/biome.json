@@ -10,7 +10,8 @@
       "!worker-configuration.d.ts",
       "!test-results",
       "!public",
-      "!src/client/lib/scaffold-templates"
+      "!src/client/lib/scaffold-templates",
+      "!src/client/icons"
     ]
   },
   "formatter": {

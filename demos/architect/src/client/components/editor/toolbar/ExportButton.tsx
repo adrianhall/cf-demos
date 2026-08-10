@@ -5,8 +5,10 @@ import {
 } from "@xyflow/react";
 import { strToU8, zipSync } from "fflate";
 import { toPng, toSvg } from "html-to-image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { Download } from "react-feather";
 import { NODE_TYPE_MAP } from "../../../../catalog";
+import { useDismissableMenu } from "../../../hooks/useDismissableMenu";
 import { generateExportFilename, triggerDownload } from "../../../lib/export";
 import { generateScaffold } from "../../../lib/scaffold";
 import { useDiagramStore } from "../../../stores/diagramStore";
@@ -45,19 +47,11 @@ export function ExportButton() {
     (node) => NODE_TYPE_MAP.get(node.data.typeId)?.wranglerBinding != null,
   );
 
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (event: MouseEvent) => {
-      if (
-        wrapperRef.current &&
-        !wrapperRef.current.contains(event.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
+  useDismissableMenu(
+    open,
+    wrapperRef,
+    useCallback(() => setOpen(false), []),
+  );
 
   /** Rasterize the current viewport to PNG or SVG and download it. */
   const handleImageExport = useCallback(
@@ -157,12 +151,13 @@ export function ExportButton() {
         type="button"
         className="toolbar__button"
         title="Export"
+        aria-label={exporting ? "Exporting…" : "Export"}
         disabled={exporting}
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((prev) => !prev)}
       >
-        {exporting ? "Exporting…" : "Export"}
+        <Download size={18} aria-hidden="true" />
       </button>
       {open && (
         <div className="toolbar__export-menu" role="menu">
