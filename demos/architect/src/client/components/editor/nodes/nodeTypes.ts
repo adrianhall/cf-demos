@@ -1,3 +1,4 @@
+import { CF_NODE_TYPE } from "../../../../graph-element-types";
 import { CFNode } from "./CFNode";
 
 /**
@@ -5,5 +6,5 @@ import { CFNode } from "./CFNode";
  * catalog product type (`../../../../catalog.ts`) uses this single generic component.
  */
 export const nodeTypes = {
-  "cf-node": CFNode,
+  [CF_NODE_TYPE]: CFNode,
 };

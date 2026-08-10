@@ -1,0 +1,30 @@
+{
+  "name": "@cf-spikes/07-architect-mcp-spike",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
+  },
+  "scripts": {
+    "generate:types": "wrangler types",
+    "pretest": "npm run generate:types",
+    "test": "vitest run",
+    "check:types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "elkjs": "0.12.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.20.0",
+    "@types/node": "26.1.2",
+    "typescript": "^7.0.2",
+    "vitest": "4.1.10",
+    "wrangler": "4.120.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20260801.1": true
+  }
+}

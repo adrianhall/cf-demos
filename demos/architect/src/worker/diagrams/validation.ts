@@ -188,34 +188,23 @@ function validateGraphElements(
 }
 
 /**
- * Validate and canonicalize the `graphData` field of a `PUT /api/diagrams/:id/graph` request
- * body. The client always sends the *entire* graph on every autosave (there is no partial patch
- * protocol), so this fully replaces the stored value rather than merging into it.
+ * Validate and canonicalize a parsed graph object -- the shared tail end of
+ * `validateGraphDataInput()` (REST autosave, which additionally unwraps the request body's
+ * `graphData` JSON string first) and every graph-mutating MCP tool
+ * (`../mcp/tools.ts`'s `applyGraphMutation()`), which already holds a parsed {@link GraphData}
+ * object in memory after applying one pure mutation function
+ * (`./graph-mutations.ts`, docs/09B-ARCHITECT-MCP.md's Shared Graph Mutation Service) and needs
+ * the identical shape guarantees before persisting it. Both callers reuse this one
+ * implementation rather than each re-validating nodes/edges/viewport shape independently.
  *
- * @param value Parsed JSON body (expected to be `{ graphData: "<json string>" }`).
+ * @param parsed A parsed graph value -- from a JSON string (REST), or already assembled in
+ * memory (an MCP mutation's output).
  * @returns A canonical, re-serialised JSON string safe to persist -- `viewport` is always
- * present (defaulted when the client omits it) so every stored row has a uniform shape for a
- * future reader to rely on.
- * @throws {ProblemDetailsError} When the body or the nested `graphData` JSON is malformed.
+ * present (defaulted when omitted) so every stored row has a uniform shape for a future reader
+ * to rely on.
+ * @throws {ProblemDetailsError} When `parsed`'s nodes, edges, or viewport fail shape validation.
  */
-export function validateGraphDataInput(value: unknown): string {
-  if (!isPlainObject(value)) {
-    throw badRequest({ detail: "The request body must be an object." });
-  }
-
-  const raw = Reflect.get(value, "graphData");
-  if (typeof raw !== "string") {
-    throw unprocessableContent({ detail: "graphData must be a JSON string." });
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw unprocessableContent({
-      detail: "graphData must contain valid JSON.",
-    });
-  }
+export function canonicalizeGraphData(parsed: unknown): string {
   if (!isPlainObject(parsed)) {
     throw unprocessableContent({
       detail: "graphData must decode to a JSON object.",
@@ -243,4 +232,37 @@ export function validateGraphDataInput(value: unknown): string {
 
   const canonical: GraphData = { nodes, edges, viewport };
   return JSON.stringify(canonical);
+}
+
+/**
+ * Validate and canonicalize the `graphData` field of a `PUT /api/diagrams/:id/graph` request
+ * body. The client always sends the *entire* graph on every autosave (there is no partial patch
+ * protocol), so this fully replaces the stored value rather than merging into it.
+ *
+ * @param value Parsed JSON body (expected to be `{ graphData: "<json string>" }`).
+ * @returns A canonical, re-serialised JSON string safe to persist -- see
+ * {@link canonicalizeGraphData}.
+ * @throws {ProblemDetailsError} When the body or the nested `graphData` JSON is malformed, or
+ * when the decoded graph fails shape validation.
+ */
+export function validateGraphDataInput(value: unknown): string {
+  if (!isPlainObject(value)) {
+    throw badRequest({ detail: "The request body must be an object." });
+  }
+
+  const raw = Reflect.get(value, "graphData");
+  if (typeof raw !== "string") {
+    throw unprocessableContent({ detail: "graphData must be a JSON string." });
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw unprocessableContent({
+      detail: "graphData must contain valid JSON.",
+    });
+  }
+
+  return canonicalizeGraphData(parsed);
 }

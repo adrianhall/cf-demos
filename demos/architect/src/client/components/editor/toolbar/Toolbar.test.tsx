@@ -168,6 +168,7 @@ describe("Toolbar", () => {
       diagramId: null,
       paletteOpen: true,
       propertiesOpen: false,
+      minimapOpen: true,
     });
     mockXyflow.mockFitView.mockClear();
     mockXyflow.mockZoomIn.mockClear();
@@ -205,6 +206,20 @@ describe("Toolbar", () => {
     expect(propertiesToggle).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(propertiesToggle);
     expect(useDiagramStore.getState().propertiesOpen).toBe(true);
+  });
+
+  it("toggles the minimap through the store", () => {
+    render(<Toolbar />);
+
+    const minimapToggle = screen.getByTitle("Toggle minimap");
+    expect(minimapToggle).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(minimapToggle);
+    expect(useDiagramStore.getState().minimapOpen).toBe(false);
+  });
+
+  it("renders no minimap toggle in read-only mode", () => {
+    render(<Toolbar readOnly />);
+    expect(screen.queryByTitle("Toggle minimap")).not.toBeInTheDocument();
   });
 
   it("disables undo/redo when their stacks are empty", () => {

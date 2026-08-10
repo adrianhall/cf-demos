@@ -5,6 +5,9 @@ import {
   ChevronDown,
   Layout as LayoutIcon,
   Link2,
+  // Aliased like `Layout as LayoutIcon` above -- a bare `Map` import would shadow the global
+  // `Map` constructor this file's `remapEdgeHandles` and `applyAutoLayout` both construct.
+  Map as MapIcon,
   Maximize,
   RotateCcw,
   RotateCw,
@@ -82,9 +85,9 @@ export function remapEdgeHandles(
 }
 
 /**
- * Top toolbar: back-to-dashboard link, editable diagram title, undo/redo, zoom controls, an
- * auto-layout button, a keyboard-operable node-connection dialog
- * (`./ConnectNodesModal.tsx`, Bug 8, docs/09-ARCHITECT.md Phase 10), sharing
+ * Top toolbar: back-to-dashboard link, editable diagram title, palette/properties/minimap view
+ * toggles, undo/redo, zoom controls, an auto-layout button, a keyboard-operable node-connection
+ * dialog (`./ConnectNodesModal.tsx`, Bug 8, docs/09-ARCHITECT.md Phase 10), sharing
  * (`./ShareModal.tsx`), export (`./ExportButton.tsx`), print (`./PrintButton.tsx`), and a dark
  * mode toggle (`../../../components/DarkModeToggle.tsx`). Ported from CF-Architect's
  * `src/islands/toolbar/Toolbar.tsx`.
@@ -108,6 +111,8 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
     togglePalette,
     propertiesOpen,
     toggleProperties,
+    minimapOpen,
+    toggleMinimap,
   } = useDiagramStore();
   const [layouting, setLayouting] = useState(false);
   const [layoutDirection, setLayoutDirection] =
@@ -234,9 +239,10 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
 
       {!readOnly && (
         <div className="toolbar__group">
-          {/* Bug 4 (docs/09-ARCHITECT.md Phase 7): toggles for the two collapsible sidebars.
-              `.toolbar__button--flipped` mirrors the same `Sidebar` glyph horizontally for the
-              properties panel, since react-feather has no distinct left/right sidebar icon. */}
+          {/* Bug 4 (docs/09-ARCHITECT.md Phase 7): toggles for the two collapsible sidebars, plus
+              the canvas minimap. `.toolbar__button--flipped` mirrors the same `Sidebar` glyph
+              horizontally for the properties panel, since react-feather has no distinct
+              left/right sidebar icon. */}
           <button
             type="button"
             onClick={togglePalette}
@@ -256,6 +262,16 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
             aria-pressed={propertiesOpen}
           >
             <Sidebar size={18} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={toggleMinimap}
+            className="toolbar__button"
+            title="Toggle minimap"
+            aria-label="Toggle minimap"
+            aria-pressed={minimapOpen}
+          >
+            <MapIcon size={18} aria-hidden="true" />
           </button>
           <span className="toolbar__separator" aria-hidden="true" />
           {/* Bug 8 (docs/09-ARCHITECT.md Phase 10): the only way to create an edge otherwise is

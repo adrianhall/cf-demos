@@ -22,10 +22,16 @@ import type { PathPolicy } from "@adrianhall/cloudflare-toolkit/hono";
  * public `bypass` application in production (docs/09-ARCHITECT.md's Access Model). The public
  * read-only share *page* (`/s/:token`) needs no equivalent entry: it already falls through to
  * the trailing public catch-all below, exactly like `/blueprints`.
+ *
+ * `/mcp` (docs/09B-ARCHITECT-MCP.md's Access Model) requires authentication like `/api` but
+ * never redirects: an MCP client (OpenCode or any other MCP-compliant harness) is never a
+ * browser navigation, so a `302` to a login page would be as un-completable for it as it already
+ * is for `/api`.
  */
 export const accessPolicies: PathPolicy[] = [
   { pattern: /^\/api\/share(?:\/|$)/u, authenticate: false },
   { pattern: /^\/api(?:\/|$)/u, authenticate: true, redirect: false },
+  { pattern: /^\/mcp(?:\/|$)/u, authenticate: true, redirect: false },
   { pattern: /^\/app(?:\/|$)/u, authenticate: true, redirect: true },
   { pattern: /^\//u, authenticate: false },
 ];

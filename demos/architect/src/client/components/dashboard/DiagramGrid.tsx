@@ -126,14 +126,13 @@ export function DiagramGrid() {
     [load],
   );
 
-  const confirmDelete = useCallback(async () => {
-    if (!deleteTarget) return;
-    await deleteDiagram(deleteTarget.id);
+  const confirmDelete = useCallback(async (target: DiagramSummary) => {
+    await deleteDiagram(target.id);
     setDiagrams((previous) =>
-      previous.filter((diagram) => diagram.id !== deleteTarget.id),
+      previous.filter((diagram) => diagram.id !== target.id),
     );
     setDeleteTarget(null);
-  }, [deleteTarget]);
+  }, []);
 
   if (loading) {
     return <p className="dashboard__loading">Loading your diagrams…</p>;
@@ -203,12 +202,14 @@ export function DiagramGrid() {
         </div>
       )}
 
-      <ConfirmDeleteModal
-        open={deleteTarget !== null}
-        diagramTitle={deleteTarget?.title ?? ""}
-        onConfirm={() => void confirmDelete()}
-        onCancel={() => setDeleteTarget(null)}
-      />
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          open
+          diagramTitle={deleteTarget.title}
+          onConfirm={() => void confirmDelete(deleteTarget)}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </>
   );
 }

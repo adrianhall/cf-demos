@@ -23,8 +23,19 @@ vi.mock("../../api/diagrams", () => ({
   updateDiagram: mockUpdateDiagram,
 }));
 
+// Wraps the real `ServicePalette` (every other test in this file exercises it unmodified) so one
+// dedicated test below can override its implementation to call `onAddNode` with a typeId the
+// catalog does not recognize -- something the real palette itself never does, since it only ever
+// lists actual catalog entries -- to exercise `onAddNodeFromPalette`'s defensive guard.
+vi.mock("./panels/ServicePalette", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./panels/ServicePalette")>();
+  return { ...actual, ServicePalette: vi.fn(actual.ServicePalette) };
+});
+
 const { useDiagramStore } = await import("../../stores/diagramStore");
 const { DiagramCanvas } = await import("./DiagramCanvas");
+const { ServicePalette } = await import("./panels/ServicePalette");
 
 const EMPTY_GRAPH = JSON.stringify({
   edges: [],
@@ -47,6 +58,7 @@ describe("DiagramCanvas", () => {
       printMode: false,
       paletteOpen: true,
       propertiesOpen: false,
+      minimapOpen: true,
       undoStack: [],
       redoStack: [],
     });
@@ -147,6 +159,38 @@ describe("DiagramCanvas", () => {
       expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
     );
     expect(screen.queryByLabelText("Service palette")).not.toBeInTheDocument();
+  });
+
+  it("renders the minimap by default", async () => {
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    render(<DiagramCanvas diagramId="d1" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("rf-minimap")).toBeInTheDocument(),
+    );
+  });
+
+  it("hides the minimap when minimapOpen is false", async () => {
+    useDiagramStore.setState({ minimapOpen: false });
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    render(<DiagramCanvas diagramId="d1" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("rf-minimap")).not.toBeInTheDocument();
   });
 
   it("hides the properties panel until propertiesOpen is true (Bug 4)", async () => {
@@ -462,6 +506,29 @@ describe("DiagramCanvas", () => {
 
     expect(useDiagramStore.getState().nodes).toHaveLength(1);
     expect(useDiagramStore.getState().nodes[0]?.data.typeId).toBe("worker");
+  });
+
+  it("ignores a palette add-node call for a typeId the catalog does not recognize", async () => {
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+    vi.mocked(ServicePalette).mockImplementationOnce(({ onAddNode }) => (
+      <button type="button" onClick={() => onAddNode("not-a-real-type")}>
+        Bogus
+      </button>
+    ));
+
+    render(<DiagramCanvas diagramId="d1" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Bogus" }));
+
+    expect(useDiagramStore.getState().nodes).toHaveLength(0);
   });
 
   it("allows a drag-over on the canvas so a drop can land", async () => {

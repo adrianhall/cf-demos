@@ -3,6 +3,10 @@
   "name": "{{worker_name}}",
   "main": "./src/worker/index.ts",
   "compatibility_date": "2026-08-08",
+  // Required by `agents/mcp/server`'s `createMcpHandler` (docs/09B-ARCHITECT-MCP.md's remote MCP
+  // server), which imports `node:async_hooks`'s `AsyncLocalStorage` at module scope to track its
+  // per-request auth context.
+  "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "preview_urls": false,
   "vars": {
@@ -24,11 +28,33 @@
       "id": "{{shares_kv_namespace_id}}"
     }
   ],
+  // `DiagramSession` (docs/09B-ARCHITECT-MCP.md's Live Sync Architecture) is a Wrangler-owned
+  // Durable Object namespace, not a Terraform resource -- mirroring `demos/chat`'s `ChatRoom` and
+  // this repository's standing precedent (docs/10-OPENCODE-BROWSER.md) for why Durable Object
+  // namespaces are declared here, not in `infra/architect.tf`. Both fields below are static demo
+  // choices, not Terraform-sourced values, so neither is substituted from a template marker.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "DIAGRAM_SESSIONS",
+        "class_name": "DiagramSession"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["DiagramSession"]
+    }
+  ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    // `/mcp*` added alongside `/api/*` for docs/09B-ARCHITECT-MCP.md's remote MCP server --
+    // without its own entry, `/mcp` falls through to the `ASSETS` binding's SPA fallback and
+    // 404s before this Worker ever sees the request.
+    "run_worker_first": ["/api/*", "/mcp*"]
   },
   "upload_source_maps": true,
   // Mirrors infra/architect.tf's cloudflare_worker.demo.observability literally, value for

@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "spike-07-architect-mcp-spike",
+  "main": "./src/index.ts",
+  // nodejs_compat was tried during this spike's investigation (see REPORT.md) and made no
+  // difference to elkjs's failure inside workerd, so it is deliberately omitted here — it would
+  // be a red herring for anyone re-running this spike, and demos/architect's own real
+  // wrangler.jsonc.tpl does not need it either.
+  "compatibility_date": "2026-08-08"
+}

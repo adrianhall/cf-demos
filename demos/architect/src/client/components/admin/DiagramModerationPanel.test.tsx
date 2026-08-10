@@ -148,6 +148,38 @@ describe("DiagramModerationPanel", () => {
     );
   });
 
+  it("ignores a confirm click if the previewed diagram was cleared while the dialog was open", async () => {
+    mockGetAnyDiagram
+      .mockResolvedValueOnce(DIAGRAM)
+      .mockRejectedValueOnce("boom");
+    render(<DiagramModerationPanel />);
+
+    fireEvent.change(screen.getByLabelText("Diagram id"), {
+      target: { value: DIAGRAM.id },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    await waitFor(() =>
+      expect(screen.getByText("Reviewed Diagram")).toBeInTheDocument(),
+    );
+
+    // Open the confirmation dialog, then -- without confirming -- re-submit the form with an
+    // id that fails to load. This clears `diagram` back to null while the dialog (whose `open`
+    // prop tracks its own independent `confirmOpen` state, not `diagram`) is still visible,
+    // exercising `handleConfirmDelete`'s defensive `if (!diagram) return;` guard.
+    fireEvent.click(screen.getByRole("button", { name: "Delete diagram" }));
+    fireEvent.change(screen.getByLabelText("Diagram id"), {
+      target: { value: "missing-id" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    await waitFor(() =>
+      expect(screen.queryByText("Reviewed Diagram")).not.toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(mockDeleteAnyDiagram).not.toHaveBeenCalled();
+  });
+
   it("dismisses the confirmation dialog without deleting on cancel", async () => {
     mockGetAnyDiagram.mockResolvedValue(DIAGRAM);
     render(<DiagramModerationPanel />);
