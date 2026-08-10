@@ -1,0 +1,31 @@
+docs/09-ARCHITECT.md
+  s_5753a0948f6f82::t_b849058f51b5cd 756-759
+demos/architect/src/catalog.ts
+  s_5753a0948f6f82::t_8aecd86c97f5d9 591-595
+  s_5753a0948f6f82::t_a357dd0af08943 179-183
+  s_5753a0948f6f82::t_77e3cb3cade6d4 399-403
+  s_5753a0948f6f82::t_3e41e5a1055be3 275,445,814-818
+  s_5753a0948f6f82::t_4a83e6dd6db91d 362-366
+  s_5753a0948f6f82::t_29f07d0502381a 251-255,271-274
+  s_5753a0948f6f82::t_d67b08d9bf0f23 420-424,441-444
+demos/architect/src/client/components/editor/panels/PropertiesPanel.test.tsx
+  s_5753a0948f6f82::t_de84b00adadb0d 160
+  s_5753a0948f6f82::t_b7794eb59629ef 178-181
+  s_5753a0948f6f82::t_1ba2aa7089ecce 161-177,182-183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "45be523ed6f733f911aee7b348670212cc426b20",
+  "prompts": {},
+  "sessions": {
+    "s_5753a0948f6f82": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_014bf6d66ffeRYgQmLv625Dhok",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "ahall <ahall@cloudflare.com>"
+    }
+  }
+}
