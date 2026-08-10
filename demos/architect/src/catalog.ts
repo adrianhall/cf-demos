@@ -176,6 +176,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         title: "Workers Docs",
         url: "https://developers.cloudflare.com/workers/",
       },
+      {
+        icon: "video",
+        title: "Workers Video",
+        url: "https://www.youtube.com/watch?v=H7Qe96fqg1M",
+      },
     ],
   },
   {
@@ -243,6 +248,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         title: "Durable Objects Docs",
         url: "https://developers.cloudflare.com/durable-objects/",
       },
+      {
+        icon: "video",
+        title: "Durable Objects Video",
+        url: "https://www.youtube.com/watch?v=k4UXEfZf3sc",
+      },
     ],
   },
   {
@@ -257,6 +267,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: "doc",
         title: "Workflows Docs",
         url: "https://developers.cloudflare.com/workflows/",
+      },
+      {
+        icon: "video",
+        title: "Workflows Video",
+        url: "https://www.youtube.com/watch?v=1EhbW2UI3W0",
       },
     ],
   },
@@ -344,6 +359,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         title: "D1 Docs",
         url: "https://developers.cloudflare.com/d1/",
       },
+      {
+        icon: "video",
+        title: "D1 Video",
+        url: "https://www.youtube.com/watch?v=egBdW6vBIhM",
+      },
     ],
   },
   {
@@ -376,6 +396,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         title: "R2 Docs",
         url: "https://developers.cloudflare.com/r2/",
       },
+      {
+        icon: "video",
+        title: "R2 Video",
+        url: "https://www.youtube.com/watch?v=TIp5sUZO4Uo",
+      },
     ],
   },
   {
@@ -392,6 +417,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         title: "Queues Docs",
         url: "https://developers.cloudflare.com/queues/",
       },
+      {
+        icon: "video",
+        title: "Queues Video",
+        url: "https://www.youtube.com/watch?v=ZDv4iYaLbpI",
+      },
     ],
   },
   {
@@ -407,6 +437,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: "doc",
         title: "Hyperdrive Docs",
         url: "https://developers.cloudflare.com/hyperdrive/",
+      },
+      {
+        icon: "video",
+        title: "Hyperdrive Video",
+        url: "https://www.youtube.com/watch?v=TQyPeDejcEI",
       },
     ],
   },
@@ -552,6 +587,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: "doc",
         title: "AI Search Docs",
         url: "https://developers.cloudflare.com/ai-search/",
+      },
+      {
+        icon: "video",
+        title: "AI Search Video",
+        url: "https://www.youtube.com/watch?v=Z8LtULldcyQ",
       },
     ],
   },
@@ -770,6 +810,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: "doc",
         title: "Turnstile Docs",
         url: "https://developers.cloudflare.com/turnstile/",
+      },
+      {
+        icon: "video",
+        title: "Turnstile Video",
+        url: "https://www.youtube.com/watch?v=QKFiN_cyeMc",
       },
     ],
   },

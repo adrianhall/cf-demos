@@ -157,6 +157,30 @@ describe("PropertiesPanel", () => {
     );
   });
 
+  it('renders the video icon for a doc link with icon: "video" (Phase 8, docs/09-ARCHITECT.md)', () => {
+    useDiagramStore.setState({
+      nodes: [
+        {
+          data: { label: "W", typeId: "worker" },
+          id: "n1",
+          position: { x: 0, y: 0 },
+        },
+      ],
+      selectedNodeId: "n1",
+    });
+    render(<PropertiesPanel />);
+
+    const videoLink = screen.getByRole("link", { name: "Workers Video" });
+    expect(videoLink).toHaveAttribute(
+      "href",
+      "https://www.youtube.com/watch?v=H7Qe96fqg1M",
+    );
+    // The video icon (`react-feather`'s `Video`) is the only doc-link icon built from a
+    // `<polygon>` element -- `BookOpen` (the "doc" icon) only ever renders `<path>`s -- so this
+    // distinguishes it from a doc-link icon without depending on shared CSS class names.
+    expect(videoLink.querySelector("polygon")).not.toBeNull();
+  });
+
   it("shows edge properties and updates the edge type through the store", () => {
     useDiagramStore.setState({
       edges: [

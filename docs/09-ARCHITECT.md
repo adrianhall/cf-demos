@@ -753,6 +753,10 @@ the "shield" admin icon is not required, nor is the old "administrator" wording 
 
 Click on a node, then the detail panel opens on the right hand side.  Note the label and the description text boxes are flush against the edge (with no horizontal scroll bar).  Need a small amount of gap for a pleasing UX.
 
+### Bug 29: Newly created diagram isn't visible on editor canvas
+
+Create a new diagram; select API gateway; open editor.  Expectation is that the diagram is shown on the editor canvas.  Instead, the diagram nodes are out of the view port and you have to scroll to see the diagram.  The proper way is that the diagram is "fit to view" and centered on the view port when you open the editor.
+
 ## Post-MVP: Live Collaboration And AI Proposals
 
 Live multi-user collaboration (one Durable Object per diagram, hibernatable
