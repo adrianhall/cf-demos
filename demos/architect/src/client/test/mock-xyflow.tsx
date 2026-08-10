@@ -28,6 +28,11 @@ export const mockGetNodesBounds = vi
 export const mockGetViewportForBounds = vi
   .fn()
   .mockReturnValue({ x: 0, y: 0, zoom: 1 });
+/** Stand-in for `useNodesInitialized()`; defaults to `true` since most tests render with nodes
+ * that don't need real DOM measurement. Reset to `false` in a test to exercise the
+ * measurement-pending branch of `../components/editor/DiagramCanvas.tsx`'s fit-on-load effect
+ * (Bug 29, docs/09-ARCHITECT.md Phase 9). */
+export const mockUseNodesInitialized = vi.fn().mockReturnValue(true);
 
 /** Enum stand-in matching `@xyflow/react`'s real `Position` string enum. */
 export const Position = {
@@ -99,12 +104,25 @@ export function useReactFlow() {
   };
 }
 
+/** Stand-in `useNodesInitialized()` delegating to {@link mockUseNodesInitialized}. */
+export function useNodesInitialized() {
+  return mockUseNodesInitialized();
+}
+
 export const getNodesBounds = mockGetNodesBounds;
 export const getViewportForBounds = mockGetViewportForBounds;
 
-/** Minimal `<ReactFlow>` stand-in exposing the callbacks tests need to invoke. */
+/** Minimal `<ReactFlow>` stand-in exposing the callbacks tests need to invoke.
+ *
+ * `nodesFocusable`/`edgesFocusable` are surfaced as `data-nodes-focusable`/`data-edges-focusable`
+ * string attributes (rather than actually gating any focus behavior, which this stub has none
+ * of) purely so a test can assert which value a caller passed -- see
+ * `../components/blueprints/BlueprintPreview.test.tsx` (Bug 33, docs/09-ARCHITECT.md Phase 10).
+ */
 export function ReactFlow({
   children,
+  edgesFocusable,
+  nodesFocusable,
   onDragOver,
   onDrop,
   onEdgeClick,
@@ -112,6 +130,8 @@ export function ReactFlow({
   onPaneClick,
 }: {
   children?: React.ReactNode;
+  edgesFocusable?: boolean;
+  nodesFocusable?: boolean;
   onDragOver?: (event: React.DragEvent) => void;
   onDrop?: (event: React.DragEvent) => void;
   onEdgeClick?: (event: unknown, edge: { id: string }) => void;
@@ -120,7 +140,13 @@ export function ReactFlow({
 }) {
   return createElement(
     "div",
-    { "data-testid": "react-flow", onDragOver, onDrop },
+    {
+      "data-edges-focusable": String(edgesFocusable),
+      "data-nodes-focusable": String(nodesFocusable),
+      "data-testid": "react-flow",
+      onDragOver,
+      onDrop,
+    },
     onNodeClick &&
       createElement("button", {
         "data-testid": "rf-node-click",

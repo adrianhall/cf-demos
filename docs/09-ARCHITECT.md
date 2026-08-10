@@ -12,6 +12,13 @@ for what that means for a future collaboration/AI specification.
 `spikes/06-architect-reactflow-host/REPORT.md`; no `demos/architect` code exists
 yet.
 
+**Sequencing note:** `docs/09B-ARCHITECT-MCP.md` (an MCP server + WebMCP follow-on to this MVP)
+is scheduled to ship **before** the Post-MVP collaboration work below, and it introduces this
+demo's first Durable Object — a per-diagram `DiagramSession` used to push live graph updates to
+an open editor tab. See [Post-MVP](#post-mvp-live-collaboration-and-ai-proposals) for why that
+object, not a new one, is the intended foundation for live multi-user collaboration once this
+demo gets there.
+
 Cloudflare products: Workers, Static Assets, Cloudflare Access, D1, and
 Workers KV. Durable Objects, Workflows, Workers AI, and R2 are explicitly out
 of scope for this plan — see [Post-MVP](#post-mvp-live-collaboration-and-ai-proposals).
@@ -703,24 +710,6 @@ Every Phase 7 bug except the two below was fixed in that phase's own pass; these
 that weren't, carried forward here rather than left silently unresolved in a phase already marked
 complete.
 
-### Bug 8 (critical): Diagram edges can only be created by mouse-drag, with no keyboard alternative
-
-Moved from Phase 7 unchanged -- deliberately excluded from that phase's fix pass because it needs
-its own, larger, dedicated design (a click-to-connect mode, not a small isolated change like its
-Phase 7 siblings).
-
-WCAG 2.2 SC 2.5.7 (Dragging Movements, AA) / 2.1.1 (Keyboard, A). Creating an edge between two
-nodes is only possible by dragging from one `Handle` to another
-(`src/client/components/editor/DiagramCanvas.tsx`'s `onConnect`, wired straight to
-`@xyflow/react`'s pointer-drag connection flow) — there is no click/keyboard-activatable
-alternative anywhere in the store or UI. Node repositioning is partially mitigated by the
-"Auto layout" button, but connecting nodes has zero alternative. Since building an architecture
-diagram *is* connecting nodes, this makes the primary workflow fully inoperable for
-keyboard-only and switch-access users. Fix: add a click-to-connect mode (click a source handle
-or select a node then press a "Connect" toolbar action, then click a target handle/node to
-complete the edge), mirroring `ServicePalette`'s existing click-fallback pattern for node
-creation.
-
 ### Bug 23 (moderate): Editor still shows two stacked banners
 
 Found while fixing Phase 7's Bug 2, which fixed everything about that bug *except* this: the
@@ -741,21 +730,177 @@ existing icon button's `title`/`aria-label` from the Bug 2 fix should carry over
 
 Request is that the very top bar (which includes the title, admin link, username, and sign-out button) is removed from the editor view; this can just be removed - no buttons need to be moved into the editor toolbar for this (including the signout button)
 
+**Fixed, per the narrower request above rather than the structural merge originally scoped.**
+`AppShellView.tsx`'s `<header>` (identity, admin link, dark-mode toggle, sign-out) is no longer
+rendered at all for the editor sub-view (`showHeader = route.view !== "editor"`) — nothing was
+moved into `Toolbar.tsx`. `Toolbar.tsx`'s own existing `ArrowLeft` back-to-dashboard link is
+enough to reach a view where the header (and sign-out) is available again. `ShareView.tsx` was
+not touched — its own `.share-view__banner` is a different, already-single banner (the
+authenticated app-shell header never rendered there to begin with).
+
 ### Bug 26 Sign-out button is malformed
 
 The sign-out button contains a sign-out icon followed by the words "Sign out".  The icon is not vertically centered, so it appears slightly above the "Sign out" words.  In addition, there is no gap between the icon and the words, resulting in a compressed look.
+
+**Fixed.** `.app-shell__logout` (`app.css`) is now `display: inline-flex; align-items: center;
+gap: 0.375rem;` instead of relying on plain inline content — `align-items: center` centers the
+icon against the text instead of sitting on its baseline, and `gap` guarantees spacing between
+them regardless of the JSX whitespace between the two elements collapsing to nothing across
+lines. `.button` itself was left alone since every other `.button` usage in this app is text-only
+or icon-only, not this icon-plus-text combination.
 
 ### Bug 27 Remove the "admin" icon next to the email address in the banner
 
 the "shield" admin icon is not required, nor is the old "administrator" wording - the fact that there is an "Admin" link in the banner is enough to denote the admin capabilities.
 
+**Fixed.** `AppShellView.tsx` no longer renders the Bug 5 `react-feather` `Shield` icon (or an
+`aria-label`/accessible-name equivalent) next to the verified email; the header's existing
+`/app/admin` "Admin" link is the only admin indicator now.
+
 ### Bug 28: The Label and Description input boxes overlap edge in the detail panel
 
 Click on a node, then the detail panel opens on the right hand side.  Note the label and the description text boxes are flush against the edge (with no horizontal scroll bar).  Need a small amount of gap for a pleasing UX.
 
+**Fixed.** Root cause: `app.css` never set `box-sizing` anywhere, so the browser default
+(`content-box`) made `.properties-panel__input`'s `width: 100%` plus its own padding and border
+render wider than its parent's content box, pushing the rendered edge flush against — and
+slightly past — the properties panel's own inner padding with no scrollbar to reveal the
+overflow. Added a standard `*, *::before, *::after { box-sizing: border-box; }` reset, after
+which `width: 100%` means "100% including padding and border" and the existing `.properties-panel`
+`padding: 1rem` alone supplies the gap the bug asked for.
+
 ### Bug 29: Newly created diagram isn't visible on editor canvas
 
 Create a new diagram; select API gateway; open editor.  Expectation is that the diagram is shown on the editor canvas.  Instead, the diagram nodes are out of the view port and you have to scroll to see the diagram.  The proper way is that the diagram is "fit to view" and centered on the view port when you open the editor.
+
+**Fixed, on the second attempt.** The first attempt (`useNodesInitialized()` gating an imperative
+`fitView({ duration: 0 })`, replacing `<ReactFlow>`'s own mount-time `fitView` prop) shipped but
+did not fix the bug -- confirmed both by re-testing and by a real headless-browser repro (Chromium
+via Playwright, since this class of layout bug needs real layout/measurement that this
+repository's mocked-`@xyflow/react` Vitest suite cannot exercise) that still showed every node
+positioned below the fold for both a brand-new blueprint diagram and a previously saved one.
+
+Root cause, found by walking the DOM/computed-style chain in that repro: `.app-shell` sets only
+`min-height: 100vh`, never a real `height`. Per the flexbox spec, `flex-grow` only redistributes
+space within a flex container that has a *definite* main size -- a `min-height`-only container
+doesn't count -- so `.app-shell__main--editor`'s `flex: 1 1 auto` was never actually filling "the
+rest of the viewport"; it (and every flex descendant relying on the same pattern down to
+`.diagram-editor__canvas`) fell back to sizing from content instead. `<ReactFlow>`'s own wrapper
+sets `height: 100%`, which against that indefinite chain resolved to `auto`, i.e. also
+content-sized -- a feedback loop where the container `fitView` measures against is itself sized
+by the (already off) fitted diagram, producing nonsensical pan/zoom math no amount of *timing*
+fixes could correct, since the container size being measured was wrong, not merely measured too
+early. (The first attempt's `useNodesInitialized()` change was kept -- it fixes a real, if
+smaller, timing gap -- but the CSS fix below is what actually resolves the reported bug.)
+
+Fixed by giving `.app-shell__main--editor` a real `height: 100vh` directly, matching the pattern
+`.share-view` (the anonymous read-only viewer's equivalent full-viewport container) already used
+correctly. This is safe specifically *because* of Bug 23 above: with the header now removed from
+the editor route entirely, `.app-shell__main--editor` legitimately is the whole viewport, with
+nothing else to subtract. The dashboard/admin `.app-shell__main` (non-editor) variant is
+untouched and still grows past 100vh with ordinary document scrolling when there are many
+diagrams.
+
+## Phase 10: Missed bugs
+
+### Bug 8 (critical): Diagram edges can only be created by mouse-drag, with no keyboard alternative
+
+Moved from Phase 7 unchanged -- deliberately excluded from that phase's fix pass because it needs
+its own, larger, dedicated design (a click-to-connect mode, not a small isolated change like its
+Phase 7 siblings).
+
+WCAG 2.2 SC 2.5.7 (Dragging Movements, AA) / 2.1.1 (Keyboard, A). Creating an edge between two
+nodes is only possible by dragging from one `Handle` to another
+(`src/client/components/editor/DiagramCanvas.tsx`'s `onConnect`, wired straight to
+`@xyflow/react`'s pointer-drag connection flow) — there is no click/keyboard-activatable
+alternative anywhere in the store or UI. Node repositioning is partially mitigated by the
+"Auto layout" button, but connecting nodes has zero alternative. Since building an architecture
+diagram *is* connecting nodes, this makes the primary workflow fully inoperable for
+keyboard-only and switch-access users. Fix: add a click-to-connect mode (click a source handle
+or select a node then press a "Connect" toolbar action, then click a target handle/node to
+complete the edge), mirroring `ServicePalette`'s existing click-fallback pattern for node
+creation.
+
+**Fixed, via a dialog rather than an on-canvas click-to-connect mode.** `@xyflow/react`'s own
+`connectOnClick` default already lets a *pointer* user click one handle then another to connect
+without dragging, but `Handle` (`node_modules/@xyflow/react`) renders an unfocusable `<div>` with
+no `tabIndex`, role, or accessible name -- so that path still has zero keyboard/switch-access
+route, and arming an on-canvas "connect mode" would have depended on the same unfocusable handles
+to *complete* the connection. A `Handle`-focus-based fix was rejected for the same reason
+`docs/DECISIONS.md` records for the equivalent finding elsewhere: it would be unverifiable by
+this repository's Vitest-only, mocked-`@xyflow/react` test suite. Instead, a new toolbar button
+("Connect nodes", `Link2` icon, disabled with fewer than two nodes) opens
+`src/client/components/editor/toolbar/ConnectNodesModal.tsx`: three native `<select>`s (Source,
+Target, Connection type) plus a Connect button, using the same `useModalFocus()` (initial focus,
+Tab-trap, Escape, focus restoration) every other modal in this app already uses. Source defaults
+to the currently selected node when one exists. A new pure module,
+`src/client/components/editor/connect.ts`, resolves which of the two nodes' catalog handles the
+new edge should use (`chooseConnectionHandles`, mirroring `Toolbar.tsx`'s `remapEdgeHandles`
+auto-layout convention) and validates the proposed connection (`validateConnection`: rejects a
+self-connection or an exact source/target/edge-type duplicate; the same source/target pair with a
+*different* edge type is allowed). `diagramStore.ts`'s new `connectNodes` action applies a
+validated connection: it appends the edge directly rather than through `@xyflow/react`'s own
+`addEdge` helper, whose duplicate check ignores `edgeType` entirely and would otherwise silently
+drop a second, different-typed edge between the same deterministically-handle-resolved node pair;
+pushes undo history; marks the graph dirty; and selects the new edge, which already opens the
+properties panel (Bug 4) so the user lands directly on its fields. Every new module/component is
+covered by its own unit tests, including a keyboard-only path through the dialog's `<select>`s and
+`<button>` -- native form elements are keyboard-operable by construction, unlike `@xyflow/react`'s
+handles, so this is directly verifiable in the existing Vitest suite with no browser automation
+needed. See `docs/DECISIONS.md` #28 for the fuller `@xyflow/react`/keyboard-accessibility writeup.
+
+### Bug 30: "Sign out" is underlined
+
+The "Sign out" words inside the sign-out button are underlined, indicating a link rather than looking like a button.
+
+**Fixed.** `.app-shell__logout` is an `<a class="button">`
+(`src/client/views/AppShellView.tsx`), and `.button` (`app.css`) never set `text-decoration`, so
+the browser's default anchor underline survived every other button styling. Added
+`text-decoration: none` directly to `.button` rather than only to `.app-shell__logout` -- the
+dashboard's two "+ New Diagram" links (`DiagramGrid.tsx`) are `a.button` too and had the exact
+same defect.
+
+### Bug 31: Cannot click on whole panel in diagram list
+
+Go to the diagram list and attempt to open the editor by clicking on the diagram portion of the panel.  it fails - you have to click on the header.
+
+**Fixed.** `.diagram-card__link::after` (Bug 16, Phase 7's "block link" overlay) had no explicit
+`z-index`, relying on DOM order alone to paint above everything else in the card -- true
+everywhere except over `.diagram-card__preview`, where `BlueprintPreview.tsx` renders a real
+`<ReactFlow>` whose own stylesheet stacks `.react-flow__pane`/`.react-flow__viewport`/
+`.react-flow__renderer` at `z-index: 1`/`2`/`4` inside that same stacking context, painting above
+the overlay and swallowing every click over the thumbnail -- only the header, which nothing
+overlapped, ever worked. Fixed by giving `.diagram-card__link::after` an explicit `z-index: 5`
+(above every xyflow layer), raising `.diagram-card__menu` to `z-index: 6` to match so its
+dropdown stays reachable, and setting `.diagram-card__preview { pointer-events: none; }` as
+defense in depth (the thumbnail is already `aria-hidden`, so it should never intercept pointer
+events regardless of stacking order).
+
+### Bug 32: Services starts "expanded"
+
+In the products catalog, the list of services always starts "expanded".  Preference is that it stores the state of the previous editor (expansion is per-user, not per editor).  Short fix is to expand the "Compute" section and collapse the others.
+
+**Fixed, with full persistence rather than only the short fix.** New
+`src/client/lib/palette-preferences.ts` (mirroring `lib/theme.ts`'s `localStorage`-backed,
+`try`/`catch`-guarded pattern) stores the set of collapsed categories as a flat list under one
+key, seeded to "every category except Compute" on a user's first-ever visit -- the short fix
+from this bug's own description -- but persisted across every later toggle (including "Collapse
+all"/"Expand all") and every subsequent editor session, not reset on every open.
+`ServicePalette.tsx`'s `collapsed` state now initializes from, and writes through to, this
+module instead of local-only `useState({})`.
+
+### Bug 33 (found while verifying Bug 31): Dashboard/blueprint thumbnails are Tab stops inside `aria-hidden` content
+
+`BlueprintPreview.tsx` wraps its `<ReactFlow>` thumbnail in `aria-hidden="true"` (it is a purely
+visual preview; the surrounding card already carries the diagram/blueprint's accessible name),
+but `@xyflow/react`'s `nodesFocusable`/`edgesFocusable` default to `true` regardless of the
+`elementsSelectable={false}` this component already passed, so every thumbnail node/edge still
+rendered `tabIndex={0}`. That is focusable content nested inside `aria-hidden` (WCAG 4.1.2, axe's
+`aria-hidden-focus` rule), and on a dashboard with many diagrams it also flooded the tab order
+with stops a screen reader user could never get any actual content from.
+
+**Fixed.** Added `nodesFocusable={false}` and `edgesFocusable={false}` to `BlueprintPreview.tsx`'s
+`<ReactFlow>`.
 
 ## Post-MVP: Live Collaboration And AI Proposals
 
@@ -779,6 +924,60 @@ Vue-specific unknowns in any case, since this plan is React-based); it should
 also resolve how Phase 1–6's D1-column diagram storage migrates to Durable
 Object SQLite once a diagram becomes collaboratively editable — a real
 migration cost, not a detail to gloss over when that work is scoped.
+
+### Reuse `DiagramSession` — Do Not Design A Second Per-Diagram Durable Object
+
+`docs/09B-ARCHITECT-MCP.md` (an MCP server + WebMCP follow-on scheduled to ship **before** this
+Post-MVP work) already introduces exactly the "one Durable Object per diagram, hibernatable
+WebSockets" primitive this section originally asked for — it is called `DiagramSession`, and it
+exists there to push an MCP tool's graph edits live to an open editor tab. When this Post-MVP
+work is actually scoped, extend that same class rather than designing a new one:
+
+- **Already solved by 09B, reusable as-is:** the one-instance-per-diagram identity
+  (`idFromName(diagramId)`, no separate mapping table), the Worker-side owner check performed
+  *before* the WebSocket upgrade is forwarded to the Durable Object (so the object itself never
+  re-derives authorization), and `ctx.acceptWebSocket()`-based hibernation so an idle open tab
+  does not keep billing the object. 09B's object is already a fan-out point to **every**
+  currently-connected socket for a diagram, which is precisely the multi-viewer primitive
+  collaboration needs — nothing about that part is single-agent-specific.
+- **What Post-MVP must add on top:** 09B's channel is deliberately **server→client only** ("the
+  browser's own edits keep using the existing debounced `PUT /api/diagrams/:id/graph` autosave
+  path... this document adds a read channel, not a second write channel"). Real collaboration
+  needs the reverse direction too: an editing client sends an operation into the Durable Object
+  (over the same already-open, already-authenticated WebSocket — attach the verified owner
+  identity to the connection at accept time via the WebSocket Hibernation API's serialized
+  attachment, the same identity the Worker already verified pre-upgrade) and the object
+  re-broadcasts it to every *other* connected client.
+- **A better starting point than "start from last-write-wins":** 09B also introduces
+  `src/worker/diagrams/graph-mutations.ts` — pure, granular `addNode`/`updateNode`/`removeNode`/
+  `addEdge`/`updateEdge`/`removeEdge` functions, built so an MCP tool call never has to replace
+  the whole graph to make one change. That same granular operation vocabulary is a materially
+  better foundation for multi-human collaboration than 09B's own explicitly-scoped-down
+  whole-graph, last-write-wins model (which 09B is explicit only works because it is one owner
+  plus that owner's own agent, never two different people). Broadcasting individual operations
+  through `DiagramSession` — each idempotently replayable by every connected client — is a much
+  smaller step than building a CRDT from nothing, but it is still real, unsolved design work
+  (ordering, idempotency keys, what happens when two operations touch the same node) that this
+  document is deliberately not settling now.
+- **Presence and remote cursors** are new, purely-ephemeral message types on the same channel
+  (`cursor_moved`, `presence_joined`, `presence_left`) — additive to 09B's existing
+  `graph_updated` message type, never persisted to D1, and require no change to 09B's connection
+  lifecycle.
+- **Still an open question, unchanged by this reuse:** where the authoritative graph lives.
+  Reusing `DiagramSession` for transport does not by itself answer whether the D1-column storage
+  Phases 1–6 built stays authoritative (with the Durable Object as a pure live-transport/merge
+  layer in front of it) or whether a collaboratively-edited diagram's graph should actually move
+  into that Durable Object's own SQLite storage, as this section already flagged. `DiagramSession`
+  having no durable storage of its own today (09B is explicit that it "holds no durable data of
+  its own... D1 remains the single source of truth") makes either direction equally available —
+  it is not a decision this reuse forces one way or the other, but it is still a decision the
+  future collaboration spec must make explicitly, not inherit by default.
+- **No rename needed.** `DiagramSession` already describes "the one live session for this
+  diagram" accurately for both its 09B role (agent-driven live sync for one owner) and its
+  eventual collaboration role (a live session shared by several humans); scope the class's
+  *capabilities* up when Post-MVP work begins rather than introducing a differently-named second
+  Durable Object that would only fragment one diagram's live state across two coordination
+  points.
 
 ## Non-Negotiable Tests
 

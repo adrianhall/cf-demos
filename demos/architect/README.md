@@ -77,7 +77,7 @@ Before provisioning for the first time, verify in the Cloudflare dashboard that 
 2. Select **Open the editor** (`/app`) and confirm Cloudflare Access requests sign-in.
 3. Sign in through the configured identity provider and confirm the app shell shows your email.
 4. In the Cloudflare dashboard under **Workers & Pages** > `<DEMO_NAME>` > **D1** > `<DEMO_NAME>-db` > **Console**, run `SELECT * FROM users;` and confirm a row exists for the identity you signed in as.
-5. Sign in as the identity matching `ADMIN_EMAIL` and confirm the app shell marks it `(administrator)`.
+5. Sign in as the identity matching `ADMIN_EMAIL` and confirm the app shell shows an **Admin** nav link next to the `Architect` name.
 6. From the dashboard, select **+ New Diagram**, choose a blueprint (or a blank canvas), and confirm the editor opens with that diagram's graph.
 7. Drag a product from the palette onto the canvas, wait a moment, and confirm the status bar reports a save. Reload the page and confirm the change persisted.
 8. In the Cloudflare dashboard's D1 console, run `SELECT id, title, owner_email FROM diagrams;` and confirm the new row exists.

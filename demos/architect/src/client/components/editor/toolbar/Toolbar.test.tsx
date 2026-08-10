@@ -471,4 +471,66 @@ describe("Toolbar", () => {
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it("disables the Connect nodes button with fewer than two nodes (Bug 8)", () => {
+    render(<Toolbar />);
+    expect(screen.getByTitle("Connect nodes")).toBeDisabled();
+  });
+
+  it("enables the Connect nodes button with at least two nodes and opens its dialog (Bug 8)", () => {
+    useDiagramStore.setState({
+      nodes: [
+        {
+          data: { label: "A", typeId: "worker" },
+          id: "a",
+          position: { x: 0, y: 0 },
+        },
+        {
+          data: { label: "B", typeId: "worker" },
+          id: "b",
+          position: { x: 300, y: 0 },
+        },
+      ],
+    });
+    render(<Toolbar />);
+
+    expect(screen.getByTitle("Connect nodes")).not.toBeDisabled();
+    fireEvent.click(screen.getByTitle("Connect nodes"));
+    expect(
+      screen.getByRole("dialog", { name: "Connect Nodes" }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders no Connect nodes button at all in read-only mode (Bug 8)", () => {
+    render(<Toolbar readOnly />);
+    expect(screen.queryByTitle("Connect nodes")).not.toBeInTheDocument();
+  });
+
+  it("closes the connect nodes dialog via its Cancel control (Bug 8)", () => {
+    useDiagramStore.setState({
+      nodes: [
+        {
+          data: { label: "A", typeId: "worker" },
+          id: "a",
+          position: { x: 0, y: 0 },
+        },
+        {
+          data: { label: "B", typeId: "worker" },
+          id: "b",
+          position: { x: 300, y: 0 },
+        },
+      ],
+    });
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByTitle("Connect nodes"));
+    expect(
+      screen.getByRole("dialog", { name: "Connect Nodes" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(
+      screen.queryByRole("dialog", { name: "Connect Nodes" }),
+    ).not.toBeInTheDocument();
+  });
 });

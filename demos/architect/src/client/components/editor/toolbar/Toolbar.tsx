@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ChevronDown,
   Layout as LayoutIcon,
+  Link2,
   Maximize,
   RotateCcw,
   RotateCw,
@@ -17,6 +18,7 @@ import { DarkModeToggle } from "../../../components/DarkModeToggle";
 import { useDismissableMenu } from "../../../hooks/useDismissableMenu";
 import { useDiagramStore } from "../../../stores/diagramStore";
 import type { CFEdgeData, CFNodeData } from "../types";
+import { ConnectNodesModal } from "./ConnectNodesModal";
 import { ExportButton } from "./ExportButton";
 import { PrintButton } from "./PrintButton";
 import { ShareModal } from "./ShareModal";
@@ -81,9 +83,11 @@ export function remapEdgeHandles(
 
 /**
  * Top toolbar: back-to-dashboard link, editable diagram title, undo/redo, zoom controls, an
- * auto-layout button, sharing (`./ShareModal.tsx`), export (`./ExportButton.tsx`), print
- * (`./PrintButton.tsx`), and a dark mode toggle (`../../../components/DarkModeToggle.tsx`). Ported from
- * CF-Architect's `src/islands/toolbar/Toolbar.tsx`.
+ * auto-layout button, a keyboard-operable node-connection dialog
+ * (`./ConnectNodesModal.tsx`, Bug 8, docs/09-ARCHITECT.md Phase 10), sharing
+ * (`./ShareModal.tsx`), export (`./ExportButton.tsx`), print (`./PrintButton.tsx`), and a dark
+ * mode toggle (`../../../components/DarkModeToggle.tsx`). Ported from CF-Architect's
+ * `src/islands/toolbar/Toolbar.tsx`.
  *
  * ELK (`elkjs`) is dynamically imported only when auto-layout is actually used
  * (docs/09-ARCHITECT.md's catalog table note: this repository's prior Vue attempt measured a
@@ -99,6 +103,7 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
     title,
     setTitle,
     diagramId,
+    nodes,
     paletteOpen,
     togglePalette,
     propertiesOpen,
@@ -109,6 +114,7 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
     useState<LayoutDirection>("DOWN");
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);
   const layoutGroupRef = useRef<HTMLDivElement>(null);
 
   useDismissableMenu(
@@ -252,6 +258,22 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
             <Sidebar size={18} aria-hidden="true" />
           </button>
           <span className="toolbar__separator" aria-hidden="true" />
+          {/* Bug 8 (docs/09-ARCHITECT.md Phase 10): the only way to create an edge otherwise is
+              dragging between two canvas handles, which has no keyboard/switch-access
+              equivalent (WCAG 2.2 SC 2.5.7 / 2.1.1) -- this opens a fully keyboard-operable
+              dialog (`./ConnectNodesModal.tsx`) instead. Disabled with fewer than two nodes,
+              since there is nothing to connect. */}
+          <button
+            type="button"
+            onClick={() => setConnectOpen(true)}
+            disabled={nodes.length < 2}
+            className="toolbar__button"
+            title="Connect nodes"
+            aria-label="Connect nodes"
+          >
+            <Link2 size={18} aria-hidden="true" />
+          </button>
+          <span className="toolbar__separator" aria-hidden="true" />
           <button
             type="button"
             onClick={undo}
@@ -382,6 +404,12 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
           diagramId={diagramId}
           open={shareOpen}
           onClose={() => setShareOpen(false)}
+        />
+      )}
+      {!readOnly && (
+        <ConnectNodesModal
+          open={connectOpen}
+          onClose={() => setConnectOpen(false)}
         />
       )}
     </div>

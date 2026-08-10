@@ -41,6 +41,14 @@ function PreviewInner({
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
+        // Bug 33 (docs/09-ARCHITECT.md Phase 10): `@xyflow/react`'s `nodesFocusable`/
+        // `edgesFocusable` default to `true` regardless of `elementsSelectable`, so without
+        // these, every thumbnail node/edge renders `tabIndex={0}` -- a real Tab stop inside this
+        // component's own `aria-hidden="true"` wrapper below (WCAG 4.1.2 / axe
+        // `aria-hidden-focus`), and, on a dashboard with many diagrams, floods the tab order with
+        // stops a screen reader user can never actually reach content for.
+        nodesFocusable={false}
+        edgesFocusable={false}
         panOnDrag={false}
         zoomOnScroll={false}
         zoomOnDoubleClick={false}

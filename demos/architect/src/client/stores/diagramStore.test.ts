@@ -237,6 +237,86 @@ describe("useDiagramStore", () => {
     expect(edges[0]?.data).toEqual({ edgeType: "data-flow" });
   });
 
+  describe("connectNodes (Bug 8)", () => {
+    beforeEach(() => {
+      useDiagramStore.setState({
+        nodes: [
+          { ...makeNode("a"), position: { x: 0, y: 0 } },
+          { ...makeNode("b"), position: { x: 300, y: 0 } },
+        ],
+      });
+    });
+
+    it("creates an edge with resolved handles, pushes history, marks dirty, and selects the new edge", () => {
+      const newId = useDiagramStore
+        .getState()
+        .connectNodes("a", "b", "data-flow");
+
+      const state = useDiagramStore.getState();
+      expect(newId).not.toBeNull();
+      expect(state.edges).toHaveLength(1);
+      expect(state.edges[0]).toMatchObject({
+        data: { edgeType: "data-flow" },
+        id: newId,
+        source: "a",
+        sourceHandle: "source-right",
+        target: "b",
+        targetHandle: "target-left",
+        type: "cf-edge",
+      });
+      expect(state.dirty).toBe(true);
+      expect(state.undoStack).toHaveLength(1);
+      expect(state.redoStack).toHaveLength(0);
+      expect(state.selectedEdgeId).toBe(newId);
+      expect(state.propertiesOpen).toBe(true);
+    });
+
+    it("allows a second edge between the same nodes with a different edge type", () => {
+      useDiagramStore.getState().connectNodes("a", "b", "data-flow");
+      const secondId = useDiagramStore
+        .getState()
+        .connectNodes("a", "b", "trigger");
+
+      expect(secondId).not.toBeNull();
+      expect(useDiagramStore.getState().edges).toHaveLength(2);
+    });
+
+    it("rejects connecting a node to itself and mutates nothing", () => {
+      const result = useDiagramStore
+        .getState()
+        .connectNodes("a", "a", "data-flow");
+
+      expect(result).toBeNull();
+      const state = useDiagramStore.getState();
+      expect(state.edges).toHaveLength(0);
+      expect(state.undoStack).toHaveLength(0);
+      expect(state.dirty).toBe(false);
+    });
+
+    it("rejects an exact source/target/edge-type duplicate and mutates nothing", () => {
+      useDiagramStore.getState().connectNodes("a", "b", "data-flow");
+      useDiagramStore.setState({ dirty: false });
+
+      const result = useDiagramStore
+        .getState()
+        .connectNodes("a", "b", "data-flow");
+
+      expect(result).toBeNull();
+      const state = useDiagramStore.getState();
+      expect(state.edges).toHaveLength(1);
+      expect(state.dirty).toBe(false);
+    });
+
+    it("returns null and mutates nothing when either node id does not exist", () => {
+      const result = useDiagramStore
+        .getState()
+        .connectNodes("a", "does-not-exist", "data-flow");
+
+      expect(result).toBeNull();
+      expect(useDiagramStore.getState().edges).toHaveLength(0);
+    });
+  });
+
   it("removes only selected nodes and edges", () => {
     useDiagramStore.setState({
       nodes: [

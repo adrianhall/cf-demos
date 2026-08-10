@@ -22,6 +22,10 @@ import {
   type Viewport,
 } from "@xyflow/react";
 import { create } from "zustand";
+import {
+  chooseConnectionHandles,
+  validateConnection,
+} from "../components/editor/connect";
 import type { CFEdgeData, CFNodeData } from "../components/editor/types";
 
 /** A snapshot of the node and edge arrays for undo/redo. */
@@ -108,6 +112,28 @@ interface DiagramActions {
   onEdgesChange: OnEdgesChange;
   /** React Flow `onConnect` handler. Creates a new `data-flow` edge and pushes history. */
   onConnect: OnConnect;
+  /**
+   * Create an edge between two nodes by id rather than by pointer-drag, for
+   * `../components/editor/toolbar/ConnectNodesModal.tsx` (Bug 8, docs/09-ARCHITECT.md Phase 10):
+   * `onConnect` above is wired directly to `@xyflow/react`'s drag-to-connect flow, which has no
+   * keyboard/click-only equivalent, so this is the store-level primitive a keyboard-operable UI
+   * calls instead. Validates via `../components/editor/connect.ts`'s `validateConnection`
+   * (rejects a self-connection or an exact source/target/edge-type duplicate) before mutating
+   * anything, resolves handles via that module's `chooseConnectionHandles`, pushes history,
+   * marks the graph dirty, and selects the new edge -- which opens the properties panel
+   * (see {@link DiagramActions.setSelectedEdge}) so the user lands directly on its fields.
+   *
+   * @param sourceId Id of an existing node to connect from.
+   * @param targetId Id of an existing node to connect to.
+   * @param edgeType Catalog edge type (`../../../catalog.ts`'s `EDGE_TYPES`) for the new edge.
+   * @returns The new edge's id on success, or `null` when the connection is invalid (nothing is
+   * mutated in that case) or either node id does not exist in the current graph.
+   */
+  connectNodes: (
+    sourceId: string,
+    targetId: string,
+    edgeType: CFEdgeData["edgeType"],
+  ) => string | null;
   /** Update the stored viewport (pan/zoom). Does not mark dirty. */
   onViewportChange: (viewport: Viewport) => void;
 
@@ -253,6 +279,54 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       ),
       dirty: true,
     }));
+  },
+
+  connectNodes: (sourceId, targetId, edgeType) => {
+    const state = get();
+    const reason = validateConnection({
+      edgeType,
+      edges: state.edges,
+      sourceId,
+      targetId,
+    });
+    if (reason) return null;
+
+    const sourceNode = state.nodes.find((n) => n.id === sourceId);
+    const targetNode = state.nodes.find((n) => n.id === targetId);
+    if (!sourceNode || !targetNode) return null;
+
+    const { sourceHandle, targetHandle } = chooseConnectionHandles(
+      sourceNode,
+      targetNode,
+    );
+    const newEdgeId = `edge-${sourceId}-${targetId}-${Date.now()}`;
+
+    get().pushHistory();
+    set((current) => ({
+      // Appended directly rather than through `@xyflow/react`'s own `addEdge` helper (as
+      // `onConnect` above does): that helper's duplicate check keys only on
+      // source/target/handles, ignoring `edgeType` entirely, so it would silently drop a second,
+      // different-`edgeType` edge between the same node pair whenever `chooseConnectionHandles`
+      // (deterministic given fixed node positions) resolves to the same handle pair as an
+      // existing edge -- exactly the case `../../components/editor/connect.ts`'s
+      // `validateConnection` deliberately allows. Every input here has already been validated
+      // above, so no further validation from `addEdge` is needed.
+      edges: [
+        ...current.edges,
+        {
+          data: { edgeType },
+          id: newEdgeId,
+          source: sourceId,
+          sourceHandle,
+          target: targetId,
+          targetHandle,
+          type: "cf-edge",
+        } as Edge<CFEdgeData>,
+      ],
+      dirty: true,
+    }));
+    get().setSelectedEdge(newEdgeId);
+    return newEdgeId;
   },
 
   onViewportChange: (viewport) => set({ viewport }),

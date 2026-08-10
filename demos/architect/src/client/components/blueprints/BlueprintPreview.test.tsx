@@ -25,4 +25,11 @@ describe("BlueprintPreview", () => {
     const { container } = render(<BlueprintPreview graphData="{}" />);
     expect(container.querySelector("[aria-hidden='true']")).toBeInTheDocument();
   });
+
+  it("disables node/edge focusability so no thumbnail element is a Tab stop inside its aria-hidden wrapper (Bug 33)", () => {
+    render(<BlueprintPreview graphData="{}" />);
+    const flow = screen.getByTestId("react-flow");
+    expect(flow).toHaveAttribute("data-nodes-focusable", "false");
+    expect(flow).toHaveAttribute("data-edges-focusable", "false");
+  });
 });

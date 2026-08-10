@@ -26,6 +26,19 @@
   --cf-danger-solid: #c0392b;
 }
 
+/* Bug 28 (docs/09-ARCHITECT.md Phase 9): nothing in this file set `box-sizing`, so the browser
+   default (`content-box`) let any element combining `width: 100%` with its own padding/border
+   render wider than its parent's content box -- most visibly `.properties-panel__input`
+   (padding + a 1px border) overflowing flush against, and slightly past, the properties panel's
+   own inner edge with no scrollbar to reveal it. The standard `border-box` reset makes
+   `width: 100%` mean "100% including padding and border" everywhere, matching what every other
+   percentage-width element in this file already assumed. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
 }
@@ -60,6 +73,11 @@ button {
   color: inherit;
   cursor: pointer;
   padding: 0.5rem 1rem;
+  /* Bug 30 (docs/09-ARCHITECT.md Phase 10): `.button` is also applied to real `<a>` elements
+     (`.app-shell__logout`, the dashboard's "+ New Diagram" links) whose UA-default underline
+     otherwise survives every other button styling here, making them read as plain text links
+     rather than buttons. */
+  text-decoration: none;
 }
 
 .button:disabled {
@@ -142,7 +160,15 @@ button {
 }
 
 .app-shell__logout {
+  /* Bug 26 (docs/09-ARCHITECT.md Phase 9): plain inline content (an icon followed by "Sign
+     out") let the icon sit on the text baseline instead of centered against it, and JSX
+     whitespace between the two elements on separate lines collapses to nothing, leaving no gap.
+     `inline-flex` + `align-items: center` + `gap` fixes both without touching `.button`, whose
+     other, icon-less usages don't have this problem. */
+  align-items: center;
+  display: inline-flex;
   flex: 0 0 auto;
+  gap: 0.375rem;
 }
 
 .app-shell__loading,
@@ -160,7 +186,23 @@ button {
 /* The editor needs the full remaining viewport, not the dashboard's centered, padded column. */
 .app-shell__main--editor {
   display: flex;
+  /* Bug 29 (docs/09-ARCHITECT.md Phase 9), real root cause: `.app-shell` only sets
+     `min-height: 100vh`, never a real `height`, so it (and every descendant relying on
+     `flex: 1 1 auto` to "fill the rest") never actually gets a *definite* height -- per the
+     flexbox spec, flex-grow only redistributes space within a container that has a definite
+     main size, and a `min-height`-only container doesn't count. Without a definite height
+     anywhere in the chain, `<ReactFlow>`'s own `height: 100%` wrapper style (`../..
+     /node_modules/@xyflow/react`) falls back to `auto`, which resolves against its content,
+     which is the (post-fitView) diagram itself -- a feedback loop that inflates every ancestor,
+     including this one, to match the diagram's own scaled size instead of the viewport, which
+     is exactly why `fitView`'s own math came out nonsensical (Bug 29's actual symptom). `height:
+     100vh` breaks that loop by giving this element -- now that Bug 23 removed the header above
+     it, making this the entire viewport for the editor route -- a real, definite height of its
+     own, matching the same fix `.share-view` below already uses for the read-only viewer's
+     identical layout problem. `flex: 1 1 auto` is kept for defensiveness but no longer does the
+     actual sizing work. */
   flex: 1 1 auto;
+  height: 100vh;
   margin: 0;
   max-width: none;
   min-height: 0;
@@ -275,13 +317,19 @@ button {
 }
 
 /* The stretched-link overlay: covers the entire `.diagram-card`, not just the title text, so
-   the whole card remains clickable. `CardMenu`'s button (`.diagram-card__menu`, later in DOM
-   order within the same stacking context) still receives clicks in the region where the two
-   overlap, since it paints after this overlay and additionally sets its own `z-index`. */
+   the whole card remains clickable. Bug 31 (docs/09-ARCHITECT.md Phase 10): the overlay
+   originally relied on DOM order alone (no explicit `z-index`, so an implicit stacking level of
+   `0`) to sit above everything else in the card -- true everywhere except over
+   `.diagram-card__preview`, where `BlueprintPreview.tsx` renders a real `<ReactFlow>` whose own
+   stylesheet stacks `.react-flow__pane`/`.react-flow__viewport`/`.react-flow__renderer` at
+   `z-index: 1/2/4` inside that same stacking context, painting above the overlay and swallowing
+   every click over the thumbnail. Explicit `z-index: 5` puts the overlay above every xyflow
+   layer; `.diagram-card__menu` below is raised to match so its own dropdown stays reachable. */
 .diagram-card__link::after {
   content: "";
   inset: 0;
   position: absolute;
+  z-index: 5;
 }
 
 .diagram-card__timestamp {
@@ -293,11 +341,22 @@ button {
 .diagram-card__preview {
   background: var(--cf-surface-alt);
   border-top: 1px solid var(--cf-border);
+  /* Bug 31 (docs/09-ARCHITECT.md Phase 10): defense in depth alongside `.diagram-card__link`'s
+     raised `z-index` above -- the thumbnail is non-interactive (`BlueprintPreview.tsx` marks it
+     `aria-hidden`), so it should never intercept pointer events at all, independent of stacking
+     order. Some xyflow-internal elements re-enable `pointer-events` on themselves
+     (`.react-flow__edge` uses `visibleStroke`, `.react-flow__edge-textwrapper` uses `all`), so
+     this alone would not be sufficient without the z-index fix above. */
+  pointer-events: none;
 }
 
 .diagram-card__menu {
   position: relative;
-  z-index: 1;
+  /* Bug 31 (docs/09-ARCHITECT.md Phase 10): raised from `1` to sit above
+     `.diagram-card__link::after`'s new `z-index: 5` -- otherwise the stretched link overlay,
+     now correctly above the thumbnail, would also swallow clicks on this menu button and its
+     dropdown. */
+  z-index: 6;
 }
 
 .diagram-card__menu-button {
@@ -539,6 +598,16 @@ button {
 }
 
 .create-diagram-modal__error {
+  color: var(--cf-danger);
+  margin: 0.5rem 0 0;
+}
+
+/* Bug 8 (docs/09-ARCHITECT.md Phase 10): "./toolbar/ConnectNodesModal.tsx"'s validation message
+   (self-connection, or an exact source/target/edge-type duplicate). Not shared with
+   `.create-diagram-modal__error` above -- same visual treatment, but the two modals are
+   otherwise unrelated, and each already reuses `.properties-panel__field`/`__label`/`__input`
+   for its own form fields rather than borrowing the other's classes wholesale. */
+.connect-nodes-modal__error {
   color: var(--cf-danger);
   margin: 0.5rem 0 0;
 }

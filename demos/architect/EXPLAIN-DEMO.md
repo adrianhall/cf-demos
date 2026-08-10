@@ -143,12 +143,57 @@ keyboard shortcut would.
 The service palette (`src/client/components/editor/panels/ServicePalette.tsx`) supports both
 drag-and-drop onto the canvas and a click/keyboard-activatable "add at center" path, so adding a
 node to the diagram has a keyboard- and screen-reader-operable route, not only a mouse-drag one.
+The palette's category expand/collapse state also persists per user across sessions
+(`src/client/lib/palette-preferences.ts`, `localStorage`-backed like the dark mode preference),
+seeded to Compute expanded and every other category collapsed on a first-ever visit, rather than
+resetting to fully expanded on every editor open.
+
+Connecting two nodes has the same two-route design as creating one, closing the other half of
+the same accessibility story: `@xyflow/react`'s only built-in connection mechanism is dragging
+between two canvas `Handle`s (or, at best, clicking one unfocusable handle then another — see
+`docs/DECISIONS.md` #28 for why that still fails for a keyboard user), which has no keyboard or
+switch-access equivalent at all (WCAG 2.2 SC 2.5.7 / 2.1.1). The toolbar's "Connect nodes" button
+opens `ConnectNodesModal.tsx`: pick a source, a target, and a connection type from three native
+`<select>`s, each already keyboard-operable by construction. A small pure module,
+`src/client/components/editor/connect.ts`, resolves which of the two nodes' catalog handles the
+new edge should use and validates the pair (no self-connections, no exact source/target/edge-type
+duplicates) before `diagramStore.ts`'s `connectNodes` action actually creates it — the same
+store-level primitive the properties panel and export code already read from, so a
+dialog-created edge is indistinguishable from a drag-created one everywhere else in the app.
 
 ELK (`elkjs`), the auto-layout engine, is imported with a dynamic `import()` only when a user
 actually clicks a layout button (`src/client/components/editor/toolbar/Toolbar.tsx`), rather than
 bundled into the main chunk — bundling it eagerly adds roughly 540 KB gzip to the initial page
 load for a feature many users never use, so lazy-loading keeps the feature without paying that
 cost up front.
+
+The editor has its own single toolbar, not a stacked app-shell header: `AppShellView.tsx` renders
+its identity/admin-link/dark-mode/sign-out header only for the dashboard and admin sub-views
+(`route.view !== "editor"`), never for the editor itself. Reaching the editor always means having
+come from a header-bearing view first (the dashboard, or a share link with no header at all), and
+`Toolbar.tsx`'s own back-arrow button returns there, where the header — and sign-out — is
+available again; stacking a second, mostly-redundant banner above a toolbar that already has a
+way back added visual noise without adding a capability.
+
+`DiagramCanvas.tsx` also fits the freshly loaded diagram into view exactly once per mount, via
+`useNodesInitialized()` rather than `<ReactFlow>`'s own mount-time `fitView` prop: `CFNode.tsx`'s
+custom node renderer has no explicit `width`/`height`, so its real rendered size isn't known
+until slightly after that first mount, and the prop's fit (computed synchronously at mount,
+against effectively unmeasured nodes) could compute a viewport that left the diagram's real,
+later-measured nodes scrolled outside the frame — most visibly for a diagram just created from a
+multi-node blueprint. `useNodesInitialized()` flips to `true` only once every node has a real
+measured size, so fitting then, exactly once, reliably frames what the user actually sees without
+fighting their own subsequent pan/zoom. This alone was not enough, though: `.app-shell` sets only
+`min-height: 100vh`, and flexbox `flex-grow` doesn't redistribute space within a container whose
+main size isn't definite, so `.app-shell__main--editor`'s `flex: 1 1 auto` never actually filled
+the viewport — `<ReactFlow>`'s own `height: 100%` wrapper fell back to sizing from its (already
+mis-fitted) content instead, feeding back into the very `fitView` calculation meant to fix it. A
+real headless-browser repro (Chromium via Playwright — the mocked `@xyflow/react` this
+repository's own Vitest suite uses can't exercise real layout) is what surfaced this, since it
+requires actual layout/measurement, not just component logic. Giving
+`.app-shell__main--editor` a real `height: 100vh` — safe specifically because Bug 23 already
+removed the header that used to share that space — fixed it for good, matching the identical
+pattern `.share-view` (the anonymous viewer's own full-viewport container) already used.
 
 ### Read-only sharing without ever storing a raw token
 
@@ -310,9 +355,11 @@ by default): toggling the mode means setting an explicit `color-scheme` value on
 than maintaining a second, hand-written set of dark-mode variable overrides behind a class toggle.
 The preference persists in `localStorage`, applied once in `main.tsx` before the first render —
 there is no server-rendered markup for an inline `<head>` script to prevent a flash for, since
-this is a client-only SPA. `AppShellView`'s header wraps both the dashboard and the editor, so one
+this is a client-only SPA. `AppShellView`'s header wraps the dashboard and admin views, so one
 `DarkModeToggle` instance there covers both; `BlueprintsView`'s own header and the editor
-`Toolbar` each render their own instance for the pages `AppShellView` doesn't wrap.
+`Toolbar` each render their own instance for the pages `AppShellView`'s header doesn't wrap --
+including the editor, whose own header was removed entirely (see the "Editor has its own single
+toolbar, not a stacked app-shell header" note below).
 
 ELK remains the only heavy, lazy-loaded dependency in this editor; `html-to-image` and `fflate`
 are small enough (roughly 15 KB and 8 KB gzip respectively) to import eagerly in

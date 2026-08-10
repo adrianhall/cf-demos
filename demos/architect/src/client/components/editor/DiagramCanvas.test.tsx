@@ -83,6 +83,55 @@ describe("DiagramCanvas", () => {
     expect(screen.getByLabelText("Diagram title")).toHaveValue("My Diagram");
   });
 
+  it("fits the view once nodes finish initializing after loading a diagram (Bug 29)", async () => {
+    mockXyflow.mockUseNodesInitialized.mockReturnValue(false);
+    mockXyflow.mockFitView.mockClear();
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    const { rerender } = render(<DiagramCanvas diagramId="d1" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+
+    // `CFNode`'s custom renderer has no explicit size, so the diagram's real dimensions aren't
+    // known until `useNodesInitialized()` flips to `true` -- no fit should happen before then.
+    expect(mockXyflow.mockFitView).not.toHaveBeenCalled();
+
+    mockXyflow.mockUseNodesInitialized.mockReturnValue(true);
+    rerender(<DiagramCanvas diagramId="d1" />);
+
+    await waitFor(() =>
+      expect(mockXyflow.mockFitView).toHaveBeenCalledWith({ duration: 0 }),
+    );
+  });
+
+  it("fits the view only once per mount, not on every render after nodes are initialized (Bug 29)", async () => {
+    mockXyflow.mockUseNodesInitialized.mockReturnValue(true);
+    mockXyflow.mockFitView.mockClear();
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    const { rerender } = render(<DiagramCanvas diagramId="d1" />);
+    await waitFor(() =>
+      expect(mockXyflow.mockFitView).toHaveBeenCalledTimes(1),
+    );
+
+    rerender(<DiagramCanvas diagramId="d1" />);
+    rerender(<DiagramCanvas diagramId="d1" />);
+
+    // A user's own subsequent pan/zoom must never be fought by a repeated auto-fit.
+    expect(mockXyflow.mockFitView).toHaveBeenCalledTimes(1);
+  });
+
   it("hides the service palette when paletteOpen is false (Bug 4)", async () => {
     useDiagramStore.setState({ paletteOpen: false });
     mockGetDiagram.mockResolvedValue({

@@ -7,10 +7,11 @@ import {
   MiniMap,
   type Node,
   ReactFlow,
+  useNodesInitialized,
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CATEGORY_COLORS, NODE_TYPE_MAP } from "../../../catalog";
 import {
   getDiagram,
@@ -94,6 +95,7 @@ export function DiagramCanvas({
   initialDiagram?: Pick<SharedDiagram, "title" | "description" | "graphData">;
 }) {
   const { fitView, getNodes, screenToFlowPosition } = useReactFlow();
+  const nodesInitialized = useNodesInitialized();
 
   const {
     nodes,
@@ -222,6 +224,27 @@ export function DiagramCanvas({
     }, TITLE_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [title, diagramLoaded, diagramId, readOnly]);
+
+  // Fit the freshly loaded diagram's nodes into view once, covering both a brand-new diagram
+  // (e.g. created from a blueprint like "API Gateway") and reopening an existing one (Bug 29,
+  // docs/09-ARCHITECT.md Phase 9). `<ReactFlow>`'s own `fitView` prop below only fits once, at
+  // first mount, using whatever node dimensions are available *at that instant* -- but this
+  // custom `CFNode` renderer (`./nodes/CFNode.tsx`) has no explicit width/height, so its real
+  // size isn't known until the browser has actually laid it out, which happens slightly after
+  // that first mount. The prop's fit therefore ran against effectively unmeasured (zero-size)
+  // nodes, computing a viewport that left every real, later-measured node scrolled out of
+  // frame. `useNodesInitialized()` flips to `true` only once every node has a real measured
+  // size, so re-fitting then (rather than relying on the mount-time prop alone) reliably frames
+  // the actual rendered diagram. Fits only once per mount (guarded by `fittedOnLoadRef`) so it
+  // never fights a user's own subsequent pan/zoom.
+  const fittedOnLoadRef = useRef(false);
+  useEffect(() => {
+    if (fittedOnLoadRef.current || !diagramLoaded || !nodesInitialized) {
+      return;
+    }
+    fittedOnLoadRef.current = true;
+    void fitView({ duration: 0 });
+  }, [diagramLoaded, nodesInitialized, fitView]);
 
   // Print mode side effects: force a light color scheme, choose a page orientation matching the
   // diagram's own aspect ratio, fit the view, and trigger the browser print dialog. Ported from
@@ -432,7 +455,10 @@ export function DiagramCanvas({
             onPaneClick={onPaneClick}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            fitView
+            // No `fitView` prop here: it only fits once, at first mount, using whatever node
+            // dimensions are available at that instant -- unreliable for `CFNode`'s unmeasured
+            // custom size (Bug 29 above). The `fittedOnLoadRef` effect above fits reliably once
+            // real node measurements are available instead.
             snapToGrid
             snapGrid={[16, 16]}
             deleteKeyCode={null}

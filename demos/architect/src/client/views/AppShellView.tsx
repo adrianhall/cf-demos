@@ -1,4 +1,4 @@
-import { LogOut, Shield } from "react-feather";
+import { LogOut } from "react-feather";
 import { DarkModeToggle } from "../components/DarkModeToggle";
 import { useIdentity } from "../hooks/useIdentity";
 import { AdminView } from "./AdminView";
@@ -40,62 +40,56 @@ function resolveRoute(pathname: string): AppRoute {
  * verified, via `GET /api/me`, and sub-routes `<main>` between the dashboard, the editor, and
  * (for the configured administrator only) the admin view.
  *
- * The header (identity + sign-out) is always rendered, in both sub-views, per AGENTS.md's Public
- * Access requirement for an unconditional logout control -- the editor's own `Toolbar`
- * (`../components/editor/toolbar/Toolbar.tsx`) has no sign-out affordance of its own, relying on
- * this shared header instead. The same header carries the one `../components/DarkModeToggle.tsx`
- * instance covering both the dashboard and the editor (docs/09-ARCHITECT.md Phase 5) -- see that
- * component's own JSDoc for why this port needs only one instance where CF-Architect needed two.
+ * The header (identity, admin link, dark-mode toggle, sign-out) is rendered for the dashboard
+ * and admin sub-views, per AGENTS.md's Public Access requirement for an unconditional logout
+ * control. Bug 23 (docs/09-ARCHITECT.md Phase 9) removes it for the editor sub-view specifically
+ * -- the editor already renders its own single toolbar (`../components/editor/toolbar/Toolbar.tsx`)
+ * immediately below where this header used to sit, and that toolbar's own `ArrowLeft`
+ * back-to-dashboard link is enough to return to a view where the header (and its sign-out
+ * control) is available again, so stacking this header above the editor's toolbar added a
+ * second banner with no affordance of its own that the toolbar didn't already cover.
  */
 export function AppShellView() {
   const identity = useIdentity();
   const route = resolveRoute(window.location.pathname);
+  const showHeader = route.view !== "editor";
 
   return (
     <div className="app-shell">
-      <header className="app-shell__header">
-        <a className="app-shell__name" href="/app">
-          Architect
-        </a>
-        {identity.isAdmin && (
-          <a className="app-shell__admin-link" href="/app/admin">
-            Admin
+      {showHeader && (
+        <header className="app-shell__header">
+          <a className="app-shell__name" href="/app">
+            Architect
           </a>
-        )}
-        {identity.loading ? (
-          <span className="app-shell__identity">Verifying identity…</span>
-        ) : identity.email !== null ? (
-          <span className="app-shell__identity">
-            {identity.email}
-            {identity.isAdmin && (
-              // Bug 5 (docs/09-ARCHITECT.md Phase 7): the literal " (administrator)" text
-              // suffix is replaced by an icon. `role="img"` + `aria-label` (rather than a
-              // visually-hidden text node) is the standard accessible-icon pattern -- it gives
-              // the shield its own accessible name without duplicating "administrator" as a
-              // second text node next to the visible email.
-              <Shield
-                className="app-shell__admin-badge"
-                size={14}
-                role="img"
-                aria-label="Administrator"
-              />
-            )}
-          </span>
-        ) : (
-          <span className="app-shell__identity" role="alert">
-            {identity.error}
-          </span>
-        )}
-        <DarkModeToggle />
-        {/* Unconditionally rendered per AGENTS.md's Public Access section, so a presenter who
-            signs in as the wrong identity locally can always recover without clearing cookies.
-            A real, visible `.button` with an icon (Bug 1, docs/09-ARCHITECT.md Phase 7) rather
-            than a bare text link. */}
-        <a className="app-shell__logout button" href="/cdn-cgi/access/logout">
-          <LogOut size={16} aria-hidden="true" />
-          Sign out
-        </a>
-      </header>
+          {identity.isAdmin && (
+            <a className="app-shell__admin-link" href="/app/admin">
+              Admin
+            </a>
+          )}
+          {identity.loading ? (
+            <span className="app-shell__identity">Verifying identity…</span>
+          ) : identity.email !== null ? (
+            // Bug 27 (docs/09-ARCHITECT.md Phase 9): the Bug 5 shield icon next to the email is
+            // removed -- the "Admin" nav link above is already sufficient to denote admin
+            // capabilities, so a second, redundant admin indicator next to the email is not
+            // needed.
+            <span className="app-shell__identity">{identity.email}</span>
+          ) : (
+            <span className="app-shell__identity" role="alert">
+              {identity.error}
+            </span>
+          )}
+          <DarkModeToggle />
+          {/* Unconditionally rendered per AGENTS.md's Public Access section, so a presenter who
+              signs in as the wrong identity locally can always recover without clearing cookies.
+              A real, visible `.button` with an icon (Bug 1, docs/09-ARCHITECT.md Phase 7) rather
+              than a bare text link. */}
+          <a className="app-shell__logout button" href="/cdn-cgi/access/logout">
+            <LogOut size={16} aria-hidden="true" />
+            Sign out
+          </a>
+        </header>
+      )}
       <main
         className={`app-shell__main${route.view === "editor" ? " app-shell__main--editor" : ""}`}
       >

@@ -6,6 +6,10 @@ import {
   type NodeCategory,
   type NodeTypeDef,
 } from "../../../../catalog";
+import {
+  getStoredCollapsedCategories,
+  setStoredCollapsedCategories,
+} from "../../../lib/palette-preferences";
 import { ProductIcon } from "../../ProductIcon";
 
 /** Every catalog node type grouped by category, computed once at module load. */
@@ -16,11 +20,13 @@ const categories = Object.keys(grouped) as NodeCategory[];
 /**
  * Left sidebar listing every catalog node type grouped by category, with a type-ahead search
  * filter and collapsible category sections. Ported from CF-Architect's
- * `src/islands/panels/ServicePalette.tsx`, with one deliberate accessibility addition: each item
- * is a real `<button>` that also calls `onAddNode` on click/keyboard activation, not only a
- * `draggable` `<div>` -- CF-Architect's drag-only palette has no keyboard or screen-reader path
- * to add a node at all, which AGENTS.md's WCAG 2.2 AA requirement for this demo's primary
- * workflow does not allow.
+ * `src/islands/panels/ServicePalette.tsx`, with two deliberate additions: each item is a real
+ * `<button>` that also calls `onAddNode` on click/keyboard activation, not only a `draggable`
+ * `<div>` -- CF-Architect's drag-only palette has no keyboard or screen-reader path to add a node
+ * at all, which AGENTS.md's WCAG 2.2 AA requirement for this demo's primary workflow does not
+ * allow -- and per-user persistence of which categories are collapsed (Bug 32,
+ * docs/09-ARCHITECT.md Phase 10; see `../../../lib/palette-preferences.ts`), rather than every
+ * category always starting expanded on every editor open.
  *
  * @param onAddNode Called with a clicked/activated item's `typeId`; the caller
  * (`../DiagramCanvas.tsx`) adds the node at a sensible default position.
@@ -31,7 +37,9 @@ export function ServicePalette({
   onAddNode: (typeId: string) => void;
 }) {
   const [search, setSearch] = useState("");
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(
+    getStoredCollapsedCategories,
+  );
 
   const filterTerm = search.toLowerCase().trim();
 
@@ -42,7 +50,11 @@ export function ServicePalette({
   };
 
   const toggleCategory = (category: string) => {
-    setCollapsed((prev) => ({ ...prev, [category]: !prev[category] }));
+    setCollapsed((prev) => {
+      const next = { ...prev, [category]: !prev[category] };
+      setStoredCollapsedCategories(next);
+      return next;
+    });
   };
 
   // Bug 3 (docs/09-ARCHITECT.md Phase 7): a single control to collapse or expand every category
@@ -54,9 +66,11 @@ export function ServicePalette({
   const allCollapsed = categories.every((category) => collapsed[category]);
   const toggleAllCategories = () => {
     const next = !allCollapsed;
-    setCollapsed(
-      Object.fromEntries(categories.map((category) => [category, next])),
+    const nextCollapsed = Object.fromEntries(
+      categories.map((category) => [category, next]),
     );
+    setStoredCollapsedCategories(nextCollapsed);
+    setCollapsed(nextCollapsed);
   };
 
   return (

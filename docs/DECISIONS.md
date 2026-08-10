@@ -1210,3 +1210,63 @@ Any other demo in this repository that uses `light-dark()` for theming and lets 
 override `color-scheme` at runtime (rather than relying purely on `prefers-color-scheme`) should
 apply the same `css.lightningcss.exclude: Features.LightDark` fix in its own `vite.config.ts` —
 this is a Vite/Lightning-CSS default behavior, not something specific to `demos/architect`'s CSS.
+
+## 28. `@xyflow/react`'s pointer-drag connection flow has no built-in keyboard equivalent, and its
+    thumbnail-mode props default to focusable/selectable regardless of a surrounding
+    `aria-hidden` wrapper (`demos/architect`, Phase 10's Bug 8 and Bug 33)
+
+Two related `@xyflow/react` (v12) accessibility gaps surfaced while fixing `demos/architect`'s
+Phase 10 bugs, worth recording since they apply to any Workers demo that embeds this library, not
+only this one.
+
+**Connecting two nodes has no keyboard path, despite `connectOnClick` defaulting to `true`.**
+`@xyflow/react` does ship a non-drag connection mode: with `connectOnClick` at its default
+(`true`), clicking one `Handle` and then another completes a connection without dragging.
+Investigating this as a candidate fix for Bug 8 (WCAG 2.2 SC 2.5.7 / 2.1.1 — connecting nodes was
+only possible by pointer-drag) found it does not actually close the gap: `Handle`
+(`@xyflow/react/dist/esm/index.js`) renders a plain `<div>` with no `tabIndex`, no `role`, and no
+accessible name — a real keyboard user has no way to focus a handle at all, so `connectOnClick`
+only ever removes the *drag* requirement for a *pointer* user, not the underlying keyboard gap.
+Making handles focusable directly was considered and rejected: the in-progress "waiting for a
+second click" state lives in `@xyflow/react`'s own internal `connectionClickStartHandle` store
+field, with no public API to inspect, cancel, or drive it from outside the library, and this
+repository's client test suite mocks `@xyflow/react` wholesale (`src/client/test/mock-xyflow.tsx`)
+for every editor component test, so any behavior depending on that internal store state would be
+unverifiable by any committed test — only checkable by hand or a throwaway browser script, for a
+change touching this demo's primary, WCAG-critical workflow. The fix that shipped instead
+(`ConnectNodesModal.tsx`, `docs/09-ARCHITECT.md` Phase 10) is a dialog built entirely from this
+app's own native `<select>`/`<button>` elements, which are keyboard-operable by construction and
+fully exercisable by the existing Vitest suite with no library internals or browser automation
+involved.
+
+A closely related finding, not itself acted on in this fix: `NodeWrapper`'s own keyboard handling
+(same file) *does* let a keyboard user select a node — Enter/Space on a focused, focusable node
+triggers the library's internal `handleNodeClick`, which updates the node's own `selected` flag —
+but that internal selection path does **not** call the `onNodeClick` prop a consuming app passes
+to `<ReactFlow>`. `DiagramCanvas.tsx`'s `onNodeClick` (which drives this app's own
+`selectedNodeId` and opens the properties panel, Bug 4) is only ever invoked by a *pointer*
+click. This means a keyboard user selecting a node via Enter/Space today gets `@xyflow/react`'s
+own visual selection ring, but this app's properties panel silently does not open for it — a real,
+separate defect, deliberately left unfixed here since `ConnectNodesModal` was designed not to
+depend on canvas selection at all (its own "Source" dropdown defaults from `selectedNodeId` only
+when set, and works fine when it is not). Any future work on this app's keyboard support should
+treat this as its own bug rather than assume node selection already round-trips correctly for
+keyboard users.
+
+**`nodesFocusable`/`edgesFocusable` default to `true` independent of `elementsSelectable`, which
+breaks a non-interactive, `aria-hidden` thumbnail.** `BlueprintPreview.tsx` renders a read-only
+`<ReactFlow>` thumbnail wrapped in `aria-hidden="true"`, already passing
+`elementsSelectable={false}` — but `@xyflow/react`'s `NodeWrapper`/edge-wrapper equivalents compute
+node/edge focusability from `nodesFocusable`/`edgesFocusable` specifically, which are separate
+props that default to `true` regardless of `elementsSelectable`'s value. Every thumbnail node/edge
+therefore still rendered `tabIndex={0}` — real Tab stops inside content marked `aria-hidden` (WCAG
+4.1.2, axe's `aria-hidden-focus` rule), and on a dashboard with many diagrams, a tab-order flood
+with no reachable content behind any of those stops. Fix: pass `nodesFocusable={false}` and
+`edgesFocusable={false}` explicitly alongside `elementsSelectable={false}` on any `<ReactFlow>`
+instance that is read-only/decorative — the three props do not imply each other.
+
+Any other Workers demo embedding `@xyflow/react` for an interactive canvas should budget for a
+non-drag connection UI as a first-class requirement, not an afterthought, given the library's
+handles are not independently keyboard-accessible; and any demo rendering `@xyflow/react` purely
+as a thumbnail/preview should set all three of `elementsSelectable`, `nodesFocusable`, and
+`edgesFocusable` to `false` together.

@@ -37,7 +37,27 @@ describe("AppShellView", () => {
     expect(screen.getByText("Verifying identity…")).toBeInTheDocument();
   });
 
-  it("renders the verified email with an administrator badge after loading", async () => {
+  it("renders the verified email for an administrator", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ email: "admin@example.com", isAdmin: true }),
+            { status: 200 },
+          ),
+        ),
+    );
+
+    render(<AppShellView />);
+
+    await waitFor(() =>
+      expect(screen.getByText("admin@example.com")).toBeInTheDocument(),
+    );
+  });
+
+  it("does not render a redundant administrator badge next to the email (Bug 27)", async () => {
     vi.stubGlobal(
       "fetch",
       vi
@@ -56,8 +76,8 @@ describe("AppShellView", () => {
       expect(screen.getByText("admin@example.com")).toBeInTheDocument(),
     );
     expect(
-      screen.getByRole("img", { name: "Administrator" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("img", { name: "Administrator" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows an Admin nav link only for the configured administrator", async () => {
@@ -106,7 +126,7 @@ describe("AppShellView", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the verified email with no administrator badge for a non-administrator", async () => {
+  it("renders the verified email for a non-administrator", async () => {
     vi.stubGlobal(
       "fetch",
       vi
@@ -124,9 +144,6 @@ describe("AppShellView", () => {
     await waitFor(() =>
       expect(screen.getByText("alice@example.com")).toBeInTheDocument(),
     );
-    expect(
-      screen.queryByRole("img", { name: "Administrator" }),
-    ).not.toBeInTheDocument();
   });
 
   it("renders a logout control unconditionally, even while loading", () => {
@@ -280,5 +297,54 @@ describe("AppShellView", () => {
     expect(container.querySelector("main")).toHaveClass(
       "app-shell__main--editor",
     );
+  });
+
+  it("does not render the app-shell header for the editor view (Bug 23)", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+    window.history.pushState({}, "", "/app/diagram/abc-123");
+
+    const { container } = render(<AppShellView />);
+
+    expect(container.querySelector("header")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Sign out" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the app-shell header for the dashboard view", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+    window.history.pushState({}, "", "/app");
+
+    const { container } = render(<AppShellView />);
+
+    expect(container.querySelector("header")).toBeInTheDocument();
+  });
+
+  it("renders the app-shell header for the admin view", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ email: "admin@example.com", isAdmin: true }),
+            { status: 200 },
+          ),
+        ),
+    );
+    window.history.pushState({}, "", "/app/admin");
+
+    const { container } = render(<AppShellView />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("admin-view")).toBeInTheDocument(),
+    );
+    expect(container.querySelector("header")).toBeInTheDocument();
   });
 });
