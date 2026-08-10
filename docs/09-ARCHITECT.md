@@ -458,7 +458,7 @@ without restructuring which component owns the provider. See Bug 23 in
 **Fixed.** `ServicePalette.tsx` has a "Collapse all"/"Expand all" control above the category
 list, toggling every category section at once.
 
-### Bug 4: Node editor (panel on right hand side) should be collapsed initially, collapsible or closeable with a close icon button, and open automatically when a node is selected.
+### Bug 4: Node editor (panel on right hand side) should be collapsed initially, collapsible or closeable with a close icon button, and open automatically when a node is selected
 
 **Fixed.** `diagramStore.ts`'s `propertiesOpen` defaults to `false` and is set to `true` by
 `setSelectedNode`/`setSelectedEdge` whenever a non-null id is passed; deselecting leaves it open
@@ -501,10 +501,6 @@ appears twice when the app shell header and the editor toolbar are both visible 
   icon set (Workers/Workflows/Workers VPC, R2/R2 Data Catalog, Containers/Sandbox,
   Agents/AI Gateway, Email Routing/Email Service) -- each pair still reads as distinct on canvas
   via category color, accent border, and label.
-
-### Bug 8 (critical): Diagram edges can only be created by mouse-drag, with no keyboard alternative
-
-**Not fixed in this pass -- see [Phase 9](#phase-9-carried-forward-bugs).**
 
 ### Bug 9 (high): Form field borders fail non-text contrast (1.4.11)
 
@@ -752,6 +748,10 @@ The sign-out button contains a sign-out icon followed by the words "Sign out".  
 ### Bug 27 Remove the "admin" icon next to the email address in the banner
 
 the "shield" admin icon is not required, nor is the old "administrator" wording - the fact that there is an "Admin" link in the banner is enough to denote the admin capabilities.
+
+### Bug 28: The Label and Description input boxes overlap edge in the detail panel
+
+Click on a node, then the detail panel opens on the right hand side.  Note the label and the description text boxes are flush against the edge (with no horizontal scroll bar).  Need a small amount of gap for a pleasing UX.
 
 ## Post-MVP: Live Collaboration And AI Proposals
 
