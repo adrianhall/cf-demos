@@ -20,9 +20,11 @@ describe("App", () => {
 
     render(<App />);
 
+    // GitLab issue #4's redesigned landing page repeats the primary call to action in both the
+    // hero and the closing CTA banner, so there are two matches here rather than one.
     expect(
-      screen.getByRole("link", { name: "Open the editor" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("link", { name: "Open the editor" }),
+    ).not.toHaveLength(0);
   });
 
   it("renders the authenticated app shell under /app", () => {

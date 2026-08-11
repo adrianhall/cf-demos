@@ -6,7 +6,7 @@ import { DarkModeToggle } from "./DarkModeToggle";
  * Which page is rendering the header. Used only to omit the nav link that would point at the
  * page the visitor is already on.
  */
-export type AppHeaderPage = "dashboard" | "admin" | "blueprints";
+export type AppHeaderPage = "dashboard" | "admin" | "blueprints" | "landing";
 
 /**
  * Whether the page rendering the header sits behind Cloudflare Access.
@@ -37,8 +37,9 @@ export interface AppHeaderProps {
 
 /**
  * The single application banner, shared by every "chrome" page: the authenticated dashboard and
- * admin views (via `../views/AppShellView.tsx`) and the public blueprint gallery (via
- * `../views/BlueprintsView.tsx`).
+ * admin views (via `../views/AppShellView.tsx`), the public blueprint gallery (via
+ * `../views/BlueprintsView.tsx`), and the public landing page (via `../views/LandingView.tsx`,
+ * `current: "landing"`).
  *
  * GitLab issue #2 (docs/09-ARCHITECT.md's Reported Issues, Bug 34): `BlueprintsView` previously
  * rendered its own ad-hoc header whose brand and "My Diagrams" links were plain underlined,
@@ -77,9 +78,18 @@ export function AppHeader({ identity, current, access }: AppHeaderProps) {
           Admin
         </a>
       )}
-      <IdentityStatus identity={identity} access={access} />
-      <DarkModeToggle />
-      <AuthAction identity={identity} access={access} />
+      {/* A wrapper, not `margin-left: auto` on `IdentityStatus`'s own element, pushes this group
+          to the right: `IdentityStatus` renders nothing at all on a public page while the
+          identity request is loading or the visitor is anonymous (its own doc comment), which
+          left the dark-mode toggle and sign-in button with no `margin-left: auto` anchor at all
+          in that state -- they fell back to sitting immediately after the nav links, left-
+          justified with the brand instead of right-justified. This wrapper always renders
+          regardless of identity state, so the group is right-justified unconditionally. */}
+      <div className="app-shell__actions">
+        <IdentityStatus identity={identity} access={access} />
+        <DarkModeToggle />
+        <AuthAction identity={identity} access={access} />
+      </div>
     </header>
   );
 }

@@ -136,17 +136,171 @@ button {
   width: 1px;
 }
 
-/* Landing -------------------------------------------------------------- */
+/* Landing (GitLab issue #4) ---------------------------------------------- */
 
+/* Widened from `.app-shell__main`'s 64rem default, matching `.blueprints-view`'s own override --
+   the hero's two-column layout and the benefit/feature card grids below want more room than the
+   dashboard's single centered column. */
 .landing {
-  margin: 0 auto;
-  max-width: 40rem;
-  padding: 3rem 1.5rem;
+  max-width: 72rem;
 }
 
-.landing__cta {
+.landing__hero {
+  align-items: center;
+  display: grid;
+  gap: 2.5rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 1.5rem 0 3rem;
+}
+
+/* Below this breakpoint `.landing__hero-visual` is hidden entirely (not shrunk) rather than
+   fighting the headline and CTA for width -- see that rule's own comment. The grid collapses to
+   a single column at the same breakpoint so the two changes land together. */
+@media (max-width: 1000px) {
+  .landing__hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A small uppercase kicker above the headline. The dot carries the brand color instead of the
+   text itself: `--cf-orange`/`--cf-orange-dark` both fall short of WCAG 1.4.1's 4.5:1 text
+   contrast minimum against a white surface (~2.6:1 and ~4.1:1 respectively), so the label text
+   stays the surrounding inherited (already-compliant) body color and only this non-text
+   decorative dot -- subject to 1.4.11's more lenient 3:1 -- uses the brand orange directly. */
+.landing__hero-eyebrow {
+  align-items: center;
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 700;
+  gap: 0.5rem;
+  letter-spacing: 0.06em;
+  margin: 0 0 0.75rem;
+  text-transform: uppercase;
+}
+
+.landing__hero-eyebrow::before {
+  background: var(--cf-orange);
+  border-radius: 50%;
+  content: "";
   display: inline-block;
-  margin-top: 1.5rem;
+  height: 0.5rem;
+  width: 0.5rem;
+}
+
+.landing__hero-title {
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.15;
+  margin: 0 0 1rem;
+}
+
+.landing__hero-subtitle {
+  color: light-dark(#3f3f46, #d4d4d8);
+  font-size: 1.125rem;
+  margin: 0 0 1.75rem;
+  max-width: 34rem;
+}
+
+.landing__hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* `HeroDiagram.tsx` sets this element's fixed pixel width/height directly (its own comment
+   explains why: fixed coordinates keep the connector line math trivial for a purely decorative
+   illustration). Hidden below 1000px alongside the hero grid collapse above, so the hero's text
+   column and CTA -- this page's actual content -- never have to shrink to make room for it. */
+@media (max-width: 1000px) {
+  .landing__hero-visual {
+    display: none;
+  }
+}
+
+.landing__section {
+  border-top: 1px solid var(--cf-border);
+  padding: 3rem 0;
+}
+
+.landing__section-header {
+  margin: 0 auto 2rem;
+  max-width: 40rem;
+  text-align: center;
+}
+
+.landing__section-title {
+  margin: 0 0 0.5rem;
+}
+
+.landing__section-intro {
+  color: light-dark(#555, #aaa);
+  margin: 0;
+}
+
+.landing__grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.landing__grid--3 {
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.landing__grid--4 {
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+}
+
+.landing__card {
+  background: var(--cf-surface);
+  border: 1px solid var(--cf-border);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+}
+
+/* Decorative only (each icon has an adjacent `aria-hidden="true"` on the element itself too, per
+   `ProductIcon.tsx`'s convention) -- `--cf-orange-dark` clears 1.4.11's 3:1 non-text minimum
+   against both `--cf-surface` values (~4:1), unlike the brighter `--cf-orange` used for the
+   eyebrow dot above. */
+.landing__card-icon {
+  color: var(--cf-orange-dark);
+  margin-bottom: 0.75rem;
+}
+
+.landing__card-title {
+  margin: 0 0 0.5rem;
+}
+
+.landing__card-body {
+  color: light-dark(#555, #aaa);
+  margin: 0;
+}
+
+.landing__cta-banner {
+  align-items: center;
+  background: var(--cf-surface-alt);
+  border: 1px solid var(--cf-border);
+  border-radius: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  justify-content: space-between;
+  margin: 1rem 0 2rem;
+  padding: 2rem;
+}
+
+.landing__cta-banner-title {
+  margin: 0 0 0.375rem;
+}
+
+.landing__cta-banner-text {
+  color: light-dark(#555, #aaa);
+  margin: 0;
+  max-width: 32rem;
+}
+
+.landing__cta-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
 /* App shell -------------------------------------------------------------- */
@@ -178,8 +332,20 @@ button {
 }
 
 .app-shell__identity {
-  margin-left: auto;
   overflow-wrap: anywhere;
+}
+
+/* Wraps the identity slot, dark-mode toggle, and sign-in/sign-out control so they stay
+   right-justified as one group -- `margin-left: auto` lives here instead of on
+   `.app-shell__identity` because that element renders nothing at all on a public page while the
+   identity request is loading or the visitor is anonymous (`AppHeader.tsx`'s `IdentityStatus`),
+   which previously left the toggle and sign-in button with no `margin-left: auto` anchor and
+   sitting left-justified, immediately after the nav links, in that state. */
+.app-shell__actions {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  margin-left: auto;
 }
 
 .app-shell__logout {
@@ -237,7 +403,7 @@ button {
     align-items: flex-start;
   }
 
-  .app-shell__identity {
+  .app-shell__actions {
     margin-left: 0;
   }
 }
