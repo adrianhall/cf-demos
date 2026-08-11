@@ -3,20 +3,15 @@ import type { Logger } from "@adrianhall/cloudflare-toolkit/logging";
 import { strToU8, zipSync } from "fflate";
 import { BLUEPRINT_MAP } from "../../blueprints";
 import { generateScaffold } from "../../client/lib/scaffold";
-import type { DiagramSession } from "../diagram-session/diagram-session";
 import {
   type AddEdgeInput,
   type AddNodeInput,
-  addEdge,
-  addNode,
   autoLayout,
   type EdgePatch,
+  type GraphOperation,
   type NodePatch,
-  removeEdge,
-  removeNode,
-  updateEdge,
-  updateNode,
-} from "../diagrams/graph-mutations";
+} from "../../graph-mutations";
+import type { DiagramSession } from "../diagram-session/diagram-session";
 import { DiagramRepository } from "../diagrams/repository";
 import type { Diagram, GraphData } from "../diagrams/types";
 import {
@@ -51,15 +46,21 @@ export interface McpToolContext {
   logger: Pick<Logger, "info">;
   /**
    * Resolve the live-sync `DiagramSession` Durable Object stub for one diagram id
-   * (`../diagram-session/diagram-session.ts`, docs/09B-ARCHITECT-MCP.md's Live Sync
-   * Architecture). Every graph-mutating tool below calls `notifyGraphUpdated()` on it
-   * immediately after a successful D1 write. Narrowed to that one RPC method, so a unit test can
-   * fake it with a plain `{ notifyGraphUpdated: vi.fn() }` double -- no real Durable Object
-   * involved.
+   * (`../diagram-session/diagram-session.ts`, docs/09C-COLLABORATIVE-EDITING.md's Live-Editing
+   * Architecture). Every graph-mutating tool below calls `applyOperation()` (a discrete
+   * node/edge mutation) or `applyWholeGraphReplace()` (`auto_layout_diagram` only) on it instead
+   * of writing to D1 directly -- `DiagramSession` itself persists via the same
+   * `DiagramRepository.saveGraphData()` call and broadcasts the change to every open editor tab.
+   * Narrowed to those two RPC methods, so a unit test can fake this with a plain
+   * `{ applyOperation: vi.fn(), applyWholeGraphReplace: vi.fn() }` double -- no real Durable
+   * Object involved.
    */
   getDiagramSession: (
     diagramId: string,
-  ) => Pick<DurableObjectStub<DiagramSession>, "notifyGraphUpdated">;
+  ) => Pick<
+    DurableObjectStub<DiagramSession>,
+    "applyOperation" | "applyWholeGraphReplace"
+  >;
   /**
    * The incoming `/mcp` request's own URL, used only to resolve `create_share_link`'s returned
    * `url` against this Worker's real origin -- `new URL("/s/<token>", requestUrl)` -- exactly
@@ -235,25 +236,29 @@ export async function deleteDiagramTool(
 }
 
 /**
- * The shared pipeline every graph-mutating MCP tool follows (docs/09B-ARCHITECT-MCP.md's Shared
- * Graph Mutation Service): `findOwned()` the diagram, apply one pure mutation function
- * (`../diagrams/graph-mutations.ts`) to its parsed graph, re-canonicalize
- * (`../diagrams/validation.ts`'s `canonicalizeGraphData()`), persist, log, and push the fresh
- * graph to every open live-sync WebSocket for this diagram
- * (`../diagram-session/diagram-session.ts`).
+ * The shared pipeline every discrete-operation graph-mutating MCP tool follows
+ * (docs/09C-COLLABORATIVE-EDITING.md's Interplay With Demo 9B): `findOwned()` the diagram (the
+ * ownership check this document does not change -- MCP tool access stays owner-only, unlike the
+ * human WebSocket/REST paths, which 9C's Access Model extends to collaborators too), then
+ * delegate the actual mutation to `DiagramSession.applyOperation()` with `origin: "agent"` --
+ * the same single code path (`../../graph-mutations.ts`'s `applyGraphOperation()`) a human's own
+ * WebSocket edit goes through, unifying the MCP write path and the human write path. This
+ * function no longer parses, mutates, canonicalizes, or persists the graph itself at all --
+ * `DiagramSession` does every one of those steps, and also broadcasts the change to every open
+ * editor tab.
  *
  * @param context Resolved MCP tool context.
  * @param diagramId Diagram id to mutate.
- * @param mutate Pure function applying one graph mutation. May throw (for example `notFound()`
- * for an unknown node/edge id) -- that error propagates unchanged, and nothing is persisted.
+ * @param op The discrete operation to apply.
  * @returns The diagram with its new `graphData` and `updatedAt`.
  * @throws {ProblemDetailsError} `notFound()` when the diagram does not exist or is owned by a
- * different identity, or when `mutate` itself throws one (an unknown node/edge id).
+ * different identity, or when `DiagramSession.applyOperation()` itself throws one (an unknown
+ * node/edge id) -- propagated unchanged.
  */
 async function applyGraphMutation(
   context: McpToolContext,
   diagramId: string,
-  mutate: (graph: GraphData) => GraphData,
+  op: GraphOperation,
 ): Promise<Diagram> {
   const repository = new DiagramRepository(context.db);
   const diagram = await repository.findOwned(diagramId, context.ownerEmail);
@@ -261,29 +266,21 @@ async function applyGraphMutation(
     throw notFound({ detail: "Diagram not found." });
   }
 
-  const parsed = JSON.parse(diagram.graphData) as GraphData;
-  const mutated = mutate(parsed);
-  const canonicalGraphData = canonicalizeGraphData(mutated);
-
-  const updatedAt = await repository.saveGraphData(
-    diagramId,
-    context.ownerEmail,
-    canonicalGraphData,
-  );
-  if (updatedAt === null) {
-    throw notFound({ detail: "Diagram not found." });
-  }
+  const result = await context
+    .getDiagramSession(diagramId)
+    .applyOperation(op, context.ownerEmail, "agent");
 
   context.logger.info("diagram_updated", {
     diagramId,
     kind: "graph",
     via: "mcp",
   });
-  await context
-    .getDiagramSession(diagramId)
-    .notifyGraphUpdated(canonicalGraphData, updatedAt);
 
-  return { ...diagram, graphData: canonicalGraphData, updatedAt };
+  return {
+    ...diagram,
+    graphData: result.graphData,
+    updatedAt: result.updatedAt,
+  };
 }
 
 /**
@@ -301,9 +298,10 @@ export async function addNodeTool(
   diagramId: string,
   input: AddNodeInput,
 ): Promise<Diagram> {
-  return applyGraphMutation(context, diagramId, (graph) =>
-    addNode(graph, input),
-  );
+  return applyGraphMutation(context, diagramId, {
+    input,
+    kind: "add_node",
+  });
 }
 
 /**
@@ -323,9 +321,11 @@ export async function updateNodeTool(
   nodeId: string,
   patch: NodePatch,
 ): Promise<Diagram> {
-  return applyGraphMutation(context, diagramId, (graph) =>
-    updateNode(graph, nodeId, patch),
-  );
+  return applyGraphMutation(context, diagramId, {
+    kind: "update_node",
+    nodeId,
+    patch,
+  });
 }
 
 /**
@@ -343,9 +343,10 @@ export async function removeNodeTool(
   diagramId: string,
   nodeId: string,
 ): Promise<Diagram> {
-  return applyGraphMutation(context, diagramId, (graph) =>
-    removeNode(graph, nodeId),
-  );
+  return applyGraphMutation(context, diagramId, {
+    kind: "remove_node",
+    nodeId,
+  });
 }
 
 /**
@@ -363,9 +364,10 @@ export async function addEdgeTool(
   diagramId: string,
   input: AddEdgeInput,
 ): Promise<Diagram> {
-  return applyGraphMutation(context, diagramId, (graph) =>
-    addEdge(graph, input),
-  );
+  return applyGraphMutation(context, diagramId, {
+    input,
+    kind: "add_edge",
+  });
 }
 
 /**
@@ -385,9 +387,11 @@ export async function updateEdgeTool(
   edgeId: string,
   patch: EdgePatch,
 ): Promise<Diagram> {
-  return applyGraphMutation(context, diagramId, (graph) =>
-    updateEdge(graph, edgeId, patch),
-  );
+  return applyGraphMutation(context, diagramId, {
+    edgeId,
+    kind: "update_edge",
+    patch,
+  });
 }
 
 /**
@@ -405,15 +409,22 @@ export async function removeEdgeTool(
   diagramId: string,
   edgeId: string,
 ): Promise<Diagram> {
-  return applyGraphMutation(context, diagramId, (graph) =>
-    removeEdge(graph, edgeId),
-  );
+  return applyGraphMutation(context, diagramId, {
+    edgeId,
+    kind: "remove_edge",
+  });
 }
 
 /**
  * `auto_layout_diagram` tool logic: rearrange every node onto a deterministic grid
- * (`../diagrams/graph-mutations.ts`'s `autoLayout()` -- not the editor's own `elkjs`-based
- * layout; see that function's JSDoc for why).
+ * (`../../graph-mutations.ts`'s `autoLayout()` -- not the editor's own `elkjs`-based layout; see
+ * that function's JSDoc for why). Unlike every other graph-mutating tool above, this one is a
+ * legitimate whole-graph rearrange -- it `findOwned()`s the diagram itself, computes
+ * `autoLayout()` against the parsed graph, re-canonicalizes
+ * (`../diagrams/validation.ts`'s `canonicalizeGraphData()`), and calls
+ * `DiagramSession.applyWholeGraphReplace()` directly (docs/09C-COLLABORATIVE-EDITING.md's RPC
+ * Surface: `auto_layout_diagram` is `applyWholeGraphReplace()`'s other legitimate caller,
+ * alongside `PUT /api/diagrams/:id/graph`'s resilience-fallback role).
  *
  * @param context Resolved MCP tool context.
  * @param diagramId Diagram id to mutate.
@@ -425,7 +436,31 @@ export async function autoLayoutDiagramTool(
   context: McpToolContext,
   diagramId: string,
 ): Promise<Diagram> {
-  return applyGraphMutation(context, diagramId, (graph) => autoLayout(graph));
+  const repository = new DiagramRepository(context.db);
+  const diagram = await repository.findOwned(diagramId, context.ownerEmail);
+  if (diagram === null) {
+    throw notFound({ detail: "Diagram not found." });
+  }
+
+  const parsed = JSON.parse(diagram.graphData) as GraphData;
+  const laidOut = autoLayout(parsed);
+  const canonicalGraphData = canonicalizeGraphData(laidOut);
+
+  const result = await context
+    .getDiagramSession(diagramId)
+    .applyWholeGraphReplace(canonicalGraphData, context.ownerEmail, "agent");
+
+  context.logger.info("diagram_updated", {
+    diagramId,
+    kind: "graph",
+    via: "mcp",
+  });
+
+  return {
+    ...diagram,
+    graphData: canonicalGraphData,
+    updatedAt: result.updatedAt,
+  };
 }
 
 /**

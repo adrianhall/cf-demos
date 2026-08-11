@@ -23,6 +23,34 @@ vi.mock("../../api/diagrams", () => ({
   updateDiagram: mockUpdateDiagram,
 }));
 
+// Defaults every test to `connected: false` -- the same behavior as before this hook existed,
+// since the real hook's socket never opens in this jsdom test environment anyway. A dedicated
+// describe block below overrides this to `connected: true` to exercise the live-socket flush
+// branch of the debounced autosave effect.
+const {
+  mockUseDiagramLiveSync,
+  mockSendOperation,
+  mockSendCursor,
+  mockSendSelectionChange,
+} = vi.hoisted(() => ({
+  mockSendCursor: vi.fn(),
+  mockSendOperation: vi.fn(() => false),
+  mockSendSelectionChange: vi.fn(),
+  mockUseDiagramLiveSync: vi.fn(),
+}));
+mockUseDiagramLiveSync.mockImplementation(() => ({
+  connected: false,
+  cursors: {},
+  participants: {},
+  remoteSelections: {},
+  sendCursor: mockSendCursor,
+  sendOperation: mockSendOperation,
+  sendSelectionChange: mockSendSelectionChange,
+}));
+vi.mock("../../hooks/useDiagramLiveSync", () => ({
+  useDiagramLiveSync: mockUseDiagramLiveSync,
+}));
+
 // Wraps the real `ServicePalette` (every other test in this file exercises it unmodified) so one
 // dedicated test below can override its implementation to call `onAddNode` with a typeId the
 // catalog does not recognize -- something the real palette itself never does, since it only ever
@@ -51,6 +79,7 @@ describe("DiagramCanvas", () => {
       description: "",
       nodes: [],
       edges: [],
+      pendingOperations: new Map(),
       dirty: false,
       saving: false,
       saveError: null,
@@ -67,6 +96,18 @@ describe("DiagramCanvas", () => {
       .mockReset()
       .mockResolvedValue("2026-01-01T00:00:00.000Z");
     mockUpdateDiagram.mockReset().mockResolvedValue({});
+    mockSendOperation.mockReset().mockReturnValue(false);
+    mockSendCursor.mockReset();
+    mockSendSelectionChange.mockReset();
+    mockUseDiagramLiveSync.mockReset().mockImplementation(() => ({
+      connected: false,
+      cursors: {},
+      participants: {},
+      remoteSelections: {},
+      sendCursor: mockSendCursor,
+      sendOperation: mockSendOperation,
+      sendSelectionChange: mockSendSelectionChange,
+    }));
   });
 
   afterEach(() => {
@@ -643,6 +684,91 @@ describe("DiagramCanvas", () => {
     expect(useDiagramStore.getState().selectedEdgeId).toBeNull();
   });
 
+  it("relays the current node selection to other connected identities when it changes", async () => {
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    render(<DiagramCanvas diagramId="d1" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+    mockSendSelectionChange.mockClear();
+
+    act(() => useDiagramStore.getState().setSelectedNode("n1"));
+
+    expect(mockSendSelectionChange).toHaveBeenCalledWith("n1", null);
+  });
+
+  it("relays the current edge selection to other connected identities when it changes", async () => {
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    render(<DiagramCanvas diagramId="d1" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+    mockSendSelectionChange.mockClear();
+
+    act(() => useDiagramStore.getState().setSelectedEdge("e1"));
+
+    expect(mockSendSelectionChange).toHaveBeenCalledWith(null, "e1");
+  });
+
+  it("relays the pointer position, converted to flow coordinates, as a cursor_moved send on pointer move", async () => {
+    mockGetDiagram.mockResolvedValue({
+      description: "",
+      graphData: EMPTY_GRAPH,
+      id: "d1",
+      title: "My Diagram",
+    });
+
+    render(<DiagramCanvas diagramId="d1" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+
+    fireEvent.pointerMove(screen.getByTestId("react-flow"), {
+      clientX: 123,
+      clientY: 456,
+    });
+
+    // `mockScreenToFlowPosition` (`../../test/mock-xyflow.tsx`) is the identity function by
+    // default, so the flow-space coordinates sent equal the raw screen coordinates here.
+    expect(mockSendCursor).toHaveBeenCalledWith(123, 456);
+  });
+
+  it("does not relay the pointer position in read-only mode", async () => {
+    render(
+      <DiagramCanvas
+        diagramId="shared-d1"
+        readOnly
+        initialDiagram={{
+          description: "",
+          graphData: EMPTY_GRAPH,
+          title: "Shared Diagram",
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+    );
+
+    fireEvent.pointerMove(screen.getByTestId("react-flow"), {
+      clientX: 1,
+      clientY: 2,
+    });
+
+    expect(mockSendCursor).not.toHaveBeenCalled();
+  });
+
   it("deletes the selection on Delete/Backspace, ignoring keystrokes while editing a field", async () => {
     mockGetDiagram.mockResolvedValue({
       description: "",
@@ -745,6 +871,82 @@ describe("DiagramCanvas", () => {
     const event = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(false);
+  });
+
+  describe("live-socket-connected autosave flush", () => {
+    beforeEach(() => {
+      mockUseDiagramLiveSync.mockImplementation(() => ({
+        connected: true,
+        cursors: {},
+        participants: {},
+        remoteSelections: {},
+        sendCursor: mockSendCursor,
+        sendOperation: mockSendOperation,
+        sendSelectionChange: mockSendSelectionChange,
+      }));
+      mockSendOperation.mockReturnValue(true);
+    });
+
+    it("flushes queued operations over the socket instead of PUTing the whole graph", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      mockGetDiagram.mockResolvedValue({
+        description: "",
+        graphData: EMPTY_GRAPH,
+        id: "d1",
+        title: "My Diagram",
+      });
+
+      render(<DiagramCanvas diagramId="d1" />);
+      await vi.waitFor(() =>
+        expect(useDiagramStore.getState().diagramId).toBe("d1"),
+      );
+
+      useDiagramStore.getState().addNode({
+        data: { label: "Workers", typeId: "worker" },
+        id: "n1",
+        position: { x: 0, y: 0 },
+        type: "cf-node",
+      });
+      expect(useDiagramStore.getState().dirty).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(mockSendOperation).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "add_node" }),
+        expect.any(String),
+      );
+      expect(mockSaveDiagramGraph).not.toHaveBeenCalled();
+      await vi.waitFor(() =>
+        expect(useDiagramStore.getState().dirty).toBe(false),
+      );
+      expect(useDiagramStore.getState().pendingOperations.size).toBe(0);
+    });
+
+    it("still marks the graph saved when the debounce timer fires with an empty operation queue", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      mockGetDiagram.mockResolvedValue({
+        description: "",
+        graphData: EMPTY_GRAPH,
+        id: "d1",
+        title: "My Diagram",
+      });
+
+      render(<DiagramCanvas diagramId="d1" />);
+      await vi.waitFor(() =>
+        expect(useDiagramStore.getState().diagramId).toBe("d1"),
+      );
+
+      // A title-only change also marks `dirty` (shared flag), but enqueues no operation.
+      useDiagramStore.getState().setTitle("Renamed");
+      expect(useDiagramStore.getState().dirty).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(mockSendOperation).not.toHaveBeenCalled();
+      await vi.waitFor(() =>
+        expect(useDiagramStore.getState().dirty).toBe(false),
+      );
+    });
   });
 
   describe("read-only mode (the public share viewer)", () => {
@@ -898,6 +1100,28 @@ describe("DiagramCanvas", () => {
       });
       fireEvent.keyDown(root, { key: "Delete" });
       expect(useDiagramStore.getState().nodes).toHaveLength(1);
+    });
+
+    it("never relays selection changes", async () => {
+      mockSendSelectionChange.mockClear();
+      render(
+        <DiagramCanvas
+          diagramId="shared-d1"
+          readOnly
+          initialDiagram={{
+            description: "",
+            graphData: SHARED_GRAPH,
+            title: "Shared Diagram",
+          }}
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
+      );
+
+      fireEvent.click(screen.getByTestId("rf-node-click"));
+
+      expect(mockSendSelectionChange).not.toHaveBeenCalled();
     });
 
     it("ignores a drop attempt on the read-only canvas", async () => {

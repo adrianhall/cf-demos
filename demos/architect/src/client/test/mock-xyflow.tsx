@@ -28,6 +28,11 @@ export const mockGetNodesBounds = vi
 export const mockGetViewportForBounds = vi
   .fn()
   .mockReturnValue({ x: 0, y: 0, zoom: 1 });
+/** Stand-in for `useReactFlow().getInternalNode()`, returning `undefined` by default (matching
+ * the real hook's behavior for an unknown id) -- a test exercising
+ * `../DiagramCanvas.tsx`/`../RemoteCursorsOverlay.tsx`'s selection-highlight rendering overrides
+ * this to return a fixture `InternalNode`-shaped object. */
+export const mockGetInternalNode = vi.fn().mockReturnValue(undefined);
 /** Stand-in for `useNodesInitialized()`; defaults to `true` since most tests render with nodes
  * that don't need real DOM measurement. Reset to `false` in a test to exercise the
  * measurement-pending branch of `../components/editor/DiagramCanvas.tsx`'s fit-on-load effect
@@ -96,12 +101,25 @@ export function getSmoothStepPath(): [string, number, number] {
 export function useReactFlow() {
   return {
     fitView: mockFitView,
+    getInternalNode: mockGetInternalNode,
     getNodes: mockGetNodes,
     getZoom: mockGetZoom,
     screenToFlowPosition: mockScreenToFlowPosition,
     zoomIn: mockZoomIn,
     zoomOut: mockZoomOut,
   };
+}
+
+/** Minimal `<ViewportPortal>` stand-in: renders children directly in place rather than
+ * portalling them into a separate transformed viewport DOM node, matching
+ * `<EdgeLabelRenderer>`'s own simplification below -- no test in this repository asserts on the
+ * real portal target or the pan/zoom transform itself, only on what's rendered inside it. */
+export function ViewportPortal({ children }: { children?: React.ReactNode }) {
+  return createElement(
+    "div",
+    { "data-testid": "rf-viewport-portal" },
+    children,
+  );
 }
 
 /** Stand-in `useNodesInitialized()` delegating to {@link mockUseNodesInitialized}. */
@@ -128,6 +146,7 @@ export function ReactFlow({
   onEdgeClick,
   onNodeClick,
   onPaneClick,
+  onPointerMove,
 }: {
   children?: React.ReactNode;
   edgesFocusable?: boolean;
@@ -137,6 +156,7 @@ export function ReactFlow({
   onEdgeClick?: (event: unknown, edge: { id: string }) => void;
   onNodeClick?: (event: unknown, node: { id: string }) => void;
   onPaneClick?: () => void;
+  onPointerMove?: (event: React.PointerEvent) => void;
 }) {
   return createElement(
     "div",
@@ -146,6 +166,7 @@ export function ReactFlow({
       "data-testid": "react-flow",
       onDragOver,
       onDrop,
+      onPointerMove,
     },
     onNodeClick &&
       createElement("button", {

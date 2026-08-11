@@ -13,16 +13,20 @@ import {
   RotateCw,
   Share2,
   Sidebar,
+  Users,
   ZoomIn,
   ZoomOut,
 } from "react-feather";
 import { NODE_TYPE_MAP } from "../../../../catalog";
 import { DarkModeToggle } from "../../../components/DarkModeToggle";
+import type { DiagramLiveSync } from "../../../hooks/useDiagramLiveSync";
 import { useDismissableMenu } from "../../../hooks/useDismissableMenu";
 import { useDiagramStore } from "../../../stores/diagramStore";
 import type { CFEdgeData, CFNodeData } from "../types";
+import { CollaboratorsModal } from "./CollaboratorsModal";
 import { ConnectNodesModal } from "./ConnectNodesModal";
 import { ExportButton } from "./ExportButton";
+import { PresenceStack } from "./PresenceStack";
 import { PrintButton } from "./PrintButton";
 import { ShareModal } from "./ShareModal";
 
@@ -96,7 +100,16 @@ export function remapEdgeHandles(
  * (docs/09-ARCHITECT.md's catalog table note: this repository's prior Vue attempt measured a
  * ~540 KB gzip cost for the equivalent library bundled eagerly).
  */
-export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
+export function Toolbar({
+  readOnly = false,
+  participants,
+}: {
+  readOnly?: boolean;
+  /** Every other identity currently connected to this diagram's live-sync session
+   * (`../../../hooks/useDiagramLiveSync.ts`), rendered via `./PresenceStack.tsx`. Omitted (or
+   * empty) in read-only mode, which never opens a live-sync connection. */
+  participants?: DiagramLiveSync["participants"];
+}) {
   const { fitView, zoomIn, zoomOut } = useReactFlow();
   const {
     undo,
@@ -106,6 +119,7 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
     title,
     setTitle,
     diagramId,
+    ownerEmail,
     nodes,
     paletteOpen,
     togglePalette,
@@ -119,6 +133,7 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
     useState<LayoutDirection>("DOWN");
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [collaboratorsOpen, setCollaboratorsOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const layoutGroupRef = useRef<HTMLDivElement>(null);
 
@@ -192,6 +207,23 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
           useDiagramStore.getState().pushHistory();
           useDiagramStore.getState().setNodes(newNodes);
           useDiagramStore.getState().setEdges(newEdges);
+
+          // Auto-layout repositions every node at once via `setNodes()` rather than one call
+          // per node, so -- unlike a single drag, which `../../../stores/diagramStore.ts`'s
+          // `onNodesChange` already turns into an `update_node` operation per node on its own --
+          // this enqueues one `update_node` (position-only patch) operation per repositioned
+          // node directly (docs/09C-COLLABORATIVE-EDITING.md's Phase 18 plan), matching how this
+          // repositioning looks to another connected viewer even though the MCP
+          // `auto_layout_diagram` tool's *own* server-side write uses a single whole-graph
+          // `applyWholeGraphReplace()` instead -- the two paths need not produce identical wire
+          // messages to produce the same visual result for other viewers.
+          for (const node of newNodes) {
+            useDiagramStore.getState().enqueueOperation({
+              kind: "update_node",
+              nodeId: node.id,
+              patch: { position: node.position },
+            });
+          }
         }
 
         setTimeout(() => void fitView({ duration: 300 }), 50);
@@ -395,9 +427,13 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
 
       {/* Export, print, and dark mode are always available, including in read-only mode -- an
           anonymous share viewer can export or print a diagram it cannot edit
-          (docs/09-ARCHITECT.md Phase 5). Share is the one control here still gated to the
-          owner. */}
+          (docs/09-ARCHITECT.md Phase 5). Share and Manage collaborators are the two controls
+          here still gated to a signed-in editor -- an anonymous share viewer can view but never
+          manage sharing or collaborators (docs/09C-COLLABORATIVE-EDITING.md's Access Model). */}
       <div className="toolbar__group toolbar__group--end">
+        {!readOnly && participants !== undefined && (
+          <PresenceStack participants={participants} />
+        )}
         {!readOnly && (
           <button
             type="button"
@@ -410,6 +446,18 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
             <Share2 size={18} aria-hidden="true" />
           </button>
         )}
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={() => setCollaboratorsOpen(true)}
+            disabled={diagramId === null}
+            className="toolbar__button"
+            title="Manage collaborators"
+            aria-label="Manage collaborators"
+          >
+            <Users size={18} aria-hidden="true" />
+          </button>
+        )}
         <ExportButton />
         <PrintButton />
         <DarkModeToggle className="toolbar__button" />
@@ -420,6 +468,14 @@ export function Toolbar({ readOnly = false }: { readOnly?: boolean }) {
           diagramId={diagramId}
           open={shareOpen}
           onClose={() => setShareOpen(false)}
+        />
+      )}
+      {!readOnly && diagramId !== null && (
+        <CollaboratorsModal
+          diagramId={diagramId}
+          ownerEmail={ownerEmail}
+          open={collaboratorsOpen}
+          onClose={() => setCollaboratorsOpen(false)}
         />
       )}
       {!readOnly && (

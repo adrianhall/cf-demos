@@ -21,12 +21,13 @@ import {
 } from "../../api/diagrams";
 import type { SharedDiagram } from "../../api/shares";
 import { useDiagramLiveSync } from "../../hooks/useDiagramLiveSync";
-import { useDiagramStore } from "../../stores/diagramStore";
+import { nextClientOpId, useDiagramStore } from "../../stores/diagramStore";
 import { edgeTypes } from "./edges/edgeTypes";
 import { LiveUpdateToast } from "./LiveUpdateToast";
 import { nodeTypes } from "./nodes/nodeTypes";
 import { PropertiesPanel } from "./panels/PropertiesPanel";
 import { ServicePalette } from "./panels/ServicePalette";
+import { RemoteCursorsOverlay } from "./RemoteCursorsOverlay";
 import { StatusBar } from "./toolbar/StatusBar";
 import { Toolbar } from "./toolbar/Toolbar";
 import type { CFEdgeData, CFNodeData } from "./types";
@@ -111,6 +112,8 @@ export function DiagramCanvas({
     removeSelected,
     setSelectedNode,
     setSelectedEdge,
+    selectedNodeId,
+    selectedEdgeId,
     undo,
     redo,
     dirty,
@@ -134,9 +137,12 @@ export function DiagramCanvas({
       // A read-only share viewer has no `updatedAt` of its own to seed
       // (`../../api/shares.ts`'s `SharedDiagram`) and never opens the live-sync WebSocket
       // (`useDiagramLiveSync` below is disabled for `readOnly`), so `null` is never compared
-      // against here.
+      // against here. `SharedDiagram` also deliberately never carries `ownerEmail` (a public
+      // share must never leak who owns the diagram it points to), so `ownerEmail` is `null` too
+      // -- matching `useDiagramStore`'s `ownerEmail` JSDoc.
       setDiagram(
         diagramId,
+        null,
         initialDiagram.title,
         initialDiagram.description ?? "",
         parsed.nodes,
@@ -154,6 +160,7 @@ export function DiagramCanvas({
         const parsed = parseGraphData(diagram.graphData);
         setDiagram(
           diagramId,
+          diagram.ownerEmail,
           diagram.title,
           diagram.description ?? "",
           parsed.nodes,
@@ -174,14 +181,59 @@ export function DiagramCanvas({
     };
   }, [diagramId, setDiagram, readOnly, initialDiagram]);
 
-  // Autosave the graph shortly after the last change. `dirty` never becomes true in read-only
-  // mode -- nothing wires `onNodesChange`/`onEdgesChange`/`onConnect`/`addNode` there -- but the
-  // explicit `readOnly` guard documents that intent directly, matching CF-Architect's own
-  // structure, rather than relying on that indirectly.
+  // Live-sync: an open editor tab both sends its own edits and visibly updates the instant
+  // another identity's edit -- human or a 9B MCP tool call -- changes this diagram
+  // (docs/09C-COLLABORATIVE-EDITING.md's Live-Editing Architecture). Disabled in read-only mode
+  // -- the anonymous share viewer authenticates via a share token, not a Cloudflare Access
+  // identity, and could never pass `/api/diagrams/:id/live`'s access check anyway. Declared
+  // ahead of the autosave effect below, which reads `connected`/`sendOperation` to decide
+  // whether to flush queued operations over the socket or fall back to the `PUT`-based autosave.
+  const diagramLoaded = useDiagramStore((state) => state.diagramId !== null);
+  const {
+    connected,
+    sendOperation,
+    participants,
+    cursors,
+    remoteSelections,
+    sendCursor,
+    sendSelectionChange,
+  } = useDiagramLiveSync(diagramLoaded ? diagramId : null, !readOnly);
+
+  // Relay this tab's own current selection to every other connected identity
+  // (docs/09C-COLLABORATIVE-EDITING.md's Phase 19 Message Protocol) whenever it changes. Never
+  // runs in read-only mode -- the anonymous share viewer has no live-sync connection to send
+  // over (`useDiagramLiveSync` is disabled there above).
+  useEffect(() => {
+    if (readOnly) return;
+    sendSelectionChange(selectedNodeId, selectedEdgeId);
+  }, [readOnly, selectedNodeId, selectedEdgeId, sendSelectionChange]);
+
+  // Debounced flush of unsaved changes, on the same timer regardless of which path it takes.
+  // `dirty` never becomes true in read-only mode -- nothing wires `onNodesChange`/
+  // `onEdgesChange`/`onConnect`/`addNode` there -- but the explicit `readOnly` guard documents
+  // that intent directly, matching CF-Architect's own structure, rather than relying on that
+  // indirectly.
+  //
+  // While the live socket is connected, this sends every queued discrete operation
+  // (`../../stores/diagramStore.ts`'s `pendingOperations`) instead of the whole graph --
+  // docs/09C-COLLABORATIVE-EDITING.md's "Retiring The Whole-Graph Autosave." While it is not
+  // (not yet connected, or dropped), this keeps doing exactly what it always did: `PUT` the
+  // entire graph. A successful `PUT` also discards any operations queued while disconnected --
+  // they describe changes that `PUT` just persisted in full, so resending them once the socket
+  // reconnects would risk applying an `add_node`/`add_edge` a second time.
   useEffect(() => {
     if (readOnly || !dirty) return;
 
     const timer = setTimeout(() => {
+      if (connected) {
+        const ops = useDiagramStore.getState().drainPendingOperations();
+        for (const op of ops) {
+          sendOperation(op, nextClientOpId());
+        }
+        markSaved(new Date().toISOString());
+        return;
+      }
+
       void (async () => {
         markSaving();
         try {
@@ -192,6 +244,7 @@ export function DiagramCanvas({
             viewport: state.viewport,
           });
           const updatedAt = await saveDiagramGraph(diagramId, graphData);
+          useDiagramStore.getState().drainPendingOperations();
           markSaved(updatedAt);
         } catch (error) {
           markSaveError(
@@ -202,7 +255,16 @@ export function DiagramCanvas({
     }, AUTOSAVE_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [readOnly, dirty, diagramId, markSaving, markSaved, markSaveError]);
+  }, [
+    readOnly,
+    dirty,
+    diagramId,
+    connected,
+    sendOperation,
+    markSaving,
+    markSaved,
+    markSaveError,
+  ]);
 
   // Warn before leaving with unsaved changes. Not attached at all in read-only mode, which never
   // has any.
@@ -221,7 +283,6 @@ export function DiagramCanvas({
   // separate, slightly longer debounce for the (much smaller, much less frequently updated)
   // metadata write. Never runs in read-only mode -- there is no `updateDiagram()` call an
   // anonymous viewer is even authorized to make.
-  const diagramLoaded = useDiagramStore((state) => state.diagramId !== null);
   useEffect(() => {
     if (readOnly || !diagramLoaded) return;
     const timer = setTimeout(() => {
@@ -233,12 +294,6 @@ export function DiagramCanvas({
     }, TITLE_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [title, diagramLoaded, diagramId, readOnly]);
-
-  // Live-sync: an open editor tab visibly updates the instant a remote MCP tool call changes
-  // this diagram (docs/09B-ARCHITECT-MCP.md's Live Sync Architecture). Disabled in read-only
-  // mode -- the anonymous share viewer authenticates via a share token, not a Cloudflare Access
-  // identity, and could never pass `/api/diagrams/:id/live`'s owner check anyway.
-  useDiagramLiveSync(diagramLoaded ? diagramId : null, !readOnly);
 
   // Fit the freshly loaded diagram's nodes into view once, covering both a brand-new diagram
   // (e.g. created from a blueprint like "API Gateway") and reopening an existing one (Bug 29,
@@ -337,6 +392,22 @@ export function DiagramCanvas({
     event.dataTransfer.dropEffect = "move";
   }, []);
 
+  /** Relay this tab's own cursor position (converted from screen to flow-space coordinates)
+   * to every other connected identity, client-throttled inside `sendCursor()` itself. Skipped
+   * in read-only/print mode -- neither has a live-sync connection or a canvas anyone else is
+   * watching live. */
+  const onPointerMove = useCallback(
+    (event: React.PointerEvent) => {
+      if (readOnly || printMode) return;
+      const { x, y } = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      sendCursor(x, y);
+    },
+    [readOnly, printMode, screenToFlowPosition, sendCursor],
+  );
+
   /** Add a node from a palette click/keyboard activation, at the canvas center. */
   const onAddNodeFromPalette = useCallback(
     (typeId: string) => {
@@ -427,7 +498,9 @@ export function DiagramCanvas({
           all. Kept in sync with the store's `title`; also covers the read-only share viewer
           (`../../views/ShareView.tsx`), which renders this same component. */}
       <h1 className="visually-hidden">{title} — Diagram editor</h1>
-      {!printMode && <Toolbar readOnly={readOnly} />}
+      {!printMode && (
+        <Toolbar readOnly={readOnly} participants={participants} />
+      )}
       <div className="diagram-editor__body">
         {!readOnly && !printMode && paletteOpen && (
           <ServicePalette onAddNode={onAddNodeFromPalette} />
@@ -466,6 +539,7 @@ export function DiagramCanvas({
             onViewportChange={onViewportChange}
             onDragOver={readOnly ? undefined : onDragOver}
             onDrop={readOnly ? undefined : onDrop}
+            onPointerMove={onPointerMove}
             onNodeClick={onNodeClick}
             onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
@@ -499,6 +573,12 @@ export function DiagramCanvas({
               />
             )}
             {!printMode && <Controls showInteractive={!readOnly} />}
+            {!printMode && !readOnly && (
+              <RemoteCursorsOverlay
+                cursors={cursors}
+                remoteSelections={remoteSelections}
+              />
+            )}
           </ReactFlow>
         </div>
         {!readOnly && !printMode && propertiesOpen && <PropertiesPanel />}

@@ -6,9 +6,8 @@ import {
   listDiagrams,
 } from "../../api/diagrams";
 import { useDismissableMenu } from "../../hooks/useDismissableMenu";
-import { formatAbsoluteDate, formatRelativeDate } from "../../lib/datetime";
-import { BlueprintPreview } from "../blueprints/BlueprintPreview";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
+import { DiagramCard } from "./DiagramCard";
 
 /** Per-card overflow menu: open, duplicate, or delete. */
 function CardMenu({
@@ -160,44 +159,17 @@ export function DiagramGrid() {
       ) : (
         <div className="dashboard__grid">
           {diagrams.map((diagram) => (
-            // A non-interactive container, not an <a> -- see `.diagram-card`'s Bug 16 comment
-            // in `../../app.css`. The title's own <a> is stretched to cover the whole card.
-            <div key={diagram.id} className="diagram-card">
-              <div className="diagram-card__header">
-                <div className="diagram-card__heading">
-                  <div className="diagram-card__title">
-                    <a
-                      href={`/app/diagram/${diagram.id}`}
-                      className="diagram-card__link"
-                    >
-                      {diagram.title}
-                    </a>
-                  </div>
-                  <time
-                    className="diagram-card__timestamp"
-                    dateTime={diagram.updatedAt}
-                    title={`Created ${formatAbsoluteDate(diagram.createdAt)}\nUpdated ${formatAbsoluteDate(diagram.updatedAt)}`}
-                  >
-                    Updated {formatRelativeDate(diagram.updatedAt)}
-                    {/* A native `title` attribute is not reliably exposed to screen readers, so
-                        the exact date is repeated here for assistive technology; sighted users
-                        still get it from the `title` tooltip on hover/focus. */}
-                    <span className="visually-hidden">
-                      {" "}
-                      ({formatAbsoluteDate(diagram.updatedAt)})
-                    </span>
-                  </time>
-                </div>
+            <DiagramCard
+              key={diagram.id}
+              diagram={diagram}
+              menu={
                 <CardMenu
                   diagramTitle={diagram.title}
                   onDuplicate={() => void handleDuplicate(diagram)}
                   onDelete={() => setDeleteTarget(diagram)}
                 />
-              </div>
-              <div className="diagram-card__preview">
-                <BlueprintPreview graphData={diagram.graphData} height={140} />
-              </div>
-            </div>
+              }
+            />
           ))}
         </div>
       )}

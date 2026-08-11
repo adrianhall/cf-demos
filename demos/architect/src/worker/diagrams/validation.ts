@@ -189,16 +189,18 @@ function validateGraphElements(
 
 /**
  * Validate and canonicalize a parsed graph object -- the shared tail end of
- * `validateGraphDataInput()` (REST autosave, which additionally unwraps the request body's
- * `graphData` JSON string first) and every graph-mutating MCP tool
- * (`../mcp/tools.ts`'s `applyGraphMutation()`), which already holds a parsed {@link GraphData}
- * object in memory after applying one pure mutation function
- * (`./graph-mutations.ts`, docs/09B-ARCHITECT-MCP.md's Shared Graph Mutation Service) and needs
- * the identical shape guarantees before persisting it. Both callers reuse this one
- * implementation rather than each re-validating nodes/edges/viewport shape independently.
+ * `validateGraphDataInput()` (REST autosave, and `../diagram-session/diagram-session.ts`'s
+ * `applyWholeGraphReplace()` RPC callers reuse this same function before ever calling it) and
+ * the `auto_layout_diagram` MCP tool (`../mcp/tools.ts`'s `autoLayoutDiagramTool()`), which
+ * already holds a parsed {@link GraphData} object in memory after applying
+ * `../../graph-mutations.ts`'s `autoLayout()` and needs the identical shape guarantees before
+ * persisting it. Every discrete node/edge-level MCP tool, by contrast, no longer canonicalizes
+ * here at all -- it delegates straight to `DiagramSession.applyOperation()`
+ * (docs/09C-COLLABORATIVE-EDITING.md's RPC Surface), which persists `this.graph` verbatim,
+ * since every node/edge that function ever adds is already well-formed by construction.
  *
  * @param parsed A parsed graph value -- from a JSON string (REST), or already assembled in
- * memory (an MCP mutation's output).
+ * memory (`autoLayout()`'s output).
  * @returns A canonical, re-serialised JSON string safe to persist -- `viewport` is always
  * present (defaulted when omitted) so every stored row has a uniform shape for a future reader
  * to rely on.

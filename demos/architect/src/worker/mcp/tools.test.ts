@@ -46,6 +46,14 @@ interface ContextForOptions {
   ownerEmail?: string;
   /** The incoming `/mcp` request's own URL -- see `McpToolContext.requestUrl`'s JSDoc. */
   requestUrl?: string;
+  /** Fixture result `applyOperation()` resolves with. */
+  applyOperationResult?: {
+    graphData: string;
+    updatedAt: string;
+    sequence: number;
+  };
+  /** Fixture result `applyWholeGraphReplace()` resolves with. */
+  applyWholeGraphReplaceResult?: { updatedAt: string; sequence: number };
 }
 
 /**
@@ -58,7 +66,8 @@ function contextFor(options: ContextForOptions = {}): {
   context: McpToolContext;
   statements: RecordedStatement[];
   logger: { info: ReturnType<typeof vi.fn> };
-  notifyGraphUpdated: ReturnType<typeof vi.fn>;
+  applyOperation: ReturnType<typeof vi.fn>;
+  applyWholeGraphReplace: ReturnType<typeof vi.fn>;
 } {
   const statements: RecordedStatement[] = [];
   const logger = { info: vi.fn() };
@@ -114,12 +123,33 @@ function contextFor(options: ContextForOptions = {}): {
     put: vi.fn(async () => {}),
   };
 
-  const notifyGraphUpdated = vi.fn(async () => {});
+  const applyOperation = vi.fn(
+    async () =>
+      options.applyOperationResult ?? {
+        graphData:
+          '{"edges":[],"nodes":[{"id":"n-fixture"}],"viewport":{"x":0,"y":0,"zoom":1}}',
+        sequence: 1,
+        updatedAt: "2026-01-05T00:00:00.000Z",
+      },
+  );
+  const applyWholeGraphReplace = vi.fn(
+    async () =>
+      options.applyWholeGraphReplaceResult ?? {
+        sequence: 1,
+        updatedAt: "2026-01-05T00:00:00.000Z",
+      },
+  );
 
   return {
     context: {
       db,
-      getDiagramSession: () => ({ notifyGraphUpdated }),
+      // The RPC stub's own return type mixes in `Disposable`/`Provider` machinery
+      // (`@cloudflare/workers-types`' `Rpc` namespace) a plain fixture function's `Promise<T>`
+      // can never structurally satisfy -- cast through `unknown`.
+      getDiagramSession: () =>
+        ({ applyOperation, applyWholeGraphReplace }) as unknown as ReturnType<
+          McpToolContext["getDiagramSession"]
+        >,
       logger,
       ownerEmail: options.ownerEmail ?? "alice@example.com",
       requestUrl: options.requestUrl ?? "https://architect.example/mcp",
@@ -127,7 +157,8 @@ function contextFor(options: ContextForOptions = {}): {
     },
     statements,
     logger,
-    notifyGraphUpdated,
+    applyOperation,
+    applyWholeGraphReplace,
   };
 }
 
@@ -330,8 +361,8 @@ describe("deleteDiagramTool", () => {
 describe("graph-mutating tools", () => {
   const diagramId = "11111111-1111-1111-1111-111111111111";
 
-  it("addNodeTool appends a node, persists it, and broadcasts the fresh graph", async () => {
-    const { context, notifyGraphUpdated } = contextFor({ selectRow: rowFor() });
+  it("addNodeTool delegates to DiagramSession.applyOperation() with origin agent and returns its result", async () => {
+    const { context, applyOperation } = contextFor({ selectRow: rowFor() });
 
     const diagram = await addNodeTool(context, diagramId, {
       label: "API",
@@ -339,119 +370,99 @@ describe("graph-mutating tools", () => {
       typeId: "worker",
     });
 
-    expect(JSON.parse(diagram.graphData).nodes).toHaveLength(1);
-    expect(notifyGraphUpdated).toHaveBeenCalledWith(
-      diagram.graphData,
-      diagram.updatedAt,
+    expect(applyOperation).toHaveBeenCalledWith(
+      {
+        input: { label: "API", position: { x: 0, y: 0 }, typeId: "worker" },
+        kind: "add_node",
+      },
+      "alice@example.com",
+      "agent",
+    );
+    expect(diagram.graphData).toBe(
+      '{"edges":[],"nodes":[{"id":"n-fixture"}],"viewport":{"x":0,"y":0,"zoom":1}}',
+    );
+    expect(diagram.updatedAt).toBe("2026-01-05T00:00:00.000Z");
+  });
+
+  it("addNodeTool throws notFound for a diagram not owned by the caller, never calling applyOperation", async () => {
+    const { context, applyOperation } = contextFor({ selectRow: null });
+
+    await expect(
+      addNodeTool(context, diagramId, {
+        label: "API",
+        position: { x: 0, y: 0 },
+        typeId: "worker",
+      }),
+    ).rejects.toMatchObject({ problemDetails: { status: 404 } });
+    expect(applyOperation).not.toHaveBeenCalled();
+  });
+
+  it("addNodeTool propagates an error DiagramSession.applyOperation() itself throws", async () => {
+    const { context, applyOperation } = contextFor({ selectRow: rowFor() });
+    applyOperation.mockRejectedValueOnce(new Error("stale target"));
+
+    await expect(
+      addNodeTool(context, diagramId, {
+        label: "API",
+        position: { x: 0, y: 0 },
+        typeId: "worker",
+      }),
+    ).rejects.toThrow("stale target");
+  });
+
+  it("updateNodeTool delegates the correct update_node operation", async () => {
+    const { context, applyOperation } = contextFor({ selectRow: rowFor() });
+
+    await updateNodeTool(context, diagramId, "n1", { label: "New" });
+
+    expect(applyOperation).toHaveBeenCalledWith(
+      { kind: "update_node", nodeId: "n1", patch: { label: "New" } },
+      "alice@example.com",
+      "agent",
     );
   });
 
-  it("addNodeTool throws notFound when the diagram is deleted between find and save", async () => {
-    const { context } = contextFor({ changes: 0, selectRow: rowFor() });
-
-    await expect(
-      addNodeTool(context, diagramId, {
-        label: "API",
-        position: { x: 0, y: 0 },
-        typeId: "worker",
-      }),
-    ).rejects.toMatchObject({ problemDetails: { status: 404 } });
-  });
-
-  it("addNodeTool throws notFound for a diagram not owned by the caller", async () => {
+  it("updateNodeTool throws notFound for a diagram not owned by the caller", async () => {
     const { context } = contextFor({ selectRow: null });
-
-    await expect(
-      addNodeTool(context, diagramId, {
-        label: "API",
-        position: { x: 0, y: 0 },
-        typeId: "worker",
-      }),
-    ).rejects.toMatchObject({ problemDetails: { status: 404 } });
-  });
-
-  it("updateNodeTool merges a patch into an existing node", async () => {
-    const { context } = contextFor({
-      selectRow: rowFor({
-        graph_data: JSON.stringify({
-          edges: [],
-          nodes: [{ data: { label: "Old" }, id: "n1" }],
-          viewport: { x: 0, y: 0, zoom: 1 },
-        }),
-      }),
-    });
-
-    const diagram = await updateNodeTool(context, diagramId, "n1", {
-      label: "New",
-    });
-
-    expect(JSON.parse(diagram.graphData).nodes[0].data.label).toBe("New");
-  });
-
-  it("updateNodeTool throws notFound for an unknown node id", async () => {
-    const { context } = contextFor({
-      selectRow: rowFor({
-        graph_data: JSON.stringify({
-          edges: [],
-          nodes: [],
-          viewport: { x: 0, y: 0, zoom: 1 },
-        }),
-      }),
-    });
 
     await expect(
       updateNodeTool(context, diagramId, "does-not-exist", { label: "New" }),
     ).rejects.toMatchObject({ problemDetails: { status: 404 } });
   });
 
-  it("removeNodeTool removes a node and cascades edge removal", async () => {
-    const { context } = contextFor({
-      selectRow: rowFor({
-        graph_data: JSON.stringify({
-          edges: [{ id: "e1", source: "n1", target: "n2" }],
-          nodes: [{ id: "n1" }, { id: "n2" }],
-          viewport: { x: 0, y: 0, zoom: 1 },
-        }),
-      }),
-    });
+  it("removeNodeTool delegates the correct remove_node operation", async () => {
+    const { context, applyOperation } = contextFor({ selectRow: rowFor() });
 
-    const diagram = await removeNodeTool(context, diagramId, "n1");
-    const graph = JSON.parse(diagram.graphData);
-    expect(graph.nodes.map((n: { id: string }) => n.id)).toEqual(["n2"]);
-    expect(graph.edges).toHaveLength(0);
+    await removeNodeTool(context, diagramId, "n1");
+
+    expect(applyOperation).toHaveBeenCalledWith(
+      { kind: "remove_node", nodeId: "n1" },
+      "alice@example.com",
+      "agent",
+    );
   });
 
-  it("addEdgeTool connects two existing nodes", async () => {
-    const { context } = contextFor({
-      selectRow: rowFor({
-        graph_data: JSON.stringify({
-          edges: [],
-          nodes: [{ id: "n1" }, { id: "n2" }],
-          viewport: { x: 0, y: 0, zoom: 1 },
-        }),
-      }),
-    });
+  it("addEdgeTool delegates the correct add_edge operation", async () => {
+    const { context, applyOperation } = contextFor({ selectRow: rowFor() });
 
-    const diagram = await addEdgeTool(context, diagramId, {
+    await addEdgeTool(context, diagramId, {
       edgeType: "data-flow",
       source: "n1",
       target: "n2",
     });
 
-    const graph = JSON.parse(diagram.graphData);
-    expect(graph.edges).toMatchObject([{ source: "n1", target: "n2" }]);
+    expect(applyOperation).toHaveBeenCalledWith(
+      {
+        input: { edgeType: "data-flow", source: "n1", target: "n2" },
+        kind: "add_edge",
+      },
+      "alice@example.com",
+      "agent",
+    );
   });
 
-  it("addEdgeTool throws notFound for an unknown source node", async () => {
-    const { context } = contextFor({
-      selectRow: rowFor({
-        graph_data: JSON.stringify({
-          edges: [],
-          nodes: [{ id: "n2" }],
-          viewport: { x: 0, y: 0, zoom: 1 },
-        }),
-      }),
-    });
+  it("addEdgeTool throws notFound for a diagram not owned by the caller", async () => {
+    const { context } = contextFor({ selectRow: null });
 
     await expect(
       addEdgeTool(context, diagramId, {
@@ -462,52 +473,32 @@ describe("graph-mutating tools", () => {
     ).rejects.toMatchObject({ problemDetails: { status: 404 } });
   });
 
-  it("updateEdgeTool merges a patch into an existing edge", async () => {
-    const { context } = contextFor({
-      selectRow: rowFor({
-        graph_data: JSON.stringify({
-          edges: [
-            {
-              data: { edgeType: "data-flow" },
-              id: "e1",
-              source: "n1",
-              target: "n2",
-            },
-          ],
-          nodes: [{ id: "n1" }, { id: "n2" }],
-          viewport: { x: 0, y: 0, zoom: 1 },
-        }),
-      }),
-    });
+  it("updateEdgeTool delegates the correct update_edge operation", async () => {
+    const { context, applyOperation } = contextFor({ selectRow: rowFor() });
 
-    const diagram = await updateEdgeTool(context, diagramId, "e1", {
-      edgeType: "trigger",
-    });
+    await updateEdgeTool(context, diagramId, "e1", { edgeType: "trigger" });
 
-    expect(JSON.parse(diagram.graphData).edges[0].data.edgeType).toBe(
-      "trigger",
+    expect(applyOperation).toHaveBeenCalledWith(
+      { edgeId: "e1", kind: "update_edge", patch: { edgeType: "trigger" } },
+      "alice@example.com",
+      "agent",
     );
   });
 
-  it("removeEdgeTool removes an edge without touching nodes", async () => {
-    const { context } = contextFor({
-      selectRow: rowFor({
-        graph_data: JSON.stringify({
-          edges: [{ id: "e1", source: "n1", target: "n2" }],
-          nodes: [{ id: "n1" }, { id: "n2" }],
-          viewport: { x: 0, y: 0, zoom: 1 },
-        }),
-      }),
-    });
+  it("removeEdgeTool delegates the correct remove_edge operation", async () => {
+    const { context, applyOperation } = contextFor({ selectRow: rowFor() });
 
-    const diagram = await removeEdgeTool(context, diagramId, "e1");
-    const graph = JSON.parse(diagram.graphData);
-    expect(graph.edges).toHaveLength(0);
-    expect(graph.nodes).toHaveLength(2);
+    await removeEdgeTool(context, diagramId, "e1");
+
+    expect(applyOperation).toHaveBeenCalledWith(
+      { edgeId: "e1", kind: "remove_edge" },
+      "alice@example.com",
+      "agent",
+    );
   });
 
-  it("autoLayoutDiagramTool repositions every node deterministically", async () => {
-    const { context } = contextFor({
+  it("autoLayoutDiagramTool repositions every node deterministically and delegates to applyWholeGraphReplace with origin agent", async () => {
+    const { context, applyWholeGraphReplace } = contextFor({
       selectRow: rowFor({
         graph_data: JSON.stringify({
           edges: [],
@@ -518,6 +509,12 @@ describe("graph-mutating tools", () => {
     });
 
     const diagram = await autoLayoutDiagramTool(context, diagramId);
+
+    expect(applyWholeGraphReplace).toHaveBeenCalledWith(
+      diagram.graphData,
+      "alice@example.com",
+      "agent",
+    );
     const positions = JSON.parse(diagram.graphData).nodes.map(
       (n: { position: { x: number; y: number } }) => n.position,
     );
@@ -525,6 +522,17 @@ describe("graph-mutating tools", () => {
     expect(positions.every((p: { x: number; y: number }) => p.y === 0)).toBe(
       true,
     );
+  });
+
+  it("autoLayoutDiagramTool throws notFound for a diagram not owned by the caller", async () => {
+    const { context, applyWholeGraphReplace } = contextFor({
+      selectRow: null,
+    });
+
+    await expect(
+      autoLayoutDiagramTool(context, diagramId),
+    ).rejects.toMatchObject({ problemDetails: { status: 404 } });
+    expect(applyWholeGraphReplace).not.toHaveBeenCalled();
   });
 });
 

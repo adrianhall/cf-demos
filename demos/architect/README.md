@@ -92,20 +92,26 @@ Before provisioning for the first time, verify in the Cloudflare dashboard that 
 13. Select **Delete diagram**, confirm in the dialog, and confirm the diagram no longer loads for its owner (`404` from `/api/diagrams/:id`).
 14. In the Cloudflare dashboard, open **Zero Trust** > **Access controls** > **Applications** > `<DEMO_NAME> app`, and confirm its **Authentication** tab shows **Managed OAuth** toggled on, with dynamic client registration enabled.
 15. Configure an MCP-compliant client (for example, add an entry to OpenCode's `opencode.json` pointing at `https://<DEMO_NAME>.<DEMO_DOMAIN>/mcp`) and complete its OAuth sign-in flow. Confirm the client can list your diagrams (`list_diagrams`).
-16. Open a diagram from step 6 in the browser editor and, in the same MCP session, call `add_node` for that diagram's id. Confirm the open browser tab's canvas updates within a couple of seconds and shows an "Updated by an agent" toast, with no manual reload.
+16. Open a diagram from step 6 in the browser editor and, in the same MCP session, call `add_node` for that diagram's id. Confirm the open browser tab's canvas updates within a couple of seconds and shows an "Updated by your agent" toast, with no manual reload.
 17. In the Cloudflare dashboard under **Workers & Pages** > `<DEMO_NAME>` > **Logs**, filter for `diagram_updated` and confirm the most recent entry's `via` field is `"mcp"`.
+18. In the toolbar, open the collaborators control (distinct from **Share**) and add a second identity's email that has already signed in at least once (repeat step 3 as that identity first if it has not). Sign in as that identity in a second browser profile/window and confirm the diagram appears under its dashboard's "Shared with me" section.
+19. With both identities' windows open on the same diagram, confirm a presence avatar for the other identity appears in the toolbar, and that moving the mouse in one window shows a live cursor position in the other.
 
 ## Provisioned Resources
 
 - Worker (`<DEMO_NAME>`) serving the React app shell as static assets and a Hono API, including a
   remote MCP server at `POST /mcp`.
-- D1 database `<DEMO_NAME>-db`, bound as `DB` (tables: `diagrams`, `users`, `diagram_shares`).
+- D1 database `<DEMO_NAME>-db`, bound as `DB` (tables: `diagrams`, `users`, `diagram_shares`,
+  `diagram_collaborators`).
 - Workers KV namespace `<DEMO_NAME>-shares`, bound as `SHARES` — the anonymous share-token
   lookup, keyed by a SHA-256 digest of the token (never the raw token itself).
 - `DiagramSession` Durable Object namespace, bound as `DIAGRAM_SESSIONS` — one instance per
-  diagram id, fanning out a live `graph_updated` push to every open editor tab's WebSocket
-  whenever an MCP tool call mutates that diagram. Declared in `wrangler.jsonc.tpl`, not
-  Terraform (see `EXPLAIN-DEMO.md`).
+  diagram id. It is the bidirectional live-sync coordination point every graph mutation, human or
+  agent, now goes through (a human's own WebSocket edit and an MCP tool call both resolve through
+  the same object), fanning out `operation_applied`/`graph_snapshot` messages to every open editor
+  tab's WebSocket, and also tracks that diagram's live presence (who is currently connected, their
+  cursor position, and their current selection). Declared in `wrangler.jsonc.tpl`, not Terraform
+  (see `EXPLAIN-DEMO.md`).
 - Custom domain `<DEMO_NAME>.<DEMO_DOMAIN>`.
 - Access application + bypass policy covering the whole hostname (the public landing page,
   `/blueprints`, and the read-only share viewer at `/s/:token`).
@@ -117,6 +123,10 @@ Before provisioning for the first time, verify in the Cloudflare dashboard that 
   Managed OAuth enabled (dynamic client registration, a 15-minute access token, a 14-day session)
   so a non-browser MCP client can authenticate through it exactly like a signed-in browser.
 - Workers Logs (100% sampling) and traces (10% sampling).
+- No new Access application, policy, or destination for owner-managed collaborators or live
+  presence: `GET/POST/DELETE /api/diagrams/:id/collaborators` and
+  `GET /api/diagrams/shared-with-me` all sit under the already-covered `/api/diagrams*`
+  destination on the `allow` application above.
 
 ## Troubleshooting
 

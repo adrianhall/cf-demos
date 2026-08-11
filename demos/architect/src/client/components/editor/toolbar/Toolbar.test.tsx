@@ -20,6 +20,20 @@ vi.mock("../../../api/shares", () => ({
   revokeShare: vi.fn(),
 }));
 
+const { mockListCollaborators } = vi.hoisted(() => ({
+  mockListCollaborators: vi.fn(),
+}));
+vi.mock("../../../api/collaborators", () => ({
+  addCollaborator: vi.fn(),
+  listCollaborators: mockListCollaborators,
+  removeCollaborator: vi.fn(),
+}));
+
+const { mockUseIdentity } = vi.hoisted(() => ({ mockUseIdentity: vi.fn() }));
+vi.mock("../../../hooks/useIdentity", () => ({
+  useIdentity: mockUseIdentity,
+}));
+
 // Imported dynamically, after the mocks above, since both transitively import "@xyflow/react"
 // (`../../../stores/diagramStore.ts` and `./Toolbar.tsx` themselves) and must not resolve that
 // import before the mock factory above is ready to serve it.
@@ -166,6 +180,7 @@ describe("Toolbar", () => {
       nodes: [],
       edges: [],
       diagramId: null,
+      ownerEmail: null,
       paletteOpen: true,
       propertiesOpen: false,
       minimapOpen: true,
@@ -175,6 +190,13 @@ describe("Toolbar", () => {
     mockXyflow.mockZoomOut.mockClear();
     mockElkLayout.mockReset();
     mockGetShareStatus.mockReset();
+    mockListCollaborators.mockReset();
+    mockUseIdentity.mockReset().mockReturnValue({
+      email: "owner@example.com",
+      error: null,
+      isAdmin: false,
+      loading: false,
+    });
   });
 
   it("renders the current title and updates it through the store", () => {
@@ -191,6 +213,46 @@ describe("Toolbar", () => {
     expect(screen.getByText("Untitled Diagram")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Undo (Ctrl+Z)" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the presence stack when participants are given, not in read-only mode", () => {
+    const { rerender } = render(
+      <Toolbar
+        participants={{
+          "bob@example.com": {
+            color: "#111111",
+            displayName: null,
+            email: "bob@example.com",
+          },
+        }}
+      />,
+    );
+    expect(
+      screen.getByRole("list", { name: "Currently viewing" }),
+    ).toBeInTheDocument();
+
+    rerender(
+      <Toolbar
+        readOnly
+        participants={{
+          "bob@example.com": {
+            color: "#111111",
+            displayName: null,
+            email: "bob@example.com",
+          },
+        }}
+      />,
+    );
+    expect(
+      screen.queryByRole("list", { name: "Currently viewing" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render the presence stack when no participants prop is given", () => {
+    render(<Toolbar />);
+    expect(
+      screen.queryByRole("list", { name: "Currently viewing" }),
     ).not.toBeInTheDocument();
   });
 
@@ -480,6 +542,50 @@ describe("Toolbar", () => {
 
     render(<Toolbar />);
     fireEvent.click(screen.getByTitle("Share diagram"));
+    await waitFor(() => screen.getByRole("dialog"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("disables the Manage collaborators button until a diagram has loaded", () => {
+    render(<Toolbar />);
+    expect(screen.getByTitle("Manage collaborators")).toBeDisabled();
+  });
+
+  it("renders no Manage collaborators button at all in read-only mode", () => {
+    render(<Toolbar readOnly />);
+    expect(screen.queryByTitle("Manage collaborators")).not.toBeInTheDocument();
+  });
+
+  it("opens the collaborators modal for the loaded diagram", async () => {
+    useDiagramStore.setState({
+      diagramId: "d1",
+      ownerEmail: "owner@example.com",
+    });
+    mockListCollaborators.mockResolvedValue([]);
+
+    render(<Toolbar />);
+    expect(screen.getByTitle("Manage collaborators")).not.toBeDisabled();
+
+    fireEvent.click(screen.getByTitle("Manage collaborators"));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mockListCollaborators).toHaveBeenCalledWith("d1"),
+    );
+  });
+
+  it("closes the collaborators modal", async () => {
+    useDiagramStore.setState({
+      diagramId: "d1",
+      ownerEmail: "owner@example.com",
+    });
+    mockListCollaborators.mockResolvedValue([]);
+
+    render(<Toolbar />);
+    fireEvent.click(screen.getByTitle("Manage collaborators"));
     await waitFor(() => screen.getByRole("dialog"));
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));

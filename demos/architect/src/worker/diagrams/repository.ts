@@ -107,6 +107,79 @@ export class DiagramRepository {
   }
 
   /**
+   * Load a diagram this identity may read or edit -- either because it owns it, or because it
+   * has been granted collaborator access (`../collaborators/repository.ts`). Returns the
+   * diagram plus the caller's `role` so route handlers can gate owner-only actions (rename,
+   * delete, manage the anonymous share link, manage collaborators) without a second query --
+   * see docs/09C-COLLABORATIVE-EDITING.md's Access Model.
+   *
+   * Implemented as a single query joining `diagrams` against `diagram_collaborators` (rather
+   * than calling `../collaborators/repository.ts`'s `CollaboratorRepository.isCollaborator()`
+   * separately) so a collaborator-in-name-only row pointing at a diagram that no longer exists
+   * correctly resolves to `null` in one round trip, with no risk of a caller mistaking "the
+   * collaborator row exists" for "the diagram exists": the query starts from `diagrams` and
+   * only ever returns a row when a matching diagram is actually found.
+   *
+   * `findOwned()` itself is not changed or removed by this method -- every genuinely
+   * owner-only route keeps calling it exactly as before.
+   *
+   * @param id Diagram id from the request path.
+   * @param email Verified Cloudflare Access identity making the request.
+   * @returns The diagram and the caller's role, or `null` if the diagram does not exist, or
+   * exists but `email` is neither its owner nor one of its collaborators.
+   */
+  async findAccessible(
+    id: string,
+    email: string,
+  ): Promise<{ diagram: Diagram; role: "owner" | "editor" } | null> {
+    const row = await this.database
+      .prepare(
+        `SELECT d.id, d.owner_email, d.title, d.description, d.graph_data, d.created_at, d.updated_at,
+                CASE WHEN d.owner_email = ?2 THEN 'owner' ELSE 'editor' END AS role
+         FROM diagrams d
+         WHERE d.id = ?1
+           AND (
+             d.owner_email = ?2
+             OR EXISTS (
+               SELECT 1 FROM diagram_collaborators dc
+               WHERE dc.diagram_id = d.id AND dc.collaborator_email = ?2
+             )
+           )
+         LIMIT 1`,
+      )
+      .bind(id, email)
+      .first<DiagramRow & { role: "owner" | "editor" }>();
+    if (row === null) {
+      return null;
+    }
+    return { diagram: toDiagram(row), role: row.role };
+  }
+
+  /**
+   * List every diagram `email` has been granted collaborator access to (never diagrams it
+   * owns), most recently updated first -- the dashboard's "Shared with me" section
+   * (`GET /api/diagrams/shared-with-me`, docs/09C-COLLABORATIVE-EDITING.md). Each returned
+   * `Diagram` already carries `ownerEmail`, so the client can render "Shared by \<owner\>"
+   * without a second request.
+   *
+   * @param email Verified Cloudflare Access identity making the request.
+   * @returns Diagrams `email` collaborates on, newest activity first.
+   */
+  async listSharedWith(email: string): Promise<Diagram[]> {
+    const { results } = await this.database
+      .prepare(
+        `SELECT d.id, d.owner_email, d.title, d.description, d.graph_data, d.created_at, d.updated_at
+         FROM diagrams d
+         JOIN diagram_collaborators dc ON dc.diagram_id = d.id
+         WHERE dc.collaborator_email = ?
+         ORDER BY d.updated_at DESC`,
+      )
+      .bind(email)
+      .all<DiagramRow>();
+    return results.map(toDiagram);
+  }
+
+  /**
    * List every diagram owned by `ownerEmail`, most recently updated first -- the dashboard's
    * card grid (docs/09-ARCHITECT.md Phase 2). Includes each diagram's full `graph_data` (not
    * just metadata) since the dashboard renders a live thumbnail preview of each diagram's graph.
@@ -202,6 +275,30 @@ export class DiagramRepository {
       .bind(id, ownerEmail)
       .run();
     return result.meta.changes > 0;
+  }
+
+  /**
+   * Load a diagram regardless of owner -- `../diagram-session/diagram-session.ts`'s
+   * `DiagramSession.ensureHydrated()` hydration path, mirroring `removeAny()`'s no-scoping
+   * precedent below: the Worker has already authorized the caller (owner or collaborator, via
+   * `findAccessible()`) *before* ever reaching that Durable Object, so this method performs no
+   * authorization of its own and must never be reachable from a request this repository itself
+   * has not already scoped. Callers must only reach this method from `DiagramSession`, never
+   * from an ordinary owner- or accessibility-scoped request.
+   *
+   * @param id Diagram id to load.
+   * @returns The diagram, or `null` if it no longer exists (for example, deleted in the narrow
+   * window between the Worker's own authorization check and this call).
+   */
+  async findAny(id: string): Promise<Diagram | null> {
+    const row = await this.database
+      .prepare(
+        `SELECT id, owner_email, title, description, graph_data, created_at, updated_at
+         FROM diagrams WHERE id = ? LIMIT 1`,
+      )
+      .bind(id)
+      .first<DiagramRow>();
+    return row === null ? null : toDiagram(row);
   }
 
   /**

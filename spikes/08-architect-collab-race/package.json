@@ -1,0 +1,27 @@
+{
+  "name": "@cf-spikes/08-architect-collab-race",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
+  },
+  "scripts": {
+    "generate:types": "wrangler types",
+    "pretest": "npm run generate:types",
+    "test": "vitest run",
+    "check:types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.21.0",
+    "@types/node": "26.2.0",
+    "typescript": "^7.0.2",
+    "vitest": "4.1.10",
+    "wrangler": "4.120.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20260804.1": true
+  }
+}

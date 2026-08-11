@@ -296,6 +296,35 @@ describe("DiagramRepository", () => {
     expect(removed).toBe(false);
   });
 
+  it("loads a diagram by id alone, with no owner scoping (findAny)", async () => {
+    const { database, statements } = databaseFor(
+      rowFor({ owner_email: "someone-else@example.com" }),
+    );
+
+    const diagram = await new DiagramRepository(database).findAny(
+      "11111111-1111-1111-1111-111111111111",
+    );
+
+    expect(diagram).toMatchObject({
+      id: "11111111-1111-1111-1111-111111111111",
+      ownerEmail: "someone-else@example.com",
+    });
+    expect(statements[0]?.sql).not.toContain("owner_email = ?");
+    expect(statements[0]?.parameters).toEqual([
+      "11111111-1111-1111-1111-111111111111",
+    ]);
+  });
+
+  it("returns null from findAny when the diagram no longer exists", async () => {
+    const { database } = databaseFor(null);
+
+    const diagram = await new DiagramRepository(database).findAny(
+      "11111111-1111-1111-1111-111111111111",
+    );
+
+    expect(diagram).toBeNull();
+  });
+
   it("loads only public fields for a share viewer, never ownerEmail", async () => {
     const { database } = databaseFor(rowFor({ title: "Shared Diagram" }));
 
@@ -320,5 +349,102 @@ describe("DiagramRepository", () => {
     );
 
     expect(shared).toBeNull();
+  });
+
+  describe("findAccessible", () => {
+    it('reports role "owner" when the caller owns the diagram', async () => {
+      const { database, statements } = databaseFor(rowFor({ role: "owner" }));
+
+      const result = await new DiagramRepository(database).findAccessible(
+        "11111111-1111-1111-1111-111111111111",
+        "alice@example.com",
+      );
+
+      expect(result).toMatchObject({
+        diagram: { ownerEmail: "alice@example.com" },
+        role: "owner",
+      });
+      expect(statements[0]?.parameters).toEqual([
+        "11111111-1111-1111-1111-111111111111",
+        "alice@example.com",
+      ]);
+    });
+
+    it('reports role "editor" when the caller is a collaborator, not the owner', async () => {
+      const { database } = databaseFor(
+        rowFor({ owner_email: "alice@example.com", role: "editor" }),
+      );
+
+      const result = await new DiagramRepository(database).findAccessible(
+        "11111111-1111-1111-1111-111111111111",
+        "colleague@example.com",
+      );
+
+      expect(result).toMatchObject({
+        diagram: { ownerEmail: "alice@example.com" },
+        role: "editor",
+      });
+    });
+
+    it("returns null when the caller is neither the owner nor a collaborator", async () => {
+      const { database } = databaseFor(null);
+
+      const result = await new DiagramRepository(database).findAccessible(
+        "11111111-1111-1111-1111-111111111111",
+        "mallory@example.com",
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it("returns null for a collaborator-in-name-only row pointing at a diagram that no longer exists", async () => {
+      // The query starts from `diagrams`, so a stale `diagram_collaborators` row for a deleted
+      // diagram id can never itself produce a row -- simulated here the same way as "diagram
+      // does not exist at all": `first()` resolves to `null`.
+      const { database } = databaseFor(null);
+
+      const result = await new DiagramRepository(database).findAccessible(
+        "11111111-1111-1111-1111-111111111111",
+        "stale-collaborator@example.com",
+      );
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("listSharedWith", () => {
+    it("lists diagrams the identity collaborates on, newest updated first per the query order", async () => {
+      const { database, statements } = databaseFor(null, {
+        selectRows: [
+          rowFor({ owner_email: "alice@example.com" }),
+          rowFor({
+            id: "22222222-2222-2222-2222-222222222222",
+            owner_email: "bob@example.com",
+          }),
+        ],
+      });
+
+      const diagrams = await new DiagramRepository(database).listSharedWith(
+        "colleague@example.com",
+      );
+
+      expect(diagrams).toHaveLength(2);
+      expect(diagrams.map((d) => d.ownerEmail)).toEqual([
+        "alice@example.com",
+        "bob@example.com",
+      ]);
+      expect(statements[0]?.sql).toContain("ORDER BY d.updated_at DESC");
+      expect(statements[0]?.parameters).toEqual(["colleague@example.com"]);
+    });
+
+    it("returns an empty array when the identity collaborates on nothing", async () => {
+      const { database } = databaseFor(null, { selectRows: [] });
+
+      const diagrams = await new DiagramRepository(database).listSharedWith(
+        "nobody@example.com",
+      );
+
+      expect(diagrams).toEqual([]);
+    });
   });
 });

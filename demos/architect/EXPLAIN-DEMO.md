@@ -13,6 +13,16 @@ small Durable Object that pushes an agent's edits live into any browser editor t
 already has open. It adds no new deployable unit, domain, or D1 table; it is the same demo,
 extended with an agent-facing surface on top of the application described above.
 
+This document also covers a second, final follow-on, described in full in
+`docs/09C-COLLABORATIVE-EDITING.md`: two different signed-in humans editing the same diagram at
+the same time, each seeing the other's cursor and edits live, on top of a minimal, owner-managed
+collaborator model distinct from 9's existing anonymous read-only share link. It turns 9B's
+push-only `DiagramSession` bidirectional, so a human's own WebSocket edit and an MCP tool call now
+resolve through the very same code path — see [Live Collaboration And Concurrency](#live-collaboration-and-concurrency)
+below. It adds one new D1 table (`diagram_collaborators`) and no new Cloudflare product, Access
+application, or Terraform resource — every new route sits under 9's existing `/api/diagrams*`
+Access destination.
+
 ## What This Demonstrates
 
 - **A mixed public/authenticated hostname with two Cloudflare Access applications.** One
@@ -96,25 +106,36 @@ extended with an agent-facing surface on top of the application described above.
   forked or duplicated data-access code for agent-driven traffic to fall out of sync with.
 - **A deliberately narrow, justified Durable Object: coordination for open connections, not a
   second copy of the data.** `DiagramSession` holds no durable state of its own — D1 remains the
-  only source of truth for a diagram's graph — it exists purely as a live fan-out point for
-  browser WebSocket connections on one diagram, because "push the instant something changes to
-  every currently-connected client" is a real persistent-connection coordination problem, the one
-  case in this demo that polling (this repository's usual first choice — see `docs/DECISIONS.md`
-  and `docs/10-OPENCODE-BROWSER.md`'s own precedent) cannot satisfy well enough to be worth
-  choosing anyway.
-- **A read-only, single-owner live-sync channel, deliberately not real-time multi-user
-  collaboration.** `DiagramSession` never accepts writes from the browser side of its socket, and
-  conflict resolution is plain last-write-wins — sufficient because the only two writers are one
-  owner's browser tab and that same owner's own agent, never two different people. Real
-  concurrent-editor collaboration remains its own, separately-scoped future work (see "Live sync
-  and concurrency" below).
+  only source of truth for a diagram's graph, unconditionally, including while a live session is
+  active — it exists purely as a live coordination point for every browser WebSocket connection
+  currently open on one diagram, because "keep every currently-connected client's view instantly
+  and correctly in sync" is a real persistent-connection coordination problem, the one case in
+  this demo that polling (this repository's usual first choice — see `docs/DECISIONS.md` and
+  `docs/10-OPENCODE-BROWSER.md`'s own precedent) cannot satisfy well enough to be worth choosing
+  anyway.
+- **Real multi-human live collaboration, not merely a read-only agent-edit push.** `DiagramSession`
+  started (9B) as a one-way, server-to-client push for a single owner's own agent-driven edits;
+  `docs/09C-COLLABORATIVE-EDITING.md` makes it fully bidirectional, so two different signed-in
+  humans editing the same diagram at the same time each see the other's cursor, presence, and
+  edits live, through the same object. See
+  [Live Collaboration And Concurrency](#live-collaboration-and-concurrency) below for why
+  node/edge-level last-write-wins is still the right conflict policy at this new, harder scale
+  (two genuinely different people, not one owner and their own agent) rather than reaching for a
+  CRDT.
+- **A minimal, owner-managed collaborator model, deliberately distinct from the existing anonymous
+  share link.** A diagram's owner grants edit access to another specific, already-known Access
+  identity (one that has signed in through this same Access application at least once) — a
+  different question from 9's anonymous, read-only share link ("let anyone with this link *view*
+  the current diagram"). See [Live Collaboration And Concurrency](#live-collaboration-and-concurrency)
+  below.
 
 ## How It Works
 
 ### Data model
 
 `migrations/0001_create_diagrams_and_users.sql` creates the `diagrams` and `users` tables;
-`migrations/0002_create_diagram_shares.sql` adds `diagram_shares`:
+`migrations/0002_create_diagram_shares.sql` adds `diagram_shares`;
+`migrations/0003_create_diagram_collaborators.sql` adds `diagram_collaborators`:
 
 ```sql
 CREATE TABLE diagrams (
@@ -140,6 +161,14 @@ CREATE TABLE diagram_shares (
   created_at TEXT NOT NULL,
   revoked_at TEXT
 );
+
+CREATE TABLE diagram_collaborators (
+  diagram_id TEXT NOT NULL,
+  collaborator_email TEXT NOT NULL,
+  added_by TEXT NOT NULL,
+  added_at TEXT NOT NULL,
+  PRIMARY KEY (diagram_id, collaborator_email)
+);
 ```
 
 `diagrams.owner_email` is the diagram's only owner reference — the verified Access identity *is*
@@ -154,7 +183,12 @@ a `blueprint_id` column. Once a diagram is cloned from a blueprint template, its
 independent of that template — `POST /api/diagrams` resolves `blueprintId` against
 `BLUEPRINT_MAP` (`src/blueprints.ts`) purely to seed the new row's `graph_data`, and never
 persists which blueprint (if any) it came from. `diagram_shares.token_digest` is discussed in its
-own section below.
+own section below; `diagram_collaborators` is discussed in
+[Live Collaboration And Concurrency](#live-collaboration-and-concurrency) below. Neither
+`diagram_shares.diagram_id` nor `diagram_collaborators.diagram_id` is an enforced foreign key
+reference to `diagrams.id`, for the same D1/SQLite-pragma reasons the original `diagram_shares`
+migration already documented — `CollaboratorRepository` enforces the relationship (and that
+`collaborator_email` already exists in `users`) in application code instead.
 
 ### The diagram editor and its API
 
@@ -432,16 +466,19 @@ handler already converts a thrown error's `.message` into `{ content: [...], isE
 automatically.
 
 Every graph-mutating tool (`add_node`, `update_node`, `remove_node`, `add_edge`, `update_edge`,
-`remove_edge`, `auto_layout_diagram`) funnels through one shared shape:
-`DiagramRepository.findOwned()` an owned diagram, apply one pure function from
-`src/worker/diagrams/graph-mutations.ts` to its parsed graph, re-canonicalize with the same
-`validateGraphDataInput()`-equivalent helper `src/worker/diagrams/validation.ts` already exposes
-to the REST `PUT .../graph` route, `saveGraphData()`, then push the fresh graph to any open editor
-tab (see "Live sync and concurrency" below). `graph-mutations.ts`'s functions are pure and unit-
-tested against fixture `GraphData` values with no D1, Worker, or MCP involvement at all —
-`removeNode()` cascades removal of every edge referencing the removed node (an orphaned edge is a
-worse failure mode than an over-eager cascade), and `addEdge()` validates both endpoints exist
-before creating anything.
+`remove_edge`) `findOwned()`s the diagram, then delegates the actual mutation to
+`DiagramSession.applyOperation()` (`origin: "agent"`) — the same one code path a human's own
+WebSocket edit goes through (see [Live Collaboration And
+Concurrency](#live-collaboration-and-concurrency) below). `auto_layout_diagram` instead calls
+`applyWholeGraphReplace()`, since it genuinely repositions every node at once rather than
+performing one discrete operation. Neither tool calls `DiagramRepository.saveGraphData()`
+directly any more — `docs/09C-COLLABORATIVE-EDITING.md` retired that direct D1 write from every
+MCP tool handler the same way it did from the REST `PUT .../graph` route, so `DiagramSession`'s own
+write chain is the only thing that ever persists a mutation to D1, regardless of which surface
+triggered it. `graph-mutations.ts`'s mutation functions themselves are pure and unit-tested against
+fixture `GraphData` values with no D1, Worker, or MCP involvement at all — `removeNode()` cascades
+removal of every edge referencing the removed node (an orphaned edge is a worse failure mode than
+an over-eager cascade), and `addEdge()` validates both endpoints exist before creating anything.
 
 `auto_layout_diagram` does **not** reuse the editor's own ELK-based layout: a real
 `@cloudflare/vitest-pool-workers` spike (`spikes/07-architect-mcp-spike/`, `docs/DECISIONS.md` #29)
@@ -492,46 +529,47 @@ revoked identity is cut off within one token lifetime rather than only at initia
 
 `DiagramSession` (`src/worker/diagram-session/diagram-session.ts`) is a small, narrowly-scoped
 Durable Object — one instance per diagram id (`env.DIAGRAM_SESSIONS.getByName(diagramId)`, no
-separate mapping table) — that holds no durable data of its own. D1 remains the single source of
-truth for a diagram's graph; this object exists purely as a live fan-out point for whichever
-browser tabs currently have that diagram open. `GET /api/diagrams/:id/live`
-(`src/worker/routes/diagrams.ts`) performs the same `DiagramRepository.findOwned()` ownership
-check every other diagram route performs *before* forwarding the WebSocket upgrade to the Durable
-Object — the object itself never re-derives authorization, matching this repository's usual
-pattern of authorization living at the Worker/API boundary. It accepts sockets with the
+separate mapping table) — that holds no *durable* data of its own. D1 remains the single source of
+truth for a diagram's graph, unconditionally, including while a live session is active (see
+[Live Collaboration And Concurrency](#live-collaboration-and-concurrency) below). It started (9B)
+as a one-way, server-to-client push for a single owner's own agent-driven edits, and
+`docs/09C-COLLABORATIVE-EDITING.md` made it fully bidirectional: it is now the one coordination
+point every graph mutation goes through, whether it originates from a human's own WebSocket
+message or from an MCP tool call.
+
+`GET /api/diagrams/:id/live` (`src/worker/routes/diagrams.ts`) performs the same
+`DiagramRepository.findAccessible()` check every other collaborator-aware diagram route performs
+*before* forwarding the WebSocket upgrade to the Durable Object — the object itself never
+re-derives authorization, matching this repository's usual pattern of authorization living at the
+Worker/API boundary. It accepts sockets with the
 [WebSocket Hibernation API](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)
 (`ctx.acceptWebSocket()`, not `server.accept()`), so an idle open editor tab does not keep billing
 the object while nothing is happening — consistent with this demo's existing cost-consciousness
-elsewhere (ELK's lazy import, `demos/opencode-browser`'s `sleepAfter`). Its one RPC method,
-`notifyGraphUpdated(graphData, updatedAt)`, is called by the Worker (never the browser) immediately
-after a graph-mutating MCP tool call persists to D1, and sends a `graph_updated` frame to every
-currently-accepted socket, skipping any socket no longer in the `OPEN` state rather than throwing.
+elsewhere (ELK's lazy import, `demos/opencode-browser`'s `sleepAfter`).
+
+Its RPC surface is three methods: `applyOperation()` (one discrete `graph-mutations.ts` mutation,
+the path both a human's WebSocket message and an MCP tool call now share), `applyWholeGraphReplace()`
+(the one legitimate whole-graph write, used by `auto_layout_diagram` and by `PUT
+/api/diagrams/:id/graph`'s resilience-fallback role for a client whose socket has not yet
+reconnected), and `getSnapshot()` (read the current in-memory graph, used to build a new
+connection's `graph_snapshot`). 9B's original single RPC method, `notifyGraphUpdated()`, no longer
+exists — its only caller (the Worker, notifying the object after an MCP tool wrote straight to D1)
+was retired the moment MCP tool calls started calling `applyOperation()`/
+`applyWholeGraphReplace()` directly instead.
 
 On the client, `useDiagramLiveSync.ts` opens this WebSocket when `DiagramCanvas` mounts and closes
-it on unmount; on a `graph_updated` frame newer than the store's own last-known `updatedAt`, it
-replaces the Zustand store's graph state — reusing the same state-replacement the store already
-performs after its own initial load, rather than a second code path — and `LiveUpdateToast.tsx`
-shows a brief, dismissible "Updated by an agent" notice so the user understands why their canvas
-just changed, rather than silently rewriting their screen with no explanation.
+it on unmount; incoming `operation_applied`/`graph_snapshot` messages update the Zustand store's
+graph state, and `LiveUpdateToast.tsx` shows a brief, dismissible "Updated by \<name\>" (a human
+collaborator) or "Updated by your agent" (an MCP tool call, via the message's `origin` field) notice
+so the user understands why their canvas just changed, rather than silently rewriting their screen
+with no explanation. The browser's own edits are now sent as operations over this same socket
+(reusing the editor's existing autosave debounce interval for dispatch timing, not per-keystroke),
+falling back to the existing debounced `PUT /api/diagrams/:id/graph` autosave path only while the
+socket is not connected.
 
-This channel is strictly server-to-client push: `DiagramSession` never accepts writes from the
-browser side of the socket at all. The browser's own edits keep using the existing debounced `PUT
-/api/diagrams/:id/graph` autosave path unchanged. Concurrency is plain last-write-wins, matching
-this demo's existing autosave model (there is no partial-patch protocol; every autosave already
-replaces the whole graph) — acceptable specifically because the only two writers on a diagram are
-one owner's browser tab and that same owner's own agent, never two different people. If the user
-is mid-edit when an agent's change arrives, the push replaces their canvas and their own in-flight
-debounced autosave fires shortly after, overwriting the agent's change right back — a brief visual
-flicker at worst, not data loss, since D1's `updated_at` always reflects whichever write actually
-landed last; D1's own `UPDATE ... WHERE id = ? AND owner_email = ?` (already how `saveGraphData()`
-works) makes the last statement to commit win outright if an agent's tool call and the browser's
-autosave land in the same instant. Real concurrent-*editor* conflict resolution (two different
-people editing the same diagram) remains explicitly out of scope, deferred to the same Post-MVP
-collaboration work `docs/09-ARCHITECT.md` already named, which this design intentionally sets up
-for: this identity/connection-lifecycle shape (one instance per diagram, Worker-side owner check
-ahead of the upgrade, hibernated accept, fan-out to every connected socket) is the foundation that
-future work would extend with a bidirectional channel and presence/cursor messages, not a second
-Durable Object built from scratch.
+See [Live Collaboration And Concurrency](#live-collaboration-and-concurrency) below for how
+concurrent edits from two genuinely different people are resolved now that this channel is
+bidirectional, and why that still needs nothing more elaborate than node/edge-level last-write-wins.
 
 Not implemented, and deliberately so: raster (PNG/SVG) export through the MCP server. Demo 9's
 export is a client-side, DOM/canvas-based operation (`html-to-image` against the live React Flow
@@ -545,6 +583,84 @@ underlying browser API are explicitly experimental and unshipped as of this writ
 own README: "this adapter **will break** between releases"), so this demo does not build against
 either moving target; if WebMCP matures, it would layer on top of the remote MCP server already
 built here, reusing these same tool implementations rather than rewriting them.
+
+### Live Collaboration And Concurrency
+
+`docs/09C-COLLABORATIVE-EDITING.md` is the third and final piece the original `docs/BACKLOG.md`
+demo 9 write-up asked for: two different signed-in humans editing the same diagram at the same
+time, each seeing the other's cursor, presence, and edits live — the capability every earlier
+section of this document explicitly deferred. Three things changed to get there, on top of
+everything "Live sync and concurrency" above already describes: a minimal, owner-managed
+collaborator model; a bidirectional `DiagramSession`; and one unified write path for a human's own
+edit and an MCP tool call.
+
+**Owner-managed collaborators, distinct from the anonymous share link.** `diagram_collaborators`
+(see "Data model" above) grants a specific, already-known Access identity full edit access to a
+diagram — `CollaboratorRepository` (`src/worker/collaborators/repository.ts`) requires that
+identity to already exist in `users` (i.e. it has signed in through this same Access application
+at least once), rejecting anything else with a plain, safe "that person needs to sign in first"
+message rather than leaking whether an arbitrary email exists anywhere else. This answers a
+genuinely different question from 9's existing anonymous, read-only share link ("let anyone with
+this link *view* the current diagram, no sign-in at all"): a collaborator is a specific, known
+identity who can *edit*, not an anonymous viewer. `DiagramRepository.findAccessible()` is the new
+sibling to the existing, unchanged `findOwned()`: every genuinely owner-only route (rename, delete,
+manage the share link, manage collaborators) still calls `findOwned()` exactly as before; only the
+routes a collaborator must also use (`GET /api/diagrams/:id`, `PUT /api/diagrams/:id/graph`, the
+`GET /api/diagrams/:id/live` pre-upgrade check) switch to `findAccessible()`. No new Access
+application, policy, or destination was needed — every new collaborator route sits under the
+already-covered `/api/diagrams*` destination (see "The two-application Access model" above).
+
+**Why node/edge-level last-write-wins, not a CRDT.** Two authenticated humans editing the same
+diagram sounds at first like it needs the same machinery a real-time collaborative text editor
+does (Yjs, Automerge, operational transform). It does not, because this diagram's edit surface is a
+discrete set of identifiable objects — nodes and edges, each with a stable UUID — rather than a
+linear character stream, and 9B already built the exact right vocabulary for mutating that set
+(`addNode`/`updateNode`/`removeNode`/`addEdge`/`updateEdge`/`removeEdge`,
+`src/worker/diagrams/graph-mutations.ts`). At that granularity, "two operations landed in some
+order and the second one wins" is a completely adequate conflict policy — the same one a shared
+spreadsheet or shared to-do list uses at the cell/row level — and a Durable Object's single active
+instance per diagram id, combined with an ordinary in-process write chain (below), gives that
+ordering guarantee without a distributed data structure. Reaching for a CRDT here would solve a
+problem this demo does not have, at real cost to this repository's own stated teaching goal (the
+Durable Object and WebSocket lesson, not a distributed-data-structures lesson) — the moment a
+single field's *contents* needed merging character-by-character rather than being replaced whole,
+this reasoning would stop holding, which is exactly why character-level editing stays a deliberate
+non-goal.
+
+**Why D1 stays the diagram's only durable copy, even during a live session.** `DiagramSession`
+never calls `ctx.storage.sql` and gains no schema of its own — an earlier design that gave it its
+own SQLite-backed graph copy, periodically flushed to D1, was rejected before implementation
+because it would mean a diagram's graph exists in two independently-persisted places that could
+disagree (for example, restoring D1 from a backup while a session happens to be resident would
+silently be undone by that session's own next flush). Instead, `this.graph` is a plain,
+in-memory-only class field — a disposable read-through cache, hydrated from D1 exactly once per
+activation via `ensureHydrated()`, guarded by `blockConcurrencyWhile()` — and `this.writeChain`, a
+single per-object chained `Promise` every persist-to-D1 call joins, so writes land in D1 in the
+same order they were requested while each link still reads `this.graph` fresh at the moment it
+actually runs, not a value captured when it was enqueued. That combination is what a
+`spikes/08-architect-collab-race` spike proved by direct execution, not only by reading platform
+documentation (`docs/DECISIONS.md` #32): two concurrent operations targeting the same node always
+apply in a genuine, non-interleaved order (JavaScript's own single-threaded, no-`await`-between-
+statements guarantee inside `applyOperation()`'s mutation step), and a deliberately slowed-down
+write can never land after, and clobber, a faster, later-enqueued one. One direct consequence:
+every existing D1 backup/restore story for a diagram's graph is completely unaffected by this
+feature, since there is never a second, independently-recoverable copy to reconcile against it.
+
+**Relationship to 9B's agent-driven live sync.** 9B's MCP tool handlers used to call
+`findOwned()` → mutate → `saveGraphData()` → `notifyGraphUpdated()` directly against D1, with
+`DiagramSession` only ever notified after the fact (see "Live sync and concurrency" above, and "The
+remote MCP server" above). They now call `applyOperation()`/`applyWholeGraphReplace()` on
+`DiagramSession` instead, with `origin: "agent"` — the exact same code path a human's own WebSocket
+message goes through. Because a remote MCP client authenticates as the *same* verified identity as
+the human who configured it (9B: "anyone who can sign in to the editor can sign in to the MCP
+server"), an agent's edit and its owner's own live edits share one email address —
+`operation_applied`'s `origin` field exists specifically so a receiving client's UI can still tell
+them apart ("Updated by your agent" vs. attributing the change to that same browser tab's own
+in-flight optimistic edit) even though the underlying identity is identical. Presence, cursor
+position, and current selection (`presence_snapshot`/`presence_joined`/`presence_left`/
+`cursor_moved`/`selection_changed`) are relayed the same way for every connected human identity, are
+never persisted, and are dropped rather than queued when a connection is backpressured — a missed
+cursor frame is invisible; a missed graph operation is not.
 
 ### Observability
 
@@ -594,3 +710,7 @@ traces again.
 - [`cloudflare_zero_trust_access_application` resource (`oauth_configuration`)](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/zero_trust_access_application)
 - [Durable Objects: WebSockets and hibernation](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)
 - [ELK.js](https://github.com/kieler/elkjs) — why this demo's server-side `auto_layout_diagram` MCP tool uses a grid-placement fallback instead (does not run inside `workerd`; see `docs/DECISIONS.md` #29).
+- [Durable Objects: in-memory state](https://developers.cloudflare.com/durable-objects/reference/in-memory-state/) — why `DiagramSession.graph` is a disposable read-through cache, not a second source of truth.
+- [Durable Objects: Rules of Durable Objects](https://developers.cloudflare.com/durable-objects/best-practices/rules-of-durable-objects/) — the single-threaded, no-`await`-between-statements ordering guarantee `applyOperation()` relies on.
+- [Access Durable Object name via `ctx.id.name`](https://developers.cloudflare.com/changelog/post/2026-03-15-durable-object-id-name/) — how `DiagramSession` knows its own diagram id without a separate parameter (`docs/DECISIONS.md` #33).
+- [`<ViewportPortal />` (`@xyflow/react`)](https://reactflow.dev/api-reference/components/viewport-portal) — renders the remote cursor overlay and selection highlight in the same coordinate system as the canvas's nodes and edges, so they pan/zoom together.

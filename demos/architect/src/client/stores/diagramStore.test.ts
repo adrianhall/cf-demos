@@ -17,10 +17,12 @@ describe("useDiagramStore", () => {
   beforeEach(() => {
     useDiagramStore.setState({
       diagramId: null,
+      ownerEmail: null,
       title: "Untitled Diagram",
       description: "",
       updatedAt: null,
-      liveUpdateNotice: false,
+      liveUpdateNotice: null,
+      pendingOperations: new Map(),
       nodes: [],
       edges: [],
       viewport: { x: 0, y: 0, zoom: 1 },
@@ -44,6 +46,7 @@ describe("useDiagramStore", () => {
       .getState()
       .setDiagram(
         "diagram-1",
+        "owner@example.com",
         "My Diagram",
         "A description",
         [makeNode("b")],
@@ -54,6 +57,7 @@ describe("useDiagramStore", () => {
 
     const state = useDiagramStore.getState();
     expect(state.diagramId).toBe("diagram-1");
+    expect(state.ownerEmail).toBe("owner@example.com");
     expect(state.title).toBe("My Diagram");
     expect(state.description).toBe("A description");
     expect(state.updatedAt).toBe("2026-01-01T00:00:00.000Z");
@@ -459,53 +463,28 @@ describe("useDiagramStore", () => {
     expect(useDiagramStore.getState().nodes.map((n) => n.id)).toEqual(["z"]);
   });
 
-  describe("applyRemoteGraphUpdate", () => {
-    it("replaces the graph, clears dirty/history, and shows the live update notice", () => {
-      useDiagramStore.setState({ updatedAt: "2026-01-01T00:00:00.000Z" });
+  describe("applyRemoteGraphSnapshot", () => {
+    it("replaces the graph and clears dirty/history", () => {
       useDiagramStore.getState().addNode(makeNode("a"));
 
-      useDiagramStore.getState().applyRemoteGraphUpdate(
+      useDiagramStore.getState().applyRemoteGraphSnapshot(
         JSON.stringify({
           nodes: [makeNode("b")],
           edges: [],
           viewport: { x: 1, y: 2, zoom: 1 },
         }),
-        "2026-01-02T00:00:00.000Z",
       );
 
       const state = useDiagramStore.getState();
       expect(state.nodes.map((n) => n.id)).toEqual(["b"]);
-      expect(state.updatedAt).toBe("2026-01-02T00:00:00.000Z");
+      expect(state.viewport).toEqual({ x: 1, y: 2, zoom: 1 });
       expect(state.dirty).toBe(false);
       expect(state.undoStack).toHaveLength(0);
       expect(state.redoStack).toHaveLength(0);
-      expect(state.liveUpdateNotice).toBe(true);
     });
 
-    it("ignores a push that is not newer than the store's own updatedAt", () => {
-      useDiagramStore.setState({ updatedAt: "2026-01-02T00:00:00.000Z" });
-      useDiagramStore.getState().addNode(makeNode("a"));
-
-      useDiagramStore.getState().applyRemoteGraphUpdate(
-        JSON.stringify({
-          nodes: [],
-          edges: [],
-          viewport: { x: 0, y: 0, zoom: 1 },
-        }),
-        "2026-01-02T00:00:00.000Z",
-      );
-
-      const state = useDiagramStore.getState();
-      expect(state.nodes.map((n) => n.id)).toEqual(["a"]);
-      expect(state.liveUpdateNotice).toBe(false);
-    });
-
-    it("defaults missing nodes, edges, and viewport in the pushed graph", () => {
-      useDiagramStore.setState({ updatedAt: "2026-01-01T00:00:00.000Z" });
-
-      useDiagramStore
-        .getState()
-        .applyRemoteGraphUpdate("{}", "2026-01-02T00:00:00.000Z");
+    it("defaults missing nodes, edges, and viewport in the snapshot", () => {
+      useDiagramStore.getState().applyRemoteGraphSnapshot("{}");
 
       const state = useDiagramStore.getState();
       expect(state.nodes).toEqual([]);
@@ -513,40 +492,308 @@ describe("useDiagramStore", () => {
       expect(state.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
     });
 
-    it("applies a push when no updatedAt has been recorded yet", () => {
-      useDiagramStore.setState({ updatedAt: null });
-
-      useDiagramStore.getState().applyRemoteGraphUpdate(
-        JSON.stringify({
-          nodes: [makeNode("a")],
-          edges: [],
-          viewport: { x: 0, y: 0, zoom: 1 },
-        }),
-        "2026-01-01T00:00:00.000Z",
-      );
-
-      expect(useDiagramStore.getState().nodes).toHaveLength(1);
-    });
-
-    it("ignores a push whose graphData fails to parse, mutating nothing", () => {
-      useDiagramStore.setState({ updatedAt: "2026-01-01T00:00:00.000Z" });
+    it("ignores a snapshot whose graphData fails to parse, mutating nothing", () => {
       useDiagramStore.getState().addNode(makeNode("a"));
 
-      useDiagramStore
-        .getState()
-        .applyRemoteGraphUpdate("not json", "2026-01-02T00:00:00.000Z");
+      useDiagramStore.getState().applyRemoteGraphSnapshot("not json");
 
       const state = useDiagramStore.getState();
       expect(state.nodes.map((n) => n.id)).toEqual(["a"]);
-      expect(state.liveUpdateNotice).toBe(false);
     });
   });
 
-  describe("dismissLiveUpdateNotice", () => {
+  describe("applyRemoteOperation", () => {
+    it("applies an add_node operation from another identity", () => {
+      useDiagramStore.getState().applyRemoteOperation({
+        input: { label: "API", position: { x: 0, y: 0 }, typeId: "worker" },
+        kind: "add_node",
+      });
+
+      const state = useDiagramStore.getState();
+      expect(state.nodes).toHaveLength(1);
+      expect(state.nodes[0]?.data.label).toBe("API");
+    });
+
+    it("applies an update_node operation from another identity", () => {
+      useDiagramStore.getState().addNode(makeNode("a"));
+
+      useDiagramStore.getState().applyRemoteOperation({
+        kind: "update_node",
+        nodeId: "a",
+        patch: { label: "Renamed remotely" },
+      });
+
+      expect(useDiagramStore.getState().nodes[0]?.data.label).toBe(
+        "Renamed remotely",
+      );
+    });
+
+    it("applies a remove_node operation, cascading edge removal", () => {
+      useDiagramStore.setState({
+        edges: [
+          {
+            data: { edgeType: "data-flow" },
+            id: "e1",
+            source: "a",
+            target: "b",
+          } as Edge<CFEdgeData>,
+        ],
+        nodes: [makeNode("a"), makeNode("b")],
+      });
+
+      useDiagramStore
+        .getState()
+        .applyRemoteOperation({ kind: "remove_node", nodeId: "a" });
+
+      const state = useDiagramStore.getState();
+      expect(state.nodes.map((n) => n.id)).toEqual(["b"]);
+      expect(state.edges).toHaveLength(0);
+    });
+
+    it("does not touch the viewport", () => {
+      useDiagramStore.setState({ viewport: { x: 5, y: 5, zoom: 2 } });
+
+      useDiagramStore.getState().applyRemoteOperation({
+        input: { label: "API", position: { x: 0, y: 0 }, typeId: "worker" },
+        kind: "add_node",
+      });
+
+      expect(useDiagramStore.getState().viewport).toEqual({
+        x: 5,
+        y: 5,
+        zoom: 2,
+      });
+    });
+
+    it("silently ignores a stale-target operation, mutating nothing", () => {
+      useDiagramStore.getState().addNode(makeNode("a"));
+
+      useDiagramStore.getState().applyRemoteOperation({
+        kind: "update_node",
+        nodeId: "does-not-exist",
+        patch: { label: "x" },
+      });
+
+      expect(useDiagramStore.getState().nodes.map((n) => n.id)).toEqual(["a"]);
+    });
+  });
+
+  describe("showLiveUpdateNotice / dismissLiveUpdateNotice", () => {
+    it("shows the notice with the acting identity and origin", () => {
+      useDiagramStore
+        .getState()
+        .showLiveUpdateNotice("bob@example.com", "human");
+
+      expect(useDiagramStore.getState().liveUpdateNotice).toEqual({
+        actorEmail: "bob@example.com",
+        origin: "human",
+      });
+    });
+
     it("clears the live update notice", () => {
-      useDiagramStore.setState({ liveUpdateNotice: true });
+      useDiagramStore.setState({
+        liveUpdateNotice: { actorEmail: "bob@example.com", origin: "human" },
+      });
       useDiagramStore.getState().dismissLiveUpdateNotice();
-      expect(useDiagramStore.getState().liveUpdateNotice).toBe(false);
+      expect(useDiagramStore.getState().liveUpdateNotice).toBeNull();
+    });
+  });
+
+  describe("enqueueOperation / drainPendingOperations", () => {
+    it("coalesces repeated update_node operations for the same node id, keeping only the last", () => {
+      useDiagramStore.getState().enqueueOperation({
+        kind: "update_node",
+        nodeId: "a",
+        patch: { position: { x: 1, y: 1 } },
+      });
+      useDiagramStore.getState().enqueueOperation({
+        kind: "update_node",
+        nodeId: "a",
+        patch: { position: { x: 2, y: 2 } },
+      });
+
+      const ops = useDiagramStore.getState().drainPendingOperations();
+      expect(ops).toEqual([
+        {
+          kind: "update_node",
+          nodeId: "a",
+          patch: { position: { x: 2, y: 2 } },
+        },
+      ]);
+    });
+
+    it("keeps operations for different target ids separate", () => {
+      useDiagramStore
+        .getState()
+        .enqueueOperation({ kind: "remove_node", nodeId: "a" });
+      useDiagramStore
+        .getState()
+        .enqueueOperation({ kind: "remove_node", nodeId: "b" });
+
+      const ops = useDiagramStore.getState().drainPendingOperations();
+      expect(ops).toHaveLength(2);
+    });
+
+    it("does not coalesce two add_node operations with each other", () => {
+      useDiagramStore.getState().enqueueOperation({
+        input: { label: "A", position: { x: 0, y: 0 }, typeId: "worker" },
+        kind: "add_node",
+      });
+      useDiagramStore.getState().enqueueOperation({
+        input: { label: "B", position: { x: 0, y: 0 }, typeId: "worker" },
+        kind: "add_node",
+      });
+
+      expect(useDiagramStore.getState().drainPendingOperations()).toHaveLength(
+        2,
+      );
+    });
+
+    it("empties the queue once drained", () => {
+      useDiagramStore
+        .getState()
+        .enqueueOperation({ kind: "remove_node", nodeId: "a" });
+      useDiagramStore.getState().drainPendingOperations();
+
+      expect(useDiagramStore.getState().drainPendingOperations()).toEqual([]);
+    });
+  });
+
+  describe("mutation actions enqueue their equivalent operation", () => {
+    it("addNode enqueues add_node", () => {
+      useDiagramStore.getState().addNode(makeNode("a", "d1"));
+
+      const [op] = useDiagramStore.getState().drainPendingOperations();
+      expect(op).toMatchObject({ kind: "add_node", input: { typeId: "d1" } });
+    });
+
+    it("updateNodeData enqueues update_node with only label/description", () => {
+      useDiagramStore.getState().addNode(makeNode("a"));
+      useDiagramStore.getState().drainPendingOperations();
+
+      useDiagramStore.getState().updateNodeData("a", {
+        label: "Renamed",
+        style: { accentColor: "#fff" },
+      });
+
+      const [op] = useDiagramStore.getState().drainPendingOperations();
+      expect(op).toEqual({
+        kind: "update_node",
+        nodeId: "a",
+        patch: { label: "Renamed" },
+      });
+    });
+
+    it("updateNodeData enqueues nothing when the patch carries no synced field", () => {
+      useDiagramStore.getState().addNode(makeNode("a"));
+      useDiagramStore.getState().drainPendingOperations();
+
+      useDiagramStore
+        .getState()
+        .updateNodeData("a", { style: { accentColor: "#fff" } });
+
+      expect(useDiagramStore.getState().drainPendingOperations()).toEqual([]);
+    });
+
+    it("updateEdgeData enqueues update_edge", () => {
+      useDiagramStore.setState({
+        edges: [
+          {
+            data: { edgeType: "data-flow" },
+            id: "e1",
+            source: "a",
+            target: "b",
+          } as Edge<CFEdgeData>,
+        ],
+      });
+
+      useDiagramStore.getState().updateEdgeData("e1", { edgeType: "trigger" });
+
+      const [op] = useDiagramStore.getState().drainPendingOperations();
+      expect(op).toEqual({
+        edgeId: "e1",
+        kind: "update_edge",
+        patch: { edgeType: "trigger" },
+      });
+    });
+
+    it("removeSelected enqueues one remove_node/remove_edge operation per removed id", () => {
+      useDiagramStore.setState({
+        edges: [
+          {
+            data: { edgeType: "data-flow" },
+            id: "e1",
+            selected: true,
+            source: "a",
+            target: "b",
+          } as Edge<CFEdgeData>,
+        ],
+        nodes: [
+          { ...makeNode("a"), selected: true },
+          { ...makeNode("b"), selected: false },
+        ],
+      });
+
+      useDiagramStore.getState().removeSelected();
+
+      const ops = useDiagramStore.getState().drainPendingOperations();
+      expect(ops).toEqual(
+        expect.arrayContaining([
+          { kind: "remove_node", nodeId: "a" },
+          { edgeId: "e1", kind: "remove_edge" },
+        ]),
+      );
+      expect(ops).toHaveLength(2);
+    });
+
+    it("onConnect enqueues add_edge", () => {
+      useDiagramStore.getState().onConnect({
+        source: "a",
+        sourceHandle: null,
+        target: "b",
+        targetHandle: null,
+      });
+
+      const [op] = useDiagramStore.getState().drainPendingOperations();
+      expect(op).toEqual({
+        input: { edgeType: "data-flow", source: "a", target: "b" },
+        kind: "add_edge",
+      });
+    });
+
+    it("connectNodes enqueues add_edge", () => {
+      useDiagramStore.setState({
+        nodes: [
+          { ...makeNode("a"), position: { x: 0, y: 0 } },
+          { ...makeNode("b"), position: { x: 300, y: 0 } },
+        ],
+      });
+
+      useDiagramStore.getState().connectNodes("a", "b", "trigger");
+
+      const [op] = useDiagramStore.getState().drainPendingOperations();
+      expect(op).toEqual({
+        input: { edgeType: "trigger", source: "a", target: "b" },
+        kind: "add_edge",
+      });
+    });
+
+    it("onNodesChange enqueues update_node for a position change", () => {
+      useDiagramStore.getState().addNode(makeNode("a"));
+      useDiagramStore.getState().drainPendingOperations();
+
+      useDiagramStore
+        .getState()
+        .onNodesChange([
+          { id: "a", position: { x: 5, y: 5 }, type: "position" },
+        ]);
+
+      const [op] = useDiagramStore.getState().drainPendingOperations();
+      expect(op).toEqual({
+        kind: "update_node",
+        nodeId: "a",
+        patch: { position: { x: 5, y: 5 } },
+      });
     });
   });
 });
