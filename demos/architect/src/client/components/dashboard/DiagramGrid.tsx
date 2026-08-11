@@ -6,19 +6,9 @@ import {
   listDiagrams,
 } from "../../api/diagrams";
 import { useDismissableMenu } from "../../hooks/useDismissableMenu";
+import { formatAbsoluteDate, formatRelativeDate } from "../../lib/datetime";
 import { BlueprintPreview } from "../blueprints/BlueprintPreview";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
-
-/** Format an ISO-8601 timestamp for display in a diagram card's tooltip. */
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 /** Per-card overflow menu: open, duplicate, or delete. */
 function CardMenu({
@@ -174,20 +164,30 @@ export function DiagramGrid() {
             // in `../../app.css`. The title's own <a> is stretched to cover the whole card.
             <div key={diagram.id} className="diagram-card">
               <div className="diagram-card__header">
-                <div className="diagram-card__title">
-                  <a
-                    href={`/app/diagram/${diagram.id}`}
-                    className="diagram-card__link"
+                <div className="diagram-card__heading">
+                  <div className="diagram-card__title">
+                    <a
+                      href={`/app/diagram/${diagram.id}`}
+                      className="diagram-card__link"
+                    >
+                      {diagram.title}
+                    </a>
+                  </div>
+                  <time
+                    className="diagram-card__timestamp"
+                    dateTime={diagram.updatedAt}
+                    title={`Created ${formatAbsoluteDate(diagram.createdAt)}\nUpdated ${formatAbsoluteDate(diagram.updatedAt)}`}
                   >
-                    {diagram.title}
-                  </a>
+                    Updated {formatRelativeDate(diagram.updatedAt)}
+                    {/* A native `title` attribute is not reliably exposed to screen readers, so
+                        the exact date is repeated here for assistive technology; sighted users
+                        still get it from the `title` tooltip on hover/focus. */}
+                    <span className="visually-hidden">
+                      {" "}
+                      ({formatAbsoluteDate(diagram.updatedAt)})
+                    </span>
+                  </time>
                 </div>
-                <span
-                  className="diagram-card__timestamp"
-                  title={`Created ${formatDate(diagram.createdAt)}\nUpdated ${formatDate(diagram.updatedAt)}`}
-                >
-                  Updated {formatDate(diagram.updatedAt)}
-                </span>
                 <CardMenu
                   diagramTitle={diagram.title}
                   onDuplicate={() => void handleDuplicate(diagram)}
