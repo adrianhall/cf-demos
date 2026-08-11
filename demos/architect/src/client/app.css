@@ -313,10 +313,19 @@ button {
   padding: 0.75rem 1rem;
 }
 
-.diagram-card__title {
+/* Bug 35 (docs/09-ARCHITECT.md, GitLab issue #1): title and timestamp now stack vertically
+   instead of sharing one row, so the timestamp no longer competes with the title for width and
+   force it into an ellipsis. */
+.diagram-card__heading {
+  display: flex;
   flex: 1 1 auto;
-  font-weight: 600;
+  flex-direction: column;
+  gap: 0.125rem;
   min-width: 0;
+}
+
+.diagram-card__title {
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -343,10 +352,21 @@ button {
   z-index: 5;
 }
 
+/* Bug 35 (docs/09-ARCHITECT.md, GitLab issue #1): sits below the title (see
+   `.diagram-card__heading` above) at roughly 62% of the card's body font size, in the same
+   light-grey used before. `position: relative` + `z-index: 6` matches `.diagram-card__menu`
+   below: without it, `.diagram-card__link::after`'s `z-index: 5` stretched-link overlay sits
+   above this element and the pointer never reaches it, so its hover `title` tooltip (the exact
+   Created/Updated dates) would never be reachable. `width: fit-content` keeps that raised,
+   click-through-blocking area limited to the timestamp text itself rather than the full row
+   width the flex item would otherwise occupy. */
 .diagram-card__timestamp {
   color: light-dark(#555, #aaa);
-  flex: 0 0 auto;
-  font-size: 0.75rem;
+  display: block;
+  font-size: 0.625rem;
+  position: relative;
+  width: fit-content;
+  z-index: 6;
 }
 
 .diagram-card__preview {

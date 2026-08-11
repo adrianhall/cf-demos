@@ -1,19 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { listUsers } from "../../api/admin";
+import { formatAbsoluteDate } from "../../lib/datetime";
 
 /** Number of directory rows requested per page. */
 const PAGE_SIZE = 20;
-
-/** Format an ISO-8601 timestamp for display in the directory table. */
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 /**
  * Paginated, read-only table of every identity that has ever authenticated, each row annotated
@@ -98,8 +88,8 @@ export function UserDirectoryTable() {
                 <td>{user.email}</td>
                 <td>{user.displayName ?? "—"}</td>
                 <td>{user.diagramCount}</td>
-                <td>{formatDate(user.firstSeenAt)}</td>
-                <td>{formatDate(user.lastSeenAt)}</td>
+                <td>{formatAbsoluteDate(user.firstSeenAt)}</td>
+                <td>{formatAbsoluteDate(user.lastSeenAt)}</td>
               </tr>
             ))
           )}

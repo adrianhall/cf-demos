@@ -68,6 +68,36 @@ describe("DiagramGrid", () => {
     );
   });
 
+  it("shows a relative 'Updated' timestamp with the exact dates as a hover tooltip", async () => {
+    // Fixed offsets from the real clock (rather than fake timers, which testing-library's
+    // `waitFor` polling does not advance on its own) so "2 days ago" is unambiguous without
+    // landing on a unit boundary.
+    const createdAt = new Date(
+      Date.now() - 3 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const updatedAt = new Date(
+      Date.now() - 2 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    mockListDiagrams.mockResolvedValue([
+      diagram({ createdAt, id: "d1", title: "First", updatedAt }),
+    ]);
+    const { container } = render(<DiagramGrid />);
+    await waitFor(() => expect(screen.getByText("First")).toBeInTheDocument());
+
+    const timestamp = container.querySelector(".diagram-card__timestamp");
+    expect(timestamp?.tagName).toBe("TIME");
+    expect(timestamp).toHaveAttribute("dateTime", updatedAt);
+    expect(timestamp?.textContent).toContain("Updated 2 days ago");
+    expect(timestamp).toHaveAttribute(
+      "title",
+      expect.stringContaining("Created"),
+    );
+    expect(timestamp).toHaveAttribute(
+      "title",
+      expect.stringContaining("Updated"),
+    );
+  });
+
   it("shows an error message when loading fails", async () => {
     mockListDiagrams.mockRejectedValue(
       new Error("Could not load your diagrams."),

@@ -955,6 +955,43 @@ underline there would leave them indistinguishable from the surrounding text, fa
 (Use of Color). The endemic defect was chrome links styled as body text, not the presence of
 underlines as such.
 
+### Bug 35 (GitLab issue #1): Diagram card title truncated by inline "Updated" timestamp
+
+The diagram selector's card header (`DiagramGrid.tsx`) rendered the title and the "Updated
+<date>" timestamp side by side in one flex row. `.diagram-card__title` was the only item allowed
+to shrink (`flex: 1 1 auto; min-width: 0`) while `.diagram-card__timestamp` was fixed-width
+(`flex: 0 0 auto`), so on anything but a very short title the timestamp ate most of the row and
+the title ellipsized down to a sliver, e.g. `Full-  Updated: Aug 10, 2026 04:50PM`.
+
+**Fixed** by stacking the title above the timestamp instead of placing them side by side, and by
+switching the timestamp to a relative phrase (`Updated 2 days ago`) rather than an absolute one,
+so it stays short regardless of locale.
+
+- **New `.diagram-card__heading`** wraps the existing `.diagram-card__title` and the timestamp in
+  a `flex-direction: column` box that itself takes the header's available width
+  (`flex: 1 1 auto; min-width: 0`), so the title alone now owns the full card width and its
+  `nowrap`/ellipsis handling is a guard for genuinely long titles rather than the everyday case.
+- **`formatAbsoluteDate`/`formatRelativeDate`** (`src/client/lib/datetime.ts`) replace the
+  duplicated `formatDate()` previously copy-pasted into both `DiagramGrid.tsx` and
+  `UserDirectoryTable.tsx`. `formatRelativeDate` uses `Intl.RelativeTimeFormat` with
+  `numeric: "auto"` (so `1` day back reads "yesterday"), falling back to "just now" under a
+  minute -- which also absorbs the small future clock skew that would otherwise read as
+  "in 3 seconds" if the client and server clocks disagree slightly.
+- **The timestamp is now a `<time dateTime={updatedAt}>`** rather than a bare `<span>`, giving it
+  correct machine-readable semantics; its `title` attribute is unchanged (`Created …\nUpdated
+  …`, both absolute), and a `.visually-hidden` child repeats the absolute updated date for screen
+  readers, since a native `title` tooltip is not reliably exposed to assistive technology.
+- **Found while fixing this: the `title` tooltip was already unreachable by mouse.**
+  `.diagram-card__link::after` (the stretched-link overlay covering the whole card, Bug 31) sits
+  at `z-index: 5`, above the timestamp's implicit `z-index: auto`, so every pointer event over the
+  timestamp was actually being delivered to the link underneath it and the tooltip could never
+  appear. `.diagram-card__timestamp` now gets `position: relative; z-index: 6`, the same fix
+  `.diagram-card__menu` already needed for the same reason, plus `width: fit-content` so the
+  raised, click-through-blocking area is limited to the timestamp text rather than a full-width
+  row.
+- Font size dropped from `0.75rem` to `0.625rem` (~62% of the card's base size) to read as
+  clearly secondary underneath the title, per the reported issue.
+
 ## Post-MVP: Live Collaboration And AI Proposals
 
 Live multi-user collaboration (one Durable Object per diagram, hibernatable
