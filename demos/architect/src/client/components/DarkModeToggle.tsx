@@ -16,17 +16,16 @@ import {
  *
  * CF-Architect renders its equivalent (`DarkToggle`) in two independent places -- a shared
  * `Navbar` on every "chrome" page (dashboard, admin, blueprints) and *again* inside the editor's
- * own `Toolbar`, since CF-Architect's editor page never renders that `Navbar` at all. This port's
- * `../views/AppShellView.tsx` header, by contrast, already wraps *both* the dashboard and the
- * editor (it is what carries the sign-out control across both), so a single instance there
- * covers both cases CF-Architect needed two components for; `../views/BlueprintsView.tsx`'s own
- * header gets its own instance for the same reason CF-Architect's `blueprints.astro` page did.
+ * own `Toolbar`, since CF-Architect's editor page never renders that `Navbar` at all. This port
+ * mirrors that split exactly: one instance inside the shared banner (`./AppHeader.tsx`), which
+ * since Bug 34 covers the dashboard, admin, *and* blueprint gallery pages alike, and one inside
+ * `./editor/toolbar/Toolbar.tsx`, because the editor route renders no banner at all (Bug 23).
  *
  * Mounting more than one instance is safe: each tracks its own `dark` state independently, but
  * every instance reads and writes the same `THEME_STORAGE_KEY`, so a toggle in one instance is
  * reflected the next time any instance mounts (there is no cross-instance live sync while both
- * are mounted simultaneously, which never happens in this app -- the editor and the dashboard
- * are never both on screen at once).
+ * are mounted simultaneously, which never happens in this app -- the editor and the banner are
+ * never both on screen at once).
  *
  * @param className CSS class for the underlying `<button>`, so this component fits either the
  * editor toolbar's (`../components/editor/toolbar/Toolbar.tsx`) or a page header's button style.

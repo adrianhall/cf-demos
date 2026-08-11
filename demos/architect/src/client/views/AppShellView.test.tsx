@@ -347,4 +347,64 @@ describe("AppShellView", () => {
     );
     expect(container.querySelector("header")).toBeInTheDocument();
   });
+
+  it("omits the 'My Diagrams' banner link on the dashboard, which is the current page (Bug 34)", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+    window.history.pushState({}, "", "/app");
+
+    render(<AppShellView />);
+
+    expect(
+      screen.queryByRole("link", { name: "My Diagrams" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers a 'My Diagrams' banner link back from the admin view (Bug 34)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ email: "admin@example.com", isAdmin: true }),
+            { status: 200 },
+          ),
+        ),
+    );
+    window.history.pushState({}, "", "/app/admin");
+
+    render(<AppShellView />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("admin-view")).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("link", { name: "My Diagrams" })).toHaveAttribute(
+      "href",
+      "/app",
+    );
+  });
+
+  it("verifies the identity exactly once, despite the banner also needing it (Bug 34)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ email: "admin@example.com", isAdmin: true }),
+          { status: 200 },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.pushState({}, "", "/app/admin");
+
+    render(<AppShellView />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("admin-view")).toBeInTheDocument(),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/me");
+  });
 });

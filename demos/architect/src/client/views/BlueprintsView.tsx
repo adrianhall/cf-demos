@@ -1,5 +1,6 @@
+import { AppHeader } from "../components/AppHeader";
 import { BlueprintGallery } from "../components/blueprints/BlueprintGallery";
-import { DarkModeToggle } from "../components/DarkModeToggle";
+import { useIdentity } from "../hooks/useIdentity";
 
 /**
  * Public blueprint gallery served at `/blueprints`, outside the authenticated `/app*` subtree
@@ -10,27 +11,28 @@ import { DarkModeToggle } from "../components/DarkModeToggle";
  * request the gallery's modal ultimately sends (`POST /api/diagrams`) requires a signed-in
  * identity; Cloudflare Access challenges that request, not this page.
  *
- * Carries its own `../components/DarkModeToggle.tsx` instance (Phase 5), matching CF-Architect's
- * own `blueprints.astro`: this page renders outside `../views/AppShellView.tsx`'s header, so it
- * needs the toggle available here rather than relying on that shared instance.
+ * Renders the same shared banner as the authenticated app shell
+ * (`../components/AppHeader.tsx`), in its `public` mode (Bug 34 / GitLab issue #2). This page
+ * previously carried its own ad-hoc header and its own `../components/DarkModeToggle.tsx`
+ * instance, whose brand and "My Diagrams" links were plain underlined, link-coloured anchors in
+ * the wrong font weight. `public` mode exists precisely because this page's visitor may be
+ * anonymous: `useIdentity()`'s `GET /api/me` requires Access (`../access-policies.ts`), so a
+ * failure here means "not signed in" rather than a fault worth alerting about, and the banner
+ * offers "Sign in" instead of "Sign out".
  */
 export function BlueprintsView() {
+  const identity = useIdentity();
+
   return (
-    <main className="blueprints-view">
-      <header className="blueprints-view__header">
-        <a href="/" className="blueprints-view__logo">
-          Architect
-        </a>
-        <a href="/app" className="blueprints-view__dashboard-link">
-          My Diagrams
-        </a>
-        <DarkModeToggle />
-      </header>
-      <div className="blueprints-view__intro">
-        <h1>Start a new diagram</h1>
-        <p>Choose a blueprint template, or start from a blank canvas.</p>
-      </div>
-      <BlueprintGallery />
-    </main>
+    <div className="app-shell">
+      <AppHeader identity={identity} current="blueprints" access="public" />
+      <main className="app-shell__main blueprints-view">
+        <div className="blueprints-view__intro">
+          <h1>Start a new diagram</h1>
+          <p>Choose a blueprint template, or start from a blank canvas.</p>
+        </div>
+        <BlueprintGallery />
+      </main>
+    </div>
   );
 }
