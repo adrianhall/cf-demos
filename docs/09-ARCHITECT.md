@@ -902,6 +902,59 @@ with stops a screen reader user could never get any actual content from.
 **Fixed.** Added `nodesFocusable={false}` and `edgesFocusable={false}` to `BlueprintPreview.tsx`'s
 `<ReactFlow>`.
 
+## Reported Issues
+
+Bugs reported against the deployed demo after Phase 10 shipped. These are tracked as GitLab
+issues rather than as a numbered phase: the phase numbering is shared across every architect
+document (`09B` continues at Phase 11, `09C` at 16, `09D` at 21), so these carry only the
+sequential bug numbers this document already uses.
+
+### Bug 34 (GitLab issue #2): "New Diagram" panel uses an ad-hoc header with underlined links
+
+The "New Diagram" panel (`/blueprints`) shows the "Architect" title and the "My Diagrams" link
+as underlined links. They should not be underlined -- the regular banner should be shown instead,
+so the correct title font is used, with "My Diagrams" sitting alongside the "Admin" link where
+appropriate. "Admin" is also underlined on the main page, so this is an endemic problem.
+
+**Fixed, by consolidating both headers into one component and giving chrome links a shared
+opt-out class.** Three separate defects shared one root cause: `app.css` has no global `a` rule,
+so every anchor keeps the browser's default underline and link colour unless a class explicitly
+opts out -- and only `.app-shell__name` ever did.
+
+- **One banner.** `BlueprintsView` rendered its own ad-hoc `<header>` (its brand in the wrong
+  font weight and pointing at `/`, its own second `DarkModeToggle`, and no identity, admin, or
+  sign-out affordance at all). Both it and `AppShellView`'s inline header are now the single
+  `src/client/components/AppHeader.tsx`. The editor route still renders no banner (Bug 23).
+- **`AppHeader` takes the identity as a prop rather than calling `useIdentity()` itself.**
+  `AppShellView` already needs `isAdmin` to gate the admin route, so a hook call inside the
+  header would have issued a second, redundant `GET /api/me` on every `/app/admin` render. It
+  also leaves the component purely presentational and directly unit-testable without stubbing
+  `fetch`.
+- **An `access` prop distinguishes the Access-gated `/app*` subtree from public `/blueprints`.**
+  `/api/me` requires Access (`src/access-policies.ts`), so on the public gallery a failed
+  identity request means "anonymous", not "broken": that mode suppresses the loading and
+  `role="alert"` error states entirely and offers "Sign in" (to `/app`) rather than "Sign out".
+  The authenticated subtree is unchanged, including its unconditionally rendered sign-out control
+  (AGENTS.md's Public Access section). See `docs/DECISIONS.md` #31.
+- **The brand points at `/app`, except for an anonymous visitor on the public gallery, who gets
+  `/`** -- clicking a logo on a public page should never bounce someone into an Access login they
+  did not ask for. (Improving that landing page is a separate issue and out of scope here.)
+- **"My Diagrams" is rendered on every page carrying the banner except the dashboard itself**,
+  where it would link to the current page and the view already has a "My Diagrams" `<h1>`. That
+  also gives `/app/admin` a real way back, which previously only the brand offered.
+- **New `.nav-link` class** (`color: inherit`, no underline, underline restored on
+  `:hover`/`:focus-visible`) is the shared opt-out for chrome links, carried by the brand, "My
+  Diagrams", and "Admin". `.app-shell__admin-link` is generalized to `.app-shell__nav-link`.
+- **`LandingView`'s "Open the editor" CTA** was a bare anchor styled only with a margin, so it
+  rendered as underlined body text; it is now `.button .button--primary`, which already opts out
+  of the underline (Bug 30).
+
+Deliberately **not** changed: links inside running prose (`ShareView`'s two links,
+`.properties-panel__doc-link`, the canvas error state's "Back to dashboard"). Removing the
+underline there would leave them indistinguishable from the surrounding text, failing WCAG 1.4.1
+(Use of Color). The endemic defect was chrome links styled as body text, not the presence of
+underlines as such.
+
 ## Post-MVP: Live Collaboration And AI Proposals
 
 Live multi-user collaboration (one Durable Object per diagram, hibernatable

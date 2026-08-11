@@ -56,6 +56,21 @@ describe("App", () => {
     expect(screen.getByTitle("Toggle dark mode")).toBeInTheDocument();
   });
 
+  it("renders the shared banner on the public blueprint gallery (Bug 34)", () => {
+    window.history.pushState({}, "", "/blueprints");
+
+    const { container } = render(<App />);
+
+    expect(container.querySelector("header")).toHaveClass("app-shell__header");
+    expect(screen.getByRole("link", { name: "Architect" })).toHaveClass(
+      "nav-link",
+    );
+    expect(screen.getByRole("link", { name: "My Diagrams" })).toHaveAttribute(
+      "href",
+      "/app",
+    );
+  });
+
   it("renders the public read-only share viewer at /s/:token", () => {
     window.history.pushState({}, "", "/s/abc123");
 

@@ -202,7 +202,7 @@ load for a feature many users never use, so lazy-loading keeps the feature witho
 cost up front.
 
 The editor has its own single toolbar, not a stacked app-shell header: `AppShellView.tsx` renders
-its identity/admin-link/dark-mode/sign-out header only for the dashboard and admin sub-views
+the shared `AppHeader.tsx` banner only for the dashboard and admin sub-views
 (`route.view !== "editor"`), never for the editor itself. Reaching the editor always means having
 come from a header-bearing view first (the dashboard, or a share link with no header at all), and
 `Toolbar.tsx`'s own back-arrow button returns there, where the header — and sign-out — is
@@ -395,11 +395,12 @@ by default): toggling the mode means setting an explicit `color-scheme` value on
 than maintaining a second, hand-written set of dark-mode variable overrides behind a class toggle.
 The preference persists in `localStorage`, applied once in `main.tsx` before the first render —
 there is no server-rendered markup for an inline `<head>` script to prevent a flash for, since
-this is a client-only SPA. `AppShellView`'s header wraps the dashboard and admin views, so one
-`DarkModeToggle` instance there covers both; `BlueprintsView`'s own header and the editor
-`Toolbar` each render their own instance for the pages `AppShellView`'s header doesn't wrap --
-including the editor, whose own header was removed entirely (see the "Editor has its own single
-toolbar, not a stacked app-shell header" note below).
+this is a client-only SPA. The shared `src/client/components/AppHeader.tsx` renders one
+`DarkModeToggle` instance, so `AppShellView`'s use of it covers the dashboard and admin views and
+`BlueprintsView`'s use of it covers the public blueprint gallery; the editor `Toolbar` renders its
+own separate instance for the one page neither covers -- the editor's own header was removed
+entirely (see the "Editor has its own single toolbar, not a stacked app-shell header" note
+below).
 
 ELK remains the only heavy, lazy-loaded dependency in this editor; `html-to-image` and `fflate`
 are small enough (roughly 15 KB and 8 KB gzip respectively) to import eagerly in

@@ -64,6 +64,30 @@ button {
   appearance: none;
 }
 
+/* Navigation links ---------------------------------------------------- */
+
+/* Bug 34 (docs/09-ARCHITECT.md's Reported Issues): there is no global `a` rule in this
+   stylesheet, so every anchor keeps the browser's default underline and link colour unless a
+   class opts out -- which only `.app-shell__name` ever did. That left the banner's own nav links
+   ("Admin", and the blueprint gallery's former ad-hoc "Architect"/"My Diagrams" header)
+   rendering as underlined body-text links inside application chrome. This class is the shared
+   opt-out for chrome links.
+
+   Deliberately NOT applied to links inside running prose (`.share-view__banner`'s links,
+   `.properties-panel__doc-link`, the canvas error state's "Back to dashboard"): removing the
+   underline there would leave them indistinguishable from the surrounding text, failing WCAG
+   1.4.1 (Use of Color). Chrome links are unambiguous from position and context, so the underline
+   is demoted to a hover/focus affordance rather than dropped outright. */
+.nav-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.nav-link:hover,
+.nav-link:focus-visible {
+  text-decoration: underline;
+}
+
 /* Buttons ------------------------------------------------------------ */
 
 .button {
@@ -143,14 +167,13 @@ button {
   padding: 1rem 1.5rem;
 }
 
+/* Colour and underline come from `.nav-link`, which this element also carries. */
 .app-shell__name {
-  color: inherit;
   font-weight: 700;
-  text-decoration: none;
 }
 
-.app-shell__admin-link {
-  color: inherit;
+/* Shared by every banner nav link ("My Diagrams", "Admin"), which also carry `.nav-link`. */
+.app-shell__nav-link {
   flex: 0 0 auto;
 }
 
@@ -221,25 +244,13 @@ button {
 
 /* Blueprints view (public) ------------------------------------------------ */
 
+/* Bug 34 (docs/09-ARCHITECT.md's Reported Issues): this page now renders inside the same
+   `.app-shell`/`.app-shell__main` structure as the authenticated views, so it inherits their
+   centering and padding and only needs to widen the column -- the blueprint grid wants more room
+   than the dashboard's 64rem. Must stay after `.app-shell__main` in source order for that
+   override to win. */
 .blueprints-view {
-  margin: 0 auto;
   max-width: 72rem;
-  padding: 1.5rem;
-}
-
-.blueprints-view__header {
-  align-items: center;
-  display: flex;
-  gap: 1.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.blueprints-view__logo {
-  font-weight: 700;
-}
-
-.blueprints-view__dashboard-link {
-  margin-left: auto;
 }
 
 .blueprints-view__intro {

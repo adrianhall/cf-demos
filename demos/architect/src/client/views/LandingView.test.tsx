@@ -10,4 +10,12 @@ describe("LandingView", () => {
       screen.getByRole("link", { name: "Open the editor" }),
     ).toHaveAttribute("href", "/app");
   });
+
+  it("styles the call to action as a button rather than an underlined text link (Bug 34)", () => {
+    render(<LandingView />);
+
+    const cta = screen.getByRole("link", { name: "Open the editor" });
+    expect(cta).toHaveClass("button");
+    expect(cta).toHaveClass("button--primary");
+  });
 });

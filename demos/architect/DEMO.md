@@ -27,7 +27,7 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 6. Back in the browser, use the always-visible **Sign out** control.
 7. Sign in as the identity matching this deployment's `ADMIN_EMAIL`. Show the app shell now displays an **Admin** link next to the `Architect` name in the header.
 8. Re-run the D1 query from step 5 and show both identities' rows in the same `users` table, each upserted independently.
-9. In a signed-out/incognito window, open `https://architect.cfapps.uk/blueprints`. Show the public blueprint gallery loads with no Access challenge, even though no one is signed in.
+9. In a signed-out/incognito window, open `https://architect.cfapps.uk/blueprints`. Show the public blueprint gallery loads with no Access challenge, even though no one is signed in. Point out that the banner is the same shared component as the app shell's — identical `Architect` title styling and no underlined navigation links — but adapted to an anonymous visitor: a **Sign in** control in place of an identity, and the title linking to the public home page rather than to the Access-gated diagram list.
 10. Back in the signed-in browser, from the dashboard (`/app`) select **+ New Diagram**. Pick the **API Gateway** blueprint card and show its live preview thumbnail.
 11. In the create dialog, confirm the title, and select **Create Diagram**. Show the editor opens with the blueprint's nodes and edges already on the canvas.
 12. Drag a product (for example **D1 Database**) from the left palette onto the canvas. Click it, and in the right-hand properties panel change its label and pick a documentation link to show it opens the real Cloudflare docs page.

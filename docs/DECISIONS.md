@@ -1408,3 +1408,54 @@ import without the flag during `@cloudflare/vitest-pool-workers` integration tes
 tolerance is not something to rely on for a real deployment. Added `"nodejs_compat"` to
 `demos/architect/wrangler.jsonc.tpl`'s `compatibility_flags`, satisfying AGENTS.md's "Enable
 `nodejs_compat` only when application dependencies require Node APIs" now that one genuinely does.
+
+## NEW DECISIONS
+
+## 31. Reusing an Access-gated banner on a public page: make the identity requirement an explicit
+prop, and treat a failed identity request as "anonymous" rather than as an error
+
+`demos/architect`'s Bug 34 (GitLab issue #2) asked for the regular application banner to be shown
+on `/blueprints`, which had grown its own ad-hoc header. The obstacle is not layout, it is
+identity: the banner exists to display the Cloudflare Access identity and offer a sign-out
+control, and it gets that identity from `GET /api/me` — an endpoint that requires Access. But
+`/blueprints` is deliberately public (covered by the hostname-wide `bypass` Access application),
+so a visitor there may legitimately be anonymous, and lifting the banner across verbatim would
+have shown them a `role="alert"` identity error and a "Sign out" link for a session they never
+had.
+
+**Decision.** The shared header component takes an explicit `access: "authenticated" | "public"`
+prop rather than inferring anything from the current path or silently tolerating failures
+everywhere:
+
+- On `authenticated` pages (the Access-gated subtree), behaviour is unchanged and strict: the
+  loading state is shown, a failed `/api/me` is surfaced as a `role="alert"` error because it
+  genuinely indicates a fault, and the sign-out control is rendered unconditionally per AGENTS.md's
+  Public Access section.
+- On `public` pages, *any* `/api/me` failure — 401, 403, network, or 502 alike — simply means "not
+  signed in". No status-code plumbing was added to the identity hook: on a page anonymous visitors
+  are expected to reach, there is no useful distinction between "you are not signed in" and "we
+  could not tell whether you are signed in", and surfacing either as an alert is noise. The
+  identity slot renders nothing, and the auth action becomes "Sign in".
+- The `public` auth action also renders *nothing* while the request is in flight, rather than
+  defaulting to one control and flipping to the other on resolution. The authenticated subtree
+  cannot do this (its sign-out control must be unconditional), but a public page has no such
+  requirement, and a visible "Sign in" → "Sign out" flicker on every load is worse than a briefly
+  empty slot.
+
+**Two related points worth carrying to other demos.** First, the shared header takes the resolved
+identity as a *prop* rather than calling the identity hook itself. The authenticated shell already
+needed `isAdmin` to gate its admin route, so a hook call inside the header would have issued a
+second, redundant `GET /api/me` on every admin render; passing it down keeps one request per page
+and leaves the header purely presentational and testable without stubbing `fetch`. Second, the
+brand link is identity-aware — it points at the authenticated landing route normally, but at the
+public home page for an anonymous visitor on a public page. A logo that bounces an anonymous
+visitor into an Access login they did not ask for is a worse default than one that varies.
+
+**On the underlines that prompted the issue.** The endemic cause was that the stylesheet had no
+global `a` rule at all, so every anchor kept the browser's default underline and link colour
+unless a class explicitly opted out — which exactly one class did. The fix was a shared
+`.nav-link` opt-out for application *chrome* links plus converting a mis-styled call to action to
+`.button`, **not** a global `a { text-decoration: none }` reset. A global reset would have
+stripped the underline from links inside running prose too, leaving them indistinguishable from
+the surrounding text and failing WCAG 1.4.1 (Use of Color). `.nav-link` also restores the
+underline on `:hover`/`:focus-visible`, so the affordance is demoted rather than deleted.
