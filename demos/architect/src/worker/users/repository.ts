@@ -52,6 +52,24 @@ export class UserRepository {
   }
 
   /**
+   * Report whether `email` has ever signed in to this Access application -- i.e. has at least
+   * one row in the `users` directory. Used by
+   * `../collaborators/repository.ts`'s `CollaboratorRepository.add()` to enforce
+   * docs/09C-COLLABORATIVE-EDITING.md's Non-Goals: adding a collaborator requires that identity
+   * to already exist here, never an open-ended invite-by-any-email flow.
+   *
+   * @param email Candidate email.
+   * @returns Whether `email` has a row in the `users` directory.
+   */
+  async exists(email: string): Promise<boolean> {
+    const row = await this.database
+      .prepare(`SELECT 1 FROM users WHERE email = ? LIMIT 1`)
+      .bind(email)
+      .first();
+    return row !== null;
+  }
+
+  /**
    * List a page of the directory, most recently active identity first, each row annotated with
    * how many diagrams it currently owns -- the admin user-directory view
    * (`GET /api/admin/users`, docs/09-ARCHITECT.md Phase 4). The count is computed with a

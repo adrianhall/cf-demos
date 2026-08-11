@@ -454,6 +454,20 @@ button {
   grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
 }
 
+/* "Shared with me" section (docs/09C-COLLABORATIVE-EDITING.md's Client section): spaced below
+   the owner's own diagram grid above it, on the same page. */
+.dashboard__shared-section {
+  margin-top: 2rem;
+}
+
+/* "Shared by <owner>" badge on a `DiagramCard` rendered by `SharedWithMeGrid.tsx` only -- an
+   owned diagram's card never renders one. Sits between the title and timestamp, matching
+   `.diagram-card__timestamp`'s own muted color and small size. */
+.diagram-card__owner-badge {
+  color: light-dark(#555, #aaa);
+  font-size: 0.6875rem;
+}
+
 /* A non-interactive container -- the card itself is no longer an <a> (Bug 16: the HTML content
    model forbids nesting an interactive element, `CardMenu`'s <button>, inside an <a>). Its title
    is the real link (`.diagram-card__link`), stretched to cover the whole card via a "block
@@ -753,6 +767,33 @@ button {
   justify-content: flex-end;
 }
 
+/* Collaborator list (`../editor/toolbar/CollaboratorsModal.tsx`,
+   docs/09C-COLLABORATIVE-EDITING.md's Collaborator Model Client section). */
+.collaborators-list {
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+}
+
+.collaborators-list__item {
+  align-items: center;
+  border-bottom: 1px solid var(--cf-border);
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+}
+
+.collaborators-list__item:last-child {
+  border-bottom: none;
+}
+
+.collaborators-list__email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .create-diagram-modal__layout {
   display: grid;
   gap: 1.5rem;
@@ -871,6 +912,39 @@ button {
   font-size: 1.125rem;
   line-height: 1;
   padding: 0;
+}
+
+/* Remote cursors and selection highlights (`../editor/RemoteCursorsOverlay.tsx`,
+   docs/09C-COLLABORATIVE-EDITING.md's Phase 19) -- rendered inside a `<ViewportPortal>`, so
+   `left`/`top` below are flow-space coordinates already tracking the canvas's own pan/zoom. */
+.remote-cursor {
+  pointer-events: none;
+  z-index: 20;
+}
+
+.remote-cursor__icon {
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+
+.remote-cursor__label {
+  border-radius: 0.25rem;
+  color: #ffffff;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  left: 1.125rem;
+  padding: 0.0625rem 0.375rem;
+  position: absolute;
+  top: 0.875rem;
+  white-space: nowrap;
+}
+
+.remote-selection-highlight {
+  background: transparent;
+  border: 2px solid;
+  border-radius: 0.375rem;
+  pointer-events: none;
+  z-index: 5;
 }
 
 /* Print mode -------------------------------------------------------------- */
@@ -1085,6 +1159,31 @@ button {
 .toolbar__export-option:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* Presence stack (`../editor/toolbar/PresenceStack.tsx`, docs/09C-COLLABORATIVE-EDITING.md's
+   Phase 19) -- one small colored avatar per other identity currently connected to this
+   diagram's live-sync session, shown in the toolbar near the sharing/collaborator controls. */
+.presence-stack {
+  align-items: center;
+  display: flex;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.presence-stack__avatar {
+  align-items: center;
+  border: 2px solid var(--cf-surface);
+  border-radius: 50%;
+  color: #ffffff;
+  display: flex;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  height: 1.75rem;
+  justify-content: center;
+  width: 1.75rem;
 }
 
 .toolbar__export-error {

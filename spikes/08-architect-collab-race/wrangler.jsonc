@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "spike-08-architect-collab-race",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-08-11",
+  // TestDiagramSession (src/diagram-session.ts) never calls ctx.storage -- exactly like the real
+  // DiagramSession this spike mirrors -- but Wrangler still requires new_sqlite_classes for any
+  // Durable Object class, regardless of whether it uses storage.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "TEST_DIAGRAM_SESSIONS",
+        "class_name": "TestDiagramSession",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["TestDiagramSession"],
+    },
+  ],
+}

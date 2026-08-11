@@ -1,19 +1,28 @@
 import { notFound } from "@adrianhall/cloudflare-toolkit/errors";
-import { CF_EDGE_TYPE, CF_NODE_TYPE } from "../../graph-element-types";
-import type { GraphData } from "./types";
+import { CF_EDGE_TYPE, CF_NODE_TYPE } from "./graph-element-types";
+import type { GraphData } from "./worker/diagrams/types";
 
 /**
- * Small, pure functions operating on the already-canonical {@link GraphData} shape -- the
- * server-side counterpart to node/edge-level canvas mutations the browser client already applies
- * to its own Zustand store (`../../client/stores/diagramStore.ts`), reused by every node/edge-
- * level MCP tool (`../mcp/tools.ts`, docs/09B-ARCHITECT-MCP.md's Shared Graph Mutation Service).
+ * Small, pure functions operating on the already-canonical {@link GraphData} shape --
+ * docs/09C-COLLABORATIVE-EDITING.md's shared operation vocabulary, reused by every writer of a
+ * diagram's graph: `../worker/diagram-session/diagram-session.ts`'s `DiagramSession.applyOperation()`
+ * (the human WebSocket and 9B MCP tool write paths, via {@link applyGraphOperation}), and the
+ * browser client's own remote-operation application (`./client/stores/diagramStore.ts`) --
+ * "unify the MCP write path and the human write path onto one code path" extends all the way to
+ * client-side rendering, so this module lives at this top-level, framework-agnostic location
+ * (alongside `./catalog.ts`/`./graph-element-types.ts`/`./blueprints.ts`) specifically so both
+ * the Worker/Durable Object bundle and the client bundle can import it with no duplication.
  *
  * Every function here is pure: it takes a {@link GraphData} value and returns a new one, never
  * mutating its input in place, so it is trivially unit-testable against fixture graph values with
  * no D1, Worker, or MCP involvement. Callers are responsible for parsing a diagram's stored
  * `graphData` JSON string into a {@link GraphData} value first, and for re-canonicalizing
- * (`./validation.ts`'s `canonicalizeGraphData()`) and persisting the result afterward -- this
- * module has no knowledge of persistence at all.
+ * (`./worker/diagrams/validation.ts`'s `canonicalizeGraphData()`) and persisting the result
+ * afterward -- this module has no knowledge of persistence at all. {@link GraphData}'s own shape
+ * (`{ nodes, edges, viewport }`, each node/edge an opaque `Record<string, unknown>`) is
+ * structurally compatible with the client's `{ nodes: Node<CFNodeData>[], edges:
+ * Edge<CFEdgeData>[], viewport }` React Flow state, so a caller on either side can pass its own
+ * state directly (with a type assertion) without a translation step.
  */
 
 /** One React Flow node as this module reads/writes it -- the concrete fields every function
@@ -378,4 +387,55 @@ export function autoLayout(graph: GraphData): GraphData {
       position: positions[index],
     })),
   };
+}
+
+/**
+ * The wire vocabulary for one discrete graph mutation
+ * (docs/09C-COLLABORATIVE-EDITING.md's Message Protocol) -- a discriminated union over the same
+ * six operations this module already exposes as pure functions. Every caller that needs to
+ * describe "one graph mutation" as a plain, JSON-serializable value (a client's outgoing
+ * `operation` WebSocket frame, a `DiagramSession` broadcast's `operation_applied.op` field, an
+ * MCP tool handler building the argument for `DiagramSession.applyOperation()`) uses this type
+ * rather than inventing its own shape.
+ */
+export type GraphOperation =
+  | { kind: "add_node"; input: AddNodeInput }
+  | { kind: "update_node"; nodeId: string; patch: NodePatch }
+  | { kind: "remove_node"; nodeId: string }
+  | { kind: "add_edge"; input: AddEdgeInput }
+  | { kind: "update_edge"; edgeId: string; patch: EdgePatch }
+  | { kind: "remove_edge"; edgeId: string };
+
+/**
+ * The one code path every discrete graph mutation goes through
+ * (docs/09C-COLLABORATIVE-EDITING.md's RPC Surface), whether it originates from a human's
+ * WebSocket message, a 9B MCP tool call, or another connected client's own broadcast operation
+ * applied locally by the browser. Dispatches to the matching pure function above based on
+ * `op.kind`.
+ *
+ * @param graph Current graph.
+ * @param op The operation to apply.
+ * @returns A new graph with the operation applied. `graph` itself is never mutated.
+ * @throws {ProblemDetailsError} `notFound()` when `op` targets a node/edge id that does not
+ * exist in `graph` -- propagated unchanged from the underlying `updateNode()`/`removeNode()`/
+ * `addEdge()`/`updateEdge()`/`removeEdge()` call; see each function's own JSDoc.
+ */
+export function applyGraphOperation(
+  graph: GraphData,
+  op: GraphOperation,
+): GraphData {
+  switch (op.kind) {
+    case "add_node":
+      return addNode(graph, op.input);
+    case "update_node":
+      return updateNode(graph, op.nodeId, op.patch);
+    case "remove_node":
+      return removeNode(graph, op.nodeId);
+    case "add_edge":
+      return addEdge(graph, op.input);
+    case "update_edge":
+      return updateEdge(graph, op.edgeId, op.patch);
+    case "remove_edge":
+      return removeEdge(graph, op.edgeId);
+  }
 }

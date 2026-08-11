@@ -2,6 +2,11 @@ import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport } from "@modelcontextprotocol/server";
 import { unzipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  applyGraphOperation,
+  type GraphOperation,
+} from "../../graph-mutations";
+import type { GraphData } from "../diagrams/types";
 import { createServer } from "./server";
 import type { McpToolContext } from "./tools";
 
@@ -41,7 +46,8 @@ function contextFor(
 ): {
   context: McpToolContext;
   statements: RecordedStatement[];
-  notifyGraphUpdated: ReturnType<typeof vi.fn>;
+  applyOperation: ReturnType<typeof vi.fn>;
+  applyWholeGraphReplace: ReturnType<typeof vi.fn>;
   sharesKvDelete: ReturnType<typeof vi.fn>;
 } {
   const statements: RecordedStatement[] = [];
@@ -90,20 +96,49 @@ function contextFor(
     },
   };
 
-  const notifyGraphUpdated = vi.fn();
+  // Simulates `DiagramSession.applyOperation()` against this fixture's own `graph_data` --
+  // rather than a fixed canned result -- so this file's end-to-end assertions (deep graph
+  // inspection through the real MCP SDK layer, including a `notFound()` propagating as a
+  // tool-level error) stay meaningful without a real Durable Object. Uses the exact same
+  // `applyGraphOperation()` dispatcher the real `DiagramSession` calls, so this is not a second,
+  // divergent mutation implementation.
+  const applyOperation = vi.fn(async (op: GraphOperation) => {
+    const graph = JSON.parse(
+      (selectRow?.graph_data as string | undefined) ??
+        '{"edges":[],"nodes":[],"viewport":{"x":0,"y":0,"zoom":1}}',
+    ) as GraphData;
+    const mutated = applyGraphOperation(graph, op);
+    return {
+      graphData: JSON.stringify(mutated),
+      sequence: 1,
+      updatedAt: "2026-01-05T00:00:00.000Z",
+    };
+  });
+  const applyWholeGraphReplace = vi.fn(async () => ({
+    sequence: 1,
+    updatedAt: "2026-01-05T00:00:00.000Z",
+  }));
   const sharesKvDelete = vi.fn();
 
   return {
     context: {
       db,
-      getDiagramSession: () => ({ notifyGraphUpdated }),
+      // The RPC stub's own return type mixes in `Disposable`/`Provider` machinery
+      // (`@cloudflare/workers-types`' `Rpc` namespace) a plain fixture function's `Promise<T>`
+      // can never structurally satisfy -- cast through `unknown`, exactly like `./tools.test.ts`'s
+      // own `contextFor()`.
+      getDiagramSession: () =>
+        ({ applyOperation, applyWholeGraphReplace }) as unknown as ReturnType<
+          McpToolContext["getDiagramSession"]
+        >,
       logger: { info: vi.fn() },
       ownerEmail: "alice@example.com",
       requestUrl: "https://architect.example/mcp",
       sharesKv: { delete: sharesKvDelete, get: vi.fn(), put: vi.fn() },
     },
     statements,
-    notifyGraphUpdated,
+    applyOperation,
+    applyWholeGraphReplace,
     sharesKvDelete,
   };
 }
@@ -287,8 +322,8 @@ describe("createServer", () => {
     });
   });
 
-  it("adds a node end to end and pushes the live-sync broadcast", async () => {
-    const { context, notifyGraphUpdated } = contextFor(rowFor());
+  it("adds a node end to end via DiagramSession.applyOperation()", async () => {
+    const { context, applyOperation } = contextFor(rowFor());
     const { client, close } = await connectedClient(context);
     cleanup = close;
 
@@ -305,11 +340,20 @@ describe("createServer", () => {
     expect(result.isError).not.toBe(true);
     const [content] = result.content as { type: "text"; text: string }[];
     const diagram = JSON.parse(content?.text ?? "{}");
-    expect(JSON.parse(diagram.graphData).nodes).toHaveLength(1);
-    expect(notifyGraphUpdated).toHaveBeenCalledWith(
-      diagram.graphData,
-      diagram.updatedAt,
+    expect(applyOperation).toHaveBeenCalledWith(
+      {
+        input: {
+          label: "API",
+          position: { x: 0, y: 0 },
+          typeId: "worker",
+        },
+        kind: "add_node",
+      },
+      "alice@example.com",
+      "agent",
     );
+    expect(JSON.parse(diagram.graphData).nodes).toHaveLength(1);
+    expect(JSON.parse(diagram.graphData).nodes[0].data.label).toBe("API");
   });
 
   it("adds an edge between two existing nodes end to end", async () => {

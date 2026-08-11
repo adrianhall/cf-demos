@@ -190,10 +190,11 @@ export function createServer(context: McpToolContext): McpServer {
     },
   );
 
-  // Every graph-mutating tool below persists to D1 and pushes the fresh graph to any open
-  // editor tab live (docs/09B-ARCHITECT-MCP.md's Live Sync Architecture) -- the demo's central
+  // Every graph-mutating tool below applies through `../diagram-session/diagram-session.ts`'s
+  // `DiagramSession` and pushes the fresh graph to any open editor tab live
+  // (docs/09C-COLLABORATIVE-EDITING.md's Live-Editing Architecture) -- the demo's central
   // teaching moment. Each is a thin wrapper over `./tools.ts`'s matching function, which itself
-  // wraps one pure mutation from `../diagrams/graph-mutations.ts`.
+  // wraps one operation from `../../graph-mutations.ts`.
 
   server.registerTool(
     "add_node",

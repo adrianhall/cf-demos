@@ -1459,3 +1459,166 @@ unless a class explicitly opted out — which exactly one class did. The fix was
 stripped the underline from links inside running prose too, leaving them indistinguishable from
 the surrounding text and failing WCAG 1.4.1 (Use of Color). `.nav-link` also restores the
 underline on `:hover`/`:focus-visible`, so the affordance is demoted rather than deleted.
+
+## NEW DECISIONS
+
+## 32. `docs/09C-COLLABORATIVE-EDITING.md` Phase 16 spike findings — both load-bearing Durable
+    Object platform behaviors confirmed, write-chain concurrency design proven by execution
+    (`spikes/08-architect-collab-race`)
+
+Three items from `docs/09C-COLLABORATIVE-EDITING.md`'s Phase 16 spike, re-verified against current
+Cloudflare documentation and (for items 2 and 3) executed against a real local `workerd` instance.
+Full detail, citations, and code in `spikes/08-architect-collab-race/REPORT.md`; summary here per
+the Spike Conventions.
+
+**1. Both platform behaviors "Why D1 Stays The Only Copy" depends on are confirmed, no
+correction.** (a) A Durable Object's in-memory (class field) state is discarded on
+hibernation/eviction — confirmed independently across four current pages:
+[Durable Object Lifecycle](https://developers.cloudflare.com/durable-objects/concepts/durable-object-lifecycle/)
+("When hibernated, the in-memory state is discarded"),
+[WebSockets and hibernation](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)
+("In-memory state is reset" during hibernation),
+[In-memory state in a Durable Object](https://developers.cloudflare.com/durable-objects/reference/in-memory-state/)
+("in-memory state is not preserved across eviction or hibernation"), and
+[Rules of Durable Objects](https://developers.cloudflare.com/durable-objects/best-practices/rules-of-durable-objects/),
+which adds a detail worth carrying into Phase 18: in-memory state is *also* discarded "if it
+crashes from an uncaught exception," not only on an idle-timeout eviction — meaning an
+unanticipated `graph-mutations.ts` failure mode inside `applyOperation()`'s mutation step (today,
+only `notFound()` is caught) would discard `this.graph` the same way hibernation does. Harmless for
+data durability (D1 is unaffected either way) but worth catching broadly in Phase 18's
+implementation to avoid an avoidable cold start for every other connected client. (b) Synchronous
+JavaScript execution with no `await` between two statements cannot be interleaved by an incoming
+event — confirmed against the same current Rules of Durable Objects guide's "input gates" section
+("Input gates block new events... while synchronous JavaScript execution is in progress") and its
+"all synchronous JavaScript execution is single-threaded" statement, corroborated by
+[What are Durable Objects](https://developers.cloudflare.com/durable-objects/concepts/what-are-durable-objects/)'s
+Actor-model framing and Cloudflare's own
+["Easy, Fast, Correct — Choose three"](https://blog.cloudflare.com/durable-objects-easy-fast-correct-choose-three/)
+blog post. Neither behavior needed any correction to
+`docs/09C-COLLABORATIVE-EDITING.md`'s existing description.
+
+**2. The race, prototyped directly: exactly one deterministic winner, neither operation dropped —
+confirmed by execution.** A small standalone Durable Object
+(`spikes/08-architect-collab-race/src/diagram-session.ts`'s `TestDiagramSession`) built to mirror
+the real, not-yet-implemented `DiagramSession.applyOperation()` write path's shape (`this.graph`,
+`this.writeChain`) closely enough to exercise the same guarantees. Two RPC calls dispatched without
+an `await` between them, both targeting the same node id, across five consecutive real
+`@cloudflare/vitest-pool-workers` test runs (no flakes): a synchronous sequence counter incremented
+inside each call's mutation step always produced two distinct values (never a duplicate — proof
+the two mutations never interleaved with each other), both operations' values were always recorded
+as genuinely applied (neither silently dropped), and the final in-memory graph and "persisted" D1
+stub always matched whichever operation's mutation actually ran last by that sequence number —
+regardless of which operation's own `Promise` happened to resolve first. A second test confirmed
+two operations on different node ids never interact at all, matching the Concurrency Model
+section's stated behavior for that case too.
+
+**3. A slow write cannot land after and clobber a faster, later-enqueued write — confirmed by
+execution, including a deliberate counter-example proving the test has real discriminating
+power.** The identical adversarial scenario (a first operation's simulated persist artificially
+delayed 30–50ms, a second, conflicting operation's not delayed at all) was run through two write
+paths on the same test Durable Object: a naive, unchained path (each call captures its own
+snapshot and persists it independently, no shared ordering) **does** reproduce the exact clobber
+bug — the slow first write's stale snapshot lands in the "D1" stub *after* the fast second write's
+correct value already did, confirmed via a dedicated counter-example test — while the real
+write-chain design (a single per-object `this.writeChain` every persist joins, where each link
+re-reads `this.graph` at the moment it actually runs rather than a value captured when it was
+enqueued) never exhibits it, including in a polling test sampling the "persisted" stub every 4ms
+throughout the delay window to confirm there is no even-transient stale-value window. **Decision:
+no correction to `docs/09C-COLLABORATIVE-EDITING.md`'s write-chain design** — both strict
+per-object ordering and always-fresh reads are confirmed necessary together (the counter-example
+has neither and fails; the real design has both and does not) and sufficient to prevent an older,
+slower write from ever clobbering a newer one, with no platform-level storage-ordering guarantee
+from D1 required. Phase 17 and Phase 18 can proceed against the design exactly as written.
+
+## NEW DECISIONS
+
+## 33. `docs/09C-COLLABORATIVE-EDITING.md` Phase 18 implementation findings — `ctx.id.name`
+    confirmed working with no fallback needed, and which layer actually converts a stale-target
+    error into `operation_rejected`
+
+Two items from implementing Phase 18
+(`demos/architect/src/worker/diagram-session/diagram-session.ts`), recorded per Decision B's own
+instruction to log a correction here if `ctx.id.name` turned out not to work, and to note one other
+reconciliation worth keeping straight for future reference.
+
+**1. `ctx.id.name` works exactly as documented in this repo's pinned Wrangler (`4.120.1`) runtime —
+no correction, no fallback needed.** `docs/09C-COLLABORATIVE-EDITING.md`'s Decision B named the
+March 2026 changelog entry,
+["Access Durable Object name via `ctx.id.name`"](https://developers.cloudflare.com/changelog/post/2026-03-15-durable-object-id-name/),
+as the basis for `DiagramSession` reading its own diagram id from `this.ctx.id.name` rather than
+threading an explicit `diagramId` parameter through every RPC method. Per that same decision's own
+instruction to write a real integration test confirming this *before* relying on it,
+`tests/integration/diagram-session.test.ts`'s `"ctx.id.name resolves to the diagram id for a
+getByName()-obtained stub (Decision B sanity check)"` test asserts `state.id.name` equals the
+diagram id used to obtain the stub via `env.DIAGRAM_SESSIONS.getByName(diagramId)`, and passes.
+**Decision: no correction to the design — `ctx.id.name` is the diagram id source of truth for
+`DiagramSession`, and the mechanical `diagramId`-parameter fallback Decision B described as a
+correction path was never needed.**
+
+**2. `applyOperation()` stays a single, honest, throwing RPC primitive; `webSocketMessage()` is the
+one layer that converts a stale-target error into a non-throwing `operation_rejected` frame.**
+`docs/09C-COLLABORATIVE-EDITING.md`'s own prose ("`applyOperation()` catches that specific error and
+responds with `operation_rejected`...") reads as slightly loose about which layer actually performs
+that catch, since the document also requires a direct RPC/MCP caller to receive a normal thrown
+`notFound()` (matching every other MCP tool's existing behavior) rather than a swallowed error.
+Implemented as: `DiagramSession.applyOperation()` never catches anything itself — a stale-target
+`notFound()` thrown by `../../graph-mutations.ts`'s `applyGraphOperation()` propagates unchanged to
+whichever caller invoked it (a direct RPC call from an MCP tool, or `webSocketMessage()`'s own call).
+`webSocketMessage()` is the one place that wraps its call to `applyOperation()` in a `try`/`catch`,
+turning that same error into `{ type: "operation_rejected", clientOpId, reason }` sent only to the
+originating connection — never rethrown, never closing the socket. This keeps `applyOperation()`
+identical for both callers the RPC Surface section names while still satisfying the Concurrency
+Model's "never disconnects the socket" requirement — worth recording since a future reader wiring
+another WebSocket-message-driven RPC call might otherwise put the `try`/`catch` in the wrong layer.
+
+## NEW DECISIONS
+
+## 34. `docs/09C-COLLABORATIVE-EDITING.md` Phase 20 verification findings — the two
+    `ensureHydrated()` coverage gaps confirmed still not practically closeable in this pool;
+    `dangerouslyIgnoreUnhandledErrors` identified and rejected as a fix
+
+Phase 18's implementer (`docs/DECISIONS.md` #33's neighboring code comment in
+`tests/integration/diagram-session.test.ts`) left `ensureHydrated()`'s two `throw new Error(...)`
+branches (an unnamed `ctx.id.name`, and a diagram deleted out from under an already-authorized
+request) deliberately uncovered, because triggering a `blockConcurrencyWhile()` callback throw in
+this Vitest pool marks the whole Durable Object instance "broken" in a way that flips the
+*overall* `vitest run` process exit code to `1` even though every individual assertion still
+passes. Phase 20 re-attempted this properly before accepting it as permanent, per this document's
+own instruction to research a documented way around it.
+
+**Three concrete approaches tried, all still exit `1`:** a scratch test file
+(`tests/integration/_scratch-hydrate.test.ts`, deleted after this investigation — not part of the
+final change set) exercised (a) a direct RPC call with a plain `try`/`catch`, (b) a direct RPC
+call asserted with `.rejects.toThrow()`, and (c) the same missing-diagram-from-D1 branch through
+`runInDurableObject()` with `.rejects.toThrow()`. Every one of the three tests' own assertions
+passed in isolation, but each one still produced Miniflare's own `"Annotating with brokenness"`
+diagnostic and a separate, unhandled top-level rejection (`Serialized Error: { durableObjectReset:
+true }`) that Vitest reports independently of the awaited promise the test code actually catches —
+confirming `runInDurableObject`'s own error-catching semantics behave no differently than a direct
+RPC call's here, and that `.rejects.toThrow()` does not avoid the problem either. Running only
+this scratch file in isolation (`vitest run --project integration -t scratch`) still exited `1`
+despite "3 passed" test-level output, and running the *entire* `integration` project with the
+scratch file included also exited `1` while still reporting every one of 104 tests (including this
+file's own) as passed — confirming Vitest's unhandled-error tracking is a property of the whole
+run, not scoped per test file, so isolating the offending test into its own file does not help the
+overall exit code the way it might help *other* files' results stay legible.
+
+**A fourth option exists — `test.dangerouslyIgnoreUnhandledErrors` — but is rejected as too broad
+a fix for two lines.** Vitest 4 has a real config flag for exactly this class of problem
+(`node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js`: `if (errors.length &&
+!this.config.dangerouslyIgnoreUnhandledErrors) process.exitCode = 1;`). Checking its type
+(`RuntimeConfig` in `vitest/dist/chunks/config.d.A1h_Y6Jt.d.ts`) confirms it is **not** one of the
+options `vi.setConfig()`'s `RuntimeOptions` can toggle per-test or per-describe-block at runtime —
+it is settable only in `tests/integration/vitest.config.ts`'s own `test` block, for the entire
+`integration` project. Setting it there would silence *every* unhandled error for all ~100
+integration tests in this project, not just the two lines this gap is about — a real, permanent
+weakening of this project's ability to catch a genuine future regression (an accidentally
+unawaited promise, an actually-broken Durable Object from an unrelated code change) anywhere else
+in that same project, for the sake of two lines that are already real, correct, and independently
+readable guards. **Decision: leave both `ensureHydrated()` throw branches uncovered, matching
+Phase 18's original call, and do not set `dangerouslyIgnoreUnhandledErrors`.** No source change was
+made to `ensureHydrated()` itself (both branches remain unchanged, real, honest guards) and no
+project-wide Vitest config change was made. This is the one open coverage gap in
+`docs/09C-COLLABORATIVE-EDITING.md`'s own scope; the second, pre-existing gap
+(`src/client/lib/datetime.ts:82`) predates this document's work and remains explicitly out of
+scope for it.

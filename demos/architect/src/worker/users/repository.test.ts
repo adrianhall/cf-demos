@@ -219,4 +219,42 @@ describe("UserRepository", () => {
 
     expect(page).toEqual({ total: 0, users: [] });
   });
+
+  it("reports an email exists when a matching directory row is found", async () => {
+    const statements: RecordedStatement[] = [];
+    const database = {
+      prepare(sql: string) {
+        const record: RecordedStatement = { parameters: [], sql };
+        statements.push(record);
+        return {
+          bind: (...parameters: unknown[]) => {
+            record.parameters = parameters;
+            return { first: async () => ({ 1: 1 }) };
+          },
+        };
+      },
+    };
+
+    const exists = await new UserRepository(
+      database as unknown as Pick<D1Database, "prepare">,
+    ).exists("alice@example.com");
+
+    expect(exists).toBe(true);
+    expect(statements[0]?.sql).toContain("SELECT 1 FROM users WHERE email = ?");
+    expect(statements[0]?.parameters).toEqual(["alice@example.com"]);
+  });
+
+  it("reports an email does not exist when no directory row matches", async () => {
+    const database = {
+      prepare(_sql: string) {
+        return { bind: () => ({ first: async () => null }) };
+      },
+    };
+
+    const exists = await new UserRepository(
+      database as unknown as Pick<D1Database, "prepare">,
+    ).exists("stranger@example.com");
+
+    expect(exists).toBe(false);
+  });
 });

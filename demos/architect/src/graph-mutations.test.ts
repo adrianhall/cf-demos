@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   addEdge,
   addNode,
+  applyGraphOperation,
   autoLayout,
   removeEdge,
   removeNode,
   updateEdge,
   updateNode,
 } from "./graph-mutations";
-import type { GraphData } from "./types";
+import type { GraphData } from "./worker/diagrams/types";
 
 /** An empty canonical graph, the starting point for most tests below. */
 function emptyGraph(): GraphData {
@@ -437,5 +438,102 @@ describe("autoLayout", () => {
     const result = autoLayout(graph);
     expect(result.edges).toEqual(graph.edges);
     expect(result.viewport).toEqual({ x: 5, y: 5, zoom: 2 });
+  });
+});
+
+describe("applyGraphOperation", () => {
+  it("dispatches add_node to addNode", () => {
+    const result = applyGraphOperation(emptyGraph(), {
+      input: { label: "API", position: { x: 0, y: 0 }, typeId: "worker" },
+      kind: "add_node",
+    });
+    expect(result.nodes).toHaveLength(1);
+    expect((result.nodes[0] as { data: { label: string } }).data.label).toBe(
+      "API",
+    );
+  });
+
+  it("dispatches update_node to updateNode", () => {
+    const result = applyGraphOperation(twoNodeGraph(), {
+      kind: "update_node",
+      nodeId: "a",
+      patch: { label: "New Label" },
+    });
+    const node = result.nodes.find((n) => (n as { id: string }).id === "a");
+    expect(node).toMatchObject({ data: { label: "New Label" } });
+  });
+
+  it("dispatches remove_node to removeNode, cascading edge removal", () => {
+    const graph: GraphData = {
+      ...twoNodeGraph(),
+      edges: [
+        { data: { edgeType: "data-flow" }, id: "e1", source: "a", target: "b" },
+      ],
+    };
+    const result = applyGraphOperation(graph, {
+      kind: "remove_node",
+      nodeId: "a",
+    });
+    expect(result.nodes.map((n) => (n as { id: string }).id)).toEqual(["b"]);
+    expect(result.edges).toHaveLength(0);
+  });
+
+  it("dispatches add_edge to addEdge", () => {
+    const result = applyGraphOperation(twoNodeGraph(), {
+      input: { edgeType: "data-flow", source: "a", target: "b" },
+      kind: "add_edge",
+    });
+    expect(result.edges).toHaveLength(1);
+    expect(result.edges[0]).toMatchObject({ source: "a", target: "b" });
+  });
+
+  it("dispatches update_edge to updateEdge", () => {
+    const graph: GraphData = {
+      ...twoNodeGraph(),
+      edges: [
+        { data: { edgeType: "data-flow" }, id: "e1", source: "a", target: "b" },
+      ],
+    };
+    const result = applyGraphOperation(graph, {
+      edgeId: "e1",
+      kind: "update_edge",
+      patch: { edgeType: "trigger" },
+    });
+    expect((result.edges[0] as { data: { edgeType: string } }).data).toEqual({
+      edgeType: "trigger",
+    });
+  });
+
+  it("dispatches remove_edge to removeEdge", () => {
+    const graph: GraphData = {
+      ...twoNodeGraph(),
+      edges: [
+        { data: { edgeType: "data-flow" }, id: "e1", source: "a", target: "b" },
+      ],
+    };
+    const result = applyGraphOperation(graph, {
+      edgeId: "e1",
+      kind: "remove_edge",
+    });
+    expect(result.edges).toHaveLength(0);
+  });
+
+  it("propagates notFound() for a stale nodeId", () => {
+    expect(() =>
+      applyGraphOperation(twoNodeGraph(), {
+        kind: "update_node",
+        nodeId: "does-not-exist",
+        patch: { label: "x" },
+      }),
+    ).toThrow();
+  });
+
+  it("propagates notFound() for a stale edgeId", () => {
+    expect(() =>
+      applyGraphOperation(twoNodeGraph(), {
+        edgeId: "does-not-exist",
+        kind: "remove_edge",
+      }),
+    ).toThrow();
   });
 });

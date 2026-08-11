@@ -5,11 +5,12 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 ## Demonstration Prerequisites
 
 1. Deploy the demo with `npm run deploy` from `demos/architect`.
-2. Confirm you can authenticate through the configured identity provider as at least two different identities, one of which matches this deployment's `ADMIN_EMAIL`.
+2. Confirm you can authenticate through the configured identity provider as at least three different identities: one matching this deployment's `ADMIN_EMAIL` (the diagram owner for most of this script), one ordinary identity used throughout the script (for example `alice@example.com`), and one that has not yet signed in to this deployment at all (for example `bob@example.com`) — reserved for the collaborator steps near the end, so that identity's first-ever sign-in happens live, on camera.
 3. Open a second browser window or tab to the Cloudflare dashboard at **Zero Trust** > **Access controls** > **Applications**.
 4. Open a third browser window or tab to the Cloudflare dashboard's **D1** section, ready to open the `architect-db` database's console.
 5. Sign out of, or use a private/incognito window for, the demo hostname so the first step shows the unauthenticated experience. Keep this window open throughout — it is reused later to demonstrate anonymous share viewing with no sign-in at all.
 6. Have a terminal ready with an MCP-compliant client installed (this script uses [OpenCode](https://opencode.ai)) and configured to reach `https://architect.cfapps.uk/mcp` — not yet signed in, so the presentation flow's Managed OAuth login prompt is genuine.
+7. Reserve a fourth browser window or profile, not yet signed in to the demo hostname, for the `bob@example.com` collaborator identity used near the end of this script.
 
 ## Presentation Flow
 
@@ -81,10 +82,17 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 42. Open a diagram (new or existing) in the browser editor and leave this tab visible for the remainder of the script. Note its current nodes, or its empty canvas.
 43. Switch to the prepared terminal and start the MCP client's sign-in flow (in OpenCode, `opencode mcp auth architect` or the equivalent for the configured server). Show the browser opens Cloudflare Access's real login screen — the same one used in step 3 — at a `127.0.0.1` loopback redirect. Complete sign-in as the same identity already signed in to the editor tab.
 44. Back in the terminal, start an OpenCode session against this MCP server and ask it: "List my diagrams." Show the response includes the diagram opened in step 42.
-45. Ask OpenCode: "Add a Worker node called API and a D1 node called Database to \<that diagram's title\>, and connect them with a service-binding edge." While it works, switch to the still-open browser tab from step 42 — do not touch or reload it — and show the two new nodes and the edge between them appear live, with an "Updated by an agent" toast in the corner.
+45. Ask OpenCode: "Add a Worker node called API and a D1 node called Database to \<that diagram's title\>, and connect them with a service-binding edge." While it works, switch to the still-open browser tab from step 42 — do not touch or reload it — and show the two new nodes and the edge between them appear live, with an "Updated by your agent" toast in the corner.
 46. Ask OpenCode: "Create a share link for this diagram." Read back the returned URL and open it in the signed-out/incognito window from the prerequisites. Show the anonymous read-only viewer already reflects the nodes the agent just added.
 47. Ask OpenCode: "Download this diagram's Cloudflare project scaffold." Extract the resulting local ZIP and open `wrangler.toml` to show it already contains the D1 binding the agent added in step 45 — the same generator the editor's own **Export as project** button uses.
 48. Switch to the Workers Logs dashboard tab (or open one now) for this Worker, filter for `diagram_updated`, and point out the two most recent entries: one with `"via":"mcp"` from step 45's agent edit, distinguishable from every earlier, browser-driven `"via":"api"` entry in this same script.
+49. Still signed in as the diagram's owner (`ADMIN_EMAIL`) in the tab from step 42, open the toolbar's collaborators control — a separate control from **Share**, since granting a specific person edit access is a different action from handing out an anonymous read-only link. Try adding `bob@example.com` and show the inline validation message explaining that identity has to sign in to Architect at least once first.
+50. Switch to the reserved fourth browser window/profile and open `https://architect.cfapps.uk/app`, signing in as `bob@example.com` for the first time. Back in the owner's collaborators control, add `bob@example.com` again and show it succeeds this time, appearing in the collaborators list.
+51. In Bob's window, show the dashboard's new "Shared with me" section and that the diagram from step 42 now appears there, annotated with the owner's email. Open it.
+52. With the owner's tab from step 42 still open side by side with Bob's window, point out the presence avatar for `bob@example.com` now showing in the owner's toolbar. In Bob's window, drag a node across the canvas; in the owner's window, watch it move live, with Bob's colored cursor visible tracking across the canvas the whole time.
+53. In both windows at once, open the same node's properties panel and type a different label into each. Point out the "Updated by \<name\>" toast appearing in whichever window's edit did not win, and that both windows converge on the exact same final label — the last one applied, not a merge of the two.
+54. With both browser windows still open, go back to the OpenCode terminal session and ask it to make one more edit to the same diagram (for example: "Rename the API node to Frontend"). Point out the toast in the owner's window now reads "Updated by your agent" — via the `operation_applied` message's `origin` field — even though the MCP client authenticates as the owner's own identity, the same one live in that browser tab.
+55. In Bob's window, open the collaborators control again and select **Leave diagram**. Confirm it disappears from Bob's "Shared with me" section immediately, while the owner's tab keeps full, uninterrupted access.
 
 ## Expected Results
 
@@ -105,13 +113,18 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 - An MCP client signs in through the same Cloudflare Access login screen and identity provider as the browser editor, with no separate credential or allow-list.
 - An MCP tool call that mutates a diagram's graph is reflected, within a couple of seconds and with no manual reload, in any browser tab that already has that diagram open — including a share link opened after the change, and a downloaded project scaffold reflecting the change.
 - Every diagram mutation performed through the MCP server is logged with `"via":"mcp"`, distinguishable from an ordinary browser edit's `"via":"api"`.
+- An email that has never signed in to Architect cannot be added as a collaborator until it has; once added, that diagram appears under the collaborator's own dashboard "Shared with me" section, annotated with the owner's email.
+- Two authenticated identities with the same diagram open each see the other's presence avatar, live cursor position, and current node/edge selection with no page reload.
+- Two identities editing the same node's label around the same moment converge on one final value — whichever operation the `DiagramSession` Durable Object applied last — surfaced to the other editor as an "Updated by \<name\>" toast, never a merge of both edits.
+- An MCP tool call against a diagram two humans currently have open is attributed as "Updated by your agent" in both viewers, distinguishing it from either human's own edit even though the MCP client authenticates as the diagram owner's own identity.
+- A collaborator selecting "Leave diagram" immediately loses access and disappears from their own "Shared with me" section, with no effect on the owner's or any other collaborator's access.
 
 ## Where To Observe State
 
-- **Worker logs:** Workers & Pages > `architect` > Logs — look for `diagram_created`, `diagram_opened`, `diagram_updated`, `diagram_shared`, `diagram_share_revoked`, and `admin_diagram_deleted` entries (never graph content, tokens, or email), each carrying a `via: "api" | "mcp"` field.
+- **Worker logs:** Workers & Pages > `architect` > Logs — look for `diagram_created`, `diagram_opened`, `diagram_updated`, `diagram_shared`, `diagram_share_revoked`, `admin_diagram_deleted`, `collaborator_added`, and `collaborator_removed` entries (never graph content, tokens, or email), each carrying a `via: "api" | "mcp"` field where applicable.
 - **Traces:** Workers & Pages > `architect` > Observability > Traces (10% sampling).
-- **D1 data:** D1 > `architect-db` > Console; query the `users`, `diagrams`, and `diagram_shares` tables as shown above.
-- **Access applications:** Zero Trust > Access controls > Applications > `architect public` and `architect app` — the latter's **Authentication** tab shows the Managed OAuth configuration an MCP client authenticates through.
-- **Durable Objects:** Workers & Pages > `architect` > Durable Objects > `DIAGRAM_SESSIONS` — one active instance per diagram id with an open editor tab, holding that diagram's live-sync WebSocket(s).
+- **D1 data:** D1 > `architect-db` > Console; query the `users`, `diagrams`, `diagram_shares`, and `diagram_collaborators` tables as shown above.
+- **Access applications:** Zero Trust > Access controls > Applications > `architect public` and `architect app` — the latter's **Authentication** tab shows the Managed OAuth configuration an MCP client authenticates through. Confirm no new application appears: every collaborator/live-sync route still sits under `architect app`'s existing `/api/diagrams*` destination.
+- **Durable Objects:** Workers & Pages > `architect` > Durable Objects > `DIAGRAM_SESSIONS` — one active instance per diagram id with an open editor tab, holding that diagram's live-sync WebSocket(s), now including every connected collaborator's socket, not only the owner's.
 
 Run `npm run teardown` after the presentation; see README.md for details.

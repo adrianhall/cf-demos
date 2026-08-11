@@ -23,10 +23,59 @@ import {
 } from "@xyflow/react";
 import { create } from "zustand";
 import {
+  applyGraphOperation,
+  type GraphOperation,
+} from "../../graph-mutations";
+import type { GraphData } from "../../worker/diagrams/types";
+import {
   chooseConnectionHandles,
   validateConnection,
 } from "../components/editor/connect";
 import type { CFEdgeData, CFNodeData } from "../components/editor/types";
+
+/**
+ * Monotonically increasing counter backing {@link nextClientOpId} -- a plain module-level
+ * counter, not `crypto.randomUUID()` per call: this id only needs to be unique for the lifetime
+ * of one browser tab (it reconciles an outgoing `operation` frame against its own
+ * `operation_applied`/`operation_rejected` echo, `../hooks/useDiagramLiveSync.ts`), never
+ * persisted or compared across tabs, and a small counter is easier to read in a debugger or log
+ * than a random string.
+ */
+let clientOpIdCounter = 0;
+
+/**
+ * Generate a locally-unique id for the next outgoing `operation` frame
+ * (`../hooks/useDiagramLiveSync.ts`'s `sendOperation()`).
+ *
+ * @returns A fresh, process-local id, never repeated within this tab's lifetime.
+ */
+export function nextClientOpId(): string {
+  clientOpIdCounter += 1;
+  return `op-${clientOpIdCounter}`;
+}
+
+/**
+ * The coalescing key for one queued {@link GraphOperation} in {@link DiagramState.pendingOperations}
+ * -- a node- or edge-targeting operation (`update_node`/`remove_node`/`update_edge`/
+ * `remove_edge`) is keyed by its target id, so a rapid sequence of edits to the same node/edge
+ * (a drag, several properties-panel keystrokes) collapses into just the most recent one by the
+ * time the debounce timer flushes the queue -- "last one wins per id"
+ * (`../components/editor/DiagramCanvas.tsx`'s flush effect). An `add_node`/`add_edge` operation
+ * has no existing target to coalesce against, so each gets its own unique key instead.
+ */
+function operationKey(op: GraphOperation): string {
+  switch (op.kind) {
+    case "add_node":
+    case "add_edge":
+      return `${op.kind}:${crypto.randomUUID()}`;
+    case "update_node":
+    case "remove_node":
+      return `node:${op.nodeId}`;
+    case "update_edge":
+    case "remove_edge":
+      return `edge:${op.edgeId}`;
+  }
+}
 
 /** A snapshot of the node and edge arrays for undo/redo. */
 interface HistoryEntry {
@@ -38,26 +87,51 @@ interface HistoryEntry {
 interface DiagramState {
   /** UUID of the currently loaded diagram, or null before initial fetch. */
   diagramId: string | null;
+  /**
+   * Verified Cloudflare Access identity email that owns the currently loaded diagram, or
+   * `null` before a diagram has loaded, or in read-only share-viewer mode (`../api/shares.ts`'s
+   * `SharedDiagram` deliberately never carries `ownerEmail` -- docs/09-ARCHITECT.md's
+   * non-negotiable tests: a public share must never leak who owns the diagram it points to).
+   * Compared against the signed-in identity's own email (`../hooks/useIdentity.ts`) by
+   * `../components/editor/toolbar/CollaboratorsModal.tsx` to distinguish an owner from a
+   * collaborator client-side, without a separate "role" field traveling over the wire
+   * (docs/09C-COLLABORATIVE-EDITING.md's Client section).
+   */
+  ownerEmail: string | null;
   /** User-editable diagram title. */
   title: string;
   /** User-editable diagram description. */
   description: string;
   /**
    * ISO-8601 timestamp of the most recent graph state this store knows about -- either from the
-   * diagram's initial load, this tab's own most recent autosave, or a `graph_updated` live-sync
-   * push (`../hooks/useDiagramLiveSync.ts`, docs/09B-ARCHITECT-MCP.md's Live Sync Architecture).
-   * `null` before a diagram has loaded, or in read-only share-viewer mode (which never receives
-   * a live-sync push and has no `updatedAt` of its own to compare against -- see
-   * `../api/shares.ts`'s `SharedDiagram`).
+   * diagram's initial load or this tab's own most recent autosave. `null` before a diagram has
+   * loaded, or in read-only share-viewer mode (see `../api/shares.ts`'s `SharedDiagram`). Not
+   * updated by a live-sync push any more (docs/09C-COLLABORATIVE-EDITING.md's Message Protocol:
+   * a `graph_snapshot`/`operation_applied` frame carries a `sequence` number, not an
+   * `updatedAt` timestamp -- ordering within one live connection is tracked entirely inside
+   * `../hooks/useDiagramLiveSync.ts` instead).
    */
   updatedAt: string | null;
   /**
-   * Whether to show the "Updated by an agent" toast (`../components/editor/LiveUpdateToast.tsx`)
-   * after {@link DiagramActions.applyRemoteGraphUpdate} replaced the canvas with a remote MCP
-   * tool call's own change -- without this, the canvas would silently rewrite itself under the
-   * user with no explanation.
+   * State backing the "Updated by…" toast (`../components/editor/LiveUpdateToast.tsx`), shown
+   * after {@link DiagramActions.applyRemoteOperation} applied another identity's live edit to
+   * this tab's canvas -- without this, the canvas would silently change under the user with no
+   * explanation. `null` when no notice is currently shown. `origin: "agent"` renders "Updated by
+   * your agent"; `origin: "human"` renders "Updated by \<actorEmail\>" -- see
+   * `../hooks/useDiagramLiveSync.ts` for exactly when this is set versus suppressed for this
+   * tab's own optimistic edit.
    */
-  liveUpdateNotice: boolean;
+  liveUpdateNotice: { actorEmail: string; origin: "human" | "agent" } | null;
+  /**
+   * Discrete graph operations queued since the last flush, coalesced by target id
+   * (`operationKey()`) so a rapid sequence of edits to the same node/edge collapses into just
+   * the most recent one. Drained and sent over the live socket by
+   * `../components/editor/DiagramCanvas.tsx`'s debounced flush effect when connected, or left
+   * to accumulate harmlessly while the socket is not connected (the `PUT`-based autosave
+   * fallback sends the *whole* graph in that case, making this queue's own contents moot until
+   * the socket reconnects and starts draining it again).
+   */
+  pendingOperations: Map<string, GraphOperation>;
 
   /** React Flow node array (each node carries {@link CFNodeData}). */
   nodes: Node<CFNodeData>[];
@@ -112,6 +186,8 @@ interface DiagramActions {
    * Initialise the store with a loaded diagram.
    *
    * @param id Diagram UUID.
+   * @param ownerEmail The diagram's owner email, or `null` in read-only share-viewer mode --
+   * see {@link DiagramState.ownerEmail}.
    * @param title Diagram title.
    * @param description Diagram description.
    * @param nodes Parsed React Flow nodes.
@@ -125,6 +201,7 @@ interface DiagramActions {
    */
   setDiagram: (
     id: string,
+    ownerEmail: string | null,
     title: string,
     description: string,
     nodes: Node<CFNodeData>[],
@@ -164,14 +241,45 @@ interface DiagramActions {
   /** Update the stored viewport (pan/zoom). Does not mark dirty. */
   onViewportChange: (viewport: Viewport) => void;
 
-  /** Add a new node to the canvas. Pushes history before mutating. */
+  /** Add a new node to the canvas. Pushes history before mutating, and enqueues the equivalent
+   * `add_node` operation (docs/09C-COLLABORATIVE-EDITING.md's Message Protocol) for
+   * `../components/editor/DiagramCanvas.tsx`'s debounced live-sync flush. */
   addNode: (node: Node<CFNodeData>) => void;
-  /** Merge partial data into an existing node's `data` payload. */
+  /** Merge partial data into an existing node's `data` payload, and enqueue the equivalent
+   * `update_node` operation for whichever of `label`/`description` actually changed --
+   * `../components/editor/panels/PropertiesPanel.tsx`'s only way to edit a node's fields. */
   updateNodeData: (nodeId: string, data: Partial<CFNodeData>) => void;
-  /** Merge partial data into an existing edge's `data` payload. */
+  /** Merge partial data into an existing edge's `data` payload, and enqueue the equivalent
+   * `update_edge` operation for whichever of `edgeType`/`label`/`description`/`protocol`
+   * actually changed -- `../components/editor/panels/PropertiesPanel.tsx`'s only way to edit an
+   * edge's fields. */
   updateEdgeData: (edgeId: string, data: Partial<CFEdgeData>) => void;
-  /** Remove all currently selected nodes and edges. Pushes history. */
+  /** Remove all currently selected nodes and edges. Pushes history, and enqueues one
+   * `remove_node`/`remove_edge` operation per removed id (never a bulk-remove operation kind --
+   * `../../graph-mutations.ts`'s shared vocabulary has none). */
   removeSelected: () => void;
+
+  /**
+   * Queue one discrete graph operation for `../components/editor/DiagramCanvas.tsx`'s debounced
+   * live-sync flush, coalescing by target id (`operationKey()`) so a rapid sequence of edits to
+   * the same node/edge collapses into just the most recent one. Called by this store's own
+   * mutation actions above (`addNode`, `updateNodeData`, `updateEdgeData`, `removeSelected`,
+   * `onConnect`, `connectNodes`) immediately after their existing optimistic local mutation, and
+   * directly by `../components/editor/toolbar/Toolbar.tsx`'s auto-layout flow, which repositions
+   * every node at once via {@link DiagramActions.setNodes} rather than one call per node.
+   */
+  enqueueOperation: (op: GraphOperation) => void;
+  /**
+   * Remove and return every currently queued operation, in insertion order. Called by
+   * `../components/editor/DiagramCanvas.tsx`'s debounced flush effect (to send them over the
+   * live socket) and after a successful `PUT`-based fallback autosave (to discard them, since
+   * that autosave already persisted the whole graph they describe -- resending a queued
+   * `add_node`/`add_edge` afterward would create a duplicate node/edge once the socket
+   * reconnects).
+   *
+   * @returns Every operation queued since the last drain.
+   */
+  drainPendingOperations: () => GraphOperation[];
 
   /** Set the selected node (clears any edge selection). Opens the properties panel when `id` is
    * non-null; deselecting (`id === null`) leaves the panel's current open state unchanged. */
@@ -212,21 +320,44 @@ interface DiagramActions {
   markSaveError: (error: string) => void;
 
   /**
-   * Replace the canvas with a graph pushed by `../hooks/useDiagramLiveSync.ts`'s live-sync
-   * WebSocket (docs/09B-ARCHITECT-MCP.md's Live Sync Architecture), if -- and only if --
-   * `updatedAt` is strictly newer than this store's own {@link DiagramState.updatedAt}. A stale
-   * or duplicate push (for example this tab's own autosave racing the same MCP tool call) is
-   * silently ignored rather than rewinding the canvas. Clears `dirty` and the undo/redo history:
-   * the pushed graph is already persisted, and a stale undo entry from before this external
-   * change would restore graph state D1 no longer has. Does not mutate anything if `graphData`
-   * fails to parse -- a malformed push must never corrupt the current canvas.
+   * Replace the canvas wholesale with a `graph_snapshot` frame's graph
+   * (`../hooks/useDiagramLiveSync.ts`, docs/09C-COLLABORATIVE-EDITING.md's Message Protocol) --
+   * sent once, immediately on connect, and again after any whole-graph replace
+   * (`auto_layout_diagram`, or the `PUT`-based autosave fallback). Ordering against a previous
+   * snapshot is the hook's own job (comparing `sequence`, which this frame carries but this
+   * action does not need); by the time this action is called, the hook has already decided the
+   * snapshot should be applied. Clears `dirty` and the undo/redo history: the snapshot is
+   * already persisted, and a stale undo entry from before this external change would restore
+   * graph state D1 no longer has. Does not mutate anything if `graphData` fails to parse -- a
+   * malformed push must never corrupt the current canvas.
    *
-   * @param graphData Canonical JSON string from the `graph_updated` message.
-   * @param updatedAt The pushed graph's own `updatedAt`.
+   * @param graphData Canonical JSON string from the `graph_snapshot` message.
    */
-  applyRemoteGraphUpdate: (graphData: string, updatedAt: string) => void;
-  /** Dismiss the "Updated by an agent" toast, whether by its own auto-dismiss timer or a manual
-   * click (`../components/editor/LiveUpdateToast.tsx`). */
+  applyRemoteGraphSnapshot: (graphData: string) => void;
+  /**
+   * Apply one other identity's discrete operation to this tab's local `nodes`/`edges`
+   * (`../hooks/useDiagramLiveSync.ts`'s `operation_applied` handling, for an operation that did
+   * not originate from this tab's own pending sends) via the same shared
+   * `../../graph-mutations.ts`'s `applyGraphOperation()` the server uses -- one code path, no
+   * second, duplicated mutation implementation in the browser. A stale-target operation (this
+   * tab's own local state has already diverged, for example by removing the same node itself)
+   * is silently ignored rather than thrown, matching this channel's "no separate reconciliation"
+   * handling for the rejected side.
+   *
+   * @param op The operation to apply.
+   */
+  applyRemoteOperation: (op: GraphOperation) => void;
+  /**
+   * Show the "Updated by…" toast (`../components/editor/LiveUpdateToast.tsx`) for another
+   * identity's live edit. Called by `../hooks/useDiagramLiveSync.ts` -- see that hook's own
+   * JSDoc for exactly when this is called versus suppressed for this tab's own optimistic edit.
+   *
+   * @param actorEmail The identity that performed the edit.
+   * @param origin `"human"` or `"agent"` -- selects the toast's rendered text.
+   */
+  showLiveUpdateNotice: (actorEmail: string, origin: "human" | "agent") => void;
+  /** Dismiss the "Updated by…" toast, whether by its own auto-dismiss timer or a manual click
+   * (`../components/editor/LiveUpdateToast.tsx`). */
   dismissLiveUpdateNotice: () => void;
 
   /** Enter or exit print mode. Side effects (forcing light mode, orientation, `window.print()`)
@@ -262,10 +393,12 @@ export type DiagramStore = DiagramState & DiagramActions;
  */
 export const useDiagramStore = create<DiagramStore>((set, get) => ({
   diagramId: null,
+  ownerEmail: null,
   title: "Untitled Diagram",
   description: "",
   updatedAt: null,
-  liveUpdateNotice: false,
+  liveUpdateNotice: null,
+  pendingOperations: new Map(),
   nodes: [],
   edges: [],
   viewport: { x: 0, y: 0, zoom: 1 },
@@ -282,17 +415,28 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   undoStack: [],
   redoStack: [],
 
-  setDiagram: (id, title, description, nodes, edges, viewport, updatedAt) =>
+  setDiagram: (
+    id,
+    ownerEmail,
+    title,
+    description,
+    nodes,
+    edges,
+    viewport,
+    updatedAt,
+  ) =>
     // `description` is declared as a plain `string` (see `DiagramActions.setDiagram`'s JSDoc),
     // and both real call sites (`../components/editor/DiagramCanvas.tsx`) already normalize a
     // `string | null` API value to `""` before calling this action, so no further fallback is
     // needed -- or reachable -- here.
     set({
       diagramId: id,
+      ownerEmail,
       title,
       description,
       updatedAt,
-      liveUpdateNotice: false,
+      liveUpdateNotice: null,
+      pendingOperations: new Map(),
       nodes,
       edges,
       viewport,
@@ -311,6 +455,19 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       nodes: applyNodeChanges(changes, state.nodes) as Node<CFNodeData>[],
       dirty: true,
     }));
+
+    // A canvas drag fires many intermediate "position" changes before its final one -- each
+    // one enqueues an `update_node` operation, but `operationKey()` coalesces them by nodeId, so
+    // only the drag's most recent position actually gets sent once the debounce timer flushes.
+    for (const change of changes) {
+      if (change.type === "position" && change.position !== undefined) {
+        get().enqueueOperation({
+          kind: "update_node",
+          nodeId: change.id,
+          patch: { position: change.position },
+        });
+      }
+    }
   },
 
   onEdgesChange: (changes: EdgeChange[]) => {
@@ -338,6 +495,14 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       ),
       dirty: true,
     }));
+    get().enqueueOperation({
+      input: {
+        edgeType: "data-flow",
+        source: connection.source,
+        target: connection.target,
+      },
+      kind: "add_edge",
+    });
   },
 
   connectNodes: (sourceId, targetId, edgeType) => {
@@ -384,6 +549,10 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       ],
       dirty: true,
     }));
+    get().enqueueOperation({
+      input: { edgeType, source: sourceId, target: targetId },
+      kind: "add_edge",
+    });
     get().setSelectedEdge(newEdgeId);
     return newEdgeId;
   },
@@ -396,6 +565,15 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       nodes: [...state.nodes, node],
       dirty: true,
     }));
+    get().enqueueOperation({
+      input: {
+        description: node.data.description,
+        label: node.data.label,
+        position: node.position,
+        typeId: node.data.typeId,
+      },
+      kind: "add_node",
+    });
   },
 
   updateNodeData: (nodeId, data) => {
@@ -406,6 +584,17 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       ),
       dirty: true,
     }));
+
+    // Only `label`/`description` are part of the shared operation vocabulary
+    // (`../../graph-mutations.ts`'s `NodePatch`) -- any other field the properties panel might
+    // one day set (a style override, for example) has no wire representation and is simply not
+    // synced live; it still saves via the `PUT`-based autosave fallback like everything else.
+    const patch: { label?: string; description?: string } = {};
+    if (data.label !== undefined) patch.label = data.label;
+    if (data.description !== undefined) patch.description = data.description;
+    if (Object.keys(patch).length > 0) {
+      get().enqueueOperation({ kind: "update_node", nodeId, patch });
+    }
   },
 
   updateEdgeData: (edgeId, data) => {
@@ -418,17 +607,61 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       ),
       dirty: true,
     }));
+
+    const patch: {
+      edgeType?: CFEdgeData["edgeType"];
+      label?: string;
+      description?: string;
+      protocol?: string;
+    } = {};
+    if (data.edgeType !== undefined) patch.edgeType = data.edgeType;
+    if (data.label !== undefined) patch.label = data.label;
+    if (data.description !== undefined) patch.description = data.description;
+    if (data.protocol !== undefined) patch.protocol = data.protocol;
+    if (Object.keys(patch).length > 0) {
+      get().enqueueOperation({ edgeId, kind: "update_edge", patch });
+    }
   },
 
   removeSelected: () => {
+    const state = get();
+    const removedNodeIds = state.nodes
+      .filter((n) => n.selected)
+      .map((n) => n.id);
+    const removedEdgeIds = state.edges
+      .filter((e) => e.selected)
+      .map((e) => e.id);
+
     get().pushHistory();
-    set((state) => ({
-      nodes: state.nodes.filter((n) => !n.selected),
-      edges: state.edges.filter((e) => !e.selected),
+    set((current) => ({
+      nodes: current.nodes.filter((n) => !n.selected),
+      edges: current.edges.filter((e) => !e.selected),
       selectedNodeId: null,
       selectedEdgeId: null,
       dirty: true,
     }));
+
+    // One operation per removed id -- there is no bulk-remove operation kind in the shared
+    // vocabulary (`../../graph-mutations.ts`).
+    for (const nodeId of removedNodeIds) {
+      get().enqueueOperation({ kind: "remove_node", nodeId });
+    }
+    for (const edgeId of removedEdgeIds) {
+      get().enqueueOperation({ edgeId, kind: "remove_edge" });
+    }
+  },
+
+  enqueueOperation: (op) =>
+    set((state) => {
+      const pending = new Map(state.pendingOperations);
+      pending.set(operationKey(op), op);
+      return { pendingOperations: pending };
+    }),
+
+  drainPendingOperations: () => {
+    const ops = Array.from(get().pendingOperations.values());
+    set({ pendingOperations: new Map() });
+    return ops;
   },
 
   setSelectedNode: (id) =>
@@ -466,14 +699,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
     }),
   markSaveError: (error) => set({ saving: false, saveError: error }),
 
-  applyRemoteGraphUpdate: (graphData, updatedAt) => {
-    const state = get();
-    // ISO-8601 timestamps from `new Date().toISOString()` compare correctly as plain strings --
-    // matching every other `updatedAt` comparison in this demo.
-    if (state.updatedAt !== null && updatedAt <= state.updatedAt) {
-      return;
-    }
-
+  applyRemoteGraphSnapshot: (graphData) => {
     let parsed: {
       nodes: Node<CFNodeData>[];
       edges: Edge<CFEdgeData>[];
@@ -498,15 +724,39 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       nodes: parsed.nodes,
       edges: parsed.edges,
       viewport: parsed.viewport,
-      updatedAt,
       dirty: false,
       undoStack: [],
       redoStack: [],
-      liveUpdateNotice: true,
     });
   },
 
-  dismissLiveUpdateNotice: () => set({ liveUpdateNotice: false }),
+  applyRemoteOperation: (op) => {
+    const state = get();
+    const graph: GraphData = {
+      edges: state.edges as unknown as Record<string, unknown>[],
+      nodes: state.nodes as unknown as Record<string, unknown>[],
+      viewport: state.viewport,
+    };
+
+    let mutated: GraphData;
+    try {
+      mutated = applyGraphOperation(graph, op);
+    } catch {
+      // A stale-target operation against this tab's own, possibly already-diverged local
+      // state -- nothing to apply; see this action's own JSDoc.
+      return;
+    }
+
+    set({
+      nodes: mutated.nodes as unknown as Node<CFNodeData>[],
+      edges: mutated.edges as unknown as Edge<CFEdgeData>[],
+    });
+  },
+
+  showLiveUpdateNotice: (actorEmail, origin) =>
+    set({ liveUpdateNotice: { actorEmail, origin } }),
+
+  dismissLiveUpdateNotice: () => set({ liveUpdateNotice: null }),
 
   setPrintMode: (printMode) => set({ printMode }),
 
