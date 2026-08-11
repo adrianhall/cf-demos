@@ -288,4 +288,35 @@ describe("AppHeader", () => {
 
     expect(screen.getAllByTitle("Toggle dark mode")).toHaveLength(1);
   });
+
+  describe("right-justified action group", () => {
+    // Regression test: `IdentityStatus` renders nothing at all on a public page while the
+    // identity request is loading or the visitor is anonymous, which previously left the
+    // dark-mode toggle and sign-in button with no `margin-left: auto` anchor of their own and
+    // sitting left-justified, immediately after the nav links, instead of right-justified.
+    it("keeps the dark-mode toggle and auth action grouped in a right-justified wrapper even when the identity slot renders nothing", () => {
+      const { container } = renderHeader({
+        access: "public",
+        current: "blueprints",
+        identity: loading,
+      });
+
+      const actions = container.querySelector(".app-shell__actions");
+      expect(actions).not.toBeNull();
+      expect(
+        actions?.querySelector('[title="Toggle dark mode"]'),
+      ).not.toBeNull();
+    });
+
+    it("places the identity slot, dark-mode toggle, and auth action in the same right-justified wrapper", () => {
+      const { container } = renderHeader({ identity: member });
+
+      const actions = container.querySelector(".app-shell__actions");
+      expect(actions).not.toBeNull();
+      expect(actions).toContainElement(screen.getByText("member@example.com"));
+      expect(actions).toContainElement(
+        screen.getByRole("link", { name: "Sign out" }),
+      );
+    });
+  });
 });
