@@ -1,0 +1,9 @@
+{
+  "ai_gateway_id": "review-agent-local-gateway",
+  "cloudflare_team_domain": "local.cloudflareaccess.com",
+  "d1_database_id": "00000000-0000-0000-0000-000000000000",
+  "d1_database_name": "review-agent-local-db",
+  "environment": "development",
+  "public_base_url": "http://localhost:5173",
+  "worker_name": "review-agent-local"
+}

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.wrangler/
+wrangler.jsonc
+worker-configuration.d.ts
+coverage/
+.env
+.env.*
+!.env.example
+
+# Unlike every other demo in this repository, `.dev.vars` IS gitignored here -- see
+# docs/07-PR-REVIEW-AGENT.md's "Explicit Exceptions". Local development genuinely needs the
+# operator's own GitHub/GitLab personal access tokens and webhook secrets to exercise
+# provider-calling code end to end, so AGENTS.md's own conditional ("commit it only when it
+# holds no secrets") comes out the other way for this one demo. Copy .dev.vars.example to
+# .dev.vars and fill in real values locally.
+.dev.vars
