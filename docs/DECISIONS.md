@@ -2146,3 +2146,189 @@ this decision exists so a future demo copying that shape with different path val
 independently rediscover the same `400` by choosing the bare hostname instead, which reads as the
 more natural first guess for `domain` on an application that is conceptually "the whole hostname's
 exception," as `demos/review-agent`'s own first draft did.
+
+## NEW DECISIONS
+
+## 42. `docs/ISSUE-5.md` root cause — `AI_CHAT_MODEL` speaks the OpenAI-chat wire shape, not the
+    Cloudflare-native one; a tool-instructing prompt must never be sent without its tools; the
+    model truncates nested tool arguments; and the model needs the current graph's ids
+
+`docs/ISSUE-5.md` reported that the Architect blueprint's "Generate with AI" chat produced no
+diagram at all, narrated raw `<tool_call>`/`create_node` markup at the user as prose, and rendered
+the assistant's answer twice. These are six independent defects, five server-side and one
+client-side, all confirmed empirically against the **real** `@cf/zai-org/glm-5.2` (decision #35)
+rather than reasoned about from types — Workers AI has no local simulation (decisions #9/#11/#36),
+so the only way to learn this model's actual wire shape is to call it. Probing used
+`POST /accounts/{id}/ai/run/@cf/zai-org/glm-5.2` with the demo's own `.env` credentials, plus a
+throwaway harness driving the real `runDiagramChatTurn()` end to end over the same REST endpoint.
+
+**The response is OpenAI-chat shaped, and `function.arguments` is a JSON *string*.** Non-streaming
+responses carry `choices[0].message.tool_calls[]`, each entry `{ id, type: "function",
+function: { name, arguments } }` with `arguments` a serialized JSON document — *not* the
+Cloudflare-native top-level `{ response, tool_calls: [{ name, arguments: {...} }] }` shape with
+parsed argument objects and no ids that `demos/architect/EXPLAIN-DEMO.md` claimed and that the
+original `runNonStreamingRound()` read. Reading `result.tool_calls` against this model therefore
+found zero tool calls on every single turn, which is the whole "no diagram is ever produced" half
+of the issue. Streamed responses are the same shape one delta at a time: text as
+`choices[0].delta.content`, and tool calls as `choices[0].delta.tool_calls[]` *fragments* keyed by
+`index`, where the opening fragment for a call carries `id` and `function.name` with empty
+arguments and every later fragment carries `id: null`/`name: null` and one slice of the arguments
+text, to be concatenated in arrival order. **Both shapes are now read** (`extractObjectToolCalls`,
+`extractObjectText`, `extractStreamDelta`, `accumulateToolCallDeltas`), openai-chat first and the
+Cloudflare-native shape as a fallback, so this code does not newly hard-code itself to one vendor
+shape while fixing a bug caused by hard-coding the other.
+
+**This model is a reasoning model, and `delta.reasoning_content` must never be relayed to the
+user.** Chain of thought arrives interleaved with real answer text on its own delta field. Only
+`delta.content` reaches `onToken`.
+
+**A tool-instructing system prompt sent *without* `tools` makes the model narrate tool-call markup
+as prose.** The original design ran a final, deliberately tool-less round to get the closing
+natural-language answer, while still sending the same system prompt that documents the tool
+catalog — so the model dutifully "called" the tools the only way it could, by typing
+`<tool_call>`/`<invoke>`/`create_node` into its answer. This exactly reproduces
+`spikes/03-agent-skills-composability/REPORT.md` §7's own earlier finding, now confirmed a second
+time on a different model. **Decision: every round carries `TOOL_DEFINITIONS`, including the final
+one.** The round budget alone (`MAX_TOOL_ROUNDS` plus one trailing round whose tool calls are
+ignored) terminates the loop; withholding the tools is not needed for that and actively causes
+this. Two regression tests assert `tools` is present on *every* recorded round.
+
+**Related: each round is now exactly one inference call.** The original loop ran a non-streaming
+round to collect tool calls and then, for the final answer only, a *second* streaming call whose
+result duplicated work already done. Collapsing to one streamed call per round removes the
+duplicate inference (and its cost/latency) and is what makes "carry the tools on every round"
+expressible at all.
+
+**The model truncates a tool call's streamed `arguments` when the last field is a nested object,
+and echoing invalid JSON back is a hard `400`.** When `add_node`'s optional `position` is the final
+argument, the `}}` closing both the nested object and the argument object arrives on the wire as a
+single `}`. Every affected call is otherwise complete. Left alone this made *every* positioned
+`add_node` unparseable; and echoing the raw text back in the follow-up assistant message fails the
+request outright with `AiError: Assistant tool call function.arguments must be valid JSON`, taking
+the whole turn down rather than just that one call. **Decision: repair by appending exactly the
+closers the document's own brace/bracket stack still has open** (`closeTruncatedJson`), and echo
+the *re-serialized parsed* arguments (`toWireToolCall`), substituting `{}` when the text is not
+parseable at all so a single bad call degrades to one recoverable tool error instead of a fatal
+`400`. The repair deliberately **refuses** two cases: text ending inside an unterminated string
+literal (real content was lost mid-value; inventing a closing quote would silently produce a
+truncated node label instead of an honest error the model can retry), and mismatched closers
+(genuine corruption, not truncation). Both refusals are tested.
+
+**The model was never shown the diagram it was editing, so it invented ids.** Node and edge ids
+are server-side `crypto.randomUUID()`s minted by `graph-mutations.ts`. With no id in the prompt a
+model asked to wire nodes together passes each node's *label* where an id belongs, `addEdge()`
+rejects every call with `notFound()`, and the turn burns its entire round budget failing — the
+observed behavior was eight `add_edge` calls rejected, then the model apologizing about "a timing
+issue" and retrying the same eight the same way. Fixed on two axes: a new
+`buildGraphPromptContext(graph)` digest (each node's `id`/`typeId`/`label`, each edge's
+`id`/`source`/`target`/`edgeType`, plus an explicit "use these exact ids, never a label"
+instruction) is rebuilt into `turnMessages[0]` before **every** round, not just the first; and each
+successful mutation's `role: "tool"` result now names the id it just created
+(`describeMutationResult`). Positions, descriptions and viewport state are deliberately omitted
+from the digest — none of them changes which id a tool call should name, and this text is rebuilt
+on every round of every turn.
+
+**A corollary that is easy to get wrong: the *caller's* graph is authoritative.** `applyMutation`
+(really `DiagramSession.applyOperation()`) mints the ids that end up in storage. If the chat engine
+re-derives its own local copy by re-running `applyGraphOperation()`, it mints *different* UUIDs, so
+the ids it reports and prints are not the ids that exist — reintroducing the invented-id failure in
+a form that is much harder to see. `ApplyMutationResult` therefore gained an optional `graph` that
+`DiagramSession` now populates, and the engine adopts it in preference to its own copy. This was
+also, verbatim, the last bug in the throwaway verification harness itself, which is how confidently
+it can be asserted to be a real trap and not a hypothetical one.
+
+**Client-side: reading a ref inside a deferred state updater duplicated the assistant bubble.**
+`useDiagramLiveSync.ts`'s `chat_done` handler cleared `activeAssistantEntryIdRef` and then read it
+again *inside* the `setState` updater, which React may run later — and does run in the same batch
+as the preceding `chat_token` frames under `StrictMode`/automatic batching, at which point the
+updater no longer finds the streamed entry to finalize and appends a second one instead. **Decision:
+resolve every id and ref synchronously, outside the updater, keeping the updaters pure.** The
+regression test drives `chat_token` and `chat_done` in one batched render and was confirmed to fail
+(two assistant entries) with the fix reverted.
+
+**Verification note for anyone reproducing this.** Driving `runDiagramChatTurn()` against the real
+REST endpoint from Node needs the SSE body handed to the engine *unteed*: wrapping it in
+`ReadableStream.tee()` to log the raw frames on the side deadlocks the turn part-way through a
+round, which reads exactly like the model hanging. Log inside the engine's own SSE reader instead.
+A full nine-node/nine-edge blueprint generation takes ~19 tool calls across four rounds and several
+minutes wall-clock, so give any such harness a generous timeout and per-request `AbortSignal`.
+
+## 43. A replicated operation must carry the ids it creates — the collaboration protocol's
+    `add_node`/`add_edge` were not replayable, silently dropping every AI-authored edge; plus
+    Markdown rendering and honest chat-transcript ordering
+
+Three findings from `docs/ISSUE-5.md`'s follow-up round of manual validation against the deployed
+demo. The first is a genuine protocol defect in 9C's collaboration layer that 9D's AI chat is
+simply the first feature to exercise hard; the other two are 9D presentation bugs.
+
+**`operation_applied` is a replicated message, so every operation on it must be deterministic —
+`add_node`/`add_edge` were not.** `src/graph-mutations.ts`'s `addNode`/`addEdge` minted
+`crypto.randomUUID()` *inside* the function, and the operation itself carried no id. But
+`DiagramSession.applyOperation()` applies the operation to its own authoritative graph and then
+broadcasts **the same id-less operation**, which every connected browser re-applies to its own
+local store (`diagramStore.ts`'s `applyRemoteOperation`). Each replica therefore minted a
+*different* id and diverged from the Durable Object permanently — there is no periodic resync,
+since `graph_snapshot` is only sent on connect and on whole-graph writes. The user-visible symptom
+was severe and easy to misread as an AI failure: the assistant would create six nodes and then
+connect them, the chat would report the connections as made, and the editor would show **no edges
+at all**. What actually happened is that each `add_edge` named the Durable Object's own node ids,
+which existed nowhere in the browser's diverged copy, so `addEdge()` threw `notFound()` and
+`applyRemoteOperation`'s `catch` — there to tolerate genuinely stale targets — swallowed it
+silently. The same divergence is why the transcript printed "Connected a node → a node": the
+label lookup missed too. Worst of all, `GenerateWithAiModal.handleOpenInEditor()` then read the
+browser's diverged store and `PUT` it back over the diagram, so clicking "Open in Editor"
+**destroyed the correct, edge-bearing graph that was already persisted in D1**. Nothing warned;
+the data was simply gone.
+
+**Decision: make the two creating operations carry their own id.** `AddNodeInput`/`AddEdgeInput`
+gained an optional `id`; `addNode`/`addEdge` use `input.id ?? crypto.randomUUID()` and reject an
+id already in use. `DiagramSession.applyOperation()` runs a new `withReplicableIds(op)` **before**
+applying, so the operation it applies and the operation it broadcasts are byte-for-byte identical.
+The browser now sends the id it already applied optimistically, so its own edit round-trips
+unchanged instead of the object silently renaming it. This was fixed at the protocol level rather
+than only for `ai-chat`-origin operations because the defect is not AI-specific — a remote human
+edit and a 9B MCP tool call replicate through exactly the same path and had exactly the same bug;
+it simply took an actor that creates many nodes and then immediately references them by id to make
+it obvious. Regression coverage is an integration test asserting the broadcast operation carries
+the id that was actually persisted, and a second one that uses ids learned from `add_node`
+broadcasts as `add_edge` endpoints — the exact sequence that used to fail.
+
+**The assistant writes Markdown, and the panel rendered it as literal characters.** The model
+emits headings, bold, bullet lists, fenced code and GFM tables unprompted; `AiChatPanel` rendered
+`<p>{entry.text}</p>`, and with no `white-space: pre-wrap` even the newlines collapsed, so a
+structured answer arrived as one run-on line full of `**` and `|`. Added `react-markdown` +
+`remark-gfm` (`remark-gfm` is what turns the very common table output into a real `<table>`).
+Deliberately **no** `rehype-raw`: `react-markdown` ignores embedded HTML by default, and that
+default is what stops model-authored text from being an HTML injection vector. The new CSS is
+scoped under `.ai-chat-panel__markdown` and is about legibility in a ~260px-wide docked sidebar
+rather than rich styling; links inherit the bubble's already-vetted text color and rely on an
+underline, avoiding a new color needing its own contrast check in both themes.
+
+**The transcript both duplicated and misordered itself.** Three causes, fixed together. (1) Every
+graph mutation produced *two* lines — a `chat_status` from the Worker ("Adding node "API"…") and
+an `"action"` entry from the `operation_applied` broadcast ("Added node: API"). Worse, the status
+was emitted **before** `applyMutation` ran, so a rejected operation still announced itself as
+done: that is what made the transcript claim edges had been connected when they had not. The
+pre-apply `onStatus` for graph operations is gone; the confirmed broadcast is the single narration,
+and `onStatus` now serves only `rename_diagram` and the docs lookup, neither of which broadcasts
+anything of its own. (2) An assistant bubble stayed anchored wherever its first token landed while
+every status/action/docs entry appended to the end, so a turn that narrated, called tools, then
+narrated again put its closing summary *above* the tool activity that preceded it. A new
+`appendInterruptingEntry` clears the active-bubble anchor whenever a non-assistant entry is
+appended, so the next token opens a fresh bubble beneath it and the transcript reads
+chronologically. Consequently `chat_done` no longer rewrites "the" bubble with the turn's whole
+`assistantText` — a turn may now own several bubbles, and `assistantText` is by construction the
+concatenation of exactly the tokens already rendered, so rewriting would duplicate every earlier
+bubble's prose into the last one; it now only records the answer when nothing streamed at all.
+(3) `GenerateWithAiModal` echoed its own synthesized instruction ("The user wants: …Propose an
+initial Cloudflare architecture using only the available product types…") back as the user's
+message. `sendChatMessage` gained an optional `displayText` so the model gets the full prompt
+while the transcript shows only what the user typed.
+
+**Deferred, and filed instead: `docs/ISSUE-6.md`.** "Open in Editor" also loses the conversation —
+the editor lands with the sidebar closed on the Properties tab and an empty transcript. Landing on
+the chat tab is a few lines, but the transcript lives in component state and the model's history is
+per-WebSocket-connection, so a rehydrated transcript would face an amnesiac model. That is a design
+question (persist chat history in the `DiagramSession` Durable Object and make the assistant a real
+agentic loop over the diagram) rather than a patch, so it is written up separately rather than
+half-solved here.

@@ -234,14 +234,18 @@ of its own.
   output/`{{placeholder}}` when it is a static demo choice already fixed directly in the .tf file
   ... that adds indirection with no actual single-source-of-truth benefit"). `AI_GATEWAY_ID`, by
   contrast, **is** a `{{placeholder}}`/Terraform output, exactly like `d1_database_id`.
-- **Function calling with Workers AI is non-streaming**
-  ([Workers AI function calling](https://developers.cloudflare.com/workers-ai/function-calling/)):
-  a call with `tools` set returns a complete `{ response, tool_calls[] }` object, not a token
-  stream. `DiagramSession`'s chat loop therefore runs every **tool-calling round** of a turn as a
-  plain, non-streaming `env.AI.run()` call, and only the turn's **final** round — once the model
-  has stopped calling tools and is producing its closing natural-language answer — is requested
-  with `stream: true`, its tokens relayed to the originating connection as `chat_token` WebSocket
-  messages (see [Message Protocol](#message-protocol)).
+- **Function calling with `AI_CHAT_MODEL` *is* streaming, and every round carries the tools.**
+  This bullet originally asserted the opposite — that a call with `tools` set returns a complete
+  `{ response, tool_calls[] }` object and never a token stream, so only the turn's final,
+  deliberately tool-less round should set `stream: true`. Both halves of that were wrong for this
+  model and together caused `docs/ISSUE-5.md`: it streams tool calls as
+  `choices[0].delta.tool_calls[]` fragments in the OpenAI-chat wire shape (not the Cloudflare-native
+  shape this bullet described), and sending the tool-documenting system prompt *without* the tools
+  attached makes it narrate `<tool_call>` markup at the user as prose. **Every round is one
+  streaming `env.AI.run()` call carrying the full tool catalog**; the round budget alone ends the
+  loop. The final round's tokens are relayed to the originating connection as `chat_token` WebSocket
+  messages (see [Message Protocol](#message-protocol)). See `docs/DECISIONS.md` #42 for the probed
+  wire shapes and the other four defects fixed alongside this.
 - A Durable Object can make the exact same `env.AI.run()`/outbound-`fetch()` calls a Worker's
   `fetch()` handler can — this document introduces no special binding wiring for `DiagramSession`
   beyond adding `"ai": { "binding": "AI" }` to `wrangler.jsonc.tpl` once; every class exported from
@@ -348,10 +352,14 @@ repository's Source Organization conventions, exactly as `graph-mutations.ts` al
 1. Build a **system prompt** from `src/worker/ai/catalog-context.ts`'s `buildCatalogPromptContext()`
    — a compact, per-request digest of every `src/catalog.ts` `NODE_TYPES`/`EDGE_TYPES` entry,
    generated fresh from the same catalog module the palette and properties panel already render
-   from, so it can never drift from the real product set.
-2. Run `env.AI.run(AI_CHAT_MODEL, { messages: [...system, ...history, ...toolMessages], tools:
-   TOOL_DEFINITIONS }, { gateway: { id } })` — non-streaming.
-3. If the response carries `tool_calls`, execute each one:
+   from, so it can never drift from the real product set — plus `buildGraphPromptContext(graph)`, a
+   digest of the ids/types/labels currently on the canvas. The graph half is **rebuilt before every
+   round**, not just the first: ids are minted server-side, and a model with no ids passes labels
+   where ids belong and fails every call (`docs/DECISIONS.md` #42).
+2. Run `env.AI.run(AI_CHAT_MODEL, { messages: [...system, ...history, ...toolMessages], stream:
+   true, tools: TOOL_DEFINITIONS }, { gateway: { id } })` and reassemble the streamed
+   `choices[0].delta` fragments into text plus whole tool calls.
+3. If the round produced `tool_calls`, execute each one:
    - A graph-mutating tool call (`add_node`/`update_node`/`remove_node`/`add_edge`/`update_edge`/
      `remove_edge`) is validated against the live catalog, translated into a `graph-mutations.ts`
      -shaped operation, and applied via `applyMutation(op)`. A rejection (9C's existing
@@ -365,13 +373,20 @@ repository's Source Organization conventions, exactly as `graph-mutations.ts` al
      Protocol](#message-protocol)) — title/description are diagram metadata, not part of
      `GraphData`, so they do not go through `applyOperation()`.
    - `search_cloudflare_documentation` calls `docs-client.ts`; its result never touches `this.graph`.
-   - Each tool's result is appended as a `role: "tool"` message to a **turn-local** message array
-     (not the persisted per-connection `messages` history — only the final user/assistant text
-     pair joins that), and a `chat_status` frame is sent to the originating connection describing
-     what just happened. The loop returns to step 2, capped at **8 rounds**, after which the model
-     is told (via one synthetic tool result) it has reached its action limit for this turn.
-4. Once a round returns no `tool_calls`, re-run **that same round only** with `stream: true` and
-   relay `chat_token` frames as they arrive to the originating connection only.
+    - Each tool's result is appended as a `role: "tool"` message to a **turn-local** message array
+      (not the persisted per-connection `messages` history — only the final user/assistant text
+      pair joins that). A tool that changes nothing observable on its own — `rename_diagram`,
+      `search_cloudflare_documentation` — also sends a `chat_status` frame narrating what it did.
+      A **graph-mutating** tool deliberately does not: it already narrates itself to every
+      connected tab through the `operation_applied` broadcast, so a status here produced two
+      transcript lines per operation and, being emitted before the operation was applied,
+      announced operations that were then rejected (`docs/DECISIONS.md` #43). The loop returns to
+      step 2, capped at **8 rounds**, after which the model is told (via one synthetic tool
+      result) it has reached its action limit for this turn.
+4. A round that produces no `tool_calls` is already the final answer — its own streamed
+   `chat_token` frames were relayed to the originating connection as they arrived, with no second
+   call for the same round. Nothing about that last round withholds `tools`; see the streaming
+   bullet under [Model And AI Gateway](#model-and-ai-gateway).
 5. Append the final `{ role: "user", content: text }`/`{ role: "assistant", content:
    assistantText }` pair to the connection's own ephemeral `messages` history, and send
    `chat_done`.

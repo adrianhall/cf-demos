@@ -817,10 +817,19 @@ describe("useDiagramStore", () => {
       });
 
       const [op] = useDiagramStore.getState().drainPendingOperations();
+      // The operation must carry the very id this tab already rendered, so the Durable Object
+      // and every other replica apply it identically instead of each minting their own.
+      const [edge] = useDiagramStore.getState().edges;
       expect(op).toEqual({
-        input: { edgeType: "data-flow", source: "a", target: "b" },
+        input: {
+          edgeType: "data-flow",
+          id: edge?.id,
+          source: "a",
+          target: "b",
+        },
         kind: "add_edge",
       });
+      expect(typeof edge?.id).toBe("string");
     });
 
     it("connectNodes enqueues add_edge", () => {
@@ -831,11 +840,18 @@ describe("useDiagramStore", () => {
         ],
       });
 
-      useDiagramStore.getState().connectNodes("a", "b", "trigger");
+      const newEdgeId = useDiagramStore
+        .getState()
+        .connectNodes("a", "b", "trigger");
 
       const [op] = useDiagramStore.getState().drainPendingOperations();
       expect(op).toEqual({
-        input: { edgeType: "trigger", source: "a", target: "b" },
+        input: {
+          edgeType: "trigger",
+          id: newEdgeId,
+          source: "a",
+          target: "b",
+        },
         kind: "add_edge",
       });
     });

@@ -64,6 +64,70 @@ describe("AiChatPanel", () => {
     expect(screen.getByText("Something went wrong.")).toBeInTheDocument();
   });
 
+  describe("assistant Markdown", () => {
+    /** Render a transcript of exactly one assistant entry carrying `text`. */
+    function renderAssistant(text: string) {
+      render(
+        <AiChatPanel
+          {...baseProps()}
+          transcript={[{ id: "1", kind: "assistant", stopped: false, text }]}
+        />,
+      );
+    }
+
+    it("shows the answer unformatted while the Markdown chunk is still loading", () => {
+      // The renderer is lazy-loaded, so the very first render is the Suspense fallback. It must
+      // still show the answer rather than a spinner or an empty bubble.
+      renderAssistant("## Plan");
+
+      expect(screen.getByText("## Plan")).toBeInTheDocument();
+    });
+
+    it("renders headings, emphasis and lists as real elements rather than literal syntax", async () => {
+      renderAssistant("## Plan\n\nUse **Workers**.\n\n- Gateway\n- Storage\n");
+
+      expect(
+        await screen.findByRole("heading", { name: "Plan" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Workers").tagName).toBe("STRONG");
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+      // The literal syntax must be gone, not merely supplemented.
+      expect(screen.queryByText(/\*\*Workers\*\*/u)).not.toBeInTheDocument();
+    });
+
+    it("renders a GFM table, which the model emits routinely", async () => {
+      renderAssistant(
+        "| Component | Role |\n|---|---|\n| Worker | Routing |\n",
+      );
+
+      expect(await screen.findByRole("table")).toBeInTheDocument();
+      expect(
+        screen.getByRole("columnheader", { name: "Component" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("cell", { name: "Routing" })).toBeInTheDocument();
+    });
+
+    it("renders a fenced code block", async () => {
+      renderAssistant("Try:\n\n```\nwrangler deploy\n```\n");
+
+      expect((await screen.findByText("wrangler deploy")).tagName).toBe("CODE");
+    });
+
+    it("does not render embedded HTML, so model-authored text cannot inject markup", async () => {
+      renderAssistant('Safe <img src="x" onerror="alert(1)"> text');
+
+      await screen.findByText(/Safe/u);
+      expect(document.querySelector("img")).toBeNull();
+    });
+
+    it("degrades gracefully for a part-streamed, unterminated construct", async () => {
+      // Every token render sees incomplete Markdown; it must not throw or blank the bubble.
+      renderAssistant("Here is **a partially strea");
+
+      expect(await screen.findByText(/partially strea/u)).toBeInTheDocument();
+    });
+  });
+
   it("renders the non-fatal docs-lookup fallback message instead of a Sources list", () => {
     const transcript: ChatTranscriptEntry[] = [
       {

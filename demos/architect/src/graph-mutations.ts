@@ -1,4 +1,4 @@
-import { notFound } from "@adrianhall/cloudflare-toolkit/errors";
+import { badRequest, notFound } from "@adrianhall/cloudflare-toolkit/errors";
 import { CF_EDGE_TYPE, CF_NODE_TYPE } from "./graph-element-types";
 import type { GraphData } from "./worker/diagrams/types";
 
@@ -56,6 +56,18 @@ interface GraphEdge extends Record<string, unknown> {
 
 /** Fields accepted by {@link addNode}. */
 export interface AddNodeInput {
+  /**
+   * Id to give the new node. Omit to have one minted.
+   *
+   * An `add_node` operation is **replayed** by every replica of a diagram: the Durable Object
+   * applies it, and every connected browser re-applies the broadcast copy to its own local store
+   * (`src/client/stores/diagramStore.ts`'s `applyRemoteOperation`). When the id is minted inside
+   * {@link addNode} instead of carried on the operation, each replica mints a *different* one and
+   * the replicas silently diverge — a later `add_edge` naming the originator's node ids then
+   * fails `notFound()` on every other replica, so the edge is simply missing there. Carrying the
+   * id makes replay deterministic. See `docs/DECISIONS.md` #43.
+   */
+  id?: string;
   /** Catalog product type identifier (e.g. "worker", "d1"), linking to `../../catalog.ts`. */
   typeId: string;
   /** Display label shown on the node. */
@@ -79,6 +91,9 @@ export interface NodePatch {
 
 /** Fields accepted by {@link addEdge}. */
 export interface AddEdgeInput {
+  /** Id to give the new edge. Omit to have one minted. Carried across replicas for exactly the
+   * reason {@link AddNodeInput.id} documents. */
+  id?: string;
   /** Id of an existing node this edge starts from. */
   source: string;
   /** Id of an existing node this edge ends at. */
@@ -122,17 +137,24 @@ function edgesOf(graph: GraphData): GraphEdge[] {
  * Append a new node to a graph.
  *
  * @param graph Current graph.
- * @param input Fields for the new node.
+ * @param input Fields for the new node. Pass {@link AddNodeInput.id} to make the operation
+ * deterministically replayable across replicas; omit it to mint one.
  * @returns A new graph with the node appended. `graph` itself is never mutated.
+ * @throws {ProblemDetailsError} `badRequest()` when `input.id` is already taken by another node.
  */
 export function addNode(graph: GraphData, input: AddNodeInput): GraphData {
+  if (input.id !== undefined && nodesOf(graph).some((n) => n.id === input.id)) {
+    throw badRequest({
+      detail: `A node with id "${input.id}" already exists.`,
+    });
+  }
   const node: GraphNode = {
     data: {
       description: input.description ?? "",
       label: input.label,
       typeId: input.typeId,
     },
-    id: crypto.randomUUID(),
+    id: input.id ?? crypto.randomUUID(),
     position: input.position,
     type: CF_NODE_TYPE,
   };
@@ -206,12 +228,19 @@ export function removeNode(graph: GraphData, nodeId: string): GraphData {
  * Append a new edge between two existing nodes.
  *
  * @param graph Current graph.
- * @param input Fields for the new edge.
+ * @param input Fields for the new edge. Pass {@link AddEdgeInput.id} to make the operation
+ * deterministically replayable across replicas; omit it to mint one.
  * @returns A new graph with the edge appended.
  * @throws {ProblemDetailsError} `notFound()` when `source` or `target` does not reference an
  * existing node in `graph`.
+ * @throws {ProblemDetailsError} `badRequest()` when `input.id` is already taken by another edge.
  */
 export function addEdge(graph: GraphData, input: AddEdgeInput): GraphData {
+  if (input.id !== undefined && edgesOf(graph).some((e) => e.id === input.id)) {
+    throw badRequest({
+      detail: `An edge with id "${input.id}" already exists.`,
+    });
+  }
   const nodeIds = new Set(nodesOf(graph).map((node) => node.id));
   if (!nodeIds.has(input.source)) {
     throw notFound({ detail: `Node "${input.source}" not found.` });
@@ -229,7 +258,7 @@ export function addEdge(graph: GraphData, input: AddEdgeInput): GraphData {
         : {}),
       ...(input.protocol !== undefined ? { protocol: input.protocol } : {}),
     },
-    id: crypto.randomUUID(),
+    id: input.id ?? crypto.randomUUID(),
     source: input.source,
     target: input.target,
     type: CF_EDGE_TYPE,
