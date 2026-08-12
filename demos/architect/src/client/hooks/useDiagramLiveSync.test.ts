@@ -704,6 +704,47 @@ describe("useDiagramLiveSync", () => {
       ]);
     });
 
+    it("keeps the transcript in chronological order when a turn narrates, acts, then narrates again", () => {
+      // The reported symptom (docs/DECISIONS.md #43): the turn's closing summary appeared
+      // *above* the tool activity that preceded it, because the assistant bubble stayed
+      // anchored wherever its first token landed while every status appended to the end.
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+      act(() => latestSocket().simulateOpen());
+      const clientRequestId = result.current.sendChatMessage("Build it");
+      rerender();
+
+      latestSocket().simulateMessage({
+        clientRequestId,
+        text: "Now I'll wire everything together:",
+        type: "chat_token",
+      });
+      latestSocket().simulateMessage({
+        clientRequestId,
+        message: "Renaming the diagram…",
+        type: "chat_status",
+      });
+      latestSocket().simulateMessage({
+        clientRequestId,
+        text: "All connected.",
+        type: "chat_token",
+      });
+      rerender();
+
+      expect(
+        result.current.chatTranscript.map((entry) => [
+          entry.kind,
+          "text" in entry ? entry.text : "",
+        ]),
+      ).toEqual([
+        ["user", "Build it"],
+        ["assistant", "Now I'll wire everything together:"],
+        ["status", "Renaming the diagram…"],
+        ["assistant", "All connected."],
+      ]);
+    });
+
     it("accumulates streamed chat_token frames onto one assistant entry", () => {
       const { result, rerender } = renderHook(() =>
         useDiagramLiveSync("diagram-1", true),
@@ -820,7 +861,7 @@ describe("useDiagramLiveSync", () => {
       });
     });
 
-    it("reconciles the assistant entry to chat_done's complete text and clears chatInFlight", () => {
+    it("leaves the streamed assistant entry intact on chat_done and clears chatInFlight", () => {
       const { result, rerender } = renderHook(() =>
         useDiagramLiveSync("diagram-1", true),
       );
@@ -830,7 +871,7 @@ describe("useDiagramLiveSync", () => {
 
       latestSocket().simulateMessage({
         clientRequestId,
-        text: "Sure",
+        text: "Sure, I added a Worker node.",
         type: "chat_token",
       });
       latestSocket().simulateMessage({
@@ -841,13 +882,90 @@ describe("useDiagramLiveSync", () => {
       rerender();
 
       expect(result.current.chatInFlight).toBe(false);
-      const assistantEntry = result.current.chatTranscript.find(
+      const assistantEntries = result.current.chatTranscript.filter(
         (entry) => entry.kind === "assistant",
       );
-      expect(assistantEntry).toMatchObject({
+      // `chat_done` deliberately does not rewrite the streamed text: `assistantText` is the
+      // concatenation of exactly the tokens already rendered, and a turn may own several
+      // assistant bubbles once tool activity splits them (docs/DECISIONS.md #43).
+      expect(assistantEntries).toHaveLength(1);
+      expect(assistantEntries[0]).toMatchObject({
         stopped: false,
         text: "Sure, I added a Worker node.",
       });
+    });
+
+    it("records the answer on chat_done when no token streamed at all", () => {
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+      act(() => latestSocket().simulateOpen());
+      const clientRequestId = result.current.sendChatMessage("Add a Worker");
+      rerender();
+
+      latestSocket().simulateMessage({
+        clientRequestId,
+        assistantText: "Done, with no streamed tokens.",
+        type: "chat_done",
+      });
+      rerender();
+
+      const assistantEntries = result.current.chatTranscript.filter(
+        (entry) => entry.kind === "assistant",
+      );
+      expect(assistantEntries).toHaveLength(1);
+      expect(assistantEntries[0]).toMatchObject({
+        text: "Done, with no streamed tokens.",
+      });
+    });
+
+    it("reconciles to a single assistant entry when chat_done is batched into the same render as the streamed tokens", () => {
+      // Regression coverage for docs/ISSUE-5.md's duplicated answer. React defers a
+      // `setState` updater to render time whenever that hook already has queued work, which is
+      // the normal case while tokens are streaming: the last `chat_token` and the `chat_done`
+      // that follows it land in the same batch. The `chat_done` handler must therefore capture
+      // the active assistant entry id *before* it resets that ref, or its own deferred updater
+      // observes the already-cleared ref and appends a second, complete copy of the answer.
+      // Delivering every frame inside one `act()` is what reproduces that batching here.
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+      act(() => latestSocket().simulateOpen());
+      const clientRequestId = result.current.sendChatMessage("Add a Worker");
+      rerender();
+
+      act(() => {
+        latestSocket().simulateMessage({
+          clientRequestId,
+          text: "Sure, ",
+          type: "chat_token",
+        });
+        latestSocket().simulateMessage({
+          clientRequestId,
+          text: "I added a Worker node.",
+          type: "chat_token",
+        });
+        latestSocket().simulateMessage({
+          assistantText: "Sure, I added a Worker node.",
+          clientRequestId,
+          type: "chat_done",
+        });
+      });
+      rerender();
+
+      expect(
+        result.current.chatTranscript.filter(
+          (entry) => entry.kind === "assistant",
+        ),
+      ).toEqual([
+        {
+          id: expect.any(String),
+          kind: "assistant",
+          stopped: false,
+          text: "Sure, I added a Worker node.",
+        },
+      ]);
+      expect(result.current.chatInFlight).toBe(false);
     });
 
     it("records the turn's complete text on chat_done even when no chat_token ever arrived", () => {

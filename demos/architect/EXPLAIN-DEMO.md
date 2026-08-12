@@ -731,12 +731,19 @@ change with the ordinary `Ctrl+Z` history the same way they would undo their own
 **Workers AI and AI Gateway.** `runDiagramChatTurn()` (`src/worker/ai/chat-engine.ts`) runs a
 bounded, model-driven tool-calling loop against `env.AI.run()`, gated through one AI Gateway
 (`cloudflare_ai_gateway`, every call passing `{ gateway: { id: env.AI_GATEWAY_ID } }`) so every
-chat turn is visible in one place in the dashboard's AI Gateway logs. Function calling with
-Workers AI is inherently non-streaming — a call with `tools` set returns a complete
-`{ response, tool_calls[] }` object, never a token stream — so every tool-calling round runs as a
-plain, non-streaming call, and only the turn's final round, once the model has stopped calling
-tools and is producing its closing answer, is requested with `stream: true`, relayed to the
-originating connection as `chat_token` messages. The model itself
+chat turn is visible in one place in the dashboard's AI Gateway logs. **Every round of the loop is
+one streaming call that carries the full tool catalog** — including the last one, which produces
+the closing natural-language answer relayed to the originating connection as `chat_token`
+messages. Both halves of that matter. `AI_CHAT_MODEL` streams tool calls perfectly well, in the
+OpenAI-chat wire shape: text arrives on `choices[0].delta.content` and tool calls arrive as
+`choices[0].delta.tool_calls[]` fragments keyed by `index`, which the engine reassembles into
+whole calls (the model's chain of thought arrives separately on `delta.reasoning_content` and is
+never relayed to the user). And sending the tool-documenting system prompt *without* the tools
+attached — which an earlier design did for the final round, on the assumption that withholding
+them was what ended the loop — makes the model narrate `<tool_call>` markup at the user as prose
+instead of calling anything. The round budget alone ends the loop. See `docs/DECISIONS.md` #42 for
+the empirical wire-shape findings behind this, including the argument-truncation defect the engine
+repairs and why the model is shown the current graph's ids on every round. The model itself
 (`AI_CHAT_MODEL`, a plain literal in `wrangler.jsonc.tpl`, not a Terraform output) is a single,
 operator-visible-but-not-user-selectable choice — unlike `docs/06-AGENTIC-CHAT.md`'s AI Gateway,
 this one uses **no dynamic routing**: there is exactly one caller and one model here, so there is
@@ -812,7 +819,7 @@ snippets), matching `docs/05-AI-CHAT.md`'s "never prompt or response content" lo
 - [Access Durable Object name via `ctx.id.name`](https://developers.cloudflare.com/changelog/post/2026-03-15-durable-object-id-name/) — how `DiagramSession` knows its own diagram id without a separate parameter (`docs/DECISIONS.md` #33).
 - [`<ViewportPortal />` (`@xyflow/react`)](https://reactflow.dev/api-reference/components/viewport-portal) — renders the remote cursor overlay and selection highlight in the same coordinate system as the canvas's nodes and edges, so they pan/zoom together.
 - [Workers AI](https://developers.cloudflare.com/workers-ai/)
-- [Workers AI function calling](https://developers.cloudflare.com/workers-ai/function-calling/) — why `runDiagramChatTurn()` runs every tool-calling round as a plain, non-streaming call and requests `stream: true` only for the turn's final answer.
+- [Workers AI function calling](https://developers.cloudflare.com/workers-ai/function-calling/) — the `tools` contract `runDiagramChatTurn()` sends on every round of its loop.
 - [AI Gateway](https://developers.cloudflare.com/ai-gateway/)
 - [`cloudflare_ai_gateway` resource](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/ai_gateway)
 - [Cloudflare's own MCP servers (documentation server, `docs.mcp.cloudflare.com`)](https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/) — the public, unauthenticated server `search_cloudflare_documentation` calls.

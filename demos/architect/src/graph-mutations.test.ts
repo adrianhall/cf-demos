@@ -64,6 +64,35 @@ describe("addNode", () => {
     });
   });
 
+  it("uses a supplied id verbatim so the operation replays identically on every replica", () => {
+    const result = addNode(emptyGraph(), {
+      id: "chosen-node-id",
+      label: "API",
+      position: { x: 0, y: 0 },
+      typeId: "worker",
+    });
+
+    expect((result.nodes[0] as { id: string }).id).toBe("chosen-node-id");
+  });
+
+  it("rejects a supplied id that is already taken", () => {
+    const graph = addNode(emptyGraph(), {
+      id: "taken",
+      label: "API",
+      position: { x: 0, y: 0 },
+      typeId: "worker",
+    });
+
+    expect(() =>
+      addNode(graph, {
+        id: "taken",
+        label: "Other",
+        position: { x: 0, y: 0 },
+        typeId: "worker",
+      }),
+    ).toThrow(/already exists/u);
+  });
+
   it("defaults an omitted description to an empty string", () => {
     const result = addNode(emptyGraph(), {
       label: "API",
@@ -191,6 +220,35 @@ describe("addEdge", () => {
       label: "binds to",
       protocol: "binding",
     });
+  });
+
+  it("uses a supplied id verbatim so the operation replays identically on every replica", () => {
+    const result = addEdge(twoNodeGraph(), {
+      edgeType: "data-flow",
+      id: "chosen-edge-id",
+      source: "a",
+      target: "b",
+    });
+
+    expect((result.edges[0] as { id: string }).id).toBe("chosen-edge-id");
+  });
+
+  it("rejects a supplied id that is already taken", () => {
+    const graph = addEdge(twoNodeGraph(), {
+      edgeType: "data-flow",
+      id: "taken",
+      source: "a",
+      target: "b",
+    });
+
+    expect(() =>
+      addEdge(graph, {
+        edgeType: "trigger",
+        id: "taken",
+        source: "a",
+        target: "b",
+      }),
+    ).toThrow(/already exists/u);
   });
 
   it("includes a description when given", () => {

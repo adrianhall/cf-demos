@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { lazy, Suspense, useId, useState } from "react";
 import {
   AlertCircle,
   ExternalLink,
@@ -7,6 +7,57 @@ import {
   StopCircle,
 } from "react-feather";
 import type { ChatTranscriptEntry } from "../../../hooks/useDiagramLiveSync";
+
+/**
+ * The Markdown renderer, split into its own chunk.
+ *
+ * `react-markdown` + `remark-gfm` add roughly 155kB raw / 46kB gzip -- a quarter again on top of
+ * the client's main bundle -- for a panel most sessions never open. Loading it on demand keeps it
+ * out of the eager bundle, following the same reasoning as `../../../lib/auto-layout.ts`'s
+ * dynamic `elkjs` import. See docs/DECISIONS.md #43.
+ */
+const MarkdownRenderer = lazy(async () => {
+  const [{ default: Markdown }, { default: remarkGfm }] = await Promise.all([
+    import("react-markdown"),
+    import("remark-gfm"),
+  ]);
+  return {
+    default: ({ text }: { text: string }) => (
+      <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
+    ),
+  };
+});
+
+/**
+ * Render the assistant's answer as Markdown.
+ *
+ * The model writes Markdown unprompted -- headings, bold, bullet lists, fenced code and GFM
+ * tables all appear in ordinary answers -- so rendering the raw string showed the syntax
+ * characters literally, and with no `white-space: pre-wrap` even the line breaks collapsed into
+ * one run-on paragraph (docs/DECISIONS.md #43).
+ *
+ * `remark-gfm` is what turns the model's very common table output into a real `<table>`. No
+ * `rehype-raw`: `react-markdown` ignores embedded HTML by default, and that default is the
+ * property that keeps model-authored text from becoming an HTML injection vector here.
+ *
+ * @param text The assistant's Markdown text. Rendered mid-stream too, so it is routinely
+ * incomplete -- an unterminated `**` or half-written table degrades to plain text for that
+ * fragment and resolves itself as the rest of the tokens arrive.
+ */
+function AssistantMarkdown({ text }: { text: string }) {
+  return (
+    <div className="ai-chat-panel__markdown">
+      {/* The fallback is the same text unformatted rather than a spinner: the chunk resolves in
+          a single same-origin request, and showing the answer immediately -- briefly unstyled --
+          beats withholding it behind a loading state. */}
+      <Suspense
+        fallback={<p className="ai-chat-panel__markdown-raw">{text}</p>}
+      >
+        <MarkdownRenderer text={text} />
+      </Suspense>
+    </div>
+  );
+}
 
 /**
  * Render one transcript entry. A plain `switch` rather than a lookup table -- each branch's JSX
@@ -27,7 +78,7 @@ function TranscriptEntry({ entry }: { entry: ChatTranscriptEntry }) {
     case "assistant":
       return (
         <div className="ai-chat-panel__message ai-chat-panel__message--assistant">
-          <p>{entry.text}</p>
+          <AssistantMarkdown text={entry.text} />
           {entry.stopped && (
             <p className="ai-chat-panel__stopped-note">
               Stopped watching this response -- the assistant may still be

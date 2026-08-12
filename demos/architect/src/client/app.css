@@ -1582,6 +1582,94 @@ button {
 .ai-chat-panel__message--user {
   background: var(--cf-surface-alt);
   margin-left: 1.5rem;
+  /* The user's own text is rendered verbatim, not as Markdown, so its newlines need preserving
+     here; the assistant's come from real block elements under `__markdown` below. */
+  white-space: pre-wrap;
+}
+
+/* Markdown rendered from the assistant's answer (`AiChatPanel.tsx`'s `AssistantMarkdown`). The
+   chat panel is narrow -- as little as ~260px in the docked sidebar -- so every rule here is
+   about keeping real Markdown block elements legible at that width rather than styling them
+   richly. */
+/* The unformatted text shown for the instant before the Markdown chunk resolves. Preserves the
+   answer's own line breaks so the fallback is legible rather than one run-on line. */
+.ai-chat-panel__markdown-raw {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.ai-chat-panel__markdown > :first-child {
+  margin-block-start: 0;
+}
+
+.ai-chat-panel__markdown > :last-child {
+  margin-block-end: 0;
+}
+
+.ai-chat-panel__markdown :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 1em;
+  font-weight: 600;
+  margin-block: 0.75em 0.25em;
+}
+
+.ai-chat-panel__markdown :is(ul, ol) {
+  margin-block: 0.4em;
+  /* Bullets/numbers sit inside the bubble's own padding rather than being clipped by it. */
+  padding-inline-start: 1.25em;
+}
+
+.ai-chat-panel__markdown li + li {
+  margin-block-start: 0.2em;
+}
+
+.ai-chat-panel__markdown :is(code, pre) {
+  background: var(--cf-surface-alt);
+  border-radius: 0.25rem;
+  font-size: 0.9em;
+}
+
+.ai-chat-panel__markdown code {
+  padding: 0.05em 0.3em;
+}
+
+.ai-chat-panel__markdown pre {
+  overflow-x: auto;
+  padding: 0.5em 0.625em;
+}
+
+.ai-chat-panel__markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.ai-chat-panel__markdown blockquote {
+  border-inline-start: 3px solid var(--cf-border);
+  margin-inline: 0;
+  padding-inline-start: 0.625em;
+}
+
+/* A GFM table is the one construct that genuinely cannot reflow to this width, so the wrapper
+   scrolls instead of letting the table force the whole panel wider. */
+.ai-chat-panel__markdown {
+  overflow-x: auto;
+}
+
+.ai-chat-panel__markdown table {
+  border-collapse: collapse;
+}
+
+.ai-chat-panel__markdown :is(th, td) {
+  border: 1px solid var(--cf-border);
+  padding: 0.2em 0.45em;
+  text-align: start;
+}
+
+/* Inherits the bubble's own already-vetted text color and relies on the underline to identify
+   the link, matching `.ai-chat-panel__source-link` and avoiding a new color that would need its
+   own contrast check in both themes. */
+.ai-chat-panel__markdown a {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .ai-chat-panel__message--assistant,

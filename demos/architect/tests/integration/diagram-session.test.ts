@@ -196,20 +196,26 @@ function collectMessagesOfType(
   });
 }
 
-/** Build a fixture `ReadableStream` of SSE-framed bytes for one final assistant answer -- the
- * minimal shape `src/worker/ai/chat-engine.ts`'s own `consumeSseStream()` parses
- * (docs/DECISIONS.md #10), mirroring `src/worker/ai/chat-engine.test.ts`'s own `sseStream()`
- * fixture. */
-function fakeAiSseStream(text: string): ReadableStream<Uint8Array> {
+/** Build a fixture `ReadableStream` of SSE-framed bytes from already-JSON-stringified chunk
+ * payloads, matching `src/worker/ai/chat-engine.test.ts`'s own `sseStream()` fixture. */
+function fakeAiSseStream(payloads: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(
-        encoder.encode(`data: ${JSON.stringify({ response: text })}\n\n`),
-      );
+      for (const payload of payloads) {
+        controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+      }
       controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       controller.close();
     },
+  });
+}
+
+/** One `choices[0].delta`-shaped SSE payload, the shape the real `AI_CHAT_MODEL` streams
+ * (docs/DECISIONS.md #42). */
+function fakeAiDelta(delta: Record<string, unknown>): string {
+  return JSON.stringify({
+    choices: [{ delta, finish_reason: null, index: 0 }],
   });
 }
 
@@ -217,12 +223,15 @@ function fakeAiSseStream(text: string): ReadableStream<Uint8Array> {
  * Build a fixture Workers AI double for a real `DiagramSession` instance's own `env.AI` binding
  * (see the "AI chat (Phase 23)" describe block's own top-of-file JSDoc for why reassigning
  * `instance.env` on a live instance -- not a call-site `env` substitution -- is the one way to
- * reach it in this pool). One non-streaming, tool-calling round per entry of `toolRounds`
- * (`[]` for an organic "no more tool calls" round, matching `runDiagramChatTurn()`'s own
- * "no tool_calls returns break" contract); the turn's one final `stream: true` round always
- * resolves to `finalText`, framed as {@link fakeAiSseStream}.
+ * reach it in this pool).
  *
- * @param toolRounds One entry per non-streaming round this fixture should answer, in order.
+ * Every round streams, exactly as the real model does: one streamed tool-calling round per entry
+ * of `toolRounds` (each emitting OpenAI-style `choices[0].delta.tool_calls[]` fragments), then a
+ * final streamed round carrying `finalText` as `choices[0].delta.content` and no tool calls,
+ * which is what ends `runDiagramChatTurn()`'s loop.
+ *
+ * @param toolRounds One entry per streamed tool-calling round this fixture should answer, in
+ * order.
  * @param finalText The final streamed answer's complete text.
  * @returns A plain object shaped like `ChatAiBinding` (`src/worker/ai/chat-engine.ts`) -- not
  * imported/typed as such here, matching this file's own existing convention of not importing
@@ -234,12 +243,39 @@ function fakeChatAi(
 ): { run: (...args: unknown[]) => Promise<unknown> } {
   let round = 0;
   return {
-    run: async (_model: unknown, inputs: unknown): Promise<unknown> => {
-      const { stream } = inputs as { stream?: boolean };
-      if (stream) return fakeAiSseStream(finalText);
+    run: async (): Promise<unknown> => {
       const calls = toolRounds[round] ?? [];
       round += 1;
-      return calls.length > 0 ? { tool_calls: calls } : { response: "" };
+      if (calls.length === 0) {
+        return fakeAiSseStream([fakeAiDelta({ content: finalText })]);
+      }
+      return fakeAiSseStream(
+        calls.flatMap((call, index) => [
+          fakeAiDelta({
+            tool_calls: [
+              {
+                function: { arguments: "", name: call.name },
+                id: `call_${index}`,
+                index,
+                type: "function",
+              },
+            ],
+          }),
+          fakeAiDelta({
+            tool_calls: [
+              {
+                function: {
+                  arguments: JSON.stringify(call.arguments),
+                  name: null,
+                },
+                id: null,
+                index,
+                type: "function",
+              },
+            ],
+          }),
+        ]),
+      );
     },
   };
 }
@@ -605,6 +641,113 @@ describe("DiagramSession / GET /api/diagrams/:id/live", () => {
     expect(messageOne.clientOpId).toBe("client-op-1");
     expect(messageTwo.origin).toBe("human");
     expect(messageTwo.clientOpId).toBe("client-op-1");
+  });
+
+  it("broadcasts an id-less add_node with the id it actually minted, so every replica replays it identically", async () => {
+    const diagramId = await createDiagram("alice@example.com");
+    const { socket } = await openLiveSocket("alice@example.com", diagramId);
+
+    const received = nextMessageOfType(socket, "operation_applied");
+    // No `input.id` -- exactly what an AI chat or MCP-authored operation looks like.
+    socket.send(
+      JSON.stringify({
+        op: {
+          input: { label: "API", position: { x: 0, y: 0 }, typeId: "worker" },
+          kind: "add_node",
+        },
+        type: "operation",
+      }),
+    );
+    const message = await received;
+
+    // Without the id on the wire, a receiving replica mints its own and diverges from the
+    // Durable Object's authoritative graph forever (docs/DECISIONS.md #43).
+    const broadcastOp = message.op as { input?: { id?: unknown } } | undefined;
+    const broadcastId = broadcastOp?.input?.id as string | undefined;
+    expect(typeof broadcastId).toBe("string");
+
+    const stored = JSON.parse(
+      (await loadDiagram("alice@example.com", diagramId)).graphData,
+    ) as { nodes: { id: string }[] };
+    expect(stored.nodes.map((node) => node.id)).toEqual([broadcastId]);
+  });
+
+  it("preserves an id the originator supplied, so a browser's optimistic edit round-trips unchanged", async () => {
+    const diagramId = await createDiagram("alice@example.com");
+    const { socket } = await openLiveSocket("alice@example.com", diagramId);
+
+    const received = nextMessageOfType(socket, "operation_applied");
+    socket.send(
+      JSON.stringify({
+        clientOpId: "client-op-1",
+        op: {
+          input: {
+            id: "browser-minted-id",
+            label: "API",
+            position: { x: 0, y: 0 },
+            typeId: "worker",
+          },
+          kind: "add_node",
+        },
+        type: "operation",
+      }),
+    );
+    await received;
+
+    // The editor already rendered this node under its own id; silently renaming it server-side
+    // would diverge the originating tab from the object exactly the way an id-less operation
+    // diverges every other tab.
+    const stored = JSON.parse(
+      (await loadDiagram("alice@example.com", diagramId)).graphData,
+    ) as { nodes: { id: string }[] };
+    expect(stored.nodes.map((node) => node.id)).toEqual(["browser-minted-id"]);
+  });
+
+  it("lets a subsequent add_edge use the ids from earlier add_node broadcasts", async () => {
+    const diagramId = await createDiagram("alice@example.com");
+    const { socket } = await openLiveSocket("alice@example.com", diagramId);
+
+    const nodeIds: string[] = [];
+    for (const label of ["API", "DB"]) {
+      const received = nextMessageOfType(socket, "operation_applied");
+      socket.send(
+        JSON.stringify({
+          op: {
+            input: { label, position: { x: 0, y: 0 }, typeId: "worker" },
+            kind: "add_node",
+          },
+          type: "operation",
+        }),
+      );
+      const applied = (await received).op as { input: { id: string } };
+      nodeIds.push(applied.input.id);
+    }
+
+    const edgeApplied = nextMessageOfType(socket, "operation_applied");
+    socket.send(
+      JSON.stringify({
+        op: {
+          input: {
+            edgeType: "data-flow",
+            source: nodeIds[0],
+            target: nodeIds[1],
+          },
+          kind: "add_edge",
+        },
+        type: "operation",
+      }),
+    );
+    await edgeApplied;
+
+    // The whole point: ids learned from the broadcast are usable as edge endpoints. Before the
+    // fix these were the *originator's* ids, which existed nowhere else, so this edge was
+    // rejected as notFound() on every replica.
+    const stored = JSON.parse(
+      (await loadDiagram("alice@example.com", diagramId)).graphData,
+    ) as { edges: { source: string; target: string }[] };
+    expect(stored.edges).toHaveLength(1);
+    expect(stored.edges[0]?.source).toBe(nodeIds[0]);
+    expect(stored.edges[0]?.target).toBe(nodeIds[1]);
   });
 
   it("an MCP tool call is visible to a connected human socket, with origin agent", async () => {
@@ -1243,7 +1386,10 @@ describe("DiagramSession / GET /api/diagrams/:id/live", () => {
         done,
       ]);
 
-      expect(statusMessage.message).toBe('Adding node "API"…');
+      // Only the tools that broadcast nothing of their own narrate through `chat_status`; the
+      // `add_node` in this same turn narrates via its `operation_applied` broadcast instead
+      // (docs/DECISIONS.md #43).
+      expect(statusMessage.message).toBe("Renaming the diagram…");
       expect(appliedMessage.origin).toBe("ai-chat");
       expect(appliedMessage.actorEmail).toBe("alice@example.com");
       expect(bystanderAppliedMessage.origin).toBe("ai-chat");

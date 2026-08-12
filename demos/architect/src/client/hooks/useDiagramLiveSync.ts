@@ -433,14 +433,20 @@ export interface DiagramLiveSync {
    * Protocol), appending a `"user"` entry to {@link DiagramLiveSync.chatTranscript} and setting
    * {@link DiagramLiveSync.chatInFlight}.
    *
-   * @param text The user's message text.
+   * @param text The message text sent to the model.
+   * @param displayText What to show in the transcript instead of `text`, when the two differ.
+   * `GenerateWithAiModal` wraps the user's own one-line description in a much longer
+   * instruction for the model ("Propose an initial Cloudflare architecture using only the
+   * available product types…"); echoing that whole synthesized prompt back as the user's own
+   * message read as machine noise, so it passes the plain description here. Defaults to `text`,
+   * which is what an ordinary chat message wants.
    * @returns The generated `clientRequestId` on success, or `false` when the socket is not open
    * (mirroring {@link DiagramLiveSync.sendOperation}'s own not-connected return value) -- the
    * caller is not required to do anything with the id, since this hook already tracks the
    * resulting transcript centrally, but it is returned in case a future caller wants its own
    * correlation.
    */
-  sendChatMessage: (text: string) => string | false;
+  sendChatMessage: (text: string, displayText?: string) => string | false;
   /**
    * Stop rendering further `chat_token`s for the turn currently in flight, and mark its
    * `"assistant"` transcript entry as `stopped`. **This is "stop watching," not "cancel the
@@ -588,8 +594,13 @@ export function useDiagramLiveSync(
   // and the toast-suppression heuristic's own state (see this hook's own top-of-file JSDoc).
   const activeChatRequestIdRef = useRef<string | null>(null);
   // The transcript entry id the in-flight turn's `chat_token`s are currently accumulating onto,
-  // or `null` before the first token of this turn has arrived.
+  // or `null` before the first token of this turn has arrived -- and also `null` again after any
+  // status/action/docs entry interrupts the stream, so the next token opens a *new* bubble
+  // beneath that entry (see `appendInterruptingEntry`).
   const activeAssistantEntryIdRef = useRef<string | null>(null);
+  // Whether this turn has streamed at least one `chat_token`, which decides whether `chat_done`
+  // needs to record the answer itself -- see its own handler.
+  const streamedAnyTokenRef = useRef(false);
   // `clientRequestId`s `stopChatTurn()` has marked "stop watching" -- further `chat_token`s for
   // these ids are dropped, and their eventual `chat_done`/`chat_error` is consumed silently
   // rather than re-appended to the transcript a second time.
@@ -617,6 +628,7 @@ export function useDiagramLiveSync(
     lastCursorSentAtRef.current = 0;
     activeChatRequestIdRef.current = null;
     activeAssistantEntryIdRef.current = null;
+    streamedAnyTokenRef.current = false;
     stoppedRequestIdsRef.current.clear();
     setParticipants({});
     setCursors({});
@@ -629,6 +641,23 @@ export function useDiagramLiveSync(
 
     const onOpen = () => setConnected(true);
     const onClosedOrErrored = () => setConnected(false);
+
+    /**
+     * Append one non-assistant transcript entry and close out any assistant bubble currently
+     * being streamed onto.
+     *
+     * Closing the bubble is what keeps the transcript in chronological order. A turn typically
+     * narrates ("Now I'll wire everything together:"), calls tools, then narrates again -- and
+     * because every entry here is a plain end-append while the assistant bubble stays anchored
+     * wherever its first token landed, later prose kept flowing *into that earlier bubble*, so
+     * the turn's closing summary appeared above the tool activity that preceded it. Clearing the
+     * anchor makes the next token open a fresh bubble below this entry instead
+     * (docs/DECISIONS.md #43).
+     */
+    const appendInterruptingEntry = (entry: ChatTranscriptEntry) => {
+      activeAssistantEntryIdRef.current = null;
+      setChatTranscript((current) => [...current, entry]);
+    };
 
     const onMessage = (event: MessageEvent) => {
       let parsed: unknown;
@@ -675,10 +704,11 @@ export function useDiagramLiveSync(
             graphBeforeMutation.nodes,
             graphBeforeMutation.edges,
           );
-          setChatTranscript((current) => [
-            ...current,
-            { id: nextTranscriptEntryId(), kind: "action", text: description },
-          ]);
+          appendInterruptingEntry({
+            id: nextTranscriptEntryId(),
+            kind: "action",
+            text: description,
+          });
         }
 
         if (!isOwnPendingOperation) {
@@ -766,33 +796,44 @@ export function useDiagramLiveSync(
       }
 
       if (isChatStatusMessage(parsed)) {
-        setChatTranscript((current) => [
-          ...current,
-          { id: nextTranscriptEntryId(), kind: "status", text: parsed.message },
-        ]);
+        appendInterruptingEntry({
+          id: nextTranscriptEntryId(),
+          kind: "status",
+          text: parsed.message,
+        });
         return;
       }
 
       if (isChatTokenMessage(parsed)) {
         if (stoppedRequestIdsRef.current.has(parsed.clientRequestId)) return;
+        // The entry id is resolved and the ref updated *here*, synchronously, never inside the
+        // `setChatTranscript` updater below. React defers an updater until render and may invoke
+        // it more than once, so an updater that mutates a ref -- or that reads a ref another
+        // handler mutates in the meantime -- does not observe the value its own handler saw.
+        // That is precisely the bug docs/ISSUE-5.md hit; see the `chat_done` branch below.
+        const isNewEntry = activeAssistantEntryIdRef.current === null;
+        const entryId = isNewEntry
+          ? nextTranscriptEntryId()
+          : (activeAssistantEntryIdRef.current as string);
+        activeAssistantEntryIdRef.current = entryId;
+        streamedAnyTokenRef.current = true;
+        const { text } = parsed;
         setChatTranscript((current) => {
-          if (activeAssistantEntryIdRef.current === null) {
-            const id = nextTranscriptEntryId();
-            activeAssistantEntryIdRef.current = id;
+          if (isNewEntry) {
             return [
               ...current,
-              { id, kind: "assistant", stopped: false, text: parsed.text },
+              { id: entryId, kind: "assistant", stopped: false, text },
             ];
           }
           return current.map((entry) => {
-            if (entry.id !== activeAssistantEntryIdRef.current) return entry;
+            if (entry.id !== entryId) return entry;
             // Every entry whose id was captured into `activeAssistantEntryIdRef` was created
             // with `kind: "assistant"` a few lines above -- this check exists only so
             // TypeScript can narrow `entry` to the one variant with a `text` field to append
             // to, not because it can actually be false once the id itself already matched.
             /* istanbul ignore else */
             if (entry.kind === "assistant") {
-              return { ...entry, text: entry.text + parsed.text };
+              return { ...entry, text: entry.text + text };
             }
             /* istanbul ignore next -- unreachable; see the comment above. */
             return entry;
@@ -802,15 +843,12 @@ export function useDiagramLiveSync(
       }
 
       if (isChatToolResultMessage(parsed)) {
-        setChatTranscript((current) => [
-          ...current,
-          {
-            id: nextTranscriptEntryId(),
-            kind: "docs_result",
-            query: parsed.args.query,
-            result: parsed.result,
-          },
-        ]);
+        appendInterruptingEntry({
+          id: nextTranscriptEntryId(),
+          kind: "docs_result",
+          query: parsed.args.query,
+          result: parsed.result,
+        });
         return;
       }
 
@@ -818,37 +856,35 @@ export function useDiagramLiveSync(
         const wasStopped = stoppedRequestIdsRef.current.delete(
           parsed.clientRequestId,
         );
-        if (!wasStopped) {
-          setChatTranscript((current) => {
-            if (activeAssistantEntryIdRef.current === null) {
-              // No tokens streamed at all (e.g. a genuinely empty final answer) -- still
-              // record the turn's own complete text.
-              return [
-                ...current,
-                {
-                  id: nextTranscriptEntryId(),
-                  kind: "assistant",
-                  stopped: false,
-                  text: parsed.assistantText,
-                },
-              ];
-            }
-            return current.map((entry) => {
-              if (entry.id !== activeAssistantEntryIdRef.current) return entry;
-              // See the symmetric comment in the `chat_token` branch above -- this check
-              // exists only for TypeScript's benefit.
-              /* istanbul ignore else */
-              if (entry.kind === "assistant") {
-                return { ...entry, text: parsed.assistantText };
-              }
-              /* istanbul ignore next -- unreachable; see the comment above. */
-              return entry;
-            });
-          });
+        // Read synchronously, before the reset below: React defers a `setChatTranscript`
+        // updater until render, so an updater that reads this ref does not observe the value
+        // its own handler saw. That was the docs/ISSUE-5.md duplicate-answer bug.
+        const streamedAnyToken = streamedAnyTokenRef.current;
+        if (!wasStopped && !streamedAnyToken) {
+          // Nothing streamed at all (a genuinely empty final answer, or a turn whose whole
+          // response arrived non-streamed) -- record the turn's own complete text, since no
+          // bubble exists to show it.
+          //
+          // When tokens *did* stream there is deliberately nothing to do here. `assistantText`
+          // is by construction the concatenation of exactly those tokens, and a turn may now
+          // own several assistant bubbles (tool activity splits them -- see
+          // `appendInterruptingEntry`), so overwriting "the" bubble with the turn's whole text
+          // would duplicate every earlier bubble's prose into the last one.
+          const { assistantText } = parsed;
+          setChatTranscript((current) => [
+            ...current,
+            {
+              id: nextTranscriptEntryId(),
+              kind: "assistant",
+              stopped: false,
+              text: assistantText,
+            },
+          ]);
         }
         if (activeChatRequestIdRef.current === parsed.clientRequestId) {
           activeChatRequestIdRef.current = null;
           activeAssistantEntryIdRef.current = null;
+          streamedAnyTokenRef.current = false;
           setChatInFlight(false);
         }
         return;
@@ -871,6 +907,7 @@ export function useDiagramLiveSync(
         if (activeChatRequestIdRef.current === parsed.clientRequestId) {
           activeChatRequestIdRef.current = null;
           activeAssistantEntryIdRef.current = null;
+          streamedAnyTokenRef.current = false;
           setChatInFlight(false);
         }
         return;
@@ -941,24 +978,32 @@ export function useDiagramLiveSync(
     [],
   );
 
-  const sendChatMessage = useCallback((text: string): string | false => {
-    const socket = socketRef.current;
-    if (socket === null || socket.readyState !== WebSocket.OPEN) {
-      return false;
-    }
-    const clientRequestId = crypto.randomUUID();
-    activeChatRequestIdRef.current = clientRequestId;
-    activeAssistantEntryIdRef.current = null;
-    setChatInFlight(true);
-    setChatTranscript((current) => [
-      ...current,
-      { id: nextTranscriptEntryId(), kind: "user", text },
-    ]);
-    socket.send(
-      JSON.stringify({ clientRequestId, text, type: "chat_message" }),
-    );
-    return clientRequestId;
-  }, []);
+  const sendChatMessage = useCallback(
+    (text: string, displayText?: string): string | false => {
+      const socket = socketRef.current;
+      if (socket === null || socket.readyState !== WebSocket.OPEN) {
+        return false;
+      }
+      const clientRequestId = crypto.randomUUID();
+      activeChatRequestIdRef.current = clientRequestId;
+      activeAssistantEntryIdRef.current = null;
+      streamedAnyTokenRef.current = false;
+      setChatInFlight(true);
+      setChatTranscript((current) => [
+        ...current,
+        {
+          id: nextTranscriptEntryId(),
+          kind: "user",
+          text: displayText ?? text,
+        },
+      ]);
+      socket.send(
+        JSON.stringify({ clientRequestId, text, type: "chat_message" }),
+      );
+      return clientRequestId;
+    },
+    [],
+  );
 
   const stopChatTurn = useCallback(() => {
     const clientRequestId = activeChatRequestIdRef.current;
@@ -986,6 +1031,7 @@ export function useDiagramLiveSync(
     // `DiagramLiveSync.stopChatTurn` JSDoc.
     activeChatRequestIdRef.current = null;
     activeAssistantEntryIdRef.current = null;
+    streamedAnyTokenRef.current = false;
     setChatInFlight(false);
   }, []);
 

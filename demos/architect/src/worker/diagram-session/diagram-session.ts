@@ -130,6 +130,37 @@ function isChatMessageFrame(value: unknown): value is ChatMessageFrame {
 }
 
 /**
+ * Return `op` with a concrete entity id guaranteed on the two operations that create something,
+ * minting one only when the originator did not supply it.
+ *
+ * `operation_applied` is a **replicated** message: this object applies the operation to its own
+ * authoritative graph and every connected browser re-applies the broadcast copy to its own local
+ * store. That is only correct if applying the same operation twice produces the same ids. An
+ * `add_node`/`add_edge` carrying no id is not replicable -- `../../graph-mutations.ts` mints one
+ * per call, so each replica invents a different id and diverges from this object permanently
+ * (there is no periodic resync; `graph_snapshot` is only sent on connect and on whole-graph
+ * writes). The visible symptom is a later `add_edge` naming ids only the originator has, which
+ * every other replica rejects as `notFound()` and silently drops -- the edge exists server-side
+ * but never appears in the browser. See docs/DECISIONS.md #43.
+ *
+ * A human editor already sends its own optimistically-applied id, so this is a no-op for that
+ * path; it matters for the AI chat and MCP tool paths, where the operation is authored
+ * server-side with no id at all.
+ *
+ * @param op The operation as received from its originator.
+ * @returns `op` unchanged when it needs no id, or a copy with `input.id` populated.
+ */
+function withReplicableIds(op: GraphOperation): GraphOperation {
+  if (op.kind === "add_node" && op.input.id === undefined) {
+    return { ...op, input: { ...op.input, id: crypto.randomUUID() } };
+  }
+  if (op.kind === "add_edge" && op.input.id === undefined) {
+    return { ...op, input: { ...op.input, id: crypto.randomUUID() } };
+  }
+  return op;
+}
+
+/**
  * `DiagramSession` is docs/09C-COLLABORATIVE-EDITING.md's bidirectional live-sync coordination
  * point -- one instance per diagram id (`env.DIAGRAM_SESSIONS.getByName(diagramId)`), holding
  * every browser WebSocket currently open on that diagram and the single in-process code path
@@ -376,7 +407,14 @@ export class DiagramSession extends DurableObject<Env> {
   ): Promise<{ graphData: string; updatedAt: string; sequence: number }> {
     await this.ensureHydrated();
 
-    this.graph = applyGraphOperation(this.graph as GraphData, op);
+    // Mint any missing entity id *before* applying, so the operation this object applies and the
+    // operation it broadcasts are byte-for-byte the same. Broadcasting an id-less `add_node`/
+    // `add_edge` instead let every receiving replica mint its own id, silently diverging from
+    // this object's authoritative graph -- see {@link withReplicableIds} and docs/DECISIONS.md
+    // #39.
+    const replicable = withReplicableIds(op);
+
+    this.graph = applyGraphOperation(this.graph as GraphData, replicable);
     this.sequence += 1;
     const sequence = this.sequence;
 
@@ -384,7 +422,7 @@ export class DiagramSession extends DurableObject<Env> {
       JSON.stringify({
         actorEmail,
         clientOpId,
-        op,
+        op: replicable,
         origin,
         sequence,
         type: "operation_applied",
@@ -738,8 +776,20 @@ export class DiagramSession extends DurableObject<Env> {
       const result = await runDiagramChatTurn({
         applyMutation: async (op) => {
           try {
-            await this.applyOperation(op, actorEmail, "ai-chat");
-            return { rejected: false };
+            const { graphData } = await this.applyOperation(
+              op,
+              actorEmail,
+              "ai-chat",
+            );
+            // Hand the *authoritative* post-operation graph back to the chat engine rather than
+            // letting it replay the operation locally: `add_node`/`add_edge` mint ids with
+            // `crypto.randomUUID()`, so a local replay would invent different ids than the ones
+            // now on the canvas, and the engine would report those phantom ids to the model
+            // (docs/DECISIONS.md #42).
+            return {
+              graph: JSON.parse(graphData) as GraphData,
+              rejected: false,
+            };
           } catch (error) {
             return {
               reason:

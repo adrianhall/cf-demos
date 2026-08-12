@@ -544,12 +544,17 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   onConnect: (connection: Connection) => {
     get().pushHistory();
+    // Minted here rather than left to `@xyflow/react`'s own `addEdge` helper (which derives one
+    // from the source/target handles) so the very same id can be sent on the operation below and
+    // replayed identically by the Durable Object and every other connected tab.
+    const newEdgeId = crypto.randomUUID();
     set((state) => ({
       edges: addEdge(
         {
           ...connection,
           type: "cf-edge",
           data: { edgeType: "data-flow" as const },
+          id: newEdgeId,
         },
         state.edges,
       ),
@@ -558,6 +563,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
     get().enqueueOperation({
       input: {
         edgeType: "data-flow",
+        id: newEdgeId,
         source: connection.source,
         target: connection.target,
       },
@@ -609,8 +615,11 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       ],
       dirty: true,
     }));
+    // `id` carries this tab's own optimistically-applied edge id, so the Durable Object and
+    // every other connected replica end up with the same id this tab already rendered rather
+    // than each minting their own -- see `../../graph-mutations.ts`'s `AddEdgeInput.id`.
     get().enqueueOperation({
-      input: { edgeType, source: sourceId, target: targetId },
+      input: { edgeType, id: newEdgeId, source: sourceId, target: targetId },
       kind: "add_edge",
     });
     get().setSelectedEdge(newEdgeId);
@@ -625,9 +634,12 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       nodes: [...state.nodes, node],
       dirty: true,
     }));
+    // `id` carries this tab's own optimistically-applied node id -- see the `add_edge` case
+    // below and `../../graph-mutations.ts`'s `AddNodeInput.id`.
     get().enqueueOperation({
       input: {
         description: node.data.description,
+        id: node.id,
         label: node.data.label,
         position: node.position,
         typeId: node.data.typeId,

@@ -5,6 +5,44 @@ Developer Platform. Each demo lives under `demos/<name>` with its own
 infrastructure, source, tests, and deployment scripts — see `AGENTS.md` for
 the full repository contract.
 
+## Demos
+
+The following demos are available:
+
+| Name | Description |
+|------|-------------|
+| url-shortener | A basic sample demonstrating KV and static assets |
+| todo-app | A basic sample demonstrating D1 and static assets |
+| media-drop | A basic sample demonstrating D1, R2, and static assets |
+| enterprise-chat | A basic chat app using Durable Objects |
+| ai-chat | A basic AI chat app |
+| agentic-chat | An agentic AI chat that provides session resumption and tool calling |
+| pr-review-agent | An agent for reviewing GitHub pull requests |
+| swapi-graphql | A GraphQL service for the Star Wars API |
+| architect | A Cloudflare Architect demonstrating collaboration, MCP and AI Chat |
+
+## Prerequisites
+
+Every single demo requires:
+
+- A Cloudflare Dev Platform account and access to the dashboard
+- Terraform v1.15.0 or later (earlier versions MAY work but have not been tested)
+- Node v26.0.0 or later, with npm
+
+To determine if you have all the right tools:
+
+```bash
+$ terraform --version
+Terraform v1.15.8
+on darwin_arm64
+
+$ node --version
+v26.7.0
+
+$ npm --version
+11.19.0
+```
+
 ## Environment setup
 
 Each demo requires its own `.env` (see that demo's `README.md` for the exact
@@ -29,22 +67,11 @@ demo's `.env` by hand.
 Notes:
 
 - `npm run update-env` only creates a demo's `.env` if one doesn't already
-  exist. Pass `-- --force` to regenerate every demo's `.env` (for example,
-  after rotating the API token).
-- Pass `-- --dry-run` to preview what would be written without touching any
-  file.
-- `DEMO_NAME` is deliberately never overridden: it names each demo's Worker
-  and is owned by that demo's own `.env.example`, even though the root
-  `.env.example` also declares a `DEMO_NAME` placeholder.
-- A root `.env` value is only applied to a demo if that demo's own
-  `.env.example` declares the same key. For example, `ADMIN_EMAIL` in the
-  root `.env` only propagates to the demos that declare it
-  (`url-shortener`, `architect`, `agentic-ai-chat`).
-- Any key a demo declares that the root `.env` doesn't supply is left at its
-  `.env.example` default (commonly a `<from-dashboard>`-style placeholder);
-  `npm run update-env` prints which keys still need filling in by hand.
-- New demos need no changes here — `npm run update-env` discovers every
-  `demos/*/.env.example` at runtime.
+  exist.
+- Run `npm run update-env -- --dry-run` to preview what would be written
+  without touching any file.
+- Run `npm run update-env -- --force` to regenerate every demo's `.env` (for 
+  example, after rotating the API token).
 
 This command only manages `.env` files. Deployment and teardown remain
 per-demo:
@@ -53,10 +80,4 @@ per-demo:
 cd demos/<name>
 npm run deploy
 npm run teardown
-```
-
-## Testing the tooling
-
-```sh
-npm test
 ```

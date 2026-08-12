@@ -131,7 +131,12 @@ export function GenerateWithAiModal({
   useEffect(() => {
     if (diagramId === null || !connected || autoSentRef.current) return;
     autoSentRef.current = true;
-    sendChatMessage(buildGenerationPrompt(descriptionToSendRef.current));
+    // The model gets the full synthesized instruction; the transcript shows only what the user
+    // actually typed, rather than echoing the scaffolding back at them.
+    sendChatMessage(
+      buildGenerationPrompt(descriptionToSendRef.current),
+      descriptionToSendRef.current,
+    );
   }, [diagramId, connected, sendChatMessage]);
 
   useEffect(() => {
