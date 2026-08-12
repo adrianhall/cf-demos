@@ -1935,3 +1935,214 @@ gzip) to 607.32 kB (177.48 kB gzip), and its CSS grew from 35.54 kB (6.35 kB gzi
 for this document's entire new UI surface (`DetailsPanel.tsx`, `AiChatPanel.tsx`,
 `GenerateWithAiModal.tsx`, the new toolbar button, the new gallery tile, and every new CSS rule
 combined). Nothing surprisingly large.
+
+## NEW DECISIONS
+
+## 38. `@vitest/coverage-istanbul` cannot parse the Agents SDK's `@callable()` TC39 decorator —
+    override `coverage.instrumenter` with an added Babel `parserPlugins` entry, don't avoid the
+    decorator (`demos/review-agent`, docs/07-PR-REVIEW-AGENT.md Phase 4/5)
+
+`ReviewRunAgent`'s `@callable() async start(...)` — this repository's first use of the Agents
+SDK's `@callable()` decorator on a real `Agent` subclass — made `npm run test:coverage` throw a
+hard `SyntaxError` ("Support for the experimental syntax 'decorators' isn't currently enabled")
+the moment istanbul tried to instrument that file, even though every other check (`tsc --noEmit`,
+`vite build`, and every non-coverage Vitest run) passed cleanly. This is not a project
+misconfiguration: `@vitest/coverage-istanbul` bundles its own fixed Babel parser-plugin list
+(`@istanbuljs/schema`'s defaults plus one `importAttributes` entry it adds itself), and that list
+has no entry for either decorator proposal at all — legacy or current. This project's
+`tsconfig.json` sets no `experimentalDecorators` flag, so `agents`'s `callable()` decorator is
+written against the *current*, non-legacy TC39 proposal, which is a strictly different Babel
+parser plugin (`"decorators"`, no `legacy: true`) from the one a `experimentalDecorators: true`
+project would need (`"decorators-legacy"`).
+
+**Fix confirmed working**: `@vitest/coverage-istanbul`'s provider reads an optional
+`coverage.instrumenter` factory function from the Vitest config and, when present, uses it
+*instead of* its own built-in `Instrumenter` construction — this is a real, if thinly documented,
+extension point (confirmed by reading `node_modules/@vitest/coverage-istanbul/dist/provider.js`
+directly), not a hack. `demos/review-agent/vitest.config.ts` adds `istanbul-lib-instrument` (the
+same library version `@vitest/coverage-istanbul` itself depends on, `^6.0.3`) as a direct
+devDependency and supplies its own `coverage.instrumenter` reproducing the provider's own default
+options (`produceSourceMap`, `autoWrap: false`, `esModules: true`, `compact: false`,
+`ignoreLines: true`) with `"decorators"` added to `parserPlugins`. This only widens what Babel is
+willing to *parse* while re-emitting instrumented source for coverage counting — it does not
+transform decorators away, and does not need to: the actual code that executes during a test run
+always comes from Vite/esbuild's own separate transform, never from istanbul's Babel pass.
+
+**Do not "fix" this by avoiding the decorator syntax** (for example, manually registering a
+method into `agents`'s internal `callableMetadata` WeakMap the way `callable()`'s own decorator
+body does) — that trades a real, idiomatic Agents SDK convention every future Agents SDK demo
+will also reach for, for a workaround narrower than the actual problem. Fix the tooling once,
+here, so a later demo using `@callable()` (or any other current-proposal method/class decorator)
+does not rediscover the same `SyntaxError` from scratch.
+
+**A trailing type-only wrinkle**: `@types/istanbul-lib-instrument` and `@types/babel__core` (both
+added as devDependencies so `tsc --noEmit` can typecheck the new `vitest.config.ts` code) are
+unmaintained community packages typed against the old `babel-generator`/`babel-types` scope, not
+the real `@babel/*` scope the actual bundled v6.0.3 library uses — they are missing `ignoreLines`
+on `InstrumenterOptions` entirely and type `generatorOpts` against an older `GeneratorOptions`
+with no `importAttributesKeyword`. Cast narrowly around just the missing fields (or drop a
+default-only field like `generatorOpts.importAttributesKeyword` entirely when nothing in the
+project actually needs it, as this fix does) rather than casting the whole configuration object
+and losing real type-checking on everything else in it.
+
+## 39. `agents/vite`'s official plugin (not a hand-rolled Babel config) is required for
+    `@callable()` to survive Vite's own dev/build pipeline, and needs one extra hoisted
+    devDependency to actually resolve (`demos/review-agent`, docs/07-PR-REVIEW-AGENT.md Phase 6)
+
+Decision #38 fixed `@vitest/coverage-istanbul` choking on `ReviewRunAgent`'s `@callable()`
+decorator. A second, independent instance of the exact same root cause then broke `npm run
+start`/`vite build` itself: the Cloudflare Vite plugin's own worker-entry export-type detection
+(and Rolldown/esbuild's bundling) also cannot parse a bare, untransformed TC39 standard-decorators
+class member — surfacing as an opaque `SyntaxError: Invalid or unexpected token` thrown deep
+inside `@cloudflare/vite-plugin`'s `getWorkerEntryExportTypes`, with no mention of decorators at
+all, that reproduced identically on a `git stash`-clean checkout (i.e., across the whole worker
+bundle, not something introduced by unrelated code).
+
+**Fix**: the `agents` package ships its own dedicated Vite plugin for exactly this, `agents/vite`
+(confirmed by reading `node_modules/agents/dist/vite.d.ts`: "Handles TC39 decorator transforms
+(Oxc doesn't support them yet, oxc#9170) so `@callable()` works at runtime"). Add `agents()` to
+`vite.config.ts`'s `plugins` array, positioned before `cloudflare()` (the same "transform the
+source before the Worker-bundling step sees it" ordering `vue()` already needs) — no options
+needed for the default case. Do not attempt to configure `@babel/plugin-proposal-decorators`
+directly in a project-level Babel config instead: `agents/vite` already wires the exact plugin
+version (`^8.0.2`) and options its own runtime `callable()` semantics were built against, and
+duplicating that configuration by hand risks drifting from it on `agents`'s next release.
+
+**One real gotcha the plugin's own README does not mention**: `agents/vite` only *invokes*
+`@babel/plugin-proposal-decorators`; it does not vendor it in a way Rolldown's Babel integration
+can resolve. `@babel/plugin-proposal-decorators` was genuinely present on disk (nested at
+`node_modules/agents/node_modules/@babel/plugin-proposal-decorators`, a legitimate transitive
+dependency `agents` declares), but Babel's own `resolveStandardizedName`/`import-meta-resolve`
+codepath resolves plugin names from a synthetic "virtual resolve base" file at the *project root*,
+which cannot see into a dependency's own nested `node_modules` — a plain Node hoisting problem,
+not anything `agents/vite` did wrong. The fix is to add `@babel/plugin-proposal-decorators` as a
+**direct devDependency** of the demo itself (matching the exact version range `agents` itself
+declares, `^8.0.2`) purely so npm hoists it to the project's own top-level `node_modules`, where
+the virtual resolve base can find it. Nothing in the project's own source ever imports this
+package directly — it exists solely to make `agents/vite`'s internal `require()` resolvable.
+
+**A second, unrelated local-dev trap this same investigation surfaced**: editing an
+*already-locally-migrated* D1 migration file in place (Phase 4 added `review_runs.full_report`/
+`review_reviewers.raw_output` columns to `migrations/0001_create_review_tables.sql` after Phase 1
+had already run `db:migrate:local` once against it) leaves the on-disk local D1 SQLite file
+permanently missing those columns — Wrangler's migration tracking records a migration file as
+already-applied by name and never re-diffs its contents, so `db:migrate:local` prints "No
+migrations to apply!" and silently does nothing, and every later query against the missing column
+throws `D1_ERROR: no such column: full_report` at runtime instead of at migration time. Local D1
+state is disposable and gitignored (`.wrangler/state`), so the fix is simply to delete it
+(`rm -rf .wrangler/state`) and re-run `db:migrate:local` after editing an already-applied local
+migration during development — never edit a migration file that has already shipped to a real,
+non-disposable database (production or a shared remote dev database); add a new migration file
+instead, per ordinary migration discipline.
+
+## NEW DECISIONS
+
+## 40. `@cloudflare/vitest-pool-workers` never forwards istanbul's coverage counters out of a
+    workerd isolate at all — the real fix is registering `agents/vite` a second time so tests can
+    import the real Worker entry point, not a `coverage.exclude` (`demos/review-agent`,
+    docs/07-PR-REVIEW-AGENT.md Phase 7)
+
+Every integration test through Phase 6 (`tests/integration/webhooks.test.ts`, `reviews.test.ts`)
+built a standalone Hono app mounting only one router directly, never importing
+`src/worker/index.ts` itself — confirmed, by reading each file's own doc comment, to be a
+deliberate workaround for a *different*, already-diagnosed problem (`agents`'s top-level module
+unconditionally imports `cloudflare:workers`, which Node's plain ESM loader cannot resolve). That
+workaround had a silent side effect nobody had yet traced to its root cause: `src/worker/index.ts`
+itself, `src/worker/middleware/access.ts` (only ever loaded as part of `index.ts`'s own module
+graph), `src/worker/agents/ReviewRunAgent.ts`, and `src/worker/workflows/ReviewPipelineWorkflow.ts`
+all reported a flat **0%** in `npm run test:coverage`, even though `npm run test` passed cleanly
+and every one of those four files is genuinely exercised — just never by any test file that
+directly imports the module graph reaching them.
+
+**Root cause, confirmed by direct experiment, not assumption.** `@cloudflare/vitest-pool-workers`
+is a *custom* Vitest pool (its own `dist/pool/index.mjs`); unlike Vitest's built-in pools, nothing
+in its own source (`dist/worker/index.mjs`, confirmed by `grep`) ever reads `globalThis.__coverage__`
+out of the `workerd` isolate a test file runs in and forwards it back to the main Node process's
+coverage reporter. Istanbul-instrumented code executed *inside* that isolate still increments its
+own counters — they simply never leave the isolate. The pool's own error message when a project
+configures the (unsupported) `v8` coverage provider — "Use Istanbul instead — it works by
+instrumenting source code and runs on any JavaScript runtime" — is true only in the narrow sense
+of "does not crash"; it is not a claim that coverage data collection/merging works for code
+executed inside the isolate. This is confirmed empirically, not merely inferred: a file directly
+`import`ed by a test file (`webhooks.test.ts`'s own `webhooksRouter` import, still executed inside
+`workerd` because of the `cloudflare:workers` resolution requirement above) reports real,
+non-zero coverage; a file reachable only through `wrangler.jsonc`'s separately-loaded `main` entry
+point never does, even when a test's HTTP request causes that exact code to run. The distinguishing
+factor is *whether the file is part of a test file's own directly-imported module graph* at
+all, not whether its code executes during the test run.
+
+**The actual, independent second root cause this same investigation had to fix first**: a test file
+that tries to `import`/re-export `src/worker/index.ts` (or anything that transitively imports
+`ReviewRunAgent.ts`) inside `tests/integration/vitest.config.ts`'s own Vite pipeline throws a bare
+`SyntaxError: Invalid or unexpected token` the instant Vite tries to parse it — the *exact* same
+root cause decision #39 already fixed for `vite.config.ts` (Vite/Rolldown cannot parse a bare
+TC39 standard-decorators class member, `@callable()`, without `agents/vite`'s Babel transform),
+rediscovered here because `tests/integration/vitest.config.ts` is a genuinely separate Vite
+pipeline from the root `vite.config.ts`, with its own independent `plugins` array that decision
+#39's fix never touched.
+
+**Fix, in order**: (1) add `agents()` (from `agents/vite`) to `tests/integration/vitest.config.ts`'s
+own `plugins` array, positioned before `cloudflareTest()` — this alone makes `src/worker/index.ts`
+(and everything it imports) importable inside this project's Vite pipeline at all, with no
+`SyntaxError`. (2) Drive the real Worker end to end via `exports.default.fetch()` (from
+`cloudflare:workers`) instead of a standalone router-only Hono app — Cloudflare's own Vitest
+integration docs confirm this gives "exactly the same module instance" `wrangler.jsonc`'s `main`
+resolves internally for `exports` *and* every Durable Object/Workflow binding. Once (1) and (2)
+are both true, `index.ts`, `access.ts`, `ReviewRunAgent.ts`, and `ReviewPipelineWorkflow.ts` all
+report real coverage numbers (94–100% statements, comparable to every other file in the same
+demo) with no `coverage.exclude` needed anywhere.
+
+**A second, genuinely load-bearing consequence of the same "shared module instance" fact, needed
+to drive `ReviewPipelineWorkflow`'s real reviewer steps without a live Workers AI account**:
+Miniflare's own `ai` binding option (`WorkerOptions.ai`) accepts nothing but a real, credentialed
+remote-proxy configuration (`V4RemoteBindingWithName`, confirmed by reading
+`node_modules/miniflare/dist/src/index.d.ts` directly) — there is no equivalent to `kvNamespaces`'s
+or `serviceBindings`'s own plain-JS-object local override for `ai` at all (consistent with
+docs/DECISIONS.md #9's "Workers AI has no local simulator"). But `env.AI` (from `cloudflare:workers`)
+is a genuine, mutable plain object, and — confirmed live, not merely inferred — a Durable
+Object/Workflow defined in the same Worker script shares the *exact same* `env` object reference
+the script's own top-level test-file code sees. Patching `env.AI.run`/`env.AI.gateway` directly
+from a test file (`tests/integration/support/fixtures.ts`'s `installFakeAi()`) is therefore visible
+to `ReviewPipelineWorkflow.run()`'s own `this.env.AI` calls, even though that Workflow instance
+executes inside a Durable Object actor the test file never constructs directly. This is this
+demo's only way to drive its real reviewer steps end to end with scripted AI responses and no
+live account credentials, and is likely reusable by any future demo needing to fake an
+otherwise-un-mockable Workers-AI-shaped binding inside `@cloudflare/vitest-pool-workers`.
+
+**One more real API-surface finding worth recording**: `AiGatewayLogNotFound`
+(`worker-configuration.d.ts`) is an ambient TypeScript **interface** (`interface
+AiGatewayLogNotFound extends Error {}`), never a constructible or importable runtime symbol —
+there is no module path to import it from at all. `ReviewPipelineWorkflow`'s own
+`reconcile-cost:<role>` step catches this with a bare `catch {}` that never inspects the error's
+type, so a test simulating "AI Gateway has not yet indexed this log" needs nothing more than a
+plain `new Error(...)` thrown from a fake `getLog()`.
+
+## NEW DECISIONS
+
+## 41. A `destinations`-scoped `cloudflare_zero_trust_access_application`'s own `domain` value
+    must literally match one of its `destinations` entries, confirmed live during
+    `demos/review-agent`'s first real `terraform apply`
+
+`terraform validate`/`plan` accept a `cloudflare_zero_trust_access_application` whose `domain` is
+the bare hostname (`review-agent.cfapps.uk`) while its `destinations` list only two path-scoped
+entries (`.../api/webhooks/github`, `.../api/webhooks/gitlab`) with no complaint at all — the
+schema itself does not encode this constraint. `apply` against the real API rejects it outright:
+`400 { "code": 12130, "message": "access.api.error.invalid_request: domain not included in
+destinations" }`. `demos/url-shortener`'s own already-working second, narrower `admin` application
+(AGENTS.md's own canonical "second, more-specific application" example is modeled on it) happens
+to set `domain` to its own *first* `destinations` entry rather than the bare hostname — not
+called out anywhere as a required convention, easy to read as an arbitrary stylistic choice, and
+in fact load-bearing: the real API requires `domain` to be one of the values already listed in
+`destinations` whenever `destinations` is set at all.
+
+**Fix**: for any `cloudflare_zero_trust_access_application` that sets `destinations`, always set
+`domain` to exactly one of those same `destinations` entries' `uri` value — never the bare
+hostname a `destinations`-free application would otherwise use. `terraform plan` alone cannot
+catch a violation of this; only a real `apply` does, so this is confirmed by running one against
+this demo's own account, not merely by reading the schema. AGENTS.md's own "Public Access"
+canonical example already happens to follow this convention correctly (its `admin` application's
+`domain` is `"${var.demo_name}.${var.demo_domain}/admin*"`, its own first `destinations` entry) —
+this decision exists so a future demo copying that shape with different path values does not
+independently rediscover the same `400` by choosing the bare hostname instead, which reads as the
+more natural first guess for `domain` on an application that is conceptually "the whole hostname's
+exception," as `demos/review-agent`'s own first draft did.
