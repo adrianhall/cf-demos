@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GraphOperation } from "../../graph-mutations";
+import type { DocumentationResult } from "../../worker/ai/docs-client";
+import { describeOperation } from "../lib/describe-operation";
 import { useDiagramStore } from "../stores/diagramStore";
 
 /** A `graph_snapshot` frame -- sent once, immediately on connect, and again after a whole-graph
@@ -10,12 +12,14 @@ interface GraphSnapshotMessage {
   sequence: number;
 }
 
-/** An `operation_applied` frame -- broadcast to every connection, including the originator. */
+/** An `operation_applied` frame -- broadcast to every connection, including the originator.
+ * `origin: "ai-chat"` (docs/09D-ARCHITECT-AICHAT.md) widens 9C's original `"human" | "agent"`
+ * for a graph mutation performed by an AI chat tool call. */
 interface OperationAppliedMessage {
   type: "operation_applied";
   clientOpId?: string;
   actorEmail: string;
-  origin: "human" | "agent";
+  origin: "human" | "agent" | "ai-chat";
   op: GraphOperation;
   sequence: number;
 }
@@ -89,7 +93,8 @@ function isOperationAppliedMessage(
     (value as { type?: unknown }).type === "operation_applied" &&
     typeof (value as { actorEmail?: unknown }).actorEmail === "string" &&
     ((value as { origin?: unknown }).origin === "human" ||
-      (value as { origin?: unknown }).origin === "agent") &&
+      (value as { origin?: unknown }).origin === "agent" ||
+      (value as { origin?: unknown }).origin === "ai-chat") &&
     typeof (value as { op?: unknown }).op === "object" &&
     (value as { op?: unknown }).op !== null &&
     typeof (value as { sequence?: unknown }).sequence === "number"
@@ -166,6 +171,137 @@ function isSelectionChangedMessage(
   );
 }
 
+/** A `chat_status` frame -- unicast progress narration for one AI chat turn
+ * (docs/09D-ARCHITECT-AICHAT.md's Message Protocol), e.g. "Checking Cloudflare docs…". */
+interface ChatStatusMessage {
+  type: "chat_status";
+  clientRequestId: string;
+  message: string;
+}
+
+/** A `chat_token` frame -- one streamed chunk of a chat turn's final natural-language answer,
+ * unicast to the connection that sent the originating `chat_message`. */
+interface ChatTokenMessage {
+  type: "chat_token";
+  clientRequestId: string;
+  text: string;
+}
+
+/** A `chat_tool_result` frame -- unicast, sent only for the `search_cloudflare_documentation`
+ * tool (a graph-mutating tool's effect arrives as an ordinary {@link OperationAppliedMessage}
+ * instead). `result` is `DocumentationResult[]` on a successful docs lookup or `{ message }` on
+ * `../../worker/ai/docs-client.ts`'s non-fatal "documentation search is currently unavailable"
+ * fallback -- see `../../worker/diagram-session/diagram-session.ts`'s own top-of-file JSDoc for
+ * this exact contract. */
+interface ChatToolResultMessage {
+  type: "chat_tool_result";
+  clientRequestId: string;
+  tool: "search_cloudflare_documentation";
+  args: { query: string };
+  result: DocumentationResult[] | { message: string };
+}
+
+/** A `chat_done` frame -- unicast, sent once a chat turn completes successfully, carrying its
+ * complete final answer (`assistantText`) as a reconciliation point against whatever partial
+ * text this tab already accumulated from {@link ChatTokenMessage} frames. */
+interface ChatDoneMessage {
+  type: "chat_done";
+  clientRequestId: string;
+  assistantText: string;
+}
+
+/** A `chat_error` frame -- unicast, sent instead of {@link ChatDoneMessage} when a chat turn
+ * threw. Never accompanies a crashed connection or object -- see
+ * `../../worker/diagram-session/diagram-session.ts`'s `handleChatMessage()` JSDoc. */
+interface ChatErrorMessage {
+  type: "chat_error";
+  clientRequestId: string;
+  message: string;
+}
+
+/** A `diagram_renamed` frame -- **broadcast** to every connection (unlike every other AI chat
+ * frame above, which is unicast) when a `rename_diagram` AI chat tool call changes the
+ * diagram's title/description. */
+interface DiagramRenamedMessage {
+  type: "diagram_renamed";
+  title: string;
+  description: string | null;
+}
+
+/** Narrow an arbitrary decoded frame down to {@link ChatStatusMessage}. */
+function isChatStatusMessage(value: unknown): value is ChatStatusMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { type?: unknown }).type === "chat_status" &&
+    typeof (value as { clientRequestId?: unknown }).clientRequestId ===
+      "string" &&
+    typeof (value as { message?: unknown }).message === "string"
+  );
+}
+
+/** Narrow an arbitrary decoded frame down to {@link ChatTokenMessage}. */
+function isChatTokenMessage(value: unknown): value is ChatTokenMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { type?: unknown }).type === "chat_token" &&
+    typeof (value as { clientRequestId?: unknown }).clientRequestId ===
+      "string" &&
+    typeof (value as { text?: unknown }).text === "string"
+  );
+}
+
+/** Narrow an arbitrary decoded frame down to {@link ChatToolResultMessage}. */
+function isChatToolResultMessage(
+  value: unknown,
+): value is ChatToolResultMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { type?: unknown }).type === "chat_tool_result" &&
+    typeof (value as { clientRequestId?: unknown }).clientRequestId ===
+      "string" &&
+    typeof (value as { args?: { query?: unknown } }).args?.query === "string"
+  );
+}
+
+/** Narrow an arbitrary decoded frame down to {@link ChatDoneMessage}. */
+function isChatDoneMessage(value: unknown): value is ChatDoneMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { type?: unknown }).type === "chat_done" &&
+    typeof (value as { clientRequestId?: unknown }).clientRequestId ===
+      "string" &&
+    typeof (value as { assistantText?: unknown }).assistantText === "string"
+  );
+}
+
+/** Narrow an arbitrary decoded frame down to {@link ChatErrorMessage}. */
+function isChatErrorMessage(value: unknown): value is ChatErrorMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { type?: unknown }).type === "chat_error" &&
+    typeof (value as { clientRequestId?: unknown }).clientRequestId ===
+      "string" &&
+    typeof (value as { message?: unknown }).message === "string"
+  );
+}
+
+/** Narrow an arbitrary decoded frame down to {@link DiagramRenamedMessage}. */
+function isDiagramRenamedMessage(
+  value: unknown,
+): value is DiagramRenamedMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { type?: unknown }).type === "diagram_renamed" &&
+    typeof (value as { title?: unknown }).title === "string"
+  );
+}
+
 /** Minimum interval, in milliseconds, between outgoing `cursor_moved` frames --
  * docs/09C-COLLABORATIVE-EDITING.md's Phase 19 "Client-throttled (~15/sec)" requirement.
  * `1000 / 15 ≈ 67`, rounded to a plain `65` for a slightly more generous (not slower) cap. */
@@ -179,6 +315,51 @@ function liveSyncUrl(diagramId: string): URL {
   );
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url;
+}
+
+/**
+ * One entry in the AI chat panel's transcript (`../components/editor/panels/AiChatPanel.tsx`,
+ * docs/09D-ARCHITECT-AICHAT.md's In-Editor Chat), in arrival order. `id` is a value local to this
+ * hook (see {@link nextTranscriptEntryId}), used only as a React list key and as this hook's own
+ * pointer to "the assistant entry a `chat_token` should append to" -- it has no meaning outside
+ * this tab.
+ *
+ * - `"user"`/`"assistant"`: the plain conversational text exchanged this turn. An `"assistant"`
+ *   entry's `text` accumulates from streamed {@link ChatTokenMessage} frames and is reconciled to
+ *   the turn's complete answer on {@link ChatDoneMessage} -- unless `stopped` is `true`, in which
+ *   case it is left exactly as the user last saw it; see {@link DiagramLiveSync.stopChatTurn}.
+ * - `"status"`: a `chat_status` progress narration line ("Checking Cloudflare docs…").
+ * - `"docs_result"`: a `chat_tool_result` frame's `search_cloudflare_documentation` outcome.
+ * - `"error"`: a `chat_error` frame's message.
+ * - `"action"`: a compact narration of one `operation_applied` (`origin: "ai-chat"`) broadcast,
+ *   computed by `../lib/describe-operation.ts`'s `describeOperation()` -- rendered for **every**
+ *   connected tab with a chat panel, not only the one that sent the triggering `chat_message`
+ *   (docs/09D-ARCHITECT-AICHAT.md's Phase 24 plan: "operation_applied entries filtered to
+ *   `origin: 'ai-chat'` for its own transcript").
+ */
+export type ChatTranscriptEntry = { id: string } & (
+  | { kind: "user"; text: string }
+  | { kind: "assistant"; text: string; stopped: boolean }
+  | { kind: "status"; text: string }
+  | {
+      kind: "docs_result";
+      query: string;
+      result: DocumentationResult[] | { message: string };
+    }
+  | { kind: "error"; text: string }
+  | { kind: "action"; text: string }
+);
+
+/** Monotonically increasing counter backing {@link nextTranscriptEntryId} -- mirrors
+ * `../stores/diagramStore.ts`'s `nextClientOpId()` precedent: this id only needs to be unique
+ * for the lifetime of one browser tab (a React list key and this hook's own bookkeeping), never
+ * persisted or compared across tabs. */
+let transcriptEntryCounter = 0;
+
+/** Generate a locally-unique id for the next {@link ChatTranscriptEntry}. */
+function nextTranscriptEntryId(): string {
+  transcriptEntryCounter += 1;
+  return `chat-entry-${transcriptEntryCounter}`;
 }
 
 /** What {@link useDiagramLiveSync} exposes to `../components/editor/DiagramCanvas.tsx`. */
@@ -236,6 +417,51 @@ export interface DiagramLiveSync {
    * @param edgeId The currently selected edge's id, or `null` if none/a node is selected.
    */
   sendSelectionChange: (nodeId: string | null, edgeId: string | null) => void;
+  /** The AI chat transcript accumulated on this connection so far, in arrival order --
+   * `../components/editor/panels/AiChatPanel.tsx`'s entire rendering input. Reset to `[]`
+   * whenever the diagram id changes (a fresh diagram means a fresh connection and a fresh
+   * conversation), but *not* simply by a chat turn completing -- only
+   * {@link DiagramLiveSync.clearChatTranscript} ("New conversation") or a diagram change clears
+   * it. */
+  chatTranscript: ChatTranscriptEntry[];
+  /** Whether this tab has a `chat_message` awaiting its own `chat_done`/`chat_error`. Drives the
+   * chat panel's composer (disables Send, shows Stop) -- see
+   * {@link DiagramLiveSync.sendChatMessage}/{@link DiagramLiveSync.stopChatTurn}. */
+  chatInFlight: boolean;
+  /**
+   * Send one AI chat message over the live socket (docs/09D-ARCHITECT-AICHAT.md's Message
+   * Protocol), appending a `"user"` entry to {@link DiagramLiveSync.chatTranscript} and setting
+   * {@link DiagramLiveSync.chatInFlight}.
+   *
+   * @param text The user's message text.
+   * @returns The generated `clientRequestId` on success, or `false` when the socket is not open
+   * (mirroring {@link DiagramLiveSync.sendOperation}'s own not-connected return value) -- the
+   * caller is not required to do anything with the id, since this hook already tracks the
+   * resulting transcript centrally, but it is returned in case a future caller wants its own
+   * correlation.
+   */
+  sendChatMessage: (text: string) => string | false;
+  /**
+   * Stop rendering further `chat_token`s for the turn currently in flight, and mark its
+   * `"assistant"` transcript entry as `stopped`. **This is "stop watching," not "cancel the
+   * model"**: `../../worker/diagram-session/diagram-session.ts` has no cancellation frame in its
+   * protocol at all (confirmed by reading its own `webSocketMessage()`/`handleChatMessage()`
+   * implementation -- there is no inbound frame type this hook could send to interrupt an
+   * in-flight `runDiagramChatTurn()` call), so the turn keeps running to completion on the
+   * server exactly as docs/09D-ARCHITECT-AICHAT.md's own resilience design already describes for
+   * an abandoned/disconnected connection; any further tool-call mutations it makes still arrive
+   * as ordinary `operation_applied` broadcasts and are still applied to the canvas. Only this
+   * tab's own rendering of the turn's remaining narration/final text is suppressed. Does nothing
+   * if no turn is currently in flight.
+   */
+  stopChatTurn: () => void;
+  /** Clear this tab's own local {@link DiagramLiveSync.chatTranscript} ("New conversation",
+   * docs/09D-ARCHITECT-AICHAT.md's Chat panel UI). Deliberately does **not** reset
+   * `../../worker/diagram-session/diagram-session.ts`'s own per-connection `chatHistories` entry
+   * -- there is no frame in this protocol that could ask it to, since every existing frame type
+   * either sends a new turn or reports one's outcome; see this hook's own top-of-file JSDoc for
+   * the resulting, accepted gap between this and the design doc's own stated behavior. */
+  clearChatTranscript: () => void;
 }
 
 /**
@@ -257,7 +483,35 @@ export interface DiagramLiveSync {
  * same identity as a signed-in owner (docs/09C-COLLABORATIVE-EDITING.md's Interplay With Demo
  * 9B). Otherwise (an operation that did not originate from one of this tab's own pending sends),
  * the operation is applied to local state via the shared `applyGraphOperation()`
- * (`../../graph-mutations.ts`) and the toast is surfaced.
+ * (`../../graph-mutations.ts`) and the toast is surfaced. An `origin: "ai-chat"` operation
+ * (docs/09D-ARCHITECT-AICHAT.md) is never one of this tab's own *pending* sends (an AI-chat-
+ * triggered `applyOperation()` call passes no `clientOpId` at all -- see
+ * `../../worker/diagram-session/diagram-session.ts`'s `handleChatMessage()`), so it is always
+ * applied to local state exactly like a remote human/agent edit, on **every** connected tab
+ * including the one that is chatting -- this is the entire mechanism by which a passive
+ * collaborator sees the assistant's edits live with no chat-specific canvas code at all. Every
+ * `origin: "ai-chat"` operation also appends an `"action"` entry to
+ * {@link DiagramLiveSync.chatTranscript} (`../lib/describe-operation.ts`), computed from the
+ * graph as it stood *before* this mutation, on every connected tab -- not only the one chatting.
+ *
+ * **Toast suppression for the chatting tab** (docs/09D-ARCHITECT-AICHAT.md's Message Protocol:
+ * "9C's existing 'Updated by…' toast is suppressed for the connection that originated a
+ * `chat_message`... and shown, unchanged, to every other connection"). The design doc states this
+ * intent in one sentence with no fully specified mechanism -- an `origin: "ai-chat"` operation
+ * has no `clientOpId` to reconcile against the way a `"human"` echo does, so the existing
+ * `isOwnPendingOperation` check can never distinguish "this tab is the one chatting" from "this
+ * tab is a passive viewer" for this origin. This hook's own heuristic: track whether this tab
+ * currently has a `chat_message` awaiting its own `chat_done`/`chat_error`
+ * ({@link DiagramLiveSync.chatInFlight}, via `activeChatRequestIdRef` below). An `origin:
+ * "ai-chat"` `operation_applied` broadcast arriving while that ref is non-`null` is suppressed
+ * (this tab already sees the change happen in its own chat transcript's `"action"` entry); one
+ * arriving while it is `null` (this tab has no turn in flight -- either it never chatted at all,
+ * or its own last turn already resolved) shows the toast normally. This is a simple, deliberately
+ * chosen approximation, not a precise per-turn correlation: a tab is treated as "the chatting
+ * tab" for every `ai-chat` broadcast that happens to arrive during *any* of its own in-flight
+ * turns, not specifically the turn that produced a given mutation -- indistinguishable in
+ * practice, since this UI disables sending a second message while one is already in flight, so
+ * at most one turn per tab is ever in flight at a time.
  *
  * On `operation_rejected`, the matching pending entry is simply dropped -- no toast, no other
  * reconciliation, since every other broadcast this tab has already received reflects current
@@ -269,6 +523,35 @@ export interface DiagramLiveSync {
  * {@link DiagramLiveSync.remoteSelections}, so a departed identity's stale cursor/selection
  * never lingers on the canvas. `cursor_moved`/`selection_changed` update those two maps directly,
  * keyed by the `email` the server adds to each relayed frame.
+ *
+ * **AI chat frames** (docs/09D-ARCHITECT-AICHAT.md's Message Protocol; see
+ * `../../worker/diagram-session/diagram-session.ts`'s own top-of-file JSDoc for the authoritative
+ * wire contract this hook implements the client side of): `chat_status`/`chat_tool_result`
+ * append a `"status"`/`"docs_result"` {@link ChatTranscriptEntry} directly. `chat_token`
+ * accumulates onto the in-flight turn's own `"assistant"` entry (creating it on the first token),
+ * unless {@link DiagramLiveSync.stopChatTurn} already marked that entry `stopped`, in which case
+ * further tokens for that `clientRequestId` are silently dropped. `chat_done` reconciles that
+ * entry's text to the frame's own complete `assistantText` (again, unless `stopped`) and clears
+ * {@link DiagramLiveSync.chatInFlight}; `chat_error` appends an `"error"` entry and does the same.
+ * `diagram_renamed` calls `../stores/diagramStore.ts`'s `applyRemoteRename()` -- not the plain
+ * `setTitle`/`setDescription`, since this diagram's title/description were already persisted by
+ * the `rename_diagram` tool call that produced this broadcast before it was ever sent.
+ *
+ * **Known gap**: `../components/editor/panels/AiChatPanel.tsx`'s "New conversation" control
+ * (via {@link DiagramLiveSync.clearChatTranscript}) clears only this hook's own local
+ * `chatTranscript` state. docs/09D-ARCHITECT-AICHAT.md's own Chat panel UI section describes this
+ * as implicitly restarting the *server's* per-connection history too ("the next `chat_message`
+ * sent starts the object's own history over too, since both are scoped to the same connection"),
+ * but that description appears to assume a fresh connection (a disconnect/reconnect), not a
+ * same-connection button click: `../../worker/diagram-session/diagram-session.ts`'s
+ * `handleChatMessage()` has no frame or mechanism that resets `this.chatHistories` for a live
+ * connection short of it actually closing. This hook cannot close and reopen the socket just to
+ * honor "New conversation" without also dropping every other piece of this connection's state
+ * (presence, pending operations), so this is accepted as a known, minor, documented mismatch
+ * between the design doc's stated behavior and the current protocol's actual capability -- not a
+ * bug this phase attempts to fix, per docs/09D-ARCHITECT-AICHAT.md's own explicit non-goal of
+ * persistent chat history (a same-connection stale/growing history is a strictly smaller problem
+ * than the persistence that non-goal already declines to build).
  *
  * @param diagramId Diagram id to open a live connection for, or `null` before one has loaded.
  * @param enabled Whether to actually open the connection. Callers disable this for the
@@ -287,6 +570,10 @@ export function useDiagramLiveSync(
   const [remoteSelections, setRemoteSelections] = useState<
     DiagramLiveSync["remoteSelections"]
   >({});
+  const [chatTranscript, setChatTranscript] = useState<ChatTranscriptEntry[]>(
+    [],
+  );
+  const [chatInFlight, setChatInFlight] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   // Ids this tab has itself sent and not yet reconciled via an `operation_applied`/
   // `operation_rejected` echo. A plain ref, not store state: purely local socket-reconciliation
@@ -296,6 +583,17 @@ export function useDiagramLiveSync(
   // Timestamp (`Date.now()`) of the most recently *sent* `cursor_moved` frame -- the minimum-
   // interval gate behind `sendCursor()`'s ~15/sec client-side throttle.
   const lastCursorSentAtRef = useRef(0);
+  // The `clientRequestId` of this tab's own chat turn currently awaiting `chat_done`/
+  // `chat_error`, or `null` when none is in flight -- both this hook's own "chatInFlight" signal
+  // and the toast-suppression heuristic's own state (see this hook's own top-of-file JSDoc).
+  const activeChatRequestIdRef = useRef<string | null>(null);
+  // The transcript entry id the in-flight turn's `chat_token`s are currently accumulating onto,
+  // or `null` before the first token of this turn has arrived.
+  const activeAssistantEntryIdRef = useRef<string | null>(null);
+  // `clientRequestId`s `stopChatTurn()` has marked "stop watching" -- further `chat_token`s for
+  // these ids are dropped, and their eventual `chat_done`/`chat_error` is consumed silently
+  // rather than re-appended to the transcript a second time.
+  const stoppedRequestIdsRef = useRef<Set<string>>(new Set());
 
   const applyRemoteGraphSnapshot = useDiagramStore(
     (state) => state.applyRemoteGraphSnapshot,
@@ -306,6 +604,7 @@ export function useDiagramLiveSync(
   const showLiveUpdateNotice = useDiagramStore(
     (state) => state.showLiveUpdateNotice,
   );
+  const applyRemoteRename = useDiagramStore((state) => state.applyRemoteRename);
 
   useEffect(() => {
     if (!enabled || diagramId === null) {
@@ -316,9 +615,14 @@ export function useDiagramLiveSync(
     highestSequenceRef.current = 0;
     pendingClientOpIdsRef.current.clear();
     lastCursorSentAtRef.current = 0;
+    activeChatRequestIdRef.current = null;
+    activeAssistantEntryIdRef.current = null;
+    stoppedRequestIdsRef.current.clear();
     setParticipants({});
     setCursors({});
     setRemoteSelections({});
+    setChatTranscript([]);
+    setChatInFlight(false);
 
     const socket = new WebSocket(liveSyncUrl(diagramId));
     socketRef.current = socket;
@@ -359,10 +663,37 @@ export function useDiagramLiveSync(
           return;
         }
 
+        if (parsed.origin === "ai-chat") {
+          // Describe the action using the graph as it stood *before* this mutation -- a
+          // remove_node/remove_edge operation's own target is gone from the store the instant
+          // `applyRemoteOperation` below runs, and `describeOperation()` has no other way to
+          // learn what it used to be. Rendered on every connected tab, not only one currently
+          // chatting -- see this hook's own top-of-file JSDoc.
+          const graphBeforeMutation = useDiagramStore.getState();
+          const description = describeOperation(
+            parsed.op,
+            graphBeforeMutation.nodes,
+            graphBeforeMutation.edges,
+          );
+          setChatTranscript((current) => [
+            ...current,
+            { id: nextTranscriptEntryId(), kind: "action", text: description },
+          ]);
+        }
+
         if (!isOwnPendingOperation) {
           applyRemoteOperation(parsed.op);
         }
-        showLiveUpdateNotice(parsed.actorEmail, parsed.origin);
+
+        // See this hook's own top-of-file JSDoc ("Toast suppression for the chatting tab") for
+        // why an in-flight chat turn on this tab is the signal used here, not `clientOpId`
+        // reconciliation -- an `ai-chat`-origin operation never carries one.
+        const suppressForChattingTab =
+          parsed.origin === "ai-chat" &&
+          activeChatRequestIdRef.current !== null;
+        if (!suppressForChattingTab) {
+          showLiveUpdateNotice(parsed.actorEmail, parsed.origin);
+        }
         return;
       }
 
@@ -434,6 +765,122 @@ export function useDiagramLiveSync(
         return;
       }
 
+      if (isChatStatusMessage(parsed)) {
+        setChatTranscript((current) => [
+          ...current,
+          { id: nextTranscriptEntryId(), kind: "status", text: parsed.message },
+        ]);
+        return;
+      }
+
+      if (isChatTokenMessage(parsed)) {
+        if (stoppedRequestIdsRef.current.has(parsed.clientRequestId)) return;
+        setChatTranscript((current) => {
+          if (activeAssistantEntryIdRef.current === null) {
+            const id = nextTranscriptEntryId();
+            activeAssistantEntryIdRef.current = id;
+            return [
+              ...current,
+              { id, kind: "assistant", stopped: false, text: parsed.text },
+            ];
+          }
+          return current.map((entry) => {
+            if (entry.id !== activeAssistantEntryIdRef.current) return entry;
+            // Every entry whose id was captured into `activeAssistantEntryIdRef` was created
+            // with `kind: "assistant"` a few lines above -- this check exists only so
+            // TypeScript can narrow `entry` to the one variant with a `text` field to append
+            // to, not because it can actually be false once the id itself already matched.
+            /* istanbul ignore else */
+            if (entry.kind === "assistant") {
+              return { ...entry, text: entry.text + parsed.text };
+            }
+            /* istanbul ignore next -- unreachable; see the comment above. */
+            return entry;
+          });
+        });
+        return;
+      }
+
+      if (isChatToolResultMessage(parsed)) {
+        setChatTranscript((current) => [
+          ...current,
+          {
+            id: nextTranscriptEntryId(),
+            kind: "docs_result",
+            query: parsed.args.query,
+            result: parsed.result,
+          },
+        ]);
+        return;
+      }
+
+      if (isChatDoneMessage(parsed)) {
+        const wasStopped = stoppedRequestIdsRef.current.delete(
+          parsed.clientRequestId,
+        );
+        if (!wasStopped) {
+          setChatTranscript((current) => {
+            if (activeAssistantEntryIdRef.current === null) {
+              // No tokens streamed at all (e.g. a genuinely empty final answer) -- still
+              // record the turn's own complete text.
+              return [
+                ...current,
+                {
+                  id: nextTranscriptEntryId(),
+                  kind: "assistant",
+                  stopped: false,
+                  text: parsed.assistantText,
+                },
+              ];
+            }
+            return current.map((entry) => {
+              if (entry.id !== activeAssistantEntryIdRef.current) return entry;
+              // See the symmetric comment in the `chat_token` branch above -- this check
+              // exists only for TypeScript's benefit.
+              /* istanbul ignore else */
+              if (entry.kind === "assistant") {
+                return { ...entry, text: parsed.assistantText };
+              }
+              /* istanbul ignore next -- unreachable; see the comment above. */
+              return entry;
+            });
+          });
+        }
+        if (activeChatRequestIdRef.current === parsed.clientRequestId) {
+          activeChatRequestIdRef.current = null;
+          activeAssistantEntryIdRef.current = null;
+          setChatInFlight(false);
+        }
+        return;
+      }
+
+      if (isChatErrorMessage(parsed)) {
+        const wasStopped = stoppedRequestIdsRef.current.delete(
+          parsed.clientRequestId,
+        );
+        if (!wasStopped) {
+          setChatTranscript((current) => [
+            ...current,
+            {
+              id: nextTranscriptEntryId(),
+              kind: "error",
+              text: parsed.message,
+            },
+          ]);
+        }
+        if (activeChatRequestIdRef.current === parsed.clientRequestId) {
+          activeChatRequestIdRef.current = null;
+          activeAssistantEntryIdRef.current = null;
+          setChatInFlight(false);
+        }
+        return;
+      }
+
+      if (isDiagramRenamedMessage(parsed)) {
+        applyRemoteRename(parsed.title, parsed.description ?? "");
+        return;
+      }
+
       // Any other/genuinely unrecognized type is silently ignored, matching this channel's
       // existing precedent.
     };
@@ -458,6 +905,7 @@ export function useDiagramLiveSync(
     applyRemoteGraphSnapshot,
     applyRemoteOperation,
     showLiveUpdateNotice,
+    applyRemoteRename,
   ]);
 
   const sendOperation = useCallback(
@@ -493,13 +941,73 @@ export function useDiagramLiveSync(
     [],
   );
 
+  const sendChatMessage = useCallback((text: string): string | false => {
+    const socket = socketRef.current;
+    if (socket === null || socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    const clientRequestId = crypto.randomUUID();
+    activeChatRequestIdRef.current = clientRequestId;
+    activeAssistantEntryIdRef.current = null;
+    setChatInFlight(true);
+    setChatTranscript((current) => [
+      ...current,
+      { id: nextTranscriptEntryId(), kind: "user", text },
+    ]);
+    socket.send(
+      JSON.stringify({ clientRequestId, text, type: "chat_message" }),
+    );
+    return clientRequestId;
+  }, []);
+
+  const stopChatTurn = useCallback(() => {
+    const clientRequestId = activeChatRequestIdRef.current;
+    if (clientRequestId === null) return;
+
+    stoppedRequestIdsRef.current.add(clientRequestId);
+    const assistantEntryId = activeAssistantEntryIdRef.current;
+    if (assistantEntryId !== null) {
+      setChatTranscript((current) =>
+        current.map((entry) => {
+          if (entry.id !== assistantEntryId) return entry;
+          // See the symmetric comment in `onMessage`'s `chat_token` branch above -- this
+          // check exists only for TypeScript's benefit.
+          /* istanbul ignore else */
+          if (entry.kind === "assistant") {
+            return { ...entry, stopped: true };
+          }
+          /* istanbul ignore next -- unreachable; see the comment above. */
+          return entry;
+        }),
+      );
+    }
+
+    // "Stop watching" only -- the turn keeps running server-side; see this hook's own
+    // `DiagramLiveSync.stopChatTurn` JSDoc.
+    activeChatRequestIdRef.current = null;
+    activeAssistantEntryIdRef.current = null;
+    setChatInFlight(false);
+  }, []);
+
+  const clearChatTranscript = useCallback(() => {
+    setChatTranscript([]);
+    // The in-flight turn's future tokens (if any) start a fresh assistant entry in the now-empty
+    // transcript rather than trying to append onto an entry id this cleared array no longer has.
+    activeAssistantEntryIdRef.current = null;
+  }, []);
+
   return {
+    chatInFlight,
+    chatTranscript,
+    clearChatTranscript,
     connected,
     cursors,
     participants,
     remoteSelections,
+    sendChatMessage,
     sendCursor,
     sendOperation,
     sendSelectionChange,
+    stopChatTurn,
   };
 }

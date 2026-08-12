@@ -15,6 +15,8 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches and how it
   - Entire Account > Developer Platform > Workers Scripts: Edit
   - Entire Account > Developer Platform > D1: Edit
   - Entire Account > Developer Platform > Workers KV Storage: Edit
+  - Entire Account > Developer Platform > Workers AI: Edit
+  - Entire Account > Developer Platform > AI Gateway: Edit
   - Entire Account > Cloudflare One / Zero Trust > Access: Edit
   - Entire Account > Cloudflare One / Zero Trust > Access: Identity Providers: Read
   - `<your-domain>` > DNS & Zones > DNS: Write
@@ -127,6 +129,10 @@ Before provisioning for the first time, verify in the Cloudflare dashboard that 
   presence: `GET/POST/DELETE /api/diagrams/:id/collaborators` and
   `GET /api/diagrams/shared-with-me` all sit under the already-covered `/api/diagrams*`
   destination on the `allow` application above.
+- AI Gateway `<DEMO_NAME>-ai` (`cloudflare_ai_gateway`), reachable from the Worker as
+  `env.AI`/`AI_GATEWAY_ID` — it fronts every Workers AI call `DiagramSession` makes for the AI
+  chat assistant. Visible in the Cloudflare dashboard's **AI Gateway** page for request logs,
+  latency, token usage, cost, and the configured $2/day spend limit.
 
 ## Troubleshooting
 
@@ -143,6 +149,7 @@ Before provisioning for the first time, verify in the Cloudflare dashboard that 
 | An MCP client's OAuth sign-in never completes, or fails to redirect | Confirm the client uses a loopback (`http://127.0.0.1:*` or `http://localhost:*`) redirect URI — Managed OAuth's `allow_any_on_loopback`/`allow_any_on_localhost` only admit those; an `https://` redirect must instead be added to `allowed_uris` in `infra/access.tf`. |
 | `401` from `/mcp` | Confirm the MCP client completed the Managed OAuth sign-in flow (its own token expires after 15 minutes; a client should refresh silently within its 14-day session) and confirm the `app` Access application lists `/mcp*` as a destination. |
 | An MCP tool call succeeds but the open editor tab never updates | Confirm the browser tab has the diagram open (the WebSocket only opens once a diagram is loaded) and that no browser extension or proxy is blocking WebSocket upgrades to `/api/diagrams/:id/live`. |
+| The AI Assistant panel or "Generate with AI" modal errors immediately | Confirm the `<DEMO_NAME>-ai` AI Gateway exists and `AI_GATEWAY_ID` in the generated `wrangler.jsonc` matches its id, that Workers AI is enabled on the account, and that the account has not hit the gateway's $2/day spend limit (visible on the AI Gateway dashboard page). |
 
 ## Teardown
 

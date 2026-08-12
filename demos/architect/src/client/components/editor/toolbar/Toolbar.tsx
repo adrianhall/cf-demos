@@ -1,4 +1,4 @@
-import { type Edge, type Node as FlowNode, useReactFlow } from "@xyflow/react";
+import { useReactFlow } from "@xyflow/react";
 import { useCallback, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -6,9 +6,10 @@ import {
   Layout as LayoutIcon,
   Link2,
   // Aliased like `Layout as LayoutIcon` above -- a bare `Map` import would shadow the global
-  // `Map` constructor this file's `remapEdgeHandles` and `applyAutoLayout` both construct.
+  // `Map` constructor `../../../lib/auto-layout.ts`'s `computeAutoLayout` constructs.
   Map as MapIcon,
   Maximize,
+  MessageSquare,
   RotateCcw,
   RotateCw,
   Share2,
@@ -17,12 +18,14 @@ import {
   ZoomIn,
   ZoomOut,
 } from "react-feather";
-import { NODE_TYPE_MAP } from "../../../../catalog";
+import {
+  computeAutoLayout,
+  type LayoutDirection,
+} from "../../../lib/auto-layout";
 import { DarkModeToggle } from "../../../components/DarkModeToggle";
 import type { DiagramLiveSync } from "../../../hooks/useDiagramLiveSync";
 import { useDismissableMenu } from "../../../hooks/useDismissableMenu";
 import { useDiagramStore } from "../../../stores/diagramStore";
-import type { CFEdgeData, CFNodeData } from "../types";
 import { CollaboratorsModal } from "./CollaboratorsModal";
 import { ConnectNodesModal } from "./ConnectNodesModal";
 import { ExportButton } from "./ExportButton";
@@ -30,63 +33,11 @@ import { PresenceStack } from "./PresenceStack";
 import { PrintButton } from "./PrintButton";
 import { ShareModal } from "./ShareModal";
 
-/** Auto-layout direction: top-to-bottom or left-to-right. */
-type LayoutDirection = "DOWN" | "RIGHT";
-
-/** Preferred source/target handle id for each layout direction, when the node type has one. */
-const DIRECTION_HANDLES: Record<
-  LayoutDirection,
-  { source: string; target: string }
-> = {
-  DOWN: { source: "source-bottom", target: "target-top" },
-  RIGHT: { source: "source-right", target: "target-left" },
-};
-
-/**
- * Remap edge `sourceHandle`/`targetHandle` to match a layout direction, only when the preferred
- * handle actually exists on that node's catalog type; otherwise the edge keeps its current
- * handle. Exported for `../DiagramCanvas.tsx`'s auto-layout flow and unit-tested directly, since
- * it is pure and independent of ELK itself.
- */
-export function remapEdgeHandles(
-  edges: Edge<CFEdgeData>[],
-  nodes: FlowNode<CFNodeData>[],
-  direction: LayoutDirection,
-): Edge<CFEdgeData>[] {
-  const preferred = DIRECTION_HANDLES[direction];
-  const nodeTypeIdMap = new Map(
-    nodes.map((node) => [node.id, node.data.typeId]),
-  );
-
-  return edges.map((edge) => {
-    let sourceHandle = edge.sourceHandle;
-    let targetHandle = edge.targetHandle;
-
-    const sourceTypeId = nodeTypeIdMap.get(edge.source);
-    if (sourceTypeId !== undefined) {
-      const handles = NODE_TYPE_MAP.get(sourceTypeId)?.defaultHandles ?? [];
-      if (handles.some((handle) => handle.id === preferred.source)) {
-        sourceHandle = preferred.source;
-      }
-    }
-
-    const targetTypeId = nodeTypeIdMap.get(edge.target);
-    if (targetTypeId !== undefined) {
-      const handles = NODE_TYPE_MAP.get(targetTypeId)?.defaultHandles ?? [];
-      if (handles.some((handle) => handle.id === preferred.target)) {
-        targetHandle = preferred.target;
-      }
-    }
-
-    if (
-      sourceHandle === edge.sourceHandle &&
-      targetHandle === edge.targetHandle
-    ) {
-      return edge;
-    }
-    return { ...edge, sourceHandle, targetHandle };
-  });
-}
+/** Re-exported so `./Toolbar.test.tsx`'s existing `remapEdgeHandles` import path keeps working
+ * unchanged -- the function itself moved to `../../../lib/auto-layout.ts` (docs/09D-ARCHITECT-AICHAT.md's
+ * Phase 24), since it is tightly coupled to {@link computeAutoLayout} and independently useful to
+ * any future caller of that module. */
+export { remapEdgeHandles } from "../../../lib/auto-layout";
 
 /**
  * Top toolbar: back-to-dashboard link, editable diagram title, palette/properties/minimap view
@@ -125,6 +76,8 @@ export function Toolbar({
     togglePalette,
     propertiesOpen,
     toggleProperties,
+    detailsPanelTab,
+    setDetailsPanelTab,
     minimapOpen,
     toggleMinimap,
   } = useDiagramStore();
@@ -136,6 +89,13 @@ export function Toolbar({
   const [collaboratorsOpen, setCollaboratorsOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const layoutGroupRef = useRef<HTMLDivElement>(null);
+  // "Has the AI Assistant toggle already nudged the service palette closed once this session?"
+  // A `useRef` rather than the module-level flag docs/09D-ARCHITECT-AICHAT.md's In-Editor Chat
+  // section also allows -- a `useRef` resets exactly when this toolbar itself remounts (i.e. a
+  // fresh editor session), which is indistinguishable from "a new session" from the user's own
+  // point of view, and keeps this behavior trivially resettable between tests (a module-level
+  // `let` would leak across every test in `./Toolbar.test.tsx` instead).
+  const paletteNudgeShownRef = useRef(false);
 
   useDismissableMenu(
     layoutMenuOpen,
@@ -144,69 +104,30 @@ export function Toolbar({
   );
 
   /**
-   * Dynamically import ELK, build a layered graph description from the current nodes/edges, run
-   * layout, apply the computed positions, remap edge handles to match, and fit the viewport.
-   * Pushes undo history once before applying so the whole re-layout is a single undo step.
+   * Delegate to `../../../lib/auto-layout.ts`'s `computeAutoLayout()` for the actual ELK call,
+   * then perform this component's own side effects with its result: push undo history once
+   * (so the whole re-layout is a single undo step), replace the store's nodes/edges, enqueue one
+   * live-sync `update_node` operation per repositioned node, and fit the viewport. Does nothing
+   * to the store when `computeAutoLayout()` returns `null` (ELK's own response carried no
+   * `children`), matching this function's pre-extraction behavior exactly -- but still fits the
+   * view afterward either way, since a user who pressed this button expects *some* visible
+   * response.
    */
   const applyAutoLayout = useCallback(
     async (direction: LayoutDirection) => {
       setLayouting(true);
       try {
-        const ELK = (await import("elkjs/lib/elk.bundled.js")).default;
-        const elk = new ELK();
-
         const state = useDiagramStore.getState();
-        const nodeWidth = 200;
-        const nodeHeight = 80;
+        const result = await computeAutoLayout(
+          state.nodes,
+          state.edges,
+          direction,
+        );
 
-        const graph = {
-          children: state.nodes.map((node) => ({
-            height: nodeHeight,
-            id: node.id,
-            ports: (
-              NODE_TYPE_MAP.get(node.data.typeId)?.defaultHandles ?? []
-            ).map((handle) => ({
-              id: `${node.id}-${handle.id}`,
-              properties: { "port.side": handle.position.toUpperCase() },
-            })),
-            width: nodeWidth,
-          })),
-          edges: state.edges.map((edge) => ({
-            id: edge.id,
-            sources: [edge.source],
-            targets: [edge.target],
-          })),
-          id: "root",
-          layoutOptions: {
-            "elk.algorithm": "layered",
-            "elk.direction": direction,
-            "elk.edgeRouting": "ORTHOGONAL",
-            "elk.layered.spacing.nodeNodeBetweenLayers": "80",
-            "elk.spacing.nodeNode": "60",
-          },
-        };
-
-        const layout = await elk.layout(graph);
-        if (layout.children) {
-          const positioned = new Map(
-            layout.children.map((child) => [
-              child.id,
-              { x: child.x ?? 0, y: child.y ?? 0 },
-            ]),
-          );
-          const newNodes = state.nodes.map((node) => {
-            const position = positioned.get(node.id);
-            return position ? { ...node, position } : node;
-          });
-          const newEdges = remapEdgeHandles(
-            state.edges,
-            state.nodes,
-            direction,
-          );
-
+        if (result !== null) {
           useDiagramStore.getState().pushHistory();
-          useDiagramStore.getState().setNodes(newNodes);
-          useDiagramStore.getState().setEdges(newEdges);
+          useDiagramStore.getState().setNodes(result.nodes);
+          useDiagramStore.getState().setEdges(result.edges);
 
           // Auto-layout repositions every node at once via `setNodes()` rather than one call
           // per node, so -- unlike a single drag, which `../../../stores/diagramStore.ts`'s
@@ -217,7 +138,7 @@ export function Toolbar({
           // `auto_layout_diagram` tool's *own* server-side write uses a single whole-graph
           // `applyWholeGraphReplace()` instead -- the two paths need not produce identical wire
           // messages to produce the same visual result for other viewers.
-          for (const node of newNodes) {
+          for (const node of result.nodes) {
             useDiagramStore.getState().enqueueOperation({
               kind: "update_node",
               nodeId: node.id,
@@ -233,6 +154,27 @@ export function Toolbar({
     },
     [fitView],
   );
+
+  /**
+   * Open the details panel's AI Assistant tab (docs/09D-ARCHITECT-AICHAT.md's In-Editor Chat),
+   * opening the details panel itself first if it was closed. The first time this is pressed in
+   * this toolbar's lifetime, if the service palette is currently open, this also closes it --
+   * reclaiming canvas and sidebar width for the wider chat panel, a one-time nudge rather than an
+   * enforced state: the palette's own existing toggle (Bug 4) still opens and closes it freely
+   * afterward, and this never re-closes it on a later click.
+   */
+  const onAiAssistantClick = useCallback(() => {
+    setDetailsPanelTab("ai-chat");
+    if (!useDiagramStore.getState().propertiesOpen) {
+      toggleProperties();
+    }
+    if (!paletteNudgeShownRef.current) {
+      paletteNudgeShownRef.current = true;
+      if (useDiagramStore.getState().paletteOpen) {
+        togglePalette();
+      }
+    }
+  }, [setDetailsPanelTab, toggleProperties, togglePalette]);
 
   return (
     <div className="toolbar">
@@ -294,6 +236,22 @@ export function Toolbar({
             aria-pressed={propertiesOpen}
           >
             <Sidebar size={18} aria-hidden="true" />
+          </button>
+          {/* docs/09D-ARCHITECT-AICHAT.md's In-Editor Chat: opens the details panel's AI
+              Assistant tab, matching the palette/properties toggle buttons' own convention.
+              `aria-pressed` reflects the panel actually being open *and* showing this tab --
+              `detailsPanelTab === "ai-chat"` alone would still read "pressed" while the whole
+              sidebar is collapsed, which is not what a user pressing this button again to
+              re-open it would expect to see. */}
+          <button
+            type="button"
+            onClick={onAiAssistantClick}
+            className="toolbar__button"
+            title="AI Assistant"
+            aria-label="AI Assistant"
+            aria-pressed={propertiesOpen && detailsPanelTab === "ai-chat"}
+          >
+            <MessageSquare size={18} aria-hidden="true" />
           </button>
           <button
             type="button"

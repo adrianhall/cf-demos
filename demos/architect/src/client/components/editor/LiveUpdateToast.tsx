@@ -9,20 +9,25 @@ const AUTO_DISMISS_MS = 6_000;
  * Render the toast's text for one live-update notice.
  *
  * @param actorEmail The identity that performed the edit.
- * @param origin `"human"` for a WebSocket-originated edit, `"agent"` for an MCP tool call.
+ * @param origin `"human"` for a WebSocket-originated edit, `"agent"` for an MCP tool call,
+ * `"ai-chat"` for an AI chat tool call (docs/09D-ARCHITECT-AICHAT.md).
  * @param viewerEmail This tab's own signed-in identity email, or `null` before it has loaded.
  * @returns "Updated by your agent" for an agent-originated edit -- true even when the agent
  * authenticates as this tab's own owner identity (docs/09C-COLLABORATIVE-EDITING.md's Interplay
- * With Demo 9B) -- "Updated by you" for this tab's own identity editing from a different browser
- * tab, or "Updated by \<email\>" for any other human collaborator.
+ * With Demo 9B) -- "Updated by AI Assistant" for an ai-chat-originated edit, "Updated by you" for
+ * this tab's own identity editing from a different browser tab, or "Updated by \<email\>" for any
+ * other human collaborator.
  */
 function noticeText(
   actorEmail: string,
-  origin: "human" | "agent",
+  origin: "human" | "agent" | "ai-chat",
   viewerEmail: string | null,
 ): string {
   if (origin === "agent") {
     return "Updated by your agent";
+  }
+  if (origin === "ai-chat") {
+    return "Updated by AI Assistant";
   }
   if (viewerEmail !== null && actorEmail === viewerEmail) {
     return "Updated by you";

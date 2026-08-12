@@ -93,6 +93,15 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 53. In both windows at once, open the same node's properties panel and type a different label into each. Point out the "Updated by \<name\>" toast appearing in whichever window's edit did not win, and that both windows converge on the exact same final label — the last one applied, not a merge of the two.
 54. With both browser windows still open, go back to the OpenCode terminal session and ask it to make one more edit to the same diagram (for example: "Rename the API node to Frontend"). Point out the toast in the owner's window now reads "Updated by your agent" — via the `operation_applied` message's `origin` field — even though the MCP client authenticates as the owner's own identity, the same one live in that browser tab.
 55. In Bob's window, open the collaborators control again and select **Leave diagram**. Confirm it disappears from Bob's "Shared with me" section immediately, while the owner's tab keeps full, uninterrupted access.
+56. Still signed in as the diagram owner (`ADMIN_EMAIL`), return to the dashboard (`/app`) and select **+ New Diagram**, then **Generate with AI**. Type: "I want to build the backend for a real-time strategy game like an MOBA — matchmaking, live game state, and a leaderboard." Watch the assistant's actions stream into the preview (add Worker, add Durable Object, add D1, add KV, connect them), followed by its explanation and a **Sources** list of documentation links.
+57. Type a follow-up in the same modal: "Actually, use Queues for the leaderboard updates instead of writing directly to D1." Watch the diagram change again before opening the editor.
+58. Select **Open in Editor**. Reload the page (a full browser refresh, not a client-side navigation) and show the diagram is already saved and already laid out — nothing about opening the editor itself was what saved it.
+59. In the toolbar's collaborators control, add `bob@example.com` (already signed in once, earlier in this script). Switch to Bob's reserved window/profile, open `https://architect.cfapps.uk/app`, and open this diagram from Bob's "Shared with me" section.
+60. Back in the owner's window, select the toolbar's **AI Assistant** icon and ask: "Add a KV cache in front of the leaderboard reads." Watch the node appear live in **both** windows — Bob's, which never sent a chat message at all, sees the exact same `operation_applied` broadcast a human edit would have produced.
+61. In the owner's window, press **Ctrl+Z** to undo the assistant's last change — showing it is an ordinary, undoable operation, not a special case.
+62. Ask the assistant: "What does the Durable Object do here, and how does it talk to the Worker?" Watch it call `search_cloudflare_documentation` and cite a real, current doc link in its answer, shown as a clickable **Sources** entry under its message.
+63. Ask a question that triggers a multi-step tool sequence (for example: "Rename this diagram to Leaderboard Service and add a Queue consumer node connected to it"), then close the chatting browser tab immediately, before the assistant finishes replying. Reopen the diagram and show the requested changes landed anyway — the turn kept running inside `DiagramSession` after the tab disconnected.
+64. Switch to the dashboard tab. Open the Cloudflare dashboard's **AI** > **AI Gateway** page for `architect-ai` and show the logged requests from this script, their model, latency, and cost, and the configured $2/day spend limit.
 
 ## Expected Results
 
@@ -118,6 +127,10 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 - Two identities editing the same node's label around the same moment converge on one final value — whichever operation the `DiagramSession` Durable Object applied last — surfaced to the other editor as an "Updated by \<name\>" toast, never a merge of both edits.
 - An MCP tool call against a diagram two humans currently have open is attributed as "Updated by your agent" in both viewers, distinguishing it from either human's own edit even though the MCP client authenticates as the diagram owner's own identity.
 - A collaborator selecting "Leave diagram" immediately loses access and disappears from their own "Shared with me" section, with no effect on the owner's or any other collaborator's access.
+- "Generate with AI" produces a diagram that is immediately editable and already saved — opening the editor afterward performs no separate save step of its own.
+- An assistant-driven change made from the in-editor AI Assistant panel is exactly as durable and exactly as live to every other connected viewer as a human's own edit: a bystander sees the same `operation_applied` broadcast a human edit would produce, with no chat message of their own, and can undo it with the ordinary `Ctrl+Z` history.
+- A chat turn that triggers a multi-step tool sequence keeps running inside `DiagramSession` even if the originating browser tab disconnects mid-turn; the requested changes are still applied and persisted, visible on reopening the diagram.
+- The assistant grounds an explanation in current Cloudflare documentation by calling `search_cloudflare_documentation`, citing a real, clickable doc link back in the chat transcript.
 
 ## Where To Observe State
 
@@ -126,5 +139,6 @@ See [`EXPLAIN-DEMO.md`](./EXPLAIN-DEMO.md) for what this demo teaches.
 - **D1 data:** D1 > `architect-db` > Console; query the `users`, `diagrams`, `diagram_shares`, and `diagram_collaborators` tables as shown above.
 - **Access applications:** Zero Trust > Access controls > Applications > `architect public` and `architect app` — the latter's **Authentication** tab shows the Managed OAuth configuration an MCP client authenticates through. Confirm no new application appears: every collaborator/live-sync route still sits under `architect app`'s existing `/api/diagrams*` destination.
 - **Durable Objects:** Workers & Pages > `architect` > Durable Objects > `DIAGRAM_SESSIONS` — one active instance per diagram id with an open editor tab, holding that diagram's live-sync WebSocket(s), now including every connected collaborator's socket, not only the owner's.
+- **AI Gateway:** AI > AI Gateway > `architect-ai` — every `env.AI.run()` call `DiagramSession` makes for the AI chat assistant, with its model, latency, token usage, cost, and the configured $2/day spend limit.
 
 Run `npm run teardown` after the presentation; see README.md for details.

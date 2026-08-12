@@ -13,7 +13,7 @@ small Durable Object that pushes an agent's edits live into any browser editor t
 already has open. It adds no new deployable unit, domain, or D1 table; it is the same demo,
 extended with an agent-facing surface on top of the application described above.
 
-This document also covers a second, final follow-on, described in full in
+This document also covers a third follow-on, described in full in
 `docs/09C-COLLABORATIVE-EDITING.md`: two different signed-in humans editing the same diagram at
 the same time, each seeing the other's cursor and edits live, on top of a minimal, owner-managed
 collaborator model distinct from 9's existing anonymous read-only share link. It turns 9B's
@@ -22,6 +22,16 @@ resolve through the very same code path — see [Live Collaboration And Concurre
 below. It adds one new D1 table (`diagram_collaborators`) and no new Cloudflare product, Access
 application, or Terraform resource — every new route sits under 9's existing `/api/diagrams*`
 Access destination.
+
+This document also covers a fourth, final follow-on, described in full in
+`docs/09D-ARCHITECT-AICHAT.md`: a fourth way to change a diagram — describing it in plain language
+to an AI assistant, either while generating a brand-new diagram from the blueprint gallery or from
+inside the editor itself. It adds a fourth capability to the existing `DiagramSession` Durable
+Object (running a Workers AI tool-calling conversation) alongside its existing three, plus a new
+`origin: "ai-chat"` value for `applyOperation()` (see [AI Chat](#ai-chat) below) — no new Durable
+Object class, no new D1 table, and no new HTTP route. It adds one new Cloudflare product pair,
+Workers AI and AI Gateway (`cloudflare_ai_gateway`), and no new Access application, policy, or
+destination.
 
 ## What This Demonstrates
 
@@ -128,6 +138,15 @@ Access destination.
   different question from 9's anonymous, read-only share link ("let anyone with this link *view*
   the current diagram"). See [Live Collaboration And Concurrency](#live-collaboration-and-concurrency)
   below.
+- **A fourth writer through the exact same write path, not a separate, weaker guarantee.** An AI
+  assistant — reached either from the blueprint gallery ("Generate with AI") or from an in-editor
+  chat panel — changes a diagram by calling the same `add_node`/`update_node`/`remove_node`/
+  `add_edge`/`update_edge`/`remove_edge` vocabulary a person or an MCP agent already uses, through
+  the same `DiagramSession.applyOperation()` write chain, with a new `origin: "ai-chat"` value
+  alongside the existing `"human"` and `"agent"` origins. See [AI Chat](#ai-chat) below for why
+  this runs inside `DiagramSession` rather than as a stateless route, and why that reuse — not a
+  parallel persistence path of its own — is what makes an assistant-driven change exactly as
+  durable and exactly as visible to every other connected viewer as a human's own edit.
 
 ## How It Works
 
@@ -662,6 +681,81 @@ position, and current selection (`presence_snapshot`/`presence_joined`/`presence
 never persisted, and are dropped rather than queued when a connection is backpressured — a missed
 cursor frame is invisible; a missed graph operation is not.
 
+### AI Chat
+
+`docs/09D-ARCHITECT-AICHAT.md` adds a fourth way to change a diagram — describing it in plain
+language to an assistant — from two entry points: the blueprint gallery's "Generate with AI" tile
+(`GenerateWithAiModal.tsx`) for a brand-new diagram, and the editor's "AI Assistant" toggle
+(`AiChatPanel.tsx`, sharing the right-hand sidebar slot the properties panel already occupied) for
+an existing one. Both send an ordinary `chat_message` WebSocket frame over the **same**
+`/api/diagrams/:id/live` connection 9C's editor already opens — no new HTTP route, no new
+Server-Sent Events endpoint, no new Durable Object class.
+
+**Why this runs inside `DiagramSession`, not a stateless route.** An earlier draft of this
+capability computed a chat turn in a plain, stateless Hono handler and relied on the browser's own
+autosave to persist the result. Two requirements, both real only once 9C's collaboration model
+already exists, are why the shipped design instead runs the turn as one more capability of the
+*existing* `DiagramSession` object rather than declining to use one:
+
+- **Resilience across a dropped connection.** A tool-calling turn against a large model can run
+  several sequential rounds, each itself several seconds — long enough that a backgrounded tab, a
+  network blip, or the user simply closing the panel is a real possibility mid-turn. A plain
+  Worker `fetch()` handler's lifetime is tied to the request that started it, so a disconnect there
+  cancels whatever the model was about to do next. A Durable Object's asynchronous execution is a
+  property of the *object*, not of any one caller's connection: a turn kicked off by a
+  `chat_message` keeps running inside `DiagramSession` even if that particular socket goes away,
+  and every mutation it completes is still applied and broadcast to whoever else is connected.
+  Decision #35 re-confirmed this platform behavior directly, and this phase's own new
+  `tests/integration/diagram-session.test.ts` coverage (decision #37) now exercises a full,
+  real turn end-to-end over real hibernatable WebSockets as proof, not only as a re-read of the
+  documentation.
+- **Serialized correctness once 9C's collaboration exists.** With two humans able to edit the same
+  diagram concurrently, a chat turn computed against a graph snapshot read once at the start of a
+  multi-second conversation risks acting on a graph a collaborator has since changed. Running the
+  turn's tool calls through `DiagramSession`'s own `applyOperation()` — the same single-threaded
+  execution context that already makes "no interleaving between two concurrent writers" true for
+  human and MCP-agent writes (see [Live Collaboration And
+  Concurrency](#live-collaboration-and-concurrency) above) — extends that same guarantee to the
+  assistant for free, instead of reintroducing a stale-read race of its own.
+
+**`origin: "ai-chat"` is one more kind of writer through the exact same machinery, not a separate,
+weaker guarantee.** Every graph-mutating tool call (`add_node`, `update_node`, `remove_node`,
+`add_edge`, `update_edge`, `remove_edge`) resolves through `applyOperation()` exactly like a
+human's own WebSocket edit (`origin: "human"`) or an MCP tool call (`origin: "agent"`) — the same
+write chain, the same D1 persistence, the same `operation_applied` broadcast to every open editor
+tab. That is why an assistant-driven change is exactly as durable, and exactly as visible to every
+other connected viewer, as a human's own edit: a bystander who never sent a chat message of their
+own still sees the same broadcast a human edit would have produced, and can undo an assistant's
+change with the ordinary `Ctrl+Z` history the same way they would undo their own.
+
+**Workers AI and AI Gateway.** `runDiagramChatTurn()` (`src/worker/ai/chat-engine.ts`) runs a
+bounded, model-driven tool-calling loop against `env.AI.run()`, gated through one AI Gateway
+(`cloudflare_ai_gateway`, every call passing `{ gateway: { id: env.AI_GATEWAY_ID } }`) so every
+chat turn is visible in one place in the dashboard's AI Gateway logs. Function calling with
+Workers AI is inherently non-streaming — a call with `tools` set returns a complete
+`{ response, tool_calls[] }` object, never a token stream — so every tool-calling round runs as a
+plain, non-streaming call, and only the turn's final round, once the model has stopped calling
+tools and is producing its closing answer, is requested with `stream: true`, relayed to the
+originating connection as `chat_token` messages. The model itself
+(`AI_CHAT_MODEL`, a plain literal in `wrangler.jsonc.tpl`, not a Terraform output) is a single,
+operator-visible-but-not-user-selectable choice — unlike `docs/06-AGENTIC-CHAT.md`'s AI Gateway,
+this one uses **no dynamic routing**: there is exactly one caller and one model here, so there is
+no per-caller routing decision for a dynamic route to make.
+
+**The Cloudflare docs tool.** One additional tool, `search_cloudflare_documentation`
+(`src/worker/ai/docs-client.ts`), lets the assistant ground its product choices and explanations
+in Cloudflare's own current documentation by calling Cloudflare's public, unauthenticated
+documentation MCP server (`https://docs.mcp.cloudflare.com/mcp`), surfacing clickable source links
+back into the chat transcript. It deliberately uses a plain `Client` +
+`StreamableHTTPClientTransport`, opened fresh for exactly one `callTool()` and then closed, rather
+than the Agents SDK's persistent `MCPClientManager` (`this.addMcpServer()`/`this.mcp`): that
+manager exists to hold a *persistent* connection's state (OAuth tokens, reconnection,
+subscriptions) across a long-lived `Agent`, real value for a server that needs authorization or
+needs to stay connected between calls — neither of which is true here, since the target server is
+public, stateless, and unauthenticated (a fresh server per request, by its own README). A lookup
+that times out or errors is treated as non-fatal to the turn, returning a plain "documentation
+search is currently unavailable" string to the model rather than aborting the whole turn.
+
 ### Observability
 
 `cloudflareLogger()` provides request-scoped structured logging on every request.
@@ -673,7 +767,10 @@ value-for-value copy of that same `observability` block. That duplication is del
 oversight: `wrangler deploy` resets a Worker's observability metadata to disabled whenever its
 own config omits the block, even when Terraform already turned it on, so mirroring the same
 values into `wrangler.jsonc.tpl` is what keeps every deploy from silently disabling logs and
-traces again.
+traces again. `DiagramSession`'s AI chat capability logs `ai_chat_turn_completed`/
+`ai_chat_turn_failed` (round count, tool-call count, duration — never prompt or response content)
+and `ai_docs_lookup_performed` (result count and latency only — never the query text or returned
+snippets), matching `docs/05-AI-CHAT.md`'s "never prompt or response content" logging discipline.
 
 ## Further Reading
 
@@ -714,3 +811,8 @@ traces again.
 - [Durable Objects: Rules of Durable Objects](https://developers.cloudflare.com/durable-objects/best-practices/rules-of-durable-objects/) — the single-threaded, no-`await`-between-statements ordering guarantee `applyOperation()` relies on.
 - [Access Durable Object name via `ctx.id.name`](https://developers.cloudflare.com/changelog/post/2026-03-15-durable-object-id-name/) — how `DiagramSession` knows its own diagram id without a separate parameter (`docs/DECISIONS.md` #33).
 - [`<ViewportPortal />` (`@xyflow/react`)](https://reactflow.dev/api-reference/components/viewport-portal) — renders the remote cursor overlay and selection highlight in the same coordinate system as the canvas's nodes and edges, so they pan/zoom together.
+- [Workers AI](https://developers.cloudflare.com/workers-ai/)
+- [Workers AI function calling](https://developers.cloudflare.com/workers-ai/function-calling/) — why `runDiagramChatTurn()` runs every tool-calling round as a plain, non-streaming call and requests `stream: true` only for the turn's final answer.
+- [AI Gateway](https://developers.cloudflare.com/ai-gateway/)
+- [`cloudflare_ai_gateway` resource](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/ai_gateway)
+- [Cloudflare's own MCP servers (documentation server, `docs.mcp.cloudflare.com`)](https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/) — the public, unauthenticated server `search_cloudflare_documentation` calls.

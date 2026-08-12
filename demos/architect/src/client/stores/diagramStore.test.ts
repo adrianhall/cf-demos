@@ -35,6 +35,8 @@ describe("useDiagramStore", () => {
       paletteOpen: true,
       propertiesOpen: false,
       minimapOpen: true,
+      detailsPanelTab: "properties",
+      detailsPanelExpanded: false,
       undoStack: [],
       redoStack: [],
     });
@@ -392,6 +394,39 @@ describe("useDiagramStore", () => {
     expect(useDiagramStore.getState().propertiesOpen).toBe(false);
   });
 
+  it("switches the details panel to Properties when a node is selected (docs/09D-ARCHITECT-AICHAT.md)", () => {
+    useDiagramStore.setState({ detailsPanelTab: "ai-chat" });
+    useDiagramStore.getState().setSelectedNode("a");
+    expect(useDiagramStore.getState().detailsPanelTab).toBe("properties");
+  });
+
+  it("switches the details panel to Properties when an edge is selected", () => {
+    useDiagramStore.setState({ detailsPanelTab: "ai-chat" });
+    useDiagramStore.getState().setSelectedEdge("e1");
+    expect(useDiagramStore.getState().detailsPanelTab).toBe("properties");
+  });
+
+  it("leaves the details panel tab unchanged when deselecting", () => {
+    useDiagramStore.setState({ detailsPanelTab: "ai-chat" });
+    useDiagramStore.getState().setSelectedNode(null);
+    expect(useDiagramStore.getState().detailsPanelTab).toBe("ai-chat");
+  });
+
+  it("sets the details panel tab directly via setDetailsPanelTab", () => {
+    useDiagramStore.getState().setDetailsPanelTab("ai-chat");
+    expect(useDiagramStore.getState().detailsPanelTab).toBe("ai-chat");
+    useDiagramStore.getState().setDetailsPanelTab("properties");
+    expect(useDiagramStore.getState().detailsPanelTab).toBe("properties");
+  });
+
+  it("toggles the details panel's expanded width", () => {
+    expect(useDiagramStore.getState().detailsPanelExpanded).toBe(false);
+    useDiagramStore.getState().toggleDetailsPanelExpanded();
+    expect(useDiagramStore.getState().detailsPanelExpanded).toBe(true);
+    useDiagramStore.getState().toggleDetailsPanelExpanded();
+    expect(useDiagramStore.getState().detailsPanelExpanded).toBe(false);
+  });
+
   it("toggles the palette and properties panel visibility", () => {
     expect(useDiagramStore.getState().paletteOpen).toBe(true);
     useDiagramStore.getState().togglePalette();
@@ -423,6 +458,22 @@ describe("useDiagramStore", () => {
     useDiagramStore.setState({ dirty: false });
     useDiagramStore.getState().setDescription("New description");
     expect(useDiagramStore.getState().dirty).toBe(true);
+  });
+
+  it("applies a remote rename without marking dirty (docs/09D-ARCHITECT-AICHAT.md)", () => {
+    useDiagramStore.setState({
+      dirty: false,
+      title: "Old",
+      description: "old",
+    });
+    useDiagramStore
+      .getState()
+      .applyRemoteRename("New Title", "New description");
+
+    const state = useDiagramStore.getState();
+    expect(state.title).toBe("New Title");
+    expect(state.description).toBe("New description");
+    expect(state.dirty).toBe(false);
   });
 
   it("tracks saving/saved/error transitions", () => {
@@ -587,6 +638,17 @@ describe("useDiagramStore", () => {
       expect(useDiagramStore.getState().liveUpdateNotice).toEqual({
         actorEmail: "bob@example.com",
         origin: "human",
+      });
+    });
+
+    it("accepts an ai-chat origin (docs/09D-ARCHITECT-AICHAT.md)", () => {
+      useDiagramStore
+        .getState()
+        .showLiveUpdateNotice("owner@example.com", "ai-chat");
+
+      expect(useDiagramStore.getState().liveUpdateNotice).toEqual({
+        actorEmail: "owner@example.com",
+        origin: "ai-chat",
       });
     });
 

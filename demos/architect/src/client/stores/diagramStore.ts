@@ -32,6 +32,10 @@ import {
   validateConnection,
 } from "../components/editor/connect";
 import type { CFEdgeData, CFNodeData } from "../components/editor/types";
+import {
+  getStoredDetailsPanelExpanded,
+  setStoredDetailsPanelExpanded,
+} from "../lib/details-panel-preferences";
 
 /**
  * Monotonically increasing counter backing {@link nextClientOpId} -- a plain module-level
@@ -117,11 +121,15 @@ interface DiagramState {
    * after {@link DiagramActions.applyRemoteOperation} applied another identity's live edit to
    * this tab's canvas -- without this, the canvas would silently change under the user with no
    * explanation. `null` when no notice is currently shown. `origin: "agent"` renders "Updated by
-   * your agent"; `origin: "human"` renders "Updated by \<actorEmail\>" -- see
-   * `../hooks/useDiagramLiveSync.ts` for exactly when this is set versus suppressed for this
-   * tab's own optimistic edit.
+   * your agent"; `origin: "human"` renders "Updated by \<actorEmail\>"; `origin: "ai-chat"`
+   * (docs/09D-ARCHITECT-AICHAT.md) renders "Updated by AI Assistant" -- see
+   * `../hooks/useDiagramLiveSync.ts` for exactly when this is set versus suppressed, including
+   * the "ai-chat" case's own additional suppression for the tab currently chatting.
    */
-  liveUpdateNotice: { actorEmail: string; origin: "human" | "agent" } | null;
+  liveUpdateNotice: {
+    actorEmail: string;
+    origin: "human" | "agent" | "ai-chat";
+  } | null;
   /**
    * Discrete graph operations queued since the last flush, coalesced by target id
    * (`operationKey()`) so a rapid sequence of edits to the same node/edge collapses into just
@@ -173,6 +181,26 @@ interface DiagramState {
    * this toggle existed. A view preference only -- deliberately not persisted to `localStorage`
    * or saved graph data, unlike `../lib/palette-preferences.ts`'s collapsed-category list. */
   minimapOpen: boolean;
+  /**
+   * Which tab the details panel (`../components/editor/panels/DetailsPanel.tsx`,
+   * docs/09D-ARCHITECT-AICHAT.md's In-Editor Chat) currently shows -- **Properties**
+   * (`../components/editor/panels/PropertiesPanel.tsx`, unchanged) or **AI Assistant**
+   * (`../components/editor/panels/AiChatPanel.tsx`). Independent of
+   * {@link DiagramState.propertiesOpen}, which continues to gate whether the whole details panel
+   * slot is shown at all, exactly as it gated `PropertiesPanel` alone before this tab switch
+   * existed. Defaults to `"properties"`, and -- deliberately, unlike
+   * {@link DiagramState.detailsPanelExpanded} -- is never persisted to `localStorage`: a page
+   * reload always starts on Properties, matching every other in-memory-only field of this store
+   * (`propertiesOpen` itself, for one) and avoiding a stale "AI Assistant" tab fighting
+   * {@link DiagramActions.setSelectedNode}/{@link DiagramActions.setSelectedEdge}'s own "explicit
+   * selection wins" rule on the very next selection after a reload.
+   */
+  detailsPanelTab: "properties" | "ai-chat";
+  /** Whether the details panel is at its expanded (`~30rem`) or compact (`18rem`) width,
+   * independent of which tab is active. Seeded from `../lib/details-panel-preferences.ts`'s
+   * persisted preference (unlike {@link DiagramState.detailsPanelTab}), so a user's preferred
+   * width survives a reload. */
+  detailsPanelExpanded: boolean;
 
   /** Stack of previous states for undo. Most recent entry is at the end. */
   undoStack: HistoryEntry[];
@@ -281,11 +309,14 @@ interface DiagramActions {
    */
   drainPendingOperations: () => GraphOperation[];
 
-  /** Set the selected node (clears any edge selection). Opens the properties panel when `id` is
-   * non-null; deselecting (`id === null`) leaves the panel's current open state unchanged. */
+  /** Set the selected node (clears any edge selection). Opens the properties panel and switches
+   * the details panel to its Properties tab when `id` is non-null -- an explicit selection
+   * always wins over whatever tab happened to be open (docs/09D-ARCHITECT-AICHAT.md's In-Editor
+   * Chat: "Node/edge selection always switches the active tab to Properties"); deselecting
+   * (`id === null`) leaves both unchanged. */
   setSelectedNode: (id: string | null) => void;
-  /** Set the selected edge (clears any node selection). Opens the properties panel when `id` is
-   * non-null; deselecting (`id === null`) leaves the panel's current open state unchanged. */
+  /** Set the selected edge (clears any node selection). Symmetric to
+   * {@link DiagramActions.setSelectedNode}. */
   setSelectedEdge: (id: string | null) => void;
 
   /** Toggle the service palette sidebar's visibility. */
@@ -294,11 +325,35 @@ interface DiagramActions {
   toggleProperties: () => void;
   /** Toggle the canvas minimap's visibility. */
   toggleMinimap: () => void;
+  /** Switch the details panel's active tab (docs/09D-ARCHITECT-AICHAT.md's In-Editor Chat) --
+   * does not itself open the panel; `../components/editor/toolbar/Toolbar.tsx`'s "AI Assistant"
+   * button separately ensures {@link DiagramState.propertiesOpen} too. */
+  setDetailsPanelTab: (tab: "properties" | "ai-chat") => void;
+  /** Toggle the details panel's expanded/compact width, persisting the new preference via
+   * `../lib/details-panel-preferences.ts`. */
+  toggleDetailsPanelExpanded: () => void;
 
   /** Update the diagram title and mark dirty. */
   setTitle: (title: string) => void;
   /** Update the diagram description and mark dirty. */
   setDescription: (description: string) => void;
+  /**
+   * Apply a `diagram_renamed` broadcast (docs/09D-ARCHITECT-AICHAT.md's Message Protocol) --
+   * sets `title`/`description` **without** marking the diagram dirty and without enqueuing
+   * anything for autosave, mirroring {@link DiagramActions.applyRemoteGraphSnapshot}/
+   * {@link DiagramActions.applyRemoteOperation}'s own "already persisted by the object that
+   * broadcast this, don't re-save" reasoning: a `rename_diagram` AI chat tool call already
+   * persisted the new title/description via `DiagramRepository.updateMetadata()` before this
+   * broadcast was ever sent, so calling the plain {@link DiagramActions.setTitle}/
+   * {@link DiagramActions.setDescription} instead (which mark `dirty: true`) would make this
+   * tab's own next autosave redundantly re-write a value D1 already has.
+   *
+   * @param title The diagram's new title.
+   * @param description The diagram's new description, already normalized from the frame's own
+   * `string | null` to `""` by the caller (`../hooks/useDiagramLiveSync.ts`), matching
+   * {@link DiagramActions.setDiagram}'s own normalization precedent.
+   */
+  applyRemoteRename: (title: string, description: string) => void;
 
   /** Replace the entire nodes array. Used by auto-layout. */
   setNodes: (nodes: Node<CFNodeData>[]) => void;
@@ -353,9 +408,12 @@ interface DiagramActions {
    * JSDoc for exactly when this is called versus suppressed for this tab's own optimistic edit.
    *
    * @param actorEmail The identity that performed the edit.
-   * @param origin `"human"` or `"agent"` -- selects the toast's rendered text.
+   * @param origin `"human"`, `"agent"`, or `"ai-chat"` -- selects the toast's rendered text.
    */
-  showLiveUpdateNotice: (actorEmail: string, origin: "human" | "agent") => void;
+  showLiveUpdateNotice: (
+    actorEmail: string,
+    origin: "human" | "agent" | "ai-chat",
+  ) => void;
   /** Dismiss the "Updated by…" toast, whether by its own auto-dismiss timer or a manual click
    * (`../components/editor/LiveUpdateToast.tsx`). */
   dismissLiveUpdateNotice: () => void;
@@ -412,6 +470,8 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   paletteOpen: true,
   propertiesOpen: false,
   minimapOpen: true,
+  detailsPanelTab: "properties",
+  detailsPanelExpanded: getStoredDetailsPanelExpanded(),
   undoStack: [],
   redoStack: [],
 
@@ -669,21 +729,31 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       selectedNodeId: id,
       selectedEdgeId: null,
       propertiesOpen: id !== null ? true : state.propertiesOpen,
+      detailsPanelTab: id !== null ? "properties" : state.detailsPanelTab,
     })),
   setSelectedEdge: (id) =>
     set((state) => ({
       selectedEdgeId: id,
       selectedNodeId: null,
       propertiesOpen: id !== null ? true : state.propertiesOpen,
+      detailsPanelTab: id !== null ? "properties" : state.detailsPanelTab,
     })),
 
   togglePalette: () => set((state) => ({ paletteOpen: !state.paletteOpen })),
   toggleProperties: () =>
     set((state) => ({ propertiesOpen: !state.propertiesOpen })),
   toggleMinimap: () => set((state) => ({ minimapOpen: !state.minimapOpen })),
+  setDetailsPanelTab: (tab) => set({ detailsPanelTab: tab }),
+  toggleDetailsPanelExpanded: () =>
+    set((state) => {
+      const next = !state.detailsPanelExpanded;
+      setStoredDetailsPanelExpanded(next);
+      return { detailsPanelExpanded: next };
+    }),
 
   setTitle: (title) => set({ title, dirty: true }),
   setDescription: (description) => set({ description, dirty: true }),
+  applyRemoteRename: (title, description) => set({ title, description }),
 
   setNodes: (nodes) => set({ nodes, dirty: true }),
   setEdges: (edges) => set({ edges, dirty: true }),

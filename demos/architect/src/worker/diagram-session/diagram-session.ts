@@ -3,6 +3,11 @@ import {
   applyGraphOperation,
   type GraphOperation,
 } from "../../graph-mutations";
+import {
+  runDiagramChatTurn,
+  type ChatAiBinding,
+  type ChatMessage,
+} from "../ai/chat-engine";
 import { DiagramRepository } from "../diagrams/repository";
 import type { GraphData } from "../diagrams/types";
 import { colorForEmail } from "./presence-color";
@@ -51,6 +56,26 @@ interface SelectionChangedFrame {
   edgeId?: string | null;
 }
 
+/**
+ * A parsed `{ type: "chat_message", clientRequestId, text }` client frame
+ * (docs/09D-ARCHITECT-AICHAT.md's Message Protocol) -- runs one turn of
+ * `../ai/chat-engine.ts`'s `runDiagramChatTurn()` against this connection's own ephemeral
+ * conversation history. See {@link handleChatMessage}'s own JSDoc for the full set of outbound
+ * frames one `chat_message` can produce (`chat_status`/`chat_token`/`chat_tool_result`/
+ * `chat_done`/`chat_error`/`diagram_renamed`) -- this document's Phase 24 client implements the
+ * other side of that contract against the shapes documented there, so keep them in sync with
+ * this file, not a separate protocol file (see this class's own JSDoc for why).
+ */
+interface ChatMessageFrame {
+  type: "chat_message";
+  /** Client-generated id this connection uses to correlate every outbound `chat_status`/
+   * `chat_token`/`chat_tool_result`/`chat_done`/`chat_error` frame this turn produces back to
+   * the specific `chat_message` that triggered it. */
+  clientRequestId: string;
+  /** The user's new message text for this turn. */
+  text: string;
+}
+
 /** Narrow an arbitrary decoded WebSocket frame down to {@link OperationFrame}. */
 function isOperationFrame(value: unknown): value is OperationFrame {
   return (
@@ -92,27 +117,78 @@ function isSelectionChangedFrame(
   return isValidField(nodeId) && isValidField(edgeId);
 }
 
+/** Narrow an arbitrary decoded WebSocket frame down to {@link ChatMessageFrame}. */
+function isChatMessageFrame(value: unknown): value is ChatMessageFrame {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { type?: unknown }).type === "chat_message" &&
+    typeof (value as { clientRequestId?: unknown }).clientRequestId ===
+      "string" &&
+    typeof (value as { text?: unknown }).text === "string"
+  );
+}
+
 /**
  * `DiagramSession` is docs/09C-COLLABORATIVE-EDITING.md's bidirectional live-sync coordination
  * point -- one instance per diagram id (`env.DIAGRAM_SESSIONS.getByName(diagramId)`), holding
  * every browser WebSocket currently open on that diagram and the single in-process code path
  * every graph mutation goes through, whether it originates from a human's own WebSocket message
- * (`webSocketMessage()`) or from a 9B MCP tool call (`../mcp/tools.ts`, via `applyOperation()`/
- * `applyWholeGraphReplace()` RPC calls).
+ * (`webSocketMessage()`), from a 9B MCP tool call (`../mcp/tools.ts`, via `applyOperation()`/
+ * `applyWholeGraphReplace()` RPC calls), or -- as of docs/09D-ARCHITECT-AICHAT.md -- from an AI
+ * chat turn's own tool calls (`origin: "ai-chat"`, via `handleChatMessage()`/`../ai/chat-engine.ts`).
  *
  * This object holds no *durable* data of its own -- D1's `diagrams` table remains the diagram's
  * one and only durable copy, unconditionally (docs/09C-COLLABORATIVE-EDITING.md's "Why D1 Stays
  * The Only Copy"). What it does hold is small, disposable, in-process state: an in-memory
  * working copy of the graph (`this.graph`, a read-through cache hydrated from D1 on first use),
- * an in-memory operation counter (`this.sequence`), and a single per-object write chain
- * (`this.writeChain`) that serializes every persist-to-D1 call so an older, slower write can
- * never clobber a newer one. `wrangler.jsonc.tpl`'s `new_sqlite_classes` migration is still
+ * the diagram's current `title`/`description` (also read-through cached, kept in sync with
+ * every successful `rename_diagram` tool call), an in-memory operation counter
+ * (`this.sequence`), a single per-object write chain (`this.writeChain`) that serializes every
+ * persist-to-D1 call so an older, slower write can never clobber a newer one, and -- new in
+ * docs/09D-ARCHITECT-AICHAT.md -- each open connection's own ephemeral AI chat conversation
+ * history (`this.chatHistories`). `wrangler.jsonc.tpl`'s `new_sqlite_classes` migration is still
  * required by Wrangler for any Durable Object class, even though this one persists nothing
  * meaningful to `ctx.storage` -- this class never calls `ctx.storage.sql` at all.
  *
  * Every public method below hydrates (`ensureHydrated()`) before doing anything else, since an
  * MCP tool call can reach this object via plain RPC with no `fetch()` WebSocket upgrade ever
  * having run first.
+ *
+ * **AI chat message protocol** (docs/09D-ARCHITECT-AICHAT.md's Message Protocol). Like every
+ * other message this object's WebSocket protocol carries, these frame shapes are defined as
+ * private inline interfaces + type-guard functions directly in this file (see
+ * {@link ChatMessageFrame}/{@link isChatMessageFrame} above) rather than a separate shared
+ * protocol file -- this codebase has never had one (`operation`/`cursor_moved`/
+ * `selection_changed` all follow this same pattern already), and the client-side implementation
+ * of this same contract (`docs/09D-ARCHITECT-AICHAT.md`'s Phase 24, not part of this phase)
+ * duplicates it independently in `src/client/hooks/useDiagramLiveSync.ts`, exactly like it
+ * already duplicates 9C's own frame shapes. The full contract, documented here so Phase 24 can
+ * implement the client side against it without re-deriving it from this file's implementation:
+ *
+ * - `{ type: "chat_message", clientRequestId, text }` (client -> this object): see
+ *   {@link ChatMessageFrame}. Routed to {@link handleChatMessage}.
+ * - `{ type: "chat_status", clientRequestId, message }` (this object -> originating connection
+ *   only): progress narration ("Adding node…", "Checking Cloudflare docs…").
+ * - `{ type: "chat_token", clientRequestId, text }` (originating connection only): one streamed
+ *   chunk of the turn's final natural-language answer.
+ * - `{ type: "chat_tool_result", clientRequestId, tool: "search_cloudflare_documentation", args:
+ *   { query }, result }` (originating connection only): `result` is either
+ *   `DocumentationResult[]` (`../ai/docs-client.ts`) on success or `{ message }` on the
+ *   non-fatal "documentation search is currently unavailable" fallback. Sent only for this one
+ *   tool -- a graph-mutating tool's effect already arrives as an ordinary `operation_applied`
+ *   broadcast (see below), which needs no frame of its own.
+ * - `{ type: "chat_done", clientRequestId, assistantText }` (originating connection only): the
+ *   turn's complete final answer.
+ * - `{ type: "chat_error", clientRequestId, message }` (originating connection only): sent
+ *   instead of `chat_done` when the turn threw; never crashes this connection or this object.
+ * - `{ type: "diagram_renamed", title, description }` (**broadcast** to every connection): a
+ *   `rename_diagram` tool call changed diagram metadata every viewer's toolbar/tab title should
+ *   reflect.
+ * - Every graph-mutating tool call's effect is an ordinary `operation_applied` broadcast (9C,
+ *   unchanged shape) with `origin: "ai-chat"` -- the entire mechanism by which a collaborator
+ *   who is not chatting still sees the assistant's edits live; see {@link applyOperation}'s own
+ *   JSDoc.
  */
 export class DiagramSession extends DurableObject<Env> {
   /** In-memory working copy of the diagram's graph, `null` until {@link ensureHydrated} first
@@ -125,6 +201,14 @@ export class DiagramSession extends DurableObject<Env> {
    * `DiagramRepository.saveGraphData()`'s owner-scoped `WHERE` clause, which scopes by the
    * diagram's *owner*, not by whichever identity actually triggered a given operation. */
   private ownerEmail: string | null = null;
+  /** The diagram's current title, read at hydration time and kept in sync with every successful
+   * `rename_diagram` AI chat tool call (docs/09D-ARCHITECT-AICHAT.md) -- read directly by
+   * {@link handleChatMessage} so `../ai/chat-engine.ts`'s system prompt always reflects the
+   * *current* title, not a value captured once at connect time. */
+  private title: string | null = null;
+  /** The diagram's current description, symmetric to {@link title}. `null` means "unset,"
+   * exactly like the D1 column itself. */
+  private description: string | null = null;
   /** In-memory operation counter, incremented once per applied operation. Not persisted --
    * resets to `0` whenever this object rehydrates, which is harmless (see
    * docs/09C-COLLABORATIVE-EDITING.md's Concurrency Model: a reconnecting client always starts
@@ -134,9 +218,30 @@ export class DiagramSession extends DurableObject<Env> {
    * the same order they were requested, each reading `this.graph` fresh at the moment it
    * actually runs rather than a value captured when it was enqueued. */
   private writeChain: Promise<unknown> = Promise.resolve();
-  /** Whether {@link ensureHydrated} has already loaded `this.graph`/`this.ownerEmail` from D1
-   * since this object's last cold start or eviction. */
+  /** Whether {@link ensureHydrated} has already loaded `this.graph`/`this.ownerEmail`/
+   * `this.title`/`this.description` from D1 since this object's last cold start or eviction. */
   private hydrated = false;
+  /**
+   * Each open connection's own ephemeral AI chat conversation history
+   * (docs/09D-ARCHITECT-AICHAT.md's Chat Loop And Tool Execution), keyed by the connection's own
+   * `WebSocket` object. **Deliberately a plain class field, not a `serializeAttachment()`-backed
+   * addition to {@link ConnectionAttachment}** -- the two real options considered were (a)
+   * folding `messages` into `ConnectionAttachment` (literally "mirroring 9C's own per-connection
+   * ephemeral state," since the display color already lives there), re-serializing after every
+   * turn, or (b) this plain in-memory `Map`. (a) would need active truncation logic to stay
+   * under `serializeAttachment()`'s confirmed 16,384-byte limit
+   * (https://developers.cloudflare.com/durable-objects/best-practices/websockets/) once a long
+   * conversation's transcript grows past it -- real complexity for a value
+   * docs/09D-ARCHITECT-AICHAT.md's own Non-Goals section already says is allowed to be lost
+   * ("Reloading the editor starts a fresh conversation... discarded on hibernation/eviction and
+   * never written to D1"). (b) has no size limit and is simpler, at the cost of *also* losing
+   * history on hibernation specifically (not just on disconnect/reload) -- a strictly narrower
+   * trade-off than what the design doc already explicitly accepts, so (b) is what this class
+   * implements. A connection with no entry here yet (a brand new connection, or one whose entry
+   * was lost to hibernation) simply starts its next chat turn with empty history -- a fresh
+   * conversation, exactly as expected.
+   */
+  private readonly chatHistories = new Map<WebSocket, ChatMessage[]>();
 
   /**
    * Load this diagram's graph and owner from D1 into memory, exactly once per activation. Every
@@ -180,6 +285,8 @@ export class DiagramSession extends DurableObject<Env> {
 
       this.graph = JSON.parse(diagram.graphData) as GraphData;
       this.ownerEmail = diagram.ownerEmail;
+      this.title = diagram.title;
+      this.description = diagram.description;
       this.hydrated = true;
     });
   }
@@ -246,14 +353,16 @@ export class DiagramSession extends DurableObject<Env> {
    *
    * @param op The operation to apply.
    * @param actorEmail Verified identity that performed this operation (a human's own identity,
-   * or the identity an MCP tool call is authenticated as).
-   * @param origin `"human"` for a WebSocket-originated edit, `"agent"` for an MCP tool call --
-   * lets a receiving client's UI distinguish its owner's own live edits from an agent's, even
-   * though an MCP call authenticates as that same owner identity
-   * (docs/09C-COLLABORATIVE-EDITING.md's Interplay With Demo 9B).
+   * or the identity an MCP tool call or AI chat tool call is authenticated as).
+   * @param origin `"human"` for a WebSocket-originated edit, `"agent"` for an MCP tool call,
+   * `"ai-chat"` for a tool call made during an AI chat turn (docs/09D-ARCHITECT-AICHAT.md) --
+   * lets a receiving client's UI distinguish its owner's own live edits from an agent's or the
+   * assistant's, even though an MCP call or AI chat turn both authenticate as that same owner
+   * identity (docs/09C-COLLABORATIVE-EDITING.md's Interplay With Demo 9B).
    * @param clientOpId The originating client's own id for this operation, echoed back in the
    * broadcast so that client can reconcile it against its optimistic local state. `undefined`
-   * for an MCP-originated call, which has no client-side pending operation to reconcile.
+   * for an MCP- or AI-chat-originated call, neither of which has a client-side pending
+   * operation to reconcile.
    * @returns The graph's fresh JSON string, the new persisted `updatedAt`, and this operation's
    * `sequence` number.
    * @throws {ProblemDetailsError} `notFound()` when `op` targets a node/edge id that does not
@@ -262,7 +371,7 @@ export class DiagramSession extends DurableObject<Env> {
   async applyOperation(
     op: GraphOperation,
     actorEmail: string,
-    origin: "human" | "agent",
+    origin: "human" | "agent" | "ai-chat",
     clientOpId?: string,
   ): Promise<{ graphData: string; updatedAt: string; sequence: number }> {
     await this.ensureHydrated();
@@ -302,13 +411,16 @@ export class DiagramSession extends DurableObject<Env> {
    * `applyOperation()`'s signature (docs/09C-COLLABORATIVE-EDITING.md's RPC Surface) but not
    * itself part of the `graph_snapshot` broadcast payload, which -- unlike `operation_applied`
    * -- carries no actor attribution at all.
-   * @param _origin `"human"` or `"agent"`, for the same parity reason as `_actorEmail`.
+   * @param _origin `"human"`, `"agent"`, or `"ai-chat"`, for the same parity reason as
+   * `_actorEmail` -- this method is not currently called with `"ai-chat"` (docs/09D-ARCHITECT-AICHAT.md's
+   * chat turns only ever call {@link applyOperation}), but the parameter type is widened here
+   * too for consistency with it.
    * @returns The new persisted `updatedAt` and this replace's `sequence` number.
    */
   async applyWholeGraphReplace(
     graphData: string,
     _actorEmail: string,
-    _origin: "human" | "agent",
+    _origin: "human" | "agent" | "ai-chat",
   ): Promise<{ updatedAt: string; sequence: number }> {
     await this.ensureHydrated();
 
@@ -470,6 +582,24 @@ export class DiagramSession extends DurableObject<Env> {
    * Deliberately does not call `ensureHydrated()`: neither frame reads or writes `this.graph`,
    * so relaying correctly does not depend on this object having hydrated yet.
    *
+   * For a `{ type: "chat_message", clientRequestId, text }` frame
+   * (docs/09D-ARCHITECT-AICHAT.md), **awaits** {@link handleChatMessage} to completion before
+   * this method's own returned promise resolves -- deliberately, not fire-and-forget. Two
+   * things make this both safe and correct rather than a throughput hazard: (1)
+   * `handleChatMessage()` itself never throws (every internal failure is caught and turned into
+   * a `chat_error` frame -- see its own JSDoc), so awaiting it here can never turn into an
+   * unhandled rejection; and (2) this repository's own confirmed platform finding
+   * (docs/DECISIONS.md #35, item 3) is specifically that *this method's own returned promise
+   * remaining pending* is what keeps this Durable Object active (not hibernating) for the
+   * duration of a multi-round chat turn -- awaiting here is what deliberately extends that
+   * guarantee to the whole turn, not an accidental blocking call. It does **not** block a
+   * *different* connection's own concurrent `operation`/`cursor_moved`/`chat_message` frame from
+   * being handled promptly in the meantime: `handleChatMessage()`'s own first `await` (its call
+   * into `../ai/chat-engine.ts`, which itself awaits `env.AI.run()`) already yields control back
+   * to this object's event loop, and a synchronous JavaScript execution segment with no `await`
+   * in it is the only thing this runtime's input gates ever serialize against a second incoming
+   * event (docs/DECISIONS.md #32) -- an outer caller's own still-pending `await` is not.
+   *
    * @param ws The connection the frame arrived on.
    * @param message Raw frame payload.
    */
@@ -502,6 +632,17 @@ export class DiagramSession extends DurableObject<Env> {
           }),
         );
       }
+      return;
+    }
+
+    if (isChatMessageFrame(parsed)) {
+      const { email } = ws.deserializeAttachment() as ConnectionAttachment;
+      await this.handleChatMessage(
+        ws,
+        parsed.clientRequestId,
+        parsed.text,
+        email,
+      );
       return;
     }
 
@@ -538,6 +679,192 @@ export class DiagramSession extends DurableObject<Env> {
   }
 
   /**
+   * Run one AI chat turn for `ws` (docs/09D-ARCHITECT-AICHAT.md's Chat Loop And Tool
+   * Execution), invoked from {@link webSocketMessage} for an inbound `chat_message` frame.
+   * Delegates the actual tool-calling loop to `../ai/chat-engine.ts`'s `runDiagramChatTurn()`,
+   * wiring:
+   *
+   * - `applyMutation` to a closure around {@link applyOperation} with `origin: "ai-chat"`,
+   *   catching any thrown error (a stale-target `notFound()`, mirroring
+   *   {@link webSocketMessage}'s own existing `operation`-frame try/catch precedent) and
+   *   translating it into `{ rejected: true, reason }` rather than letting it propagate --
+   *   `chat-engine.ts` feeds that reason back to the model as a tool result instead of failing
+   *   the whole turn.
+   * - `renameDiagram` to a closure calling `DiagramRepository.updateMetadata()` and, on success,
+   *   updating `this.title`/`this.description` and broadcasting `diagram_renamed` to **every**
+   *   connection (unlike every other frame this method sends, which is unicast to `ws` only --
+   *   see this class's own top-of-file JSDoc's Message Protocol summary for why a rename is a
+   *   broadcast).
+   * - `onStatus`/`onToken` to unicast `chat_status`/`chat_token` frames to `ws` only.
+   * - `onDocsLookup` to a unicast `chat_tool_result` frame to `ws` only.
+   *
+   * On success, sends `chat_done`, appends the final `{ role: "user" }`/`{ role: "assistant" }`
+   * pair to this connection's own ephemeral history (`this.chatHistories`), and logs
+   * `ai_chat_turn_completed`. On any thrown error -- from `runDiagramChatTurn()` itself, per its
+   * own `@throws` contract -- sends `chat_error` to `ws` only, logs `ai_chat_turn_failed`, and
+   * does **not** rethrow: an AI chat turn failing must never crash this connection or this
+   * object. Every graph-mutating tool call's own `operation_applied` broadcast (with `origin:
+   * "ai-chat"`) already happens for free inside {@link applyOperation} itself -- this method
+   * sends no extra broadcast of its own for that.
+   *
+   * Uses plain `console.log()`/`console.error()` for its three structured log events
+   * (`ai_chat_turn_completed`/`ai_chat_turn_failed` here; `ai_docs_lookup_performed` inside
+   * `../ai/chat-engine.ts` itself, where the timing/count naturally live) rather than the
+   * toolkit's `cloudflareLogger()` -- that middleware resolves a request-scoped logger off a
+   * Hono `Context`, which does not exist inside a Durable Object method. This is a narrow,
+   * deliberate precedent for structured console logging inside a bare Durable Object, not a
+   * general departure from this repository's usual `cloudflareLogger()`-based logging (see
+   * docs/DECISIONS.md for a short note on this, if one was added). Never logs prompt/response/
+   * diagram content -- only the fields docs/09D-ARCHITECT-AICHAT.md's Data Model section names.
+   *
+   * @param ws The connection that sent the `chat_message` frame.
+   * @param clientRequestId The frame's own correlation id, echoed back on every outbound frame
+   * this turn produces.
+   * @param text The user's new message text.
+   * @param actorEmail This connection's own verified identity.
+   */
+  private async handleChatMessage(
+    ws: WebSocket,
+    clientRequestId: string,
+    text: string,
+    actorEmail: string,
+  ): Promise<void> {
+    await this.ensureHydrated();
+    const diagramId = this.ctx.id.name;
+    const startedAt = Date.now();
+    const history = this.chatHistories.get(ws) ?? [];
+
+    try {
+      const result = await runDiagramChatTurn({
+        applyMutation: async (op) => {
+          try {
+            await this.applyOperation(op, actorEmail, "ai-chat");
+            return { rejected: false };
+          } catch (error) {
+            return {
+              reason:
+                error instanceof Error ? error.message : "Operation rejected.",
+              rejected: true,
+            };
+          }
+        },
+        description: this.description,
+        env: {
+          AI: this.env.AI as unknown as ChatAiBinding,
+          AI_CHAT_MODEL: this.env.AI_CHAT_MODEL,
+          AI_GATEWAY_ID: this.env.AI_GATEWAY_ID,
+        },
+        graph: this.graph as GraphData,
+        messages: history,
+        // Coverage note (docs/DECISIONS.md, Phase 26): this closure's own body is not exercised
+        // by any test in this repository. Reaching it requires the model to actually call
+        // `search_cloudflare_documentation`, which runs `../ai/docs-client.ts`'s real
+        // `Client`/`StreamableHTTPClientTransport` against `https://docs.mcp.cloudflare.com/mcp`
+        // -- a genuine outbound network call with no injection seam of its own (the target URL
+        // is a literal, and `vi.mock()` cannot reach code executing inside
+        // `@cloudflare/vitest-pool-workers`'s own workerd isolate the way it reaches a plain
+        // unit test's top-level imports). Forcing that call from an integration test would need
+        // real network access on every `test`/`test:coverage` run, exactly the dependency this
+        // project's `remoteBindings: false` (docs/DECISIONS.md #9) already exists to avoid for
+        // the `AI` binding itself. This closure's own body is trivial, branch-free pass-through
+        // (surface `outcome.ok ? outcome.results : { message: outcome.message }` into one
+        // `chat_tool_result` frame) with no logic of its own worth a real network dependency to
+        // reach; `../ai/chat-engine.test.ts` already covers `executeToolCall()`'s
+        // `search_cloudflare_documentation` dispatch (both outcomes) against a mocked
+        // `searchCloudflareDocumentationSafe`, and `../ai/docs-client.test.ts` already covers
+        // the real parsing/timeout/failure logic this closure merely relays.
+        onDocsLookup: (query, outcome) => {
+          ws.send(
+            JSON.stringify({
+              args: { query },
+              clientRequestId,
+              result: outcome.ok
+                ? outcome.results
+                : { message: outcome.message },
+              tool: "search_cloudflare_documentation",
+              type: "chat_tool_result",
+            }),
+          );
+        },
+        onStatus: (message) => {
+          ws.send(
+            JSON.stringify({ clientRequestId, message, type: "chat_status" }),
+          );
+        },
+        onToken: (chunk) => {
+          ws.send(
+            JSON.stringify({
+              clientRequestId,
+              text: chunk,
+              type: "chat_token",
+            }),
+          );
+        },
+        renameDiagram: async (title, description) => {
+          const updated = await new DiagramRepository(
+            this.env.DB,
+          ).updateMetadata(diagramId as string, this.ownerEmail as string, {
+            description,
+            title,
+          });
+          if (updated === null) return;
+          this.title = updated.title;
+          this.description = updated.description;
+          this.broadcast(
+            JSON.stringify({
+              description: updated.description,
+              title: updated.title,
+              type: "diagram_renamed",
+            }),
+          );
+        },
+        text,
+        title: this.title as string,
+      });
+
+      history.push(
+        { content: text, role: "user" },
+        { content: result.assistantText, role: "assistant" },
+      );
+      this.chatHistories.set(ws, history);
+
+      ws.send(
+        JSON.stringify({
+          assistantText: result.assistantText,
+          clientRequestId,
+          type: "chat_done",
+        }),
+      );
+
+      console.log(
+        JSON.stringify({
+          diagramId,
+          event: "ai_chat_turn_completed",
+          latencyMs: Date.now() - startedAt,
+          model: this.env.AI_CHAT_MODEL,
+          mutated: result.mutated,
+          toolCallCount: result.toolCallCount,
+        }),
+      );
+    } catch (error) {
+      const reason =
+        error instanceof Error
+          ? error.message
+          : "The assistant hit an unexpected error.";
+      ws.send(
+        JSON.stringify({
+          clientRequestId,
+          message: reason,
+          type: "chat_error",
+        }),
+      );
+      console.error(
+        JSON.stringify({ diagramId, event: "ai_chat_turn_failed", reason }),
+      );
+    }
+  }
+
+  /**
    * Determine whether the identity attached to `ws` -- a connection that just closed or
    * errored -- still has any *other* open connection on this diagram, and broadcast
    * `presence_left` to every remaining connection if not (docs/09C-COLLABORATIVE-EDITING.md's
@@ -565,9 +892,14 @@ export class DiagramSession extends DurableObject<Env> {
   }
 
   /** Broadcasts `presence_left` when this was the last open connection for its identity's
-   * email -- see {@link broadcastPresenceLeftIfLastConnection}. No other per-socket state to
-   * clean up: hibernation already discards a closed socket's attachment for free. */
+   * email -- see {@link broadcastPresenceLeftIfLastConnection}. Also drops `ws`'s own entry (if
+   * any) from `this.chatHistories` -- hibernation already discards a closed socket's attachment
+   * for free, but `this.chatHistories` is a plain class field keyed by the `WebSocket` object
+   * itself (see that field's own JSDoc), which nothing else ever removes, so a connection that
+   * chatted and then closed would otherwise keep its history (and the closed socket reference
+   * pinning it alive) in memory for as long as this object stays activated. */
   webSocketClose(ws: WebSocket): void {
+    this.chatHistories.delete(ws);
     this.broadcastPresenceLeftIfLastConnection(ws);
   }
 
@@ -581,6 +913,7 @@ export class DiagramSession extends DurableObject<Env> {
    * errored connection identically regardless of the specific error.
    */
   webSocketError(ws: WebSocket, _error: unknown): void {
+    this.chatHistories.delete(ws);
     this.broadcastPresenceLeftIfLastConnection(ws);
   }
 }
