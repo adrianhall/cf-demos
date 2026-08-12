@@ -1,17 +1,21 @@
 import { useMemo, useState } from "react";
+import { Cpu } from "react-feather";
 import { BLUEPRINTS, type Blueprint } from "../../../blueprints";
 import { BlueprintPreview } from "./BlueprintPreview";
 import { CreateDiagramModal } from "./CreateDiagramModal";
+import { GenerateWithAiModal } from "./GenerateWithAiModal";
 
 const ALL_CATEGORY = "All";
 
 /**
- * Gallery of blueprint templates plus a "blank canvas" option, each opening
- * {@link CreateDiagramModal} to name and create a new diagram. Ported from CF-Architect's
- * `src/islands/blueprints/BlueprintGallery.tsx`. Served at the public `/blueprints` route
- * (docs/09-ARCHITECT.md's Access Model) and linked to from the authenticated dashboard's
- * "+ New Diagram" button -- the same page either way; only the subsequent create request
- * requires a signed-in identity.
+ * Gallery of blueprint templates plus a "blank canvas" option and a "Generate with AI" option
+ * (docs/09D-ARCHITECT-AICHAT.md's "Diagram Generation From A Description") -- the former two
+ * open {@link CreateDiagramModal} to name and create a new diagram, the latter opens
+ * {@link GenerateWithAiModal} to describe one in plain language instead. Ported from
+ * CF-Architect's `src/islands/blueprints/BlueprintGallery.tsx`. Served at the public
+ * `/blueprints` route (docs/09-ARCHITECT.md's Access Model) and linked to from the authenticated
+ * dashboard's "+ New Diagram" button -- the same page either way; only the subsequent create
+ * request requires a signed-in identity.
  */
 export function BlueprintGallery() {
   const [activeCategory, setActiveCategory] = useState(ALL_CATEGORY);
@@ -19,6 +23,7 @@ export function BlueprintGallery() {
   const [selectedBlueprint, setSelectedBlueprint] = useState<Blueprint | null>(
     null,
   );
+  const [generateModalOpen, setGenerateModalOpen] = useState(false);
 
   const categories = useMemo(
     () => [
@@ -83,6 +88,26 @@ export function BlueprintGallery() {
           </div>
         </button>
 
+        <button
+          type="button"
+          className="blueprint-card blueprint-card--generate"
+          onClick={() => setGenerateModalOpen(true)}
+        >
+          <div
+            className="blueprint-card__preview blueprint-card__preview--generate"
+            aria-hidden="true"
+          >
+            <Cpu size={40} />
+          </div>
+          <div className="blueprint-card__body">
+            <div className="blueprint-card__title">Generate with AI</div>
+            <div className="blueprint-card__description">
+              Describe the architecture you want, and let the assistant build an
+              initial diagram for you.
+            </div>
+          </div>
+        </button>
+
         {filtered.map((blueprint) => (
           <button
             type="button"
@@ -110,6 +135,10 @@ export function BlueprintGallery() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         blueprint={selectedBlueprint}
+      />
+      <GenerateWithAiModal
+        open={generateModalOpen}
+        onClose={() => setGenerateModalOpen(false)}
       />
     </>
   );

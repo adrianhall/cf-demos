@@ -8,6 +8,11 @@ output "admin_email" {
   value       = local.admin_email
 }
 
+output "ai_gateway_id" {
+  description = "AI Gateway identifier fronting DiagramSession's env.AI.run() chat-turn calls, bound to the Worker as AI_GATEWAY_ID."
+  value       = cloudflare_ai_gateway.demo.id
+}
+
 output "cloudflare_team_domain" {
   description = "Cloudflare Access team domain for Worker JWT validation."
   value       = local.cloudflare_team_domain

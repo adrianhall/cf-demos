@@ -83,4 +83,30 @@ describe("BlueprintGallery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it("renders a 'Generate with AI' card", () => {
+    render(<BlueprintGallery />);
+    expect(
+      screen.getByRole("button", { name: /Generate with AI/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("opens GenerateWithAiModal, not CreateDiagramModal, from the 'Generate with AI' card", () => {
+    render(<BlueprintGallery />);
+    fireEvent.click(screen.getByRole("button", { name: /Generate with AI/ }));
+
+    expect(
+      screen.getByRole("dialog", { name: "Generate with AI" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "Create New Diagram" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("closes the generate-with-ai modal when dismissed", () => {
+    render(<BlueprintGallery />);
+    fireEvent.click(screen.getByRole("button", { name: /Generate with AI/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 });

@@ -11,6 +11,14 @@
   "preview_urls": false,
   "vars": {
     "ADMIN_EMAIL": "{{admin_email}}",
+    // AI_GATEWAY_ID is a Terraform output, matching d1_database_id's own placeholder pattern.
+    // AI_CHAT_MODEL is a plain literal, not a placeholder -- a static demo choice with no
+    // Terraform resource backing it (AGENTS.md's carve-out; docs/09D-ARCHITECT-AICHAT.md's Model
+    // And AI Gateway section), and `@cf/moonshotai/kimi-k2.6` is the documented fallback to try
+    // if this model does not return well-formed `tool_calls` through this plain gateway shape
+    // (docs/DECISIONS.md #35).
+    "AI_GATEWAY_ID": "{{ai_gateway_id}}",
+    "AI_CHAT_MODEL": "@cf/zai-org/glm-5.2",
     "CLOUDFLARE_TEAM_DOMAIN": "{{cloudflare_team_domain}}",
     "ENVIRONMENT": "{{environment}}"
   },
@@ -28,6 +36,14 @@
       "id": "{{shares_kv_namespace_id}}"
     }
   ],
+  // Workers AI has no local simulator: this binding always reaches the real account, in both
+  // `vite dev` and `vitest` and a deployed Worker (docs/05-AI-CHAT.md, "Workers AI Has No Local
+  // Simulation"; docs/DECISIONS.md #9 -- omitting `remote` on an `ai` binding still connects
+  // remotely but logs a warning every time, so it is set explicitly here to avoid that noise).
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  },
   // `DiagramSession` (docs/09B-ARCHITECT-MCP.md's Live Sync Architecture) is a Wrangler-owned
   // Durable Object namespace, not a Terraform resource -- mirroring `demos/chat`'s `ChatRoom` and
   // this repository's standing precedent (docs/10-OPENCODE-BROWSER.md) for why Durable Object

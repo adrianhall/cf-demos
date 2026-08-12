@@ -23,6 +23,15 @@ export default defineProject(async () => {
             TEST_MIGRATIONS: migrations,
           },
         },
+        // `AI` has no local simulator at all (docs/05-AI-CHAT.md, "Workers AI Has No Local
+        // Simulation"), so `@cloudflare/vitest-pool-workers` would otherwise open a credentialed
+        // remote proxy session for it on every test run, regardless of `wrangler.jsonc`'s own
+        // `remote: true` flag. `remoteBindings: false` keeps `npm run test:integration` runnable
+        // on a clean checkout with no Cloudflare credentials -- matching `demos/ai-chat`'s own
+        // identical precedent for the same binding. `env.AI` still exists in tests but is
+        // non-functional; this repository's own investigation into stubbing it for a real
+        // end-to-end chat test is documented on `handleChatMessage`'s integration test(s) below.
+        remoteBindings: false,
       }),
     ],
     test: {

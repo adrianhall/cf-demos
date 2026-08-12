@@ -32,20 +32,31 @@ const {
   mockSendOperation,
   mockSendCursor,
   mockSendSelectionChange,
+  mockSendChatMessage,
+  mockStopChatTurn,
+  mockClearChatTranscript,
 } = vi.hoisted(() => ({
+  mockClearChatTranscript: vi.fn(),
+  mockSendChatMessage: vi.fn(() => false),
   mockSendCursor: vi.fn(),
   mockSendOperation: vi.fn(() => false),
   mockSendSelectionChange: vi.fn(),
+  mockStopChatTurn: vi.fn(),
   mockUseDiagramLiveSync: vi.fn(),
 }));
 mockUseDiagramLiveSync.mockImplementation(() => ({
+  chatInFlight: false,
+  chatTranscript: [],
+  clearChatTranscript: mockClearChatTranscript,
   connected: false,
   cursors: {},
   participants: {},
   remoteSelections: {},
+  sendChatMessage: mockSendChatMessage,
   sendCursor: mockSendCursor,
   sendOperation: mockSendOperation,
   sendSelectionChange: mockSendSelectionChange,
+  stopChatTurn: mockStopChatTurn,
 }));
 vi.mock("../../hooks/useDiagramLiveSync", () => ({
   useDiagramLiveSync: mockUseDiagramLiveSync,
@@ -88,6 +99,8 @@ describe("DiagramCanvas", () => {
       paletteOpen: true,
       propertiesOpen: false,
       minimapOpen: true,
+      detailsPanelTab: "properties",
+      detailsPanelExpanded: false,
       undoStack: [],
       redoStack: [],
     });
@@ -99,14 +112,22 @@ describe("DiagramCanvas", () => {
     mockSendOperation.mockReset().mockReturnValue(false);
     mockSendCursor.mockReset();
     mockSendSelectionChange.mockReset();
+    mockSendChatMessage.mockReset().mockReturnValue(false);
+    mockStopChatTurn.mockReset();
+    mockClearChatTranscript.mockReset();
     mockUseDiagramLiveSync.mockReset().mockImplementation(() => ({
+      chatInFlight: false,
+      chatTranscript: [],
+      clearChatTranscript: mockClearChatTranscript,
       connected: false,
       cursors: {},
       participants: {},
       remoteSelections: {},
+      sendChatMessage: mockSendChatMessage,
       sendCursor: mockSendCursor,
       sendOperation: mockSendOperation,
       sendSelectionChange: mockSendSelectionChange,
+      stopChatTurn: mockStopChatTurn,
     }));
   });
 
@@ -247,11 +268,20 @@ describe("DiagramCanvas", () => {
     await waitFor(() =>
       expect(screen.getByTestId("react-flow")).toBeInTheDocument(),
     );
-    expect(screen.queryByLabelText("Properties")).not.toBeInTheDocument();
+    // `role="tabpanel"` is the details panel's own outer content region
+    // (`./panels/DetailsPanel.tsx`, docs/09D-ARCHITECT-AICHAT.md) -- its absence/presence is the
+    // proxy for "the whole details panel slot is hidden/shown" that `getByLabelText("Properties")`
+    // used to be before that region's own `aria-labelledby` made "Properties" itself an
+    // ambiguous label (both the tabpanel and `PropertiesPanel`'s own empty-state `<aside>` are
+    // now labeled "Properties").
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
 
     act(() => useDiagramStore.getState().setSelectedNode("n1"));
 
-    expect(screen.getByLabelText("Properties")).toBeInTheDocument();
+    expect(screen.getByRole("tabpanel")).toBeInTheDocument();
+    expect(
+      screen.getByText("Select a node or edge to view its properties."),
+    ).toBeInTheDocument();
   });
 
   it("tolerates malformed graphData by loading an empty graph", async () => {

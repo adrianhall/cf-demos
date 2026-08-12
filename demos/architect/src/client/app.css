@@ -661,7 +661,8 @@ button {
   border-color: var(--cf-orange);
 }
 
-.blueprint-card--blank {
+.blueprint-card--blank,
+.blueprint-card--generate {
   align-items: stretch;
   display: flex;
   flex-direction: column;
@@ -676,6 +677,18 @@ button {
   align-items: center;
   display: flex;
   font-size: 2.5rem;
+  height: 180px;
+  justify-content: center;
+}
+
+/* `./GenerateWithAiModal.tsx`'s "Generate with AI" tile (docs/09D-ARCHITECT-AICHAT.md's "Diagram
+   Generation From A Description") -- same centered-icon sizing as `--blank` above, but a
+   distinct accent color so the tile reads as its own, visually different action rather than a
+   second "blank" option. */
+.blueprint-card__preview--generate {
+  align-items: center;
+  color: var(--cf-orange);
+  display: flex;
   height: 180px;
   justify-content: center;
 }
@@ -848,6 +861,26 @@ button {
 .connect-nodes-modal__error {
   color: var(--cf-danger);
   margin: 0.5rem 0 0;
+}
+
+/* `./GenerateWithAiModal.tsx` (docs/09D-ARCHITECT-AICHAT.md's "Diagram Generation From A
+   Description") -- reuses `.create-diagram-modal__error`/`__actions` for its own error text and
+   footer buttons, but needs its own fixed-height transcript container: `.ai-chat-panel` itself
+   is designed to stretch to fill a flex parent with a real height (its usual home,
+   `.details-panel__tabpanel`, gets that from the whole editor's viewport-height layout), which
+   this modal has none of on its own. */
+.generate-with-ai-modal__connecting {
+  color: light-dark(#555, #aaa);
+  margin: 0 0 0.75rem;
+}
+
+.generate-with-ai-modal__transcript {
+  background: var(--cf-surface-alt);
+  border: 1px solid var(--cf-border);
+  border-radius: 0.375rem;
+  display: flex;
+  height: 420px;
+  overflow: hidden;
 }
 
 /* Diagram editor -------------------------------------------------------- */
@@ -1221,7 +1254,7 @@ button {
    same Bug 4 toolbar controls that show/hide it above the breakpoint. */
 @media (max-width: 900px) {
   .service-palette,
-  .properties-panel {
+  .details-panel {
     background: var(--cf-surface);
     bottom: 0;
     box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
@@ -1235,7 +1268,7 @@ button {
     left: 0;
   }
 
-  .properties-panel {
+  .details-panel {
     right: 0;
   }
 }
@@ -1337,11 +1370,78 @@ button {
   overflow: hidden;
 }
 
+/* Details panel (Properties/AI Assistant tabs, docs/09D-ARCHITECT-AICHAT.md) ----------------- */
+
+/* The details panel now owns this sidebar slot's own width/border/positioning -- previously
+   `.properties-panel` owned all of it directly, since `PropertiesPanel` was the only thing ever
+   rendered there. `.properties-panel` itself, below, is now a stretch-to-fill child of this
+   wrapper's `.details-panel__tabpanel`, not the outer flex item, so it no longer sets its own
+   `flex`/`border-left`. */
+.details-panel {
+  border-left: 1px solid var(--cf-border);
+  display: flex;
+  flex: 0 0 18rem;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.details-panel--expanded {
+  flex: 0 0 30rem;
+}
+
+.details-panel__header {
+  align-items: center;
+  border-bottom: 1px solid var(--cf-border);
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+}
+
+.details-panel__tablist {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.details-panel__tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.375rem 0.5rem;
+}
+
+.details-panel__tab--active {
+  border-bottom-color: var(--cf-orange);
+  color: var(--cf-orange);
+}
+
+.details-panel__expand-toggle {
+  background: var(--cf-surface);
+  border: 1px solid var(--cf-border);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  padding: 0.25rem 0.375rem;
+}
+
+.details-panel__expand-toggle[aria-pressed="true"] {
+  background: var(--cf-surface-alt);
+  border-color: var(--cf-orange);
+}
+
+.details-panel__tabpanel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* Properties panel --------------------------------------------------------- */
 
 .properties-panel {
-  border-left: 1px solid var(--cf-border);
-  flex: 0 0 18rem;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 1rem;
   position: relative;
@@ -1432,6 +1532,144 @@ button {
   flex: 0 0 auto;
   height: 1rem;
   width: 1rem;
+}
+
+/* AI chat panel (`../editor/panels/AiChatPanel.tsx`, docs/09D-ARCHITECT-AICHAT.md) ------------ */
+
+.ai-chat-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ai-chat-panel__header {
+  border-bottom: 1px solid var(--cf-border);
+  padding: 0.5rem 0.75rem;
+}
+
+.ai-chat-panel__new-conversation {
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--cf-orange);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  gap: 0.375rem;
+  padding: 0;
+}
+
+.ai-chat-panel__transcript {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.625rem;
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.ai-chat-panel__empty {
+  color: light-dark(#555, #aaa);
+}
+
+.ai-chat-panel__message {
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.625rem;
+}
+
+.ai-chat-panel__message--user {
+  background: var(--cf-surface-alt);
+  margin-left: 1.5rem;
+}
+
+.ai-chat-panel__message--assistant,
+.ai-chat-panel__message--docs {
+  background: var(--cf-surface);
+  border: 1px solid var(--cf-border);
+  margin-right: 1.5rem;
+}
+
+.ai-chat-panel__message--error {
+  align-items: flex-start;
+  border: 1px solid var(--cf-danger);
+  color: var(--cf-danger);
+  display: flex;
+  gap: 0.375rem;
+  margin-right: 1.5rem;
+}
+
+.ai-chat-panel__stopped-note {
+  color: light-dark(#555, #aaa);
+  font-size: 0.8125rem;
+  margin-top: 0.375rem;
+}
+
+.ai-chat-panel__status,
+.ai-chat-panel__action {
+  color: light-dark(#555, #aaa);
+  font-size: 0.8125rem;
+  font-style: italic;
+  margin: 0;
+}
+
+.ai-chat-panel__sources {
+  list-style: none;
+  margin: 0.375rem 0 0;
+  padding: 0;
+}
+
+.ai-chat-panel__source-link {
+  align-items: center;
+  color: inherit;
+  display: flex;
+  gap: 0.375rem;
+  padding: 0.125rem 0;
+}
+
+.ai-chat-panel__source-icon {
+  flex: 0 0 auto;
+  height: 0.875rem;
+  width: 0.875rem;
+}
+
+.ai-chat-panel__composer {
+  border-top: 1px solid var(--cf-border);
+  padding: 0.625rem 0.75rem;
+}
+
+.ai-chat-panel__textarea {
+  background: var(--cf-surface);
+  border: 1px solid var(--cf-field-border);
+  border-radius: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.ai-chat-panel__composer-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+.ai-chat-panel__stop,
+.ai-chat-panel__send {
+  align-items: center;
+  background: var(--cf-surface);
+  border: 1px solid var(--cf-border);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  display: flex;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+}
+
+.ai-chat-panel__send:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* Status bar ---------------------------------------------------------------- */

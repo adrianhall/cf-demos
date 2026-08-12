@@ -1622,3 +1622,316 @@ project-wide Vitest config change was made. This is the one open coverage gap in
 `docs/09C-COLLABORATIVE-EDITING.md`'s own scope; the second, pre-existing gap
 (`src/client/lib/datetime.ts:82`) predates this document's work and remains explicitly out of
 scope for it.
+
+## NEW DECISIONS
+
+## 35. `docs/09D-ARCHITECT-AICHAT.md` Phase 21 spike findings — confirmed `AI_CHAT_MODEL`, MCP
+    docs-client package, and `DiagramSession` disconnect resilience
+
+The four numbered items from `docs/09D-ARCHITECT-AICHAT.md`'s Phase 21 spike, each re-verified
+against current sources rather than taken from this repository's own prior descriptions. No local
+`.env`/API token exists in this worktree, so no real `env.AI.run()` call could be made; item 1's
+finding is therefore documentary, not empirical, and is flagged as such below.
+
+**1. `AI_CHAT_MODEL`: keep `@cf/zai-org/glm-5.2` as the default; `@cf/moonshotai/kimi-k2.6` is the
+confirmed current fallback id.** Both model pages were fetched live from
+[developers.cloudflare.com](https://developers.cloudflare.com/workers-ai/models/) on 2026-08-11.
+[`glm-5.2`](https://developers.cloudflare.com/workers-ai/models/glm-5.2/) (`@cf/zai-org/glm-5.2`,
+exact id unchanged from the document's draft) lists **Function calling: Yes** and Reasoning: Yes, a
+262,144-token context window, and "Paid access required." Moonshot AI's current catalog id —
+the document's own `@cf/moonshotai/kimi-...` placeholder — resolves to
+[`@cf/moonshotai/kimi-k2.6`](https://developers.cloudflare.com/workers-ai/models/kimi-k2.6/)
+(confirmed via both a direct page fetch and a `search_cloudflare_documentation` call against
+`https://docs.mcp.cloudflare.com/mcp` for "kimi-k2.6 model function calling Workers AI," which
+returned that exact URL as the top-ranked result), also listing **Function calling: Yes**,
+Reasoning: Yes, Vision: Yes, a 262,144-token context window, and "Paid access required." A
+`GET .../changelog/post/2026-05-21-rest-api/` result surfaced by the same docs search independently
+names `@cf/moonshotai/kimi-k2.6` as a worked example of an AI Gateway REST call, corroborating the
+id from a second page. Neither this repository nor this sandbox has a Cloudflare API token
+available, so **no live `env.AI.run()` call against a plain (non-dynamic-route) gateway binding
+could be made for either model** — this finding rests on current model-catalog metadata (the
+"Function calling: Yes" flag on both models' own pages) plus `docs/DECISIONS.md` #13's own
+already-proven result that `@cf/zai-org/glm-5.2` returns well-formed `tool_calls` when called
+through this account's AI Gateway (there, via a **dynamic route**, not a plain gateway — #13 also
+found the *same* dynamic-routing call mechanism rejects several other otherwise-function-calling-
+capable models with `AiGatewayError 2002`, so "documented function-calling support" alone is not
+sufficient evidence a given model works through *any* gateway shape). **Decision: default
+`AI_CHAT_MODEL` to `@cf/zai-org/glm-5.2`** (already this repository's one demonstrated
+gateway-routed tool-calling success, and already used successfully — directly, non-gateway and
+via `demos/agentic-ai-chat`'s dynamic route — elsewhere in this repo), **with `@cf/moonshotai/kimi-
+k2.6` as the named fallback** to try if Phase 23's real integration test finds `glm-5.2` does not
+return well-formed `tool_calls` through 09D's specific plain-gateway binding shape. This residual
+uncertainty (plain-gateway vs. dynamic-route tool-calling behavior is not the same thing, per #13's
+own model-by-model sweep, and has not been empirically re-tested for either candidate against a
+plain gateway) is explicitly Phase 23's own integration test's job to close before Phase 24 begins,
+not something this spike can settle from documentation alone.
+
+**2. `@modelcontextprotocol/client@2.0.0`'s exports are confirmed, and a live, unauthenticated call
+to the public docs MCP server succeeded end to end.** `npm view @modelcontextprotocol/client@2.0.0`
+confirms `2.0.0` (not a prerelease) is the current published version, matching
+`demos/architect/package.json`'s pinned `devDependencies` entry. Unpacking the real published
+tarball (`npm pack`) and grepping its `dist/index.d.cts` confirms both `Client` (`declare class
+Client extends Protocol<ClientContext>`) and `StreamableHTTPClientTransport` (`declare class
+StreamableHTTPClientTransport implements Transport`) are exported from the package's top-level
+`export { ... }` statement — exactly the two symbols `docs/09B-ARCHITECT-MCP.md`'s own References
+section and `docs/09D-ARCHITECT-AICHAT.md`'s Cloudflare Docs Tool section both name. This sandbox
+has real outbound network access: a raw `curl -X POST https://docs.mcp.cloudflare.com/mcp` with an
+`initialize` JSON-RPC body returned `HTTP/2 200` and a real `initialize` result (`serverInfo:
+{"name":"docs-ai-search","version":"0.4.13"}`, `protocolVersion: "2025-06-18"`) with **no
+`Authorization` header and no session negotiation** — matching the document's "requires no OAuth or
+API token" claim. A second raw `curl` call, `tools/call` for `search_cloudflare_documentation` with
+`{"query": "Workers AI function calling"}`, and sent with **no prior `initialize` call on the same
+connection at all** (this server accepts a bare `tools/call` — it does not enforce session
+continuity across HTTP requests, consistent with 09D's own "a fresh server per request, by its own
+README" description), returned a real `200` with five ranked `{url, title, text}` results including
+the exact current `/workers-ai/features/function-calling/` guide. This is real evidence for both
+halves of item 2 at once: the SDK exports `docs-client.ts` needs are real and stable, and the
+target server itself is reachable, unauthenticated, and returns well-formed tool results, from
+this same class of sandboxed environment `DiagramSession` runs in. **Decision: no correction to the
+document's package or client design.** `package.json` itself is intentionally left unchanged in
+this phase (Phase 21 is research-only) — Phase 22 or 23's implementer must move
+`@modelcontextprotocol/client` from `devDependencies` into `dependencies` (it is a real runtime
+import for `src/worker/ai/docs-client.ts`, not merely a test-time tool as it is for 9B), per the
+document's own Infrastructure Changes section.
+
+**3. Async work started inside a Durable Object's WebSocket message handler is confirmed to keep
+running after the originating client disconnects, and current Durable Objects documentation
+supports this without qualification.** [Lifecycle of a Durable
+Object](https://developers.cloudflare.com/durable-objects/concepts/durable-object-lifecycle/)'s
+hibernation-eligibility list states hibernation can only occur if, among other conditions, **"No
+request/event is still being processed, because hibernating would mean losing track of the async
+function which is eventually supposed to return a response to that request."** This is the load-
+bearing sentence for this finding: a `webSocketMessage()` invocation's own returned `Promise` (the
+multi-round `runDiagramChatTurn()` loop this document runs inside it) is exactly this kind of
+"still being processed" event, and the object stays in the **active, in-memory** state — not
+hibernated, not evicted — for as long as that promise has not yet resolved, independent of whether
+the specific WebSocket connection that delivered the triggering message is still open. Nothing in
+the runtime's WebSocket model cancels or aborts an already-running async call chain when the
+client-side socket closes: [Use
+WebSockets](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)'s own
+`webSocketClose()` handler is a separate, additional event delivered to the object (used here only
+to clean up presence state), not a signal that unwinds or interrupts whatever async work a prior
+`webSocketMessage()` call already started — JavaScript execution inside one Durable Object instance
+is single-threaded and cooperative, so a close event cannot preempt an in-flight `await` chain any
+more than a second concurrent `operation` message could (the same "no interleaving" guarantee
+`docs/DECISIONS.md` #32 already confirmed generically). Once that turn's loop finishes and calls
+`this.applyOperation()`, the mutation is written to D1 through the object's own existing write
+chain — durable regardless of which, if any, connections are still attached. A reconnecting client
+obtaining a stub for the same diagram id (`env.DIAGRAM_SESSIONS.getByName(diagramId)`, matching
+`docs/DECISIONS.md` #33's confirmed `ctx.id.name` identity mechanism) opens a fresh
+`fetch()`/`acceptWebSocket()` call, which per 9C's own already-implemented `fetch()` handler sends a
+`graph_snapshot` built from `this.graph` (or, if the object was actually evicted between the turn
+finishing and the reconnect, from a fresh `blockConcurrencyWhile()` hydration off D1 — either path
+reflects the turn's result, since it was already durably persisted). **Decision: no correction to
+`docs/09D-ARCHITECT-AICHAT.md`'s "Why This Runs Inside `DiagramSession`" design — the specific
+disconnect-resilience behavior it depends on is confirmed by current Durable Objects documentation,
+and Phase 23's own disconnect-mid-turn integration test (already specified in the document's Phase
+23 section) is the right place to prove it empirically against the real `DiagramSession`, not a
+design change.**
+
+**4. Every field named in the document's `cloudflare_ai_gateway` HCL block exists in the pinned
+`cloudflare/cloudflare ~> 5.22.0` provider's real schema, with one useful refinement to the
+document's own "optional-but-not-computed" framing.** `terraform -chdir=demos/architect/infra init
+-backend=false` (read-only; downloads the provider plugin only, makes no Cloudflare API call and
+touches no state) followed by `terraform providers schema -json` confirms, against this exact
+pinned version: `authentication`, `logpush`, `log_management`, `log_management_strategy`, and `zdr`
+are all `optional`, **not** `computed` — the precise schema shape #13 already found necessitates
+pinning them explicitly, or the API's own server-filled defaults cause perpetual `plan` drift.
+`cache_invalidate_on_update`, `cache_ttl`, `collect_logs`, `rate_limiting_interval`, and
+`rate_limiting_limit` are actually **`required`** in this version's schema, not "optional-but-not-
+computed" as the document's prose (copied from #13's spike-era account of the same fields)
+describes — a `terraform plan` fails outright with "argument is required" if any of these five is
+omitted, a different (louder, earlier) failure mode than silent drift, though the practical
+consequence for this document's own HCL is identical: every one of these five is already set
+explicitly in the quoted block, so no HCL change is needed either way. `spend_limits` is a
+single-nested object attribute (`optional`, `computed`) whose own `rules` list attribute nests
+`limit_type` (`required`, enum `"cost"`), `limit` (`required`, `number`), and `window` (`required`,
+`number`) — exactly the three fields the document's `spend_limits.rules[]` block sets, and
+`spend_limits.enabled` itself is `optional`/`computed` but is also already set explicitly
+(`enabled = true`) in the document's HCL. `terraform -chdir=demos/architect/infra validate` and
+`terraform fmt -check -diff` both pass cleanly against the current, unmodified `infra/` directory
+after this same `init`, confirming this inspection made no changes of its own. **Decision: no
+change needed to the document's quoted `cloudflare_ai_gateway` HCL block** — every field it names
+is present, and the block already pins every field this schema dump shows is either `required` or
+`optional`-but-`not`-`computed`; Phase 23's implementer should simply copy the block as written,
+noting only that a field being merely `required` (a hard `plan`-time error if forgotten) rather than
+"silently drifting" is a strictly easier failure mode to catch than what #13 originally described
+for the other class of field.
+
+## NEW DECISIONS
+
+New decisions will be located below here before they are incorporated, and moved above this
+heading when they have been incorporated.
+
+## 36. `docs/09D-ARCHITECT-AICHAT.md` Phase 23 implementation findings — bare-`console` logging
+    inside a Durable Object, and `env.AI` cannot be stubbed for a real `DiagramSession` in this
+    integration test pool
+
+Two findings from wiring `DiagramSession.handleChatMessage()` (`demos/architect/src/worker/
+diagram-session/diagram-session.ts`) to `src/worker/ai/chat-engine.ts`'s `runDiagramChatTurn()`.
+
+**Plain `console.log()`/`console.error()`, JSON-stringified per call, is this repository's own
+narrow, deliberate precedent for structured logging inside a bare Durable Object with no Hono
+`Context` available.** `cloudflareLogger()` (this repo's usual logging mechanism, decision #5)
+resolves a request-scoped `Logger` onto a Hono `Context` at middleware time — `DiagramSession`
+has no Hono `Context` at all, and neither 9B nor 9C ever needed one, since neither introduced any
+logging inside this object. `demos/agentic-ai-chat`'s `ChatAgent` (an Agent/Durable Object outside
+a Hono context) already falls back to plain `console.error(...)` for exactly this reason, and this
+phase followed that same precedent for its three new structured events
+(`ai_chat_turn_completed`/`ai_chat_turn_failed`/`ai_docs_lookup_performed`), one
+`console.log`/`console.error` call per event, each argument a single `JSON.stringify()`-encoded
+object so Workers Logs can still parse it as structured data without the toolkit's own logger
+involved. A future Durable-Object-based demo needing logging inside the object itself (not just
+inside the Hono routes that call it) should reuse this same pattern rather than inventing a new
+one or trying to thread a `cloudflareLogger()`-produced `Logger` instance into a Durable Object
+across an RPC/WebSocket boundary.
+
+**`env.AI` cannot be substituted with a fixture for a real Durable Object instance in
+`@cloudflare/vitest-pool-workers`, and this is a hard platform limitation, not a missing test
+trick.** Investigated per this phase's own instructions before accepting this: (1) Miniflare's own
+`AIOptionsSchema` (`node_modules/miniflare/dist/src/index.d.ts`) has exactly two fields,
+`binding`/`remoteProxyConnectionString` — no fake/local-execution mode exists for this plugin at
+all, confirming decisions #9/#11's "Workers AI has no local simulation" finding extends to every
+known override mechanism, not just the ones those decisions already tried. (2) `demos/ai-chat`'s
+own `{ ...env, AI: fakeAi }` substitution trick (its `tests/integration/fixtures.ts`) works only
+because its integration tests call the Hono app's own `app.fetch(request, env, ctx)` directly with
+a test-constructed `env` object — it cannot reach a **Durable Object**'s own `this.env.AI`
+regardless, since a Durable Object's bindings are resolved by the Workers runtime from
+`wrangler.jsonc`'s own binding configuration at construction time, never from whatever `env` object
+happened to be in scope at the call site that reached it via `getByName()`/RPC. (3) A live scratch
+test (`env.AI.run(...)` called directly, `remoteBindings: false`) confirmed the failure mode is a
+clean, synchronous, catchable throw (`Error: Binding AI needs to be run remotely`) on every call,
+every time — not a hang, not a silently wrong result — which is what makes this phase's
+error-path integration test (`chat_message` → `chat_error`, never crashing the connection) both
+safe to write and a faithful stand-in for a genuine AI Gateway/binding-level failure in production.
+**Decision: `tests/integration/vitest.config.ts` sets `remoteBindings: false` (matching
+`demos/ai-chat`'s own precedent) so the whole integration suite stays runnable with zero
+Cloudflare credentials; `DiagramSession.handleChatMessage()`'s success path (the tool-calling loop
+actually running, `chat_status`/`chat_token`/`chat_done`/`operation_applied` with `origin:
+"ai-chat"` actually being sent) is exhaustively covered instead against a fixture Workers AI double
+in `src/worker/ai/chat-engine.test.ts`, which needs no Durable Object at all — and is accepted as
+an uncovered integration-test/coverage gap in `diagram-session.ts` itself, the same category of
+accepted, documented gap decision #34 already established for `ensureHydrated()`'s two throw
+branches, for the same underlying reason: this pool cannot exercise it any other way. Revisit if
+Miniflare ever ships a local/fake execution mode for the `ai` binding, or if a future
+`@cloudflare/vitest-pool-workers` release exposes some other way to override a Durable Object's own
+bound `env` per test.
+
+## NEW DECISIONS
+
+New decisions will be located below here before they are incorporated, and moved above this
+heading when they have been incorporated.
+
+## 37. `docs/09D-ARCHITECT-AICHAT.md` Phase 26 verification findings — a real Durable Object
+    instance's own `env` property *can* be overridden per test, closing most of decision #36's
+    accepted gap; the one genuinely-uncoverable slice that remains, and the final coverage/
+    accessibility/web-perf state
+
+Phase 26 re-investigated decision #36's second finding ("`env.AI` cannot be substituted with a
+fixture for a real `DiagramSession` in this integration test pool") before accepting it
+permanently, per this repository's own instruction to research a documented way around a gap
+before leaving it. Decision #36 is still correct about the specific mechanism it tested (a
+call-site `env` substitution, the way `demos/ai-chat`'s `fixtures.ts` does when it calls
+`app.fetch(request, env, ctx)` directly, cannot reach a Durable Object's own bound `env` — a
+Durable Object's bindings are resolved by the Workers runtime at construction time, not from
+whatever `env` object happened to be in scope at the call site that reached it). **But a
+different, working seam exists: `runInDurableObject()` hands back the real, live class instance,
+not a copy, and `this.env` is an ordinary, mutable JS property on that instance — set once by the
+`DurableObject` base class's own constructor — not a runtime-enforced read-only binding site.**
+A scratch test (`tests/integration/_scratch-ai-override.test.ts`, deleted after this
+investigation) confirmed that `runInDurableObject(stub, (instance) => { instance.env.AI = { run:
+async () => fakeResult }; })` really does let a subsequent call reach the fixture, not the real
+Miniflare `AI` proxy that throws `Error: Binding AI needs to be run remotely`. Because
+`getByName()` returns a stub for the *same* live, in-memory object a socket opened earlier via the
+Worker's own route is already attached to (confirmed by several pre-existing tests in this same
+file already calling `env.DIAGRAM_SESSIONS.getByName(diagramId).getSnapshot()` against a
+socket already open on that id), reassigning `instance.env` once, right after opening a live
+socket, and before sending a `chat_message` frame to it, reaches `handleChatMessage()`'s real
+`this.env.AI` call for that entire test.
+
+**Decision: use this technique to add real, end-to-end `DiagramSession` integration tests for the
+AI chat success path**, in a new `tests/integration/diagram-session.test.ts` describe block ("AI
+chat (Phase 26) — full turn against a fixture Workers AI double"), alongside (not replacing)
+Phase 23's own two error-path tests and `src/worker/ai/chat-engine.test.ts`'s existing exhaustive
+unit coverage of the loop itself. Two new tests: one drives a fixture Workers AI double through
+one `add_node` tool call, one `rename_diagram` tool call, and a streamed final answer, asserting
+`chat_status`/`operation_applied` (`origin: "ai-chat"`)/`diagram_renamed`/`chat_token`/`chat_done`
+all arrive correctly on the originating connection, and that a second, non-originating connection
+also receives the `operation_applied`/`diagram_renamed` broadcasts without having sent anything
+itself (the specific claim docs/09D-ARCHITECT-AICHAT.md's Message Protocol section makes about a
+bystander seeing the assistant's edits live); the other drives a rejected `update_node` tool call
+(a nonexistent `nodeId`) and confirms the turn still completes normally (`chat_done`, not
+`chat_error`) with the rejection reason fed back as the model's tool result, and that no
+`operation_applied` broadcast fires for it. Together these close every previously-uncovered line
+in `handleChatMessage()`'s success path except one.
+
+**The one line decision #36's gap still correctly describes as unclosable: the
+`search_cloudflare_documentation` tool's own `onDocsLookup` closure.** Reaching it requires the
+fixture model to actually call that tool, which runs `../ai/docs-client.ts`'s real
+`Client`/`StreamableHTTPClientTransport` against the literal, hardcoded
+`https://docs.mcp.cloudflare.com/mcp` URL — a genuine outbound network call with no injection seam
+of its own (unlike `env.AI`, there is no bound object to reassign; the URL is a plain module
+constant, and `vi.mock()` cannot reach code executing inside
+`@cloudflare/vitest-pool-workers`'s own workerd isolate the way it reaches a plain unit test's
+top-level imports in `src/worker/ai/chat-engine.test.ts`). Forcing that call from this project's
+integration suite would need real network access on every `test`/`test:coverage` run, exactly the
+dependency `remoteBindings: false` (decision #9) already exists to avoid for the `AI` binding
+itself — and this sandbox having real network access (decision #35) does not mean every future
+environment this suite runs in will. This one closure's own body is trivial, branch-free
+pass-through with no logic of its own worth that dependency to reach; `chat-engine.test.ts`
+already covers `executeToolCall()`'s `search_cloudflare_documentation` dispatch (both the `ok`
+and failure outcomes) against a mocked `searchCloudflareDocumentationSafe`, and
+`docs-client.test.ts` already covers the real parsing/timeout/failure logic this closure merely
+relays. **Decision: leave this one closure uncovered, documented with an inline code comment at
+its own definition** (`src/worker/diagram-session/diagram-session.ts`), matching decision #34's
+own rigor and its own explicit allowance for "one or two similarly genuinely-uncoverable
+defensive branches."
+
+**Final coverage state for `demos/architect`, confirmed by a full `npm run test:coverage` run
+after every fix in this phase**: 99.78% statements / 99.37% branches / 99.85% functions / 99.84%
+lines, with exactly three uncovered lines remaining across the entire project, all pre-existing or
+newly-justified exceptions, none newly introduced: `src/client/lib/datetime.ts:82` (pre-existing,
+out of this document's scope entirely, decision #34); `src/worker/diagram-session/
+diagram-session.ts:274,283` (`ensureHydrated()`'s two `throw new Error(...)` branches,
+pre-existing, decision #34); `diagram-session.ts`'s own `onDocsLookup` closure body (this decision,
+above). One additional, closable gap found and fixed in this same phase but not AI-chat-specific:
+`src/client/hooks/useDiagramLiveSync.ts`'s `chat_token` accumulator's `.map()` had never been
+exercised with more than one existing transcript entry, so the branch that leaves a non-active
+entry (a preceding `kind: "user"` entry, in practice) unchanged had zero hits; a new test sends
+the user's own message first (via `sendChatMessage()`, which prepends that entry) before two
+`chat_token` frames, closing it.
+
+**Accessibility (Part 3) and web-perf (Part 4) findings.** A manual WCAG 2.2 AA read of
+`DetailsPanel.tsx`, `AiChatPanel.tsx`, `GenerateWithAiModal.tsx`, the toolbar's "AI Assistant"
+button, and `BlueprintGallery.tsx`'s "Generate with AI" tile found the tab pattern (matching IDs
+between `aria-controls`/the tabpanel's own `id`, and `aria-labelledby` tracking the active tab),
+the `role="log"`/`aria-live="polite"` transcript (relying on the standard "one consolidating
+region, not one region per token" mitigation — confirmed already true: only the transcript's own
+container carries `aria-live`, and `chat_token` frames mutate one existing DOM node's text rather
+than inserting a new announced node per token), every icon-only control's accessible name,
+`useModalFocus()` wiring (matching `CreateDiagramModal.tsx`'s own usage exactly), and icon-button
+target sizes (both new icon-only controls exceed this repository's existing 24×24px bar once
+padding/border are accounted for, matching `.modal__close`/`.properties-panel__close`'s own
+explicit `min-height`/`min-width: 24px`) all already met this repository's own existing bar with
+no changes needed. **One genuine issue found and fixed**: `.ai-chat-panel__message--error` used a
+new, non-theme-aware hardcoded `#dc2626` for both its border and text color, instead of reusing
+`--cf-danger` (already vetted for contrast in both light and dark themes, and already the
+established pattern for exactly this "error text/border on a surface" case —
+`.toolbar__export-error` immediately above it in the same file already does this). Fixed by
+substituting `var(--cf-danger)` for both properties; every other new CSS rule in this feature's
+`.details-panel`/`.ai-chat-panel*`/`.blueprint-card--generate`/`.blueprint-card__preview--generate`
+sections already reused an existing `--cf-*` custom property or the file's own separately
+well-established `light-dark(#555, #aaa)` muted-text literal (used dozens of times elsewhere in
+this same file, pre-existing this feature). `src/client/lib/auto-layout.ts` still has no
+top-level `elkjs` import (confirmed by re-reading its own imports; the dynamic
+`import("elkjs/lib/elk.bundled.js")` is still inside {@link computeAutoLayout}'s own function
+body). `npm run build`'s chunk report confirms the `elk.bundled` chunk is byte-for-byte
+unchanged (1,432.40 kB / 441.77 kB gzip, identical hash-suffixed filename length, before and
+after this document's own Phases 22–25) — proof this feature added no new eager `elkjs` pull-in
+of its own. A side-by-side build against Phase 23's own commit (before any of this document's UI
+existed) versus the current tree found the client's main JS chunk grew from 583.52 kB (173.73 kB
+gzip) to 607.32 kB (177.48 kB gzip), and its CSS grew from 35.54 kB (6.35 kB gzip) to 38.89 kB
+(6.78 kB gzip) — roughly +24 kB raw / +3.75 kB gzip of JS and +3.35 kB raw / +0.43 kB gzip of CSS
+for this document's entire new UI surface (`DetailsPanel.tsx`, `AiChatPanel.tsx`,
+`GenerateWithAiModal.tsx`, the new toolbar button, the new gallery tile, and every new CSS rule
+combined). Nothing surprisingly large.

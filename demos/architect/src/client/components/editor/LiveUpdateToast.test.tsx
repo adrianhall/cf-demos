@@ -37,6 +37,19 @@ describe("LiveUpdateToast", () => {
     );
   });
 
+  it('renders "Updated by AI Assistant" for an ai-chat-originated edit', () => {
+    useDiagramStore.setState({
+      liveUpdateNotice: {
+        actorEmail: "alice@example.com",
+        origin: "ai-chat",
+      },
+    });
+    render(<LiveUpdateToast />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Updated by AI Assistant",
+    );
+  });
+
   it('renders "Updated by <email>" for a different human collaborator', () => {
     useDiagramStore.setState({
       liveUpdateNotice: { actorEmail: "bob@example.com", origin: "human" },

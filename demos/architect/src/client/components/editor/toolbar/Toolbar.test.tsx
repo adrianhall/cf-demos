@@ -184,6 +184,8 @@ describe("Toolbar", () => {
       paletteOpen: true,
       propertiesOpen: false,
       minimapOpen: true,
+      detailsPanelTab: "properties",
+      detailsPanelExpanded: false,
     });
     mockXyflow.mockFitView.mockClear();
     mockXyflow.mockZoomIn.mockClear();
@@ -268,6 +270,78 @@ describe("Toolbar", () => {
     expect(propertiesToggle).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(propertiesToggle);
     expect(useDiagramStore.getState().propertiesOpen).toBe(true);
+  });
+
+  it("opens the AI Assistant tab and the details panel, nudging the palette closed once (docs/09D-ARCHITECT-AICHAT.md)", () => {
+    useDiagramStore.setState({
+      paletteOpen: true,
+      propertiesOpen: false,
+      detailsPanelTab: "properties",
+    });
+    render(<Toolbar />);
+
+    const aiButton = screen.getByTitle("AI Assistant");
+    expect(aiButton).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(aiButton);
+    expect(useDiagramStore.getState().detailsPanelTab).toBe("ai-chat");
+    expect(useDiagramStore.getState().propertiesOpen).toBe(true);
+    expect(useDiagramStore.getState().paletteOpen).toBe(false);
+
+    // Re-open the palette manually -- the one-time nudge must never re-close it again.
+    useDiagramStore.getState().togglePalette();
+    expect(useDiagramStore.getState().paletteOpen).toBe(true);
+    fireEvent.click(aiButton);
+    expect(useDiagramStore.getState().paletteOpen).toBe(true);
+  });
+
+  it("does not close an already-closed palette on the first AI Assistant click", () => {
+    useDiagramStore.setState({ paletteOpen: false, propertiesOpen: false });
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByTitle("AI Assistant"));
+    expect(useDiagramStore.getState().paletteOpen).toBe(false);
+  });
+
+  it("aria-pressed on the AI Assistant button reflects both the panel being open and its tab", () => {
+    useDiagramStore.setState({
+      propertiesOpen: true,
+      detailsPanelTab: "ai-chat",
+    });
+    render(<Toolbar />);
+    expect(screen.getByTitle("AI Assistant")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("does not read AI Assistant as pressed when the details panel itself is closed", () => {
+    useDiagramStore.setState({
+      propertiesOpen: false,
+      detailsPanelTab: "ai-chat",
+    });
+    render(<Toolbar />);
+    expect(screen.getByTitle("AI Assistant")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("does not leave the AI Assistant tab open when it is already open (no-op re-toggle of the panel)", () => {
+    useDiagramStore.setState({
+      propertiesOpen: true,
+      detailsPanelTab: "properties",
+    });
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByTitle("AI Assistant"));
+    expect(useDiagramStore.getState().propertiesOpen).toBe(true);
+    expect(useDiagramStore.getState().detailsPanelTab).toBe("ai-chat");
+  });
+
+  it("renders no AI Assistant button in read-only mode", () => {
+    render(<Toolbar readOnly />);
+    expect(screen.queryByTitle("AI Assistant")).not.toBeInTheDocument();
   });
 
   it("toggles the minimap through the store", () => {

@@ -25,7 +25,7 @@ import { nextClientOpId, useDiagramStore } from "../../stores/diagramStore";
 import { edgeTypes } from "./edges/edgeTypes";
 import { LiveUpdateToast } from "./LiveUpdateToast";
 import { nodeTypes } from "./nodes/nodeTypes";
-import { PropertiesPanel } from "./panels/PropertiesPanel";
+import { DetailsPanel } from "./panels/DetailsPanel";
 import { ServicePalette } from "./panels/ServicePalette";
 import { RemoteCursorsOverlay } from "./RemoteCursorsOverlay";
 import { StatusBar } from "./toolbar/StatusBar";
@@ -197,6 +197,11 @@ export function DiagramCanvas({
     remoteSelections,
     sendCursor,
     sendSelectionChange,
+    chatTranscript,
+    chatInFlight,
+    sendChatMessage,
+    stopChatTurn,
+    clearChatTranscript,
   } = useDiagramLiveSync(diagramLoaded ? diagramId : null, !readOnly);
 
   // Relay this tab's own current selection to every other connected identity
@@ -581,7 +586,15 @@ export function DiagramCanvas({
             )}
           </ReactFlow>
         </div>
-        {!readOnly && !printMode && propertiesOpen && <PropertiesPanel />}
+        {!readOnly && !printMode && propertiesOpen && (
+          <DetailsPanel
+            chatTranscript={chatTranscript}
+            chatInFlight={chatInFlight}
+            sendChatMessage={sendChatMessage}
+            stopChatTurn={stopChatTurn}
+            clearChatTranscript={clearChatTranscript}
+          />
+        )}
       </div>
       {!printMode && <StatusBar readOnly={readOnly} />}
     </div>

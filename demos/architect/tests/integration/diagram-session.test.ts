@@ -196,6 +196,54 @@ function collectMessagesOfType(
   });
 }
 
+/** Build a fixture `ReadableStream` of SSE-framed bytes for one final assistant answer -- the
+ * minimal shape `src/worker/ai/chat-engine.ts`'s own `consumeSseStream()` parses
+ * (docs/DECISIONS.md #10), mirroring `src/worker/ai/chat-engine.test.ts`'s own `sseStream()`
+ * fixture. */
+function fakeAiSseStream(text: string): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(`data: ${JSON.stringify({ response: text })}\n\n`),
+      );
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+}
+
+/**
+ * Build a fixture Workers AI double for a real `DiagramSession` instance's own `env.AI` binding
+ * (see the "AI chat (Phase 23)" describe block's own top-of-file JSDoc for why reassigning
+ * `instance.env` on a live instance -- not a call-site `env` substitution -- is the one way to
+ * reach it in this pool). One non-streaming, tool-calling round per entry of `toolRounds`
+ * (`[]` for an organic "no more tool calls" round, matching `runDiagramChatTurn()`'s own
+ * "no tool_calls returns break" contract); the turn's one final `stream: true` round always
+ * resolves to `finalText`, framed as {@link fakeAiSseStream}.
+ *
+ * @param toolRounds One entry per non-streaming round this fixture should answer, in order.
+ * @param finalText The final streamed answer's complete text.
+ * @returns A plain object shaped like `ChatAiBinding` (`src/worker/ai/chat-engine.ts`) -- not
+ * imported/typed as such here, matching this file's own existing convention of not importing
+ * `src/worker/**` types into this project's integration tests.
+ */
+function fakeChatAi(
+  toolRounds: { name: string; arguments: Record<string, unknown> }[][],
+  finalText: string,
+): { run: (...args: unknown[]) => Promise<unknown> } {
+  let round = 0;
+  return {
+    run: async (_model: unknown, inputs: unknown): Promise<unknown> => {
+      const { stream } = inputs as { stream?: boolean };
+      if (stream) return fakeAiSseStream(finalText);
+      const calls = toolRounds[round] ?? [];
+      round += 1;
+      return calls.length > 0 ? { tool_calls: calls } : { response: "" };
+    },
+  };
+}
+
 describe("DiagramSession / GET /api/diagrams/:id/live", () => {
   const openSockets = new Set<WebSocket>();
 
@@ -1026,5 +1074,255 @@ describe("DiagramSession / GET /api/diagrams/:id/live", () => {
       expect(after.updatedAt).toBe(before.updatedAt);
       expect(after.graphData).toBe(before.graphData);
     });
+  });
+
+  /**
+   * AI chat (docs/09D-ARCHITECT-AICHAT.md, Phase 23). **Coverage note, corrected in Phase 26**:
+   * this repository's own `tests/integration/vitest.config.ts` sets `remoteBindings: false` for
+   * the same reason `demos/ai-chat`'s own integration project already does (docs/DECISIONS.md #9
+   * -- Workers AI has no local simulation at all, so leaving remote bindings on would need real
+   * Cloudflare credentials and network access just to boot this project's tests). Phase 23's own
+   * investigation found `env.AI` cannot be substituted for a real `DiagramSession` instance at
+   * its *call site* the way `demos/ai-chat`'s own `tests/integration/fixtures.ts` substitutes `{
+   * ...env, AI: fakeAi }` when calling `app.fetch(request, env, ctx)` directly -- that trick
+   * only works there because its own tests import the Hono app module and construct `env`
+   * themselves, whereas this project's `request()` helper calls
+   * `exports.default.fetch(requestValue)`, and a Durable Object's bindings are resolved by the
+   * Workers runtime at construction time regardless of what `env` object a caller built. That
+   * finding is still correct as far as it goes, but Phase 26 found a *different*, working seam:
+   * `runInDurableObject()` (used extensively elsewhere in this file, e.g. the
+   * `webSocketError`/`skips a socket that is no longer open` tests above) hands back the real,
+   * live class instance, not a copy -- and `this.env` is an ordinary, mutable JS property on
+   * that instance (set once by the `DurableObject` base class's own constructor), not a
+   * runtime-enforced read-only binding site. Reassigning `instance.env` to a copy with a fixture
+   * `AI` double, once, right after opening the live socket this describe block's own tests use,
+   * really does reach every later `handleChatMessage()` call's `this.env.AI` -- proven directly
+   * below, in "AI chat (Phase 23) -- full turn against a fixture Workers AI double". This is a
+   * genuinely different technique than the call-site substitution Phase 23 already correctly
+   * ruled out, not a reversal of that finding; both are true at once, and this describe block's
+   * own two tests below (an unmodified `env.AI`, which still throws
+   * `"Binding AI needs to be run remotely"` in this pool) are unaffected by it. See
+   * docs/DECISIONS.md for the full write-up.
+   */
+  describe("AI chat (Phase 23)", () => {
+    it("recognizes a chat_message frame and reports chat_error, without crashing the connection, when env.AI is unavailable", async () => {
+      const diagramId = await createDiagram("alice@example.com");
+      const { socket } = await openLiveSocket("alice@example.com", diagramId);
+
+      const error = nextMessageOfType(socket, "chat_error");
+      socket.send(
+        JSON.stringify({
+          clientRequestId: "chat-req-1",
+          text: "Add a Worker node.",
+          type: "chat_message",
+        }),
+      );
+
+      const message = await error;
+      expect(message.clientRequestId).toBe("chat-req-1");
+      expect(typeof message.message).toBe("string");
+      expect(socket.readyState).toBe(WebSocket.OPEN);
+    });
+
+    it("leaves the diagram's graph unchanged and the object otherwise healthy after a failed chat turn", async () => {
+      const diagramId = await createDiagram("alice@example.com");
+      const { socket } = await openLiveSocket("alice@example.com", diagramId);
+      const before = await loadDiagram("alice@example.com", diagramId);
+
+      const error = nextMessageOfType(socket, "chat_error");
+      socket.send(
+        JSON.stringify({
+          clientRequestId: "chat-req-2",
+          text: "Add a Worker node.",
+          type: "chat_message",
+        }),
+      );
+      await error;
+
+      const after = await loadDiagram("alice@example.com", diagramId);
+      expect(after.graphData).toBe(before.graphData);
+      expect(after.updatedAt).toBe(before.updatedAt);
+
+      // The object itself is still healthy: an ordinary operation frame still applies and
+      // broadcasts normally after the failed chat turn.
+      const applied = nextMessageOfType(socket, "operation_applied");
+      socket.send(
+        JSON.stringify({
+          clientOpId: "post-chat-op",
+          op: {
+            input: { label: "API", position: { x: 0, y: 0 }, typeId: "worker" },
+            kind: "add_node",
+          },
+          type: "operation",
+        }),
+      );
+      const appliedMessage = await applied;
+      expect(appliedMessage.origin).toBe("human");
+    });
+  });
+
+  /**
+   * Full turn, end-to-end, against a fixture Workers AI double substituted directly onto the
+   * live `DiagramSession` instance (docs/DECISIONS.md's Phase 26 write-up; see the "AI chat
+   * (Phase 23)" describe block's own top-of-file JSDoc for why this is a different, working
+   * technique than the call-site `env` substitution Phase 23 already correctly ruled out).
+   * Closes the `handleChatMessage()` success-path coverage gap Phase 23 left open
+   * (docs/DECISIONS.md #36) for everything except the `search_cloudflare_documentation`
+   * tool's own `onDocsLookup` callback, which is deliberately still not exercised here -- see
+   * that one test's own comment below for why.
+   */
+  describe("AI chat (Phase 26) -- full turn against a fixture Workers AI double", () => {
+    it("runs add_node and rename_diagram tool calls, streams a final answer, and broadcasts operation_applied/diagram_renamed with origin ai-chat to every connection", async () => {
+      const diagramId = await createDiagram("alice@example.com");
+      const { socket: originator } = await openLiveSocket(
+        "alice@example.com",
+        diagramId,
+      );
+      const { socket: bystander } = await openLiveSocket(
+        "alice@example.com",
+        diagramId,
+      );
+
+      const stub = env.DIAGRAM_SESSIONS.getByName(diagramId);
+      await runInDurableObject(stub, (instance) => {
+        // Reaching a real Durable Object instance's own `env` property to substitute a fixture
+        // `AI` binding -- see this describe block's own top-of-file JSDoc.
+        // biome-ignore lint/suspicious/noExplicitAny: see the comment above.
+        const target = instance as any;
+        target.env = {
+          ...target.env,
+          AI: fakeChatAi(
+            [
+              [
+                {
+                  arguments: { label: "API", typeId: "worker" },
+                  name: "add_node",
+                },
+                {
+                  arguments: { title: "Game Backend" },
+                  name: "rename_diagram",
+                },
+              ],
+            ],
+            "I added a Worker node and renamed the diagram.",
+          ),
+        };
+      });
+
+      const status = nextMessageOfType(originator, "chat_status");
+      const applied = nextMessageOfType(originator, "operation_applied");
+      const bystanderApplied = nextMessageOfType(
+        bystander,
+        "operation_applied",
+      );
+      const renamed = nextMessageOfType(bystander, "diagram_renamed");
+      const token = nextMessageOfType(originator, "chat_token");
+      const done = nextMessageOfType(originator, "chat_done");
+
+      originator.send(
+        JSON.stringify({
+          clientRequestId: "gen-1",
+          text: "Add a Worker and rename the diagram.",
+          type: "chat_message",
+        }),
+      );
+
+      const [
+        statusMessage,
+        appliedMessage,
+        bystanderAppliedMessage,
+        renamedMessage,
+        tokenMessage,
+        doneMessage,
+      ] = await Promise.all([
+        status,
+        applied,
+        bystanderApplied,
+        renamed,
+        token,
+        done,
+      ]);
+
+      expect(statusMessage.message).toBe('Adding node "API"…');
+      expect(appliedMessage.origin).toBe("ai-chat");
+      expect(appliedMessage.actorEmail).toBe("alice@example.com");
+      expect(bystanderAppliedMessage.origin).toBe("ai-chat");
+      expect(renamedMessage.title).toBe("Game Backend");
+      expect(tokenMessage.text).toBe(
+        "I added a Worker node and renamed the diagram.",
+      );
+      expect(doneMessage.assistantText).toBe(
+        "I added a Worker node and renamed the diagram.",
+      );
+      expect(doneMessage.clientRequestId).toBe("gen-1");
+
+      const snapshot = await stub.getSnapshot();
+      expect(JSON.parse(snapshot.graphData).nodes).toHaveLength(1);
+    });
+
+    it("feeds a rejected mutation's reason back to the model as a tool result rather than failing the turn, and never broadcasts operation_applied for it", async () => {
+      const diagramId = await createDiagram("alice@example.com");
+      const { socket } = await openLiveSocket("alice@example.com", diagramId);
+      const stub = env.DIAGRAM_SESSIONS.getByName(diagramId);
+
+      await runInDurableObject(stub, (instance) => {
+        // biome-ignore lint/suspicious/noExplicitAny: see the previous test's own comment.
+        const target = instance as any;
+        target.env = {
+          ...target.env,
+          AI: fakeChatAi(
+            [
+              [
+                {
+                  arguments: { label: "x", nodeId: "does-not-exist" },
+                  name: "update_node",
+                },
+              ],
+            ],
+            "I could not find that node.",
+          ),
+        };
+      });
+
+      let sawOperationApplied = false;
+      socket.addEventListener("message", (event) => {
+        const decoded = JSON.parse(String(event.data)) as { type?: string };
+        if (decoded.type === "operation_applied") sawOperationApplied = true;
+      });
+
+      const done = nextMessageOfType(socket, "chat_done");
+      socket.send(
+        JSON.stringify({
+          clientRequestId: "reject-1",
+          text: "Rename node does-not-exist.",
+          type: "chat_message",
+        }),
+      );
+
+      const message = await done;
+      expect(message.assistantText).toBe("I could not find that node.");
+      expect(sawOperationApplied).toBe(false);
+    });
+
+    // `search_cloudflare_documentation`'s own `onDocsLookup` closure (the `chat_tool_result`
+    // frame `handleChatMessage()` sends) is deliberately not exercised in this describe block,
+    // even though the `instance.env` substitution above could technically let a tool call reach
+    // it: `../ai/docs-client.ts` has no injection seam of its own (its target URL is a literal,
+    // and its `Client`/`StreamableHTTPClientTransport` open a real outbound connection every
+    // call) and `vi.mock()` cannot reach code executing inside this pool's own workerd isolate
+    // the way it reaches this file's own top-level imports -- so making the model call this
+    // tool here would mean a real, unmocked network round trip to
+    // `https://docs.mcp.cloudflare.com/mcp` on every `test:integration`/`test:coverage` run,
+    // exactly the "needs real network access just to boot this project's tests" problem this
+    // project's `remoteBindings: false` (docs/DECISIONS.md #9) already exists to avoid for the
+    // `AI` binding itself. `onDocsLookup`'s own two-line body (surfacing `outcome.ok`/
+    // `outcome.message` into a `chat_tool_result` frame) is trivial pass-through with no branch
+    // of its own worth a real network dependency to reach; `../ai/chat-engine.test.ts` already
+    // covers `executeToolCall()`'s own `search_cloudflare_documentation` dispatch (both the
+    // `ok`/failure outcomes) against a mocked `searchCloudflareDocumentationSafe`, and
+    // `../ai/docs-client.test.ts` already covers the real parsing/timeout/failure logic
+    // `onDocsLookup` merely relays. This is the one remaining, deliberately accepted coverage
+    // gap in `diagram-session.ts` from this document's own scope, matching docs/DECISIONS.md
+    // #34's rigor for `ensureHydrated()`'s two pre-existing throw branches.
   });
 });

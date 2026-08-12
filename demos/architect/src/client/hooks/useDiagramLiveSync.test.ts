@@ -253,6 +253,110 @@ describe("useDiagramLiveSync", () => {
     });
   });
 
+  it("applies an origin: ai-chat operation_applied and appends an action transcript entry (docs/09D-ARCHITECT-AICHAT.md)", () => {
+    const { result, rerender } = renderHook(() =>
+      useDiagramLiveSync("diagram-1", true),
+    );
+
+    latestSocket().simulateMessage({
+      type: "operation_applied",
+      actorEmail: "owner@example.com",
+      op: {
+        input: { label: "Workers", position: { x: 0, y: 0 }, typeId: "worker" },
+        kind: "add_node",
+      },
+      origin: "ai-chat",
+      sequence: 1,
+    });
+    rerender();
+
+    const state = useDiagramStore.getState();
+    expect(state.nodes).toHaveLength(1);
+    expect(state.liveUpdateNotice).toEqual({
+      actorEmail: "owner@example.com",
+      origin: "ai-chat",
+    });
+    expect(result.current.chatTranscript).toHaveLength(1);
+    expect(result.current.chatTranscript[0]).toMatchObject({
+      kind: "action",
+      text: "Added node: Workers",
+    });
+  });
+
+  it("suppresses the toast for an ai-chat operation_applied while this tab has its own turn in flight", () => {
+    const { result, rerender } = renderHook(() =>
+      useDiagramLiveSync("diagram-1", true),
+    );
+    act(() => latestSocket().simulateOpen());
+    result.current.sendChatMessage("Add a Worker");
+
+    latestSocket().simulateMessage({
+      type: "operation_applied",
+      actorEmail: "owner@example.com",
+      op: {
+        input: { label: "Workers", position: { x: 0, y: 0 }, typeId: "worker" },
+        kind: "add_node",
+      },
+      origin: "ai-chat",
+      sequence: 1,
+    });
+    rerender();
+
+    // Still applied to local state (every connected tab sees the canvas update)...
+    expect(useDiagramStore.getState().nodes).toHaveLength(1);
+    // ...but the toast itself is suppressed for the tab that is currently chatting.
+    expect(useDiagramStore.getState().liveUpdateNotice).toBeNull();
+  });
+
+  it("shows the toast for an ai-chat operation_applied on a tab with no chat turn in flight", () => {
+    const { rerender } = renderHook(() =>
+      useDiagramLiveSync("diagram-1", true),
+    );
+
+    latestSocket().simulateMessage({
+      type: "operation_applied",
+      actorEmail: "owner@example.com",
+      op: { kind: "remove_node", nodeId: "n1" },
+      origin: "ai-chat",
+      sequence: 1,
+    });
+    rerender();
+
+    expect(useDiagramStore.getState().liveUpdateNotice).toEqual({
+      actorEmail: "owner@example.com",
+      origin: "ai-chat",
+    });
+  });
+
+  it("resumes showing the ai-chat toast once this tab's own turn resolves", () => {
+    const { result, rerender } = renderHook(() =>
+      useDiagramLiveSync("diagram-1", true),
+    );
+    act(() => latestSocket().simulateOpen());
+    const clientRequestId = result.current.sendChatMessage("Add a Worker");
+
+    latestSocket().simulateMessage({
+      clientRequestId,
+      assistantText: "Done.",
+      type: "chat_done",
+    });
+    rerender();
+
+    latestSocket().simulateMessage({
+      type: "operation_applied",
+      actorEmail: "owner@example.com",
+      op: { kind: "remove_node", nodeId: "n1" },
+      origin: "ai-chat",
+      sequence: 1,
+    });
+    rerender();
+
+    expect(useDiagramStore.getState().liveUpdateNotice).toEqual({
+      actorEmail: "owner@example.com",
+      origin: "ai-chat",
+    });
+  });
+
   it("ignores an operation_rejected frame carrying no clientOpId", () => {
     renderHook(() => useDiagramLiveSync("diagram-1", true));
 
@@ -541,5 +645,412 @@ describe("useDiagramLiveSync", () => {
     expect(first.closed).toBe(true);
     expect(MockWebSocket.instances).toHaveLength(2);
     expect(latestSocket().url).toContain("/api/diagrams/diagram-2/live");
+  });
+
+  describe("AI chat (docs/09D-ARCHITECT-AICHAT.md)", () => {
+    it("sendChatMessage sends a well-formed frame, returns the generated id, and appends a user entry", () => {
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+      act(() => latestSocket().simulateOpen());
+
+      const clientRequestId = result.current.sendChatMessage("Add a Worker");
+      rerender();
+
+      expect(clientRequestId).not.toBe(false);
+      expect(latestSocket().sentMessages).toEqual([
+        JSON.stringify({
+          clientRequestId,
+          text: "Add a Worker",
+          type: "chat_message",
+        }),
+      ]);
+      expect(result.current.chatInFlight).toBe(true);
+      expect(result.current.chatTranscript).toEqual([
+        { id: expect.any(String), kind: "user", text: "Add a Worker" },
+      ]);
+    });
+
+    it("sendChatMessage returns false and sends nothing when not connected", () => {
+      const { result } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+
+      const sent = result.current.sendChatMessage("Add a Worker");
+
+      expect(sent).toBe(false);
+      expect(latestSocket().sentMessages).toHaveLength(0);
+      expect(result.current.chatInFlight).toBe(false);
+    });
+
+    it("appends a status entry on chat_status", () => {
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+
+      latestSocket().simulateMessage({
+        clientRequestId: "req-1",
+        message: "Checking Cloudflare docs…",
+        type: "chat_status",
+      });
+      rerender();
+
+      expect(result.current.chatTranscript).toEqual([
+        {
+          id: expect.any(String),
+          kind: "status",
+          text: "Checking Cloudflare docs…",
+        },
+      ]);
+    });
+
+    it("accumulates streamed chat_token frames onto one assistant entry", () => {
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+
+      latestSocket().simulateMessage({
+        clientRequestId: "req-1",
+        text: "Sure, ",
+        type: "chat_token",
+      });
+      latestSocket().simulateMessage({
+        clientRequestId: "req-1",
+        text: "adding it now.",
+        type: "chat_token",
+      });
+      rerender();
+
+      expect(result.current.chatTranscript).toHaveLength(1);
+      expect(result.current.chatTranscript[0]).toMatchObject({
+        kind: "assistant",
+        stopped: false,
+        text: "Sure, adding it now.",
+      });
+    });
+
+    it("leaves an earlier, non-assistant transcript entry untouched while accumulating chat_token onto the active assistant entry", () => {
+      // Regression coverage: the chat_token accumulator's `.map()` walks every transcript
+      // entry, not just the active assistant one, so it must skip (return unchanged) any
+      // entry whose id does not match `activeAssistantEntryIdRef` -- exercised here by
+      // sending the user's own message first (via `sendChatMessage`, which prepends a
+      // `kind: "user"` entry) so the transcript already has a second, non-assistant entry by
+      // the time the accumulating second `chat_token` frame's `.map()` runs.
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+      act(() => latestSocket().simulateOpen());
+      const clientRequestId = result.current.sendChatMessage("Add a Worker");
+      rerender();
+
+      latestSocket().simulateMessage({
+        clientRequestId,
+        text: "Sure, ",
+        type: "chat_token",
+      });
+      latestSocket().simulateMessage({
+        clientRequestId,
+        text: "adding it now.",
+        type: "chat_token",
+      });
+      rerender();
+
+      expect(result.current.chatTranscript).toHaveLength(2);
+      expect(result.current.chatTranscript[0]).toMatchObject({
+        kind: "user",
+        text: "Add a Worker",
+      });
+      expect(result.current.chatTranscript[1]).toMatchObject({
+        kind: "assistant",
+        stopped: false,
+        text: "Sure, adding it now.",
+      });
+    });
+
+    it("appends a docs_result entry on chat_tool_result with a successful result", () => {
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+
+      latestSocket().simulateMessage({
+        args: { query: "Workers AI" },
+        clientRequestId: "req-1",
+        result: [
+          {
+            title: "Workers AI",
+            url: "https://developers.cloudflare.com/workers-ai/",
+            snippet: "…",
+          },
+        ],
+        tool: "search_cloudflare_documentation",
+        type: "chat_tool_result",
+      });
+      rerender();
+
+      expect(result.current.chatTranscript[0]).toMatchObject({
+        kind: "docs_result",
+        query: "Workers AI",
+        result: [
+          {
+            title: "Workers AI",
+            url: "https://developers.cloudflare.com/workers-ai/",
+            snippet: "…",
+          },
+        ],
+      });
+    });
+
+    it("appends a docs_result entry on chat_tool_result with the non-fatal fallback message", () => {
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+
+      latestSocket().simulateMessage({
+        args: { query: "Durable Objects" },
+        clientRequestId: "req-1",
+        result: { message: "documentation search is currently unavailable" },
+        tool: "search_cloudflare_documentation",
+        type: "chat_tool_result",
+      });
+      rerender();
+
+      expect(result.current.chatTranscript[0]).toMatchObject({
+        kind: "docs_result",
+        result: { message: "documentation search is currently unavailable" },
+      });
+    });
+
+    it("reconciles the assistant entry to chat_done's complete text and clears chatInFlight", () => {
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+      act(() => latestSocket().simulateOpen());
+      const clientRequestId = result.current.sendChatMessage("Add a Worker");
+      rerender();
+
+      latestSocket().simulateMessage({
+        clientRequestId,
+        text: "Sure",
+        type: "chat_token",
+      });
+      latestSocket().simulateMessage({
+        clientRequestId,
+        assistantText: "Sure, I added a Worker node.",
+        type: "chat_done",
+      });
+      rerender();
+
+      expect(result.current.chatInFlight).toBe(false);
+      const assistantEntry = result.current.chatTranscript.find(
+        (entry) => entry.kind === "assistant",
+      );
+      expect(assistantEntry).toMatchObject({
+        stopped: false,
+        text: "Sure, I added a Worker node.",
+      });
+    });
+
+    it("records the turn's complete text on chat_done even when no chat_token ever arrived", () => {
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+      act(() => latestSocket().simulateOpen());
+      const clientRequestId = result.current.sendChatMessage("Add a Worker");
+      rerender();
+
+      latestSocket().simulateMessage({
+        clientRequestId,
+        assistantText: "Done.",
+        type: "chat_done",
+      });
+      rerender();
+
+      const assistantEntry = result.current.chatTranscript.find(
+        (entry) => entry.kind === "assistant",
+      );
+      expect(assistantEntry).toMatchObject({ text: "Done." });
+      expect(result.current.chatInFlight).toBe(false);
+    });
+
+    it("appends an error entry on chat_error and clears chatInFlight", () => {
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+      act(() => latestSocket().simulateOpen());
+      const clientRequestId = result.current.sendChatMessage("Add a Worker");
+      rerender();
+
+      latestSocket().simulateMessage({
+        clientRequestId,
+        message: "The assistant hit an unexpected error.",
+        type: "chat_error",
+      });
+      rerender();
+
+      expect(result.current.chatInFlight).toBe(false);
+      expect(
+        result.current.chatTranscript.find((entry) => entry.kind === "error"),
+      ).toMatchObject({ text: "The assistant hit an unexpected error." });
+    });
+
+    it("silently consumes a chat_error for an already-stopped request without a duplicate entry", () => {
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+      act(() => latestSocket().simulateOpen());
+      const clientRequestId = result.current.sendChatMessage("Add a Worker");
+      rerender();
+
+      act(() => result.current.stopChatTurn());
+      rerender();
+
+      latestSocket().simulateMessage({
+        clientRequestId,
+        message: "The assistant hit an unexpected error.",
+        type: "chat_error",
+      });
+      rerender();
+
+      expect(
+        result.current.chatTranscript.some((entry) => entry.kind === "error"),
+      ).toBe(false);
+    });
+
+    it("stopChatTurn before any token has arrived still stops the turn, with no assistant entry to mark", () => {
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+      act(() => latestSocket().simulateOpen());
+      result.current.sendChatMessage("Add a Worker");
+      rerender();
+
+      act(() => result.current.stopChatTurn());
+
+      expect(result.current.chatInFlight).toBe(false);
+      expect(
+        result.current.chatTranscript.some(
+          (entry) => entry.kind === "assistant",
+        ),
+      ).toBe(false);
+    });
+
+    it("applies a diagram_renamed broadcast via applyRemoteRename, without marking dirty", () => {
+      useDiagramStore.setState({ dirty: false });
+      renderHook(() => useDiagramLiveSync("diagram-1", true));
+
+      latestSocket().simulateMessage({
+        description: "New description",
+        title: "New Title",
+        type: "diagram_renamed",
+      });
+
+      const state = useDiagramStore.getState();
+      expect(state.title).toBe("New Title");
+      expect(state.description).toBe("New description");
+      expect(state.dirty).toBe(false);
+    });
+
+    it("normalizes a null diagram_renamed description to an empty string", () => {
+      renderHook(() => useDiagramLiveSync("diagram-1", true));
+
+      latestSocket().simulateMessage({
+        description: null,
+        title: "New Title",
+        type: "diagram_renamed",
+      });
+
+      expect(useDiagramStore.getState().description).toBe("");
+    });
+
+    it("stopChatTurn marks the in-flight assistant entry stopped and drops further tokens", () => {
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+      act(() => latestSocket().simulateOpen());
+      const clientRequestId = result.current.sendChatMessage("Add a Worker");
+      rerender();
+
+      latestSocket().simulateMessage({
+        clientRequestId,
+        text: "Partial",
+        type: "chat_token",
+      });
+      rerender();
+
+      act(() => result.current.stopChatTurn());
+      expect(result.current.chatInFlight).toBe(false);
+
+      // A token arriving after Stop is dropped -- "stop watching," not "cancel the model."
+      latestSocket().simulateMessage({
+        clientRequestId,
+        text: " more text",
+        type: "chat_token",
+      });
+      rerender();
+
+      const assistantEntry = result.current.chatTranscript.find(
+        (entry) => entry.kind === "assistant",
+      );
+      expect(assistantEntry).toMatchObject({ stopped: true, text: "Partial" });
+
+      // The turn's eventual chat_done (the server kept running) is consumed silently, not
+      // re-appended as a second entry or un-stopping the existing one.
+      latestSocket().simulateMessage({
+        clientRequestId,
+        assistantText: "Partial more text after all",
+        type: "chat_done",
+      });
+      rerender();
+
+      const assistantEntries = result.current.chatTranscript.filter(
+        (entry) => entry.kind === "assistant",
+      );
+      expect(assistantEntries).toHaveLength(1);
+      expect(assistantEntries[0]).toMatchObject({
+        stopped: true,
+        text: "Partial",
+      });
+    });
+
+    it("stopChatTurn does nothing when no turn is in flight", () => {
+      const { result } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+
+      expect(() => act(() => result.current.stopChatTurn())).not.toThrow();
+      expect(result.current.chatInFlight).toBe(false);
+    });
+
+    it("clearChatTranscript empties the transcript without touching chatInFlight", () => {
+      const { result, rerender } = renderHook(() =>
+        useDiagramLiveSync("diagram-1", true),
+      );
+      act(() => latestSocket().simulateOpen());
+      result.current.sendChatMessage("Add a Worker");
+      rerender();
+      expect(result.current.chatTranscript.length).toBeGreaterThan(0);
+
+      act(() => result.current.clearChatTranscript());
+      rerender();
+
+      expect(result.current.chatTranscript).toEqual([]);
+      expect(result.current.chatInFlight).toBe(true);
+    });
+
+    it("resets the chat transcript and in-flight state when the diagram id changes", () => {
+      const { result, rerender } = renderHook(
+        ({ id }: { id: string }) => useDiagramLiveSync(id, true),
+        { initialProps: { id: "diagram-1" } },
+      );
+      act(() => latestSocket().simulateOpen());
+      result.current.sendChatMessage("Add a Worker");
+      rerender({ id: "diagram-1" });
+      expect(result.current.chatTranscript.length).toBeGreaterThan(0);
+
+      rerender({ id: "diagram-2" });
+
+      expect(result.current.chatTranscript).toEqual([]);
+      expect(result.current.chatInFlight).toBe(false);
+    });
   });
 });
