@@ -15,6 +15,9 @@
 .vercel
 next-env.d.ts
 
+### vinext ###
+.vinext/
+
 ### Misc ###
 .DS_Store
 

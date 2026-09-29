@@ -1,5 +1,6 @@
 packages:
   - 'cf-terraform-demos/*'
+  - 'vinext-demos/*'
 allowBuilds:
   workerd: true
   esbuild: true
@@ -14,3 +15,7 @@ minimumReleaseAgeExclude:
   - oxfmt@0.71.0
   - oxlint@1.86.0
   - wrangler@4.143.0
+  - '@cloudflare/workers-response-store@1.0.0'
+  - '@vinext/cloudflare@1.0.0'
+  - '@vinext/types@1.0.0'
+  - vinext@1.0.0

@@ -1,10 +1,11 @@
 # Demo code rules
 
 Rules for every demo in this repository. They apply to `cf-terraform-demos/`, `vinext-demos/`, and
-`astro-demos/` alike. Framework-specific conventions belong in the demo itself, not here.
+`astro-demos/` alike. Family-specific conventions belong in that family’s `AGENTS.md`; demo-local
+instructions document only behavior or constraints unique to one demo.
 
-Each demo is a self-contained, deployable application that teaches good practice. Treat demo code
-as production-quality reference material: someone will copy it.
+Each demo is a self-contained, deployable application that teaches good practice. Treat demo code as
+production-quality reference material: someone will copy it.
 
 ## Repository layout
 
@@ -30,13 +31,13 @@ as production-quality reference material: someone will copy it.
 
 Every demo's `package.json` must define these five scripts with these exact names and meanings:
 
-| Script         | Purpose                                                                      |
-| -------------- | ---------------------------------------------------------------------------- |
-| `pnpm start`   | Run the demo locally against local resource simulations.                     |
-| `pnpm check`   | Verify everything without changing files. Must be safe to run in CI.         |
-| `pnpm fix`     | Apply every automated correction (formatting, safe lint fixes, config gen).  |
-| `pnpm deploy`  | Provision infrastructure, then build and upload the application.             |
-| `pnpm teardown`| Remove the deployed application, then destroy its infrastructure.            |
+| Script          | Purpose                                                                     |
+| --------------- | --------------------------------------------------------------------------- |
+| `pnpm start`    | Run the demo locally against local resource simulations.                    |
+| `pnpm check`    | Verify everything without changing files. Must be safe to run in CI.        |
+| `pnpm fix`      | Apply every automated correction (formatting, safe lint fixes, config gen). |
+| `pnpm deploy`   | Provision infrastructure, then build and upload the application.            |
+| `pnpm teardown` | Remove the deployed application, then destroy its infrastructure.           |
 
 Rules for these scripts:
 
@@ -54,19 +55,20 @@ Rules for these scripts:
 
 - All demos read deployment settings from the **repository-root `.env`**. Never add a per-demo
   `.env`.
-- `.env` is created by the user using `pnpm create-env` at the repository root and is never committed.
+- `.env` is created by the user using `pnpm create-env` at the repository root and is never
+  committed.
 - Keep `.env.example` current, including the exact API-token permissions the demos need.
 - A demo must not require a `.dev.vars` file. That file is normally untracked, so a fresh clone
-  would behave differently from the author's machine. Prefer configuration that is either
-  committed or absent by design.
+  would behave differently from the author's machine. Prefer configuration that is either committed
+  or absent by design.
 - Derive per-demo values (worker name, hostname) inside the demo rather than adding more shared
   environment keys. A demo owns its own name; the shared `.env` owns the account and domain.
 - Never print, log, or commit secrets. Never pass a token as a command-line argument.
 
 ## TypeScript
 
-- TypeScript everywhere, with `strict` enabled. Also enable `noUnusedLocals`,
-  `noUnusedParameters`, and `noFallthroughCasesInSwitch`.
+- TypeScript everywhere, with `strict` enabled. Also enable `noUnusedLocals`, `noUnusedParameters`,
+  and `noFallthroughCasesInSwitch`.
 - No `any` on public signatures, bindings, or handler parameters.
 - Avoid `as unknown as T` double casts. If a cast feels necessary, the design is usually wrong.
 - Do not hand-write generated types. Generate binding/config types from the platform tooling and
@@ -132,8 +134,8 @@ Default to a four-tier separation, with dependencies pointing in one direction o
 UI  →  API  →  application/domain  →  infrastructure
 ```
 
-1. **UI** — presentation and user interaction. Talks to its own backend over HTTP; it never
-   reaches a datastore directly.
+1. **UI** — presentation and user interaction. Talks to its own backend over HTTP; it never reaches
+   a datastore directly.
 2. **API** — HTTP routing, authentication/authorization middleware, request limits, and response
    shaping. Handlers stay thin enough to read as a description of the API surface.
 3. **Application/domain** — use cases, validation, and business rules. Depends on a repository
@@ -143,8 +145,8 @@ UI  →  API  →  application/domain  →  infrastructure
 
 Supporting rules:
 
-- Compose the tiers in one place (the application entry point) and inject the service into
-  request handling. Route handlers must not construct repositories.
+- Compose the tiers in one place (the application entry point) and inject the service into request
+  handling. Route handlers must not construct repositories.
 - Put validation in the domain layer so every transport enforces the same rules.
 - Choose storage by the guarantees the demo needs, and document the trade-off:
   - KV for simple, read-heavy data that tolerates eventual consistency.
@@ -157,10 +159,10 @@ Supporting rules:
 
 - Protect every administrative or privileged surface with **Cloudflare Access**. Do not hand-roll
   authentication.
-- Defence in depth is required: Access gating at the edge is **not** sufficient on its own.
-  Validate the Access JWT inside the application *and* check the specific authorized identity.
-  Every Access application in a team shares a JWKS, so a token minted for an unrelated application
-  in the same team would otherwise be accepted.
+- Defence in depth is required: Access gating at the edge is **not** sufficient on its own. Validate
+  the Access JWT inside the application _and_ check the specific authorized identity. Every Access
+  application in a team shares a JWKS, so a token minted for an unrelated application in the same
+  team would otherwise be accepted.
 - Keep public routes explicitly public via a bypass policy, and keep the path policy list as a
   single shared definition used by both local development and the deployed application.
 - Local development must emulate Access rather than disabling it, so the local and deployed
@@ -170,6 +172,12 @@ Supporting rules:
 
 ## Cloudflare toolkit and CLIs
 
+- **Never use Wrangler in this repository.** `cf` supersedes Wrangler and these demos exist to
+  illustrate the current `cf`-based workflow. Do not add Wrangler commands, Wrangler dependencies,
+  or embedded `wrangler.jsonc` files. If a platform corner case genuinely requires Wrangler or an
+  embedded Wrangler configuration, flag it explicitly in the demo README and in the relevant family
+  `AGENTS.md` so product teams can address the gap; do not silently introduce the exception.
+
 Prefer existing, tested utilities over bespoke code.
 
 - Use `@adrianhall/cloudflare-toolkit` for cross-cutting concerns rather than reimplementing them:
@@ -178,14 +186,13 @@ Prefer existing, tested utilities over bespoke code.
   - Structured logging.
   - Defensive guards.
   - Test helpers for signing development JWTs.
-  - Terraform-output bridging into application configuration.
 - Use the toolkit's CLIs for deployment and cleanup work instead of ad-hoc scripting, including
   Terraform-output templating, type freshness, R2 bucket emptying, container cleanup, account
-  inventory, and Cloudflare Access-control reconciliation.
-- When a demo does **not** use Terraform, use the toolkit's `cf-access-controls` command to
-  install and remove its Cloudflare Access controls as part of `deploy` and `teardown`. Never
-  leave Access policies/applications unmanaged just because the application framework deploys its
-  own code.
+  inventory, and Cloudflare Access-control reconciliation. Family-specific deployment wiring lives
+  in the relevant family `AGENTS.md`.
+- When a demo does **not** use Terraform, use the toolkit's `cf-access-controls` command to install
+  and remove its Cloudflare Access controls as part of `deploy` and `teardown`. Never leave Access
+  policies/applications unmanaged just because the application framework deploys its own code.
 - Use the Cloudflare CLI for platform operations (local dev, build, deploy, type generation,
   resource management).
 - Return errors as RFC 9457 `application/problem+json`. Never leak stack traces from a deployed
@@ -204,9 +211,7 @@ pnpm teardown → remove every resource the demo created
 - Terraform is **not** a requirement for every demo. Astro and vinext demos may use their native
   deployment pipelines when those pipelines can create and remove all required infrastructure.
 - Use Terraform when the selected framework/deployment CLI cannot reliably provision and tear down
-  the required infrastructure. The Cloudflare `cf` deployment path is one example: it deploys code
-  but does not provide a complete infrastructure teardown lifecycle, so Terraform owns its Worker,
-  bindings, custom hostname, and related resources.
+  the required infrastructure.
 - A demo must have exactly one clear owner for each resource. Do not let Terraform and a framework
   deployment pipeline both manage the same application, binding, hostname, or Access resource.
 - For non-Terraform demos, the framework pipeline owns application infrastructure, while
@@ -228,8 +233,8 @@ When Terraform is the selected lifecycle owner:
 
 ## Testing
 
-- Test each tier at the appropriate level: domain/validation and repository logic as unit tests,
-  UI behaviour in a DOM environment, and the deployed surface in the real runtime.
+- Test each tier at the appropriate level: domain/validation and repository logic as unit tests, UI
+  behaviour in a DOM environment, and the deployed surface in the real runtime.
 - Integration tests must exercise authorization outcomes, not just the happy path.
 - Tests must pass offline and must not depend on live infrastructure.
 
