@@ -1,0 +1,32 @@
+{
+  "admin_email": {
+    "sensitive": false,
+    "type": "string",
+    "value": "admin@example.com"
+  },
+  "cloudflare_team_domain": {
+    "sensitive": false,
+    "type": "string",
+    "value": "local.cloudflareaccess.com"
+  },
+  "environment": {
+    "sensitive": false,
+    "type": "string",
+    "value": "development"
+  },
+  "hostname": {
+    "sensitive": false,
+    "type": "string",
+    "value": "link.localhost"
+  },
+  "links_kv_namespace_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": ""
+  },
+  "worker_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "link-local"
+  }
+}
