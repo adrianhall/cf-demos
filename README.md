@@ -1,0 +1,63 @@
+# Demo Scripts
+
+This repository contains several demo scripts. See the Available Demos section of this
+document for details.
+
+## Prerequisites
+
+You must have the following already (installed globally where appropriate):
+
+1. A Cloudflare account with the Cloudflare Developer Platform products required by the demos (including R2, if used)
+2. At least one DNS zone hosted on Cloudflare
+3. Node.js 26 or newer
+4. pnpm 12.6.0 or newer
+
+Some demos will have additional requirements.
+
+## Getting Started
+
+Install the dependencies and run the environment setup script:
+
+```bash
+pnpm install
+pnpm create-env
+```
+
+`pnpm create-env` checks whether the local `cf` CLI is authenticated. If it is not, the
+script runs `cf auth login`, which opens a browser-based Cloudflare login. The script then
+lists the zones available to the authenticated user. If more than one zone is available, it
+prompts you to choose one. It also prompts for an administrator email, pre-filled with the
+email associated with the authenticated Cloudflare account.
+
+The script creates a personalized `.env` containing the selected account ID, zone name, zone
+ID, Zero Trust team domain (when available), and administrator email. It deliberately leaves
+`CLOUDFLARE_API_TOKEN` as `<from-dashboard>` because API-token creation requires dashboard
+access and appropriate permissions. The script does not create or discover an API token.
+
+After `pnpm create-env` completes, log in to the [Cloudflare dashboard](https://dash.cloudflare.com/)
+and create a custom API token. The exact dashboard labels can vary by account and dashboard
+version, but generally:
+
+1. Open your profile menu and select **API Tokens**.
+2. Select **Create Token**, then choose **Create Custom Token** or **Start from scratch**.
+3. Scope the token to the account and zone selected by `pnpm create-env`.
+4. Grant the permissions required by the demos you intend to run. The baseline permissions
+   documented in [`.env.example`](.env.example) are:
+   - **Account**: AI Gateway — Edit
+   - **Account**: D1 — Edit
+   - **Account**: Workers AI — Edit
+   - **Account**: Workers KV Storage — Edit
+   - **Account**: Workers Scripts — Edit
+   - **Account**: Workers R2 Storage — Edit
+   - **Account**: Access — Edit
+   - **Account**: Access: Identity Providers — Read
+   - **Zone**: DNS — Edit
+5. Choose an expiration date if desired, then create the token.
+6. Copy the token value into `CLOUDFLARE_API_TOKEN` in `.env`.
+
+Additional demos may require additional permissions, such as Queues or AI Search. Do not grant
+permissions for products you do not intend to use.
+
+## Available Demos
+
+To be decided.
