@@ -2,7 +2,11 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    projects: ['./tests/worker/vitest.config.ts', './tests/integration/vitest.config.ts'],
+    projects: [
+      './tests/client/vitest.config.ts',
+      './tests/worker/vitest.config.ts',
+      './tests/integration/vitest.config.ts'
+    ],
     coverage: {
       provider: 'istanbul',
       reportsDirectory: './coverage',

@@ -1,12 +1,14 @@
-# SWAPI GraphQL
+# SWAPI Explorer
 
-A read-only GraphQL API over the canonical Star Wars dataset, deployed to Cloudflare Workers at
-[`swapi.cfapps.uk`](https://swapi.cfapps.uk) (when the repository-root `.env` has
-`CLOUDFLARE_DOMAIN="cfapps.uk"`). It pairs a Pothos-built schema and the GraphiQL console with a
-four-tier Worker over D1, behind Cloudflare Access.
+A read-only explorer and GraphQL API over the canonical Star Wars dataset, deployed to Cloudflare
+Workers at [`swapi.cfapps.uk`](https://swapi.cfapps.uk) (when the repository-root `.env` has
+`CLOUDFLARE_DOMAIN="cfapps.uk"`). It pairs a Vue 3 + Vuetify + Pinia explorer with a Pothos-built
+schema, GraphiQL, a four-tier Worker over D1, and Cloudflare Access.
 
-Visiting the hostname redirects to GraphiQL at `/graphql`, which is the demo's entire user
-interface. A data editor and browser are planned; see [What comes next](#what-comes-next).
+The hostname root serves the explorer: select a collection, open a record, and follow its people,
+worlds, species, ships, vehicles, and films. GraphiQL remains available at [`/graphql`](./graphql)
+for people who want to write queries directly. The experience is specified in
+[`docs/UISPEC.md`](./docs/UISPEC.md).
 
 ## What this demo teaches
 
@@ -36,24 +38,29 @@ query depth and breadth limits, and per-request statement counting surfaced in t
 ## Architecture
 
 ```text
-GraphiQL console (presentation, served by GraphQL Yoga)
-        │ same-origin POST /graphql
-        ▼
-Hono routes + Access middleware (delivery)
-        ▼
-Pothos schema + DataLoaders + domain validation (application/domain)
-        ▼
-D1 repositories (infrastructure)
-        ▼
-Cloudflare D1
+Vue explorer (assets) ─────┐
+                            ├─ same-origin POST /graphql ─┐
+GraphiQL console (Yoga) ───┘                               ▼
+                                              Hono routes + Access middleware (delivery)
+                                                               ▼
+                                      Pothos schema + DataLoaders + domain validation (application/domain)
+                                                               ▼
+                                                     D1 repositories (infrastructure)
+                                                               ▼
+                                                         Cloudflare D1
 ```
 
-- **UI:** the GraphiQL console, generated and served by GraphQL Yoga inside the Worker. There is no
-  SPA and no `ASSETS` binding, so unlike the sibling [`link`](../link) and [`todo`](../todo) demos
-  **every** request — including page loads — is a Worker invocation gated by the Access middleware.
+- **UI:** [`src/client/`](./src/client/) is a Vue 3 + Vuetify + Pinia single-page explorer. The
+  asset store serves pages (including deep links), while `runWorkerFirst` reserves `/graphql*` and
+  `/api/*` for Worker code. The three fixed columns — navigation, collection, detail — are driven
+  from one metadata model in
+  [`src/client/domain/entity-types.ts`](./src/client/domain/entity-types.ts), so the UI reflects the
+  API's genuinely asymmetric relation graph rather than pretending every type connects to every
+  other type. The default semantic theme is dark; light is defined alongside it so a future
+  dark/light/system control does not need a redesign.
 - **API:** [`src/worker/routes/graphql.ts`](./src/worker/routes/graphql.ts) mounts Yoga and logs one
   structured record per operation. [`src/worker/index.ts`](./src/worker/index.ts) adds logging,
-  authentication, the root redirect, and RFC 9457 error shaping.
+  authentication, the identity endpoint the banner uses, and RFC 9457 error shaping.
 - **Application/domain:** the Pothos schema under
   [`src/worker/application/graphql/`](./src/worker/application/graphql/) depends only on the
   repository **ports** in [`src/worker/domain/`](./src/worker/domain/). Resolvers receive those
@@ -114,6 +121,32 @@ What authentication buys here differs from the sibling demos. This dataset is id
 caller, so there is no per-identity boundary as in `todo`, and no administrator allowlist as in
 `link`. The login wall bounds **who may spend the endpoint's compute** — relevant because a GraphQL
 query's cost is caller-chosen. Query cost itself is bounded separately, below.
+
+## Explorer and search
+
+The explorer's user experience is fully documented in [`docs/UISPEC.md`](./docs/UISPEC.md). Its
+implementation follows the specification's design boundaries:
+
+- **Server-side search:** every collection field now accepts an optional `search` argument. The
+  domain validates and bounds it in [`search-term.ts`](./src/worker/domain/search-term.ts);
+  repositories carry it to D1; and SQL binds it as a case-insensitive substring `LIKE` pattern. `%`,
+  `_`, and the escape character are treated literally, so text a person types cannot unexpectedly
+  become a wildcard. At 260 rows a leading-wildcard scan is deliberately simpler and more correct
+  than adding FTS machinery; the query builder records that trade-off beside the statement.
+- **Two searches, two jobs:** collection filtering is instant and local over the active collection
+  (at most 82 rows), while global search calls all six server-backed collection fields in one
+  GraphQL operation. The global query requests only summary fields and no relations, keeping it
+  inside the 50-field complexity budget.
+- **Addressable traversal:** collection and entity live in the pathname. The actual graph path is
+  encoded in a compact `trail` query parameter, so reload, share, and browser back/forward preserve
+  the breadcrumb rather than only the terminal record.
+- **Session-safe caching:** the Pinia catalog caches entities for the browser session because this
+  dataset is immutable and identical for every authenticated caller. It deliberately does not cache
+  global-search terms. The day an editor adds mutations, that cache needs invalidation rather than
+  being trusted unchanged.
+- **Access expiry:** `/graphql` and `/api/*` deliberately return `401` to `fetch` rather than a
+  login-page redirect. The UI recognises expiry separately from a data failure and sends a person
+  back to sign-in while preserving their current URL.
 
 ## Bounding query cost
 
@@ -282,7 +315,10 @@ support is better exercised.
 
 ## What comes next
 
-A data editor and browser. Both are anticipated in the current design rather than bolted on later:
+A data editor. The browser is now implemented as the three-column explorer described in
+[`docs/UISPEC.md`](./docs/UISPEC.md): navigation, collection, and detail, with relation traversal,
+server-backed global search, and addressable breadcrumbs. The remaining editor work is anticipated
+in the current design rather than bolted on later:
 
 - **Access** — reads stay open to any authenticated identity; writes will get a second, path-scoped
   Access application restricted to `ADMIN_EMAIL`, following the pattern
@@ -292,9 +328,9 @@ A data editor and browser. Both are anticipated in the current design rather tha
   rather than discovered from a runtime error.
 - **Storage** — `D1Reader` exposes only `prepare`, so these repositories are provably read-only.
   Widening it will be a visible, reviewable change.
-- **Config** — the root redirect is a `302` precisely so `/` can be reclaimed as the editor's
-  landing page; a `301` would linger in the cache of everyone who had ever visited. A real SPA will
-  also need an `assets` block with `runWorkerFirst` scoping Worker execution to the API paths.
+- **Config** — the explorer already owns `/` through the asset-store SPA fallback. The Worker runs
+  first only for `/graphql*` and `/api/*`; a future editor can therefore add its routes without
+  changing host-level routing or displacing GraphiQL.
 
 ## Trade-offs
 

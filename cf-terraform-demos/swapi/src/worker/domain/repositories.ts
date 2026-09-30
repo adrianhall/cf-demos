@@ -18,6 +18,18 @@
  *   with the number of rows returned. `films { characters { homeworld { name } } }` is three
  *   statements whether it covers six films or six hundred.
  *
+ *   ## Why `list` takes the search term
+ *
+ *   Each port's `list` accepts an optional, already-validated search term rather than returning
+ *   everything for the caller to filter. That is the same discipline the batched methods enforce,
+ *   applied to a different axis: the port's shape makes the efficient implementation the only one
+ *   expressible. Filtering in a resolver would mean reading all 82 characters to display 3, which
+ *   is affordable at this size and wrong at any other — and a demo that models it that way teaches
+ *   the wrong reflex. Pushing the predicate into the port means it reaches SQL, where a `WHERE`
+ *   clause belongs. The term arrives validated: bounding and trimming happen in `./search-term.ts`,
+ *   above these ports, so no implementation has to re-check it and every transport enforces one
+ *   rule.
+ *
  *   ## Ordering and absent rows
  *
  *   Implementations return results in a defined order (documented per method) so that a given query
@@ -37,10 +49,15 @@ export interface FilmRepository {
   /**
    * List every film.
    *
-   * @returns All films in saga order (by episode number).
+   * @param search Optional search term, already validated and trimmed by `validateSearchTerm` (see
+   *   `./search-term.ts`). When present, only films whose searchable fields contain it as a
+   *   case-insensitive substring are returned; when absent, the whole collection is.
+   * @returns All films in saga order (by episode number). When a search term is given, the matching
+   *   subset in the same order. An unmatched term yields an empty array rather than an error:
+   *   finding nothing is a valid answer to a search, not a failure.
    * @throws {Error} When the underlying storage rejects the read.
    */
-  list(): Promise<Film[]>;
+  list(search?: string): Promise<Film[]>;
 
   /**
    * Load films by primary key.
@@ -118,10 +135,15 @@ export interface PersonRepository {
   /**
    * List every character.
    *
-   * @returns All characters ordered by name.
+   * @param search Optional search term, already validated and trimmed by `validateSearchTerm` (see
+   *   `./search-term.ts`). When present, only characters whose searchable fields contain it as a
+   *   case-insensitive substring are returned; when absent, the whole collection is.
+   * @returns All characters ordered by name. When a search term is given, the matching subset in
+   *   the same order. An unmatched term yields an empty array rather than an error: finding nothing
+   *   is a valid answer to a search, not a failure.
    * @throws {Error} When the underlying storage rejects the read.
    */
-  list(): Promise<Person[]>;
+  list(search?: string): Promise<Person[]>;
 
   /**
    * Load characters by primary key.
@@ -190,10 +212,15 @@ export interface PlanetRepository {
   /**
    * List every planet.
    *
-   * @returns All planets ordered by name.
+   * @param search Optional search term, already validated and trimmed by `validateSearchTerm` (see
+   *   `./search-term.ts`). When present, only planets whose searchable fields contain it as a
+   *   case-insensitive substring are returned; when absent, the whole collection is.
+   * @returns All planets ordered by name. When a search term is given, the matching subset in the
+   *   same order. An unmatched term yields an empty array rather than an error: finding nothing is
+   *   a valid answer to a search, not a failure.
    * @throws {Error} When the underlying storage rejects the read.
    */
-  list(): Promise<Planet[]>;
+  list(search?: string): Promise<Planet[]>;
 
   /**
    * Load planets by primary key.
@@ -225,10 +252,15 @@ export interface SpeciesRepository {
   /**
    * List every species.
    *
-   * @returns All species ordered by name.
+   * @param search Optional search term, already validated and trimmed by `validateSearchTerm` (see
+   *   `./search-term.ts`). When present, only species whose searchable fields contain it as a
+   *   case-insensitive substring are returned; when absent, the whole collection is.
+   * @returns All species ordered by name. When a search term is given, the matching subset in the
+   *   same order. An unmatched term yields an empty array rather than an error: finding nothing is
+   *   a valid answer to a search, not a failure.
    * @throws {Error} When the underlying storage rejects the read.
    */
-  list(): Promise<Species[]>;
+  list(search?: string): Promise<Species[]>;
 
   /**
    * Load species by primary key.
@@ -257,10 +289,15 @@ export interface StarshipRepository {
   /**
    * List every starship.
    *
-   * @returns All starships ordered by name.
+   * @param search Optional search term, already validated and trimmed by `validateSearchTerm` (see
+   *   `./search-term.ts`). When present, only starships whose searchable fields contain it as a
+   *   case-insensitive substring are returned; when absent, the whole collection is.
+   * @returns All starships ordered by name. When a search term is given, the matching subset in the
+   *   same order. An unmatched term yields an empty array rather than an error: finding nothing is
+   *   a valid answer to a search, not a failure.
    * @throws {Error} When the underlying storage rejects the read.
    */
-  list(): Promise<Starship[]>;
+  list(search?: string): Promise<Starship[]>;
 
   /**
    * Load starships by primary key.
@@ -300,10 +337,15 @@ export interface VehicleRepository {
   /**
    * List every vehicle.
    *
-   * @returns All vehicles ordered by name.
+   * @param search Optional search term, already validated and trimmed by `validateSearchTerm` (see
+   *   `./search-term.ts`). When present, only vehicles whose searchable fields contain it as a
+   *   case-insensitive substring are returned; when absent, the whole collection is.
+   * @returns All vehicles ordered by name. When a search term is given, the matching subset in the
+   *   same order. An unmatched term yields an empty array rather than an error: finding nothing is
+   *   a valid answer to a search, not a failure.
    * @throws {Error} When the underlying storage rejects the read.
    */
-  list(): Promise<Vehicle[]>;
+  list(search?: string): Promise<Vehicle[]>;
 
   /**
    * Load vehicles by primary key.

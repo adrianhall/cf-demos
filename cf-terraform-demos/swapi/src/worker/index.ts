@@ -7,15 +7,24 @@ import {
 import type { AppBindings } from './bindings';
 import { accessMiddleware } from './middleware/access';
 import { graphqlRouter } from './routes/graphql';
+import { meRouter } from './routes/me';
 
 /**
  * Worker entry point and composition root.
  *
- * Unlike the sibling `link` and `todo` demos, every request reaches this Worker: there is no
- * `ASSETS` binding, because the only user interface is the GraphiQL console that GraphQL Yoga
- * generates and serves itself (see `cloudflare.config.ts`). The Access middleware therefore gates
- * real production page loads here, not just API calls — the page policy in `src/access-policies.ts`
- * is genuinely exercised rather than being a local-development convenience.
+ * Two user-facing surfaces share this hostname, and they are served very differently:
+ *
+ * - **The explorer** (`src/client/`) is a single-page application served from the `ASSETS` binding
+ *   with a SPA fallback, so a page load never invokes this Worker at all. Cloudflare Access gates
+ *   it at the edge.
+ * - **GraphiQL and the GraphQL endpoint** are generated and served by GraphQL Yoga from inside the
+ *   Worker, so those requests do run here.
+ *
+ * `runWorkerFirst` in `cloudflare.config.ts` scopes Worker execution to `/graphql*` and `/api/*`.
+ * The Access middleware is nonetheless mounted for _every_ path rather than just those two, so a
+ * request that does reach this Worker is authenticated rather than served by accident — including
+ * in local development and in the Workers-runtime test suite, where there is no asset routing in
+ * front of it.
  *
  * The tiers are composed one level down, in `routes/graphql.ts` via
  * `application/request-context.ts`, rather than in this file. That is because the composition must
@@ -29,19 +38,13 @@ const app = new Hono<AppBindings>();
 app.use(cloudflareLogger());
 app.use(accessMiddleware);
 
-/**
- * Send the hostname root to the GraphiQL console.
- *
- * The console is the whole point of visiting this hostname in a browser, so the root should not be
- * a dead end. `302` rather than `301` deliberately: a permanent redirect would be cached by
- * browsers indefinitely, and `/` is exactly the path the planned data editor will want to claim as
- * its landing page. A temporary redirect can be changed; a permanent one would linger in the
- * browser cache of everyone who had ever visited.
- *
- * @returns A `302` response pointing at `/graphql`.
- */
-app.get('/', (context) => context.redirect('/graphql', 302));
+// `/` no longer redirects to `/graphql`. It now serves the explorer, which is delivered by the
+// `ASSETS` binding and so never reaches this router in production. Keeping the old redirect as a
+// `302` rather than a `301` is what made this change free: a permanent redirect would still be
+// cached by the browser of everyone who had ever visited, and they would never see the explorer.
+// GraphiQL remains reachable at its own path, as UISPEC §11 requires.
 
+app.route('/api/me', meRouter);
 app.route('/graphql', graphqlRouter);
 
 // `includeStack` is gated on `import.meta.env.DEV`, which Vite replaces with the literal `false` in

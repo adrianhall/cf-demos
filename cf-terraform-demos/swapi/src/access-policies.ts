@@ -12,15 +12,18 @@ import type { PathPolicy } from '@adrianhall/cloudflare-toolkit/hono';
  * there is no bypass policy here. Every entry sets `authenticate: true`; they differ only in how an
  * unauthenticated request is answered:
  *
- * - `/graphql` uses `redirect: false`. GraphiQL reaches it with `fetch`, so an RFC 9457 `401` it can
- *   render in its response pane is far more useful than the HTML of a login page, which would
- *   otherwise arrive as an unparseable GraphQL response.
- * - Everything else — including `/` and the GraphiQL console document itself — uses `redirect: true`,
+ * - `/graphql` uses `redirect: false`. Both GraphiQL and the explorer's own client reach it with
+ *   `fetch`, so an RFC 9457 `401` they can react to is far more useful than the HTML of a login
+ *   page, which would otherwise arrive where a GraphQL response was expected and fail to parse.
+ *   This is what lets the explorer detect an expired session and offer to sign in again rather than
+ *   rendering a login page's markup as data — see `src/client/api/graphql-client.ts`.
+ * - `/api/*` uses `redirect: false` for the same reason: it is only ever called with `fetch`.
+ * - Everything else — the explorer's own document and the GraphiQL console — uses `redirect: true`,
  *   which is the right answer for a page navigation.
  *
- * Both are genuinely exercised in this demo, which is a difference from `todo`: there, pages come
- * from the `ASSETS` binding and never reach the Worker, so only the API policy mattered in
- * production. Here GraphQL Yoga serves the console from inside the Worker, so the page policy is
+ * Both behaviours are genuinely exercised in this demo, which is a difference from `todo`: there,
+ * pages come from the `ASSETS` binding and never reach the Worker, so only the API policy mattered
+ * in production. Here GraphQL Yoga serves the console from inside the Worker, so the page policy is
  * enforced by this middleware on the deployed application too.
  *
  * @param audience Cloudflare Access Application Audience (AUD) tag that every authenticated request
@@ -33,6 +36,7 @@ import type { PathPolicy } from '@adrianhall/cloudflare-toolkit/hono';
 export function buildAccessPolicies(audience: string): PathPolicy[] {
   return [
     { pattern: /^\/graphql(?:\/|$)/u, authenticate: true, redirect: false, audience },
+    { pattern: /^\/api(?:\/|$)/u, authenticate: true, redirect: false, audience },
     { pattern: /^\//u, authenticate: true, redirect: true, audience }
   ];
 }

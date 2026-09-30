@@ -30,7 +30,7 @@ import type {
   SwapiRepositories,
   VehicleRepository
 } from '../domain/repositories';
-import { queryEntities, queryRelated, type D1Reader } from './d1-reader';
+import { queryEntities, queryList, queryRelated, type D1Reader } from './d1-reader';
 import {
   FILM_STATEMENTS,
   PERSON_STATEMENTS,
@@ -39,20 +39,10 @@ import {
   STARSHIP_STATEMENTS,
   VEHICLE_STATEMENTS
 } from './queries/statements';
-import {
-  toFilm,
-  toPerson,
-  toPlanet,
-  toSpecies,
-  toStarship,
-  toVehicle,
-  type FilmRow,
-  type PersonRow,
-  type PlanetRow,
-  type SpeciesRow,
-  type StarshipRow,
-  type VehicleRow
-} from './queries/tables';
+// The `*Row` types are no longer imported here: every query now infers its row shape from the
+// mapper it is given, so naming the row type explicitly would restate what the mapper's parameter
+// already says — and the two could drift apart.
+import { toFilm, toPerson, toPlanet, toSpecies, toStarship, toVehicle } from './queries/tables';
 
 /**
  * D1-backed {@link FilmRepository}.
@@ -66,12 +56,12 @@ export class D1FilmRepository implements FilmRepository {
   /**
    * List every film in saga order.
    *
-   * @returns All films ordered by episode number.
+   * @param search Optional validated search term; when present only matching rows are returned.
+   * @returns All films ordered by episode number. An unmatched search yields an empty array.
    * @throws {Error} When D1 rejects the query.
    */
-  async list(): Promise<Film[]> {
-    const result = await this.database.prepare(FILM_STATEMENTS.list).all<FilmRow>();
-    return result.results.map(toFilm);
+  async list(search?: string): Promise<Film[]> {
+    return await queryList(this.database, FILM_STATEMENTS.list(search), toFilm);
   }
 
   /**
@@ -197,12 +187,12 @@ export class D1PersonRepository implements PersonRepository {
   /**
    * List every character by name.
    *
-   * @returns All characters ordered by name.
+   * @param search Optional validated search term; when present only matching rows are returned.
+   * @returns All characters ordered by name. An unmatched search yields an empty array.
    * @throws {Error} When D1 rejects the query.
    */
-  async list(): Promise<Person[]> {
-    const result = await this.database.prepare(PERSON_STATEMENTS.list).all<PersonRow>();
-    return result.results.map(toPerson);
+  async list(search?: string): Promise<Person[]> {
+    return await queryList(this.database, PERSON_STATEMENTS.list(search), toPerson);
   }
 
   /**
@@ -334,12 +324,12 @@ export class D1PlanetRepository implements PlanetRepository {
   /**
    * List every planet by name.
    *
-   * @returns All planets ordered by name.
+   * @param search Optional validated search term; when present only matching rows are returned.
+   * @returns All planets ordered by name. An unmatched search yields an empty array.
    * @throws {Error} When D1 rejects the query.
    */
-  async list(): Promise<Planet[]> {
-    const result = await this.database.prepare(PLANET_STATEMENTS.list).all<PlanetRow>();
-    return result.results.map(toPlanet);
+  async list(search?: string): Promise<Planet[]> {
+    return await queryList(this.database, PLANET_STATEMENTS.list(search), toPlanet);
   }
 
   /**
@@ -386,12 +376,12 @@ export class D1SpeciesRepository implements SpeciesRepository {
   /**
    * List every species by name.
    *
-   * @returns All species ordered by name.
+   * @param search Optional validated search term; when present only matching rows are returned.
+   * @returns All species ordered by name. An unmatched search yields an empty array.
    * @throws {Error} When D1 rejects the query.
    */
-  async list(): Promise<Species[]> {
-    const result = await this.database.prepare(SPECIES_STATEMENTS.list).all<SpeciesRow>();
-    return result.results.map(toSpecies);
+  async list(search?: string): Promise<Species[]> {
+    return await queryList(this.database, SPECIES_STATEMENTS.list(search), toSpecies);
   }
 
   /**
@@ -438,12 +428,12 @@ export class D1StarshipRepository implements StarshipRepository {
   /**
    * List every starship by name.
    *
-   * @returns All starships ordered by name.
+   * @param search Optional validated search term; when present only matching rows are returned.
+   * @returns All starships ordered by name. An unmatched search yields an empty array.
    * @throws {Error} When D1 rejects the query.
    */
-  async list(): Promise<Starship[]> {
-    const result = await this.database.prepare(STARSHIP_STATEMENTS.list).all<StarshipRow>();
-    return result.results.map(toStarship);
+  async list(search?: string): Promise<Starship[]> {
+    return await queryList(this.database, STARSHIP_STATEMENTS.list(search), toStarship);
   }
 
   /**
@@ -517,12 +507,12 @@ export class D1VehicleRepository implements VehicleRepository {
   /**
    * List every vehicle by name.
    *
-   * @returns All vehicles ordered by name.
+   * @param search Optional validated search term; when present only matching rows are returned.
+   * @returns All vehicles ordered by name. An unmatched search yields an empty array.
    * @throws {Error} When D1 rejects the query.
    */
-  async list(): Promise<Vehicle[]> {
-    const result = await this.database.prepare(VEHICLE_STATEMENTS.list).all<VehicleRow>();
-    return result.results.map(toVehicle);
+  async list(search?: string): Promise<Vehicle[]> {
+    return await queryList(this.database, VEHICLE_STATEMENTS.list(search), toVehicle);
   }
 
   /**

@@ -131,19 +131,21 @@ describe('authorization', () => {
 });
 
 describe('routing', () => {
-  it('redirects the root to the GraphiQL console', async () => {
+  it('leaves the root for the explorer asset', async () => {
     const response = await send(await authenticated('/'));
 
-    expect(response.status).toBe(302);
-    expect(response.headers.get('Location')).toBe('/graphql');
+    // Production asset routing serves the Vue explorer before this Worker sees `/` (see the
+    // `assets` block in cloudflare.config.ts). The Workers-runtime unit has no ASSETS binding, so
+    // an authenticated root request correctly falls through to the Worker's RFC 9457 not-found
+    // handler instead. Crucially, it no longer redirects to GraphiQL: `/` is now the explorer's
+    // landing path and a cached redirect would make the SPA unreachable.
+    expect(response.status).toBe(404);
   });
 
-  it('redirects temporarily, so the root can be reclaimed later', async () => {
-    // A 301 would be cached by browsers indefinitely, and `/` is the path the planned data editor
-    // will want as its landing page.
+  it('keeps GraphiQL at its dedicated path rather than claiming the root', async () => {
     const response = await send(await authenticated('/'));
 
-    expect(response.status).not.toBe(301);
+    expect(response.headers.get('Location')).not.toBe('/graphql');
   });
 
   it('returns the runtime native Response, not a ponyfilled one', async () => {

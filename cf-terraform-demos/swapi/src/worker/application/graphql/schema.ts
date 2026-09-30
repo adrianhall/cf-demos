@@ -7,6 +7,7 @@
  *   relations free of circular imports between type modules.
  */
 
+import { validateSearchTerm } from '../../domain/search-term';
 import { builder } from './builder';
 import './types/film';
 import './types/person';
@@ -37,14 +38,39 @@ import {
  *
  * `speciesList` breaks the naming symmetry because "species" is its own plural, so the singular
  * field already owns the obvious name and GraphQL field names must be unique.
+ *
+ * ## The `search` argument
+ *
+ * Every list field takes an optional `search`, filtering server-side on a case-insensitive
+ * substring of that type's name-like fields. Which fields those are is decided per type in
+ * `../../infrastructure/queries/statements.ts`; provenance (`id`, `url`, `created`, `edited`) is
+ * never matched, because a row returned for matching a timestamp is a result the user cannot
+ * explain.
+ *
+ * The argument is validated by the domain tier (`../../domain/search-term.ts`) rather than here,
+ * for the same reason the per-relation `first` bound lives there: the rule belongs to the
+ * application, not to one transport. Filtering reaches SQL rather than happening in this resolver —
+ * see the note on `list` in `../../domain/repositories.ts`.
+ *
+ * This also serves cross-type search, with no extra API surface: a client wanting to search
+ * everything at once selects all six fields in one operation, which the complexity limits in
+ * `./builder.ts` comfortably allow provided it does not also pull relations for every result.
  */
 builder.queryType({
   description: 'Read-only access to the Star Wars dataset.',
   fields: (t) => ({
     films: t.field({
       type: [filmType],
-      description: 'Every film, in saga order.',
-      resolve: (_root, _args, context) => context.repositories.films.list()
+      description: 'Every film, in saga order. Supply `search` to filter them.',
+      args: {
+        search: t.arg.string({
+          description:
+            'Case-insensitive substring filter matching title and director. '
+            + 'Omit it, or pass an empty string, for the whole collection.'
+        })
+      },
+      resolve: (_root, args, context) =>
+        context.repositories.films.list(validateSearchTerm(args.search))
     }),
     film: t.field({
       type: filmType,
@@ -56,8 +82,16 @@ builder.queryType({
 
     people: t.field({
       type: [personType],
-      description: 'Every character, ordered by name.',
-      resolve: (_root, _args, context) => context.repositories.people.list()
+      description: 'Every character, ordered by name. Supply `search` to filter them.',
+      args: {
+        search: t.arg.string({
+          description:
+            'Case-insensitive substring filter matching name. '
+            + 'Omit it, or pass an empty string, for the whole collection.'
+        })
+      },
+      resolve: (_root, args, context) =>
+        context.repositories.people.list(validateSearchTerm(args.search))
     }),
     person: t.field({
       type: personType,
@@ -69,8 +103,16 @@ builder.queryType({
 
     planets: t.field({
       type: [planetType],
-      description: 'Every planet, ordered by name.',
-      resolve: (_root, _args, context) => context.repositories.planets.list()
+      description: 'Every planet, ordered by name. Supply `search` to filter them.',
+      args: {
+        search: t.arg.string({
+          description:
+            'Case-insensitive substring filter matching name, climate, and terrain. '
+            + 'Omit it, or pass an empty string, for the whole collection.'
+        })
+      },
+      resolve: (_root, args, context) =>
+        context.repositories.planets.list(validateSearchTerm(args.search))
     }),
     planet: t.field({
       type: planetType,
@@ -82,8 +124,16 @@ builder.queryType({
 
     speciesList: t.field({
       type: [speciesType],
-      description: 'Every species, ordered by name.',
-      resolve: (_root, _args, context) => context.repositories.species.list()
+      description: 'Every species, ordered by name. Supply `search` to filter them.',
+      args: {
+        search: t.arg.string({
+          description:
+            'Case-insensitive substring filter matching name, classification, and designation. '
+            + 'Omit it, or pass an empty string, for the whole collection.'
+        })
+      },
+      resolve: (_root, args, context) =>
+        context.repositories.species.list(validateSearchTerm(args.search))
     }),
     species: t.field({
       type: speciesType,
@@ -95,8 +145,16 @@ builder.queryType({
 
     starships: t.field({
       type: [starshipType],
-      description: 'Every starship, ordered by name.',
-      resolve: (_root, _args, context) => context.repositories.starships.list()
+      description: 'Every starship, ordered by name. Supply `search` to filter them.',
+      args: {
+        search: t.arg.string({
+          description:
+            'Case-insensitive substring filter matching name, model, manufacturer, and class. '
+            + 'Omit it, or pass an empty string, for the whole collection.'
+        })
+      },
+      resolve: (_root, args, context) =>
+        context.repositories.starships.list(validateSearchTerm(args.search))
     }),
     starship: t.field({
       type: starshipType,
@@ -108,8 +166,16 @@ builder.queryType({
 
     vehicles: t.field({
       type: [vehicleType],
-      description: 'Every vehicle, ordered by name.',
-      resolve: (_root, _args, context) => context.repositories.vehicles.list()
+      description: 'Every vehicle, ordered by name. Supply `search` to filter them.',
+      args: {
+        search: t.arg.string({
+          description:
+            'Case-insensitive substring filter matching name, model, manufacturer, and class. '
+            + 'Omit it, or pass an empty string, for the whole collection.'
+        })
+      },
+      resolve: (_root, args, context) =>
+        context.repositories.vehicles.list(validateSearchTerm(args.search))
     }),
     vehicle: t.field({
       type: vehicleType,

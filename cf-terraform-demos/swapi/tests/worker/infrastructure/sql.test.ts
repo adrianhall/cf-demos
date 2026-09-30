@@ -6,7 +6,9 @@ import {
   RELATION_BATCH_SIZE,
   foreignKeyRelationQuery,
   joinRelationQuery,
-  placeholders
+  placeholders,
+  searchCondition,
+  searchPattern
 } from '../../../src/worker/infrastructure/queries/sql';
 
 /**
@@ -154,5 +156,62 @@ describe('foreignKeyRelationQuery', () => {
     expect(() => foreignKeyRelationQuery(foreignKeyShape, D1_MAX_BOUND_PARAMETERS + 1)).toThrow(
       RangeError
     );
+  });
+});
+
+describe('searchPattern', () => {
+  it('wraps the term so it matches as a substring', () => {
+    expect(searchPattern('walker')).toBe('%walker%');
+  });
+
+  it.each([
+    ['percent', '100%', '%100\\%%'],
+    ['underscore', 'a_b', '%a\\_b%']
+  ])('escapes a %s so LIKE treats it literally', (_label, term, expected) => {
+    // Unescaped, `%` would match any run of characters and `_` any single one, so searching for
+    // "100%" would return everything starting "100". That is a correctness bug, not a security
+    // one: the pattern is always bound as a parameter, never interpolated.
+    expect(searchPattern(term)).toBe(expected);
+  });
+
+  it('escapes the escape character before introducing new ones', () => {
+    // Order matters here. Escaping `%` first and the backslash afterwards would turn the backslash
+    // added for `%` into `\\`, so the pattern would look for a literal backslash followed by a
+    // wildcard rather than for a literal percent sign.
+    expect(searchPattern('a\\b')).toBe('%a\\\\b%');
+    expect(searchPattern('\\%')).toBe('%\\\\\\%%');
+  });
+
+  it('leaves ordinary text untouched', () => {
+    expect(searchPattern('Luke Skywalker')).toBe('%Luke Skywalker%');
+  });
+});
+
+describe('searchCondition', () => {
+  it('builds a single-column condition with an explicit escape clause', () => {
+    // The ESCAPE clause is not optional: SQLite has no default escape character, so without it the
+    // backslashes `searchPattern` adds would be matched as literal backslashes.
+    expect(searchCondition(['person.name'])).toBe("(person.name LIKE ? ESCAPE '\\')");
+  });
+
+  it('ORs several columns together inside one group', () => {
+    // The parentheses are load-bearing: this condition is composed into a larger WHERE clause with
+    // AND, which binds more tightly than OR and would otherwise widen the result set.
+    expect(searchCondition(['starship.name', 'starship.model'])).toBe(
+      "(starship.name LIKE ? ESCAPE '\\' OR starship.model LIKE ? ESCAPE '\\')"
+    );
+  });
+
+  it('emits one placeholder per column so the caller binds the pattern that many times', () => {
+    const columns = ['vehicle.name', 'vehicle.model', 'vehicle.manufacturer'];
+
+    expect(searchCondition(columns).match(/\?/gu)).toHaveLength(columns.length);
+  });
+
+  it('rejects an empty column list', () => {
+    // An empty condition would be `()`, or worse would silently match every row — the exact
+    // opposite of filtering, and a failure that would look like "search is broken" rather than
+    // like an error.
+    expect(() => searchCondition([])).toThrow(RangeError);
   });
 });

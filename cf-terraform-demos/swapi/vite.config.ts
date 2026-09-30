@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { cloudflareAccessPlugin } from '@adrianhall/cloudflare-toolkit/vite';
 import { cloudflare } from '@cloudflare/vite-plugin';
+import vue from '@vitejs/plugin-vue';
 import localOutputs from './infra/local-outputs.json' with { type: 'json' };
 import { buildAccessPolicies } from './src/access-policies.ts';
 
@@ -23,6 +24,7 @@ export default defineConfig({
         { email: 'bob@example.com', name: 'Bob' }
       ]
     }),
+    vue(),
     cloudflare({
       // `cf` v1's Vite-plugin v2 build chain reads cloudflare.config.ts directly and emits the
       // Build Output Spec that `cf deploy --prebuilt` consumes. `cf workers types` generates

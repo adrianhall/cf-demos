@@ -1,4 +1,5 @@
 import type { Related } from '../domain/related';
+import type { BoundStatement } from './queries/statements';
 
 /**
  * The subset of `D1Database` this tier uses.
@@ -22,6 +23,43 @@ type RelatedRow<Row> = Row & {
    */
   parent_id: string;
 };
+
+/**
+ * Run a collection's list statement and map its rows to domain entities.
+ *
+ * Takes the statement and its bindings as one {@link BoundStatement} rather than as two arguments,
+ * because a filtered list binds the same pattern once per searchable column and the two must agree
+ * (see `./queries/statements.ts`). Accepting the pair the statement builder produced means a
+ * repository cannot bind the wrong number of parameters.
+ *
+ * Unlike {@link queryEntities} this imposes no batch-size limit, and needs none: the bindings are
+ * one repeated pattern across a handful of columns, not one per requested identifier, so the count
+ * is a property of the schema rather than of the request.
+ *
+ * @typeParam Row Row shape the statement returns.
+ * @typeParam Entity Domain entity the rows map to.
+ * @param database D1 database to read from.
+ * @param statement Statement and bindings from a `*_STATEMENTS.list(...)` builder.
+ * @param map Row-to-entity mapper from `./queries/tables.ts`.
+ * @returns The mapped entities in the statement's declared order; empty when a search matched
+ *   nothing.
+ * @throws {Error} When D1 rejects the statement.
+ */
+// See `queryEntities` below for why `Row` is a type parameter rather than inferred away: `all<Row>`
+// is what types the result set so `results.map(map)` is checked rather than cast.
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters
+export async function queryList<Row, Entity>(
+  database: D1Reader,
+  statement: BoundStatement,
+  map: (row: Row) => Entity
+): Promise<Entity[]> {
+  const prepared = database.prepare(statement.sql);
+  const result = await (
+    statement.bindings.length === 0 ? prepared : prepared.bind(...statement.bindings)
+  ).all<Row>();
+
+  return result.results.map(map);
+}
 
 /**
  * Run a batched entity query and map its rows to domain entities.

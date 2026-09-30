@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2024",
     "useDefineForClassFields": true,
-    "lib": ["ES2024", "WebWorker"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable", "WebWorker"],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
@@ -19,6 +19,7 @@
   "include": [
     "src",
     "scripts",
+    "tests/client",
     "tests/worker",
     "infra/outputs.ts",
     "vite.config.ts",

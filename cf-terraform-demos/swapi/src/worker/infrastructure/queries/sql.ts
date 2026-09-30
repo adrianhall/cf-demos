@@ -11,6 +11,10 @@
  *   parameters, which D1 keeps separate from the statement. No caller-supplied text ever reaches a
  *   statement, so there is no injection surface here — but because that property is a convention
  *   rather than something the type system can prove, every helper below documents it explicitly.
+ *   That convention is load-bearing for search in particular. {@link searchCondition} emits only
+ *   `?` placeholders for the term, and {@link searchPattern} produces the value to bind to them, so
+ *   a user-supplied search term is never part of the statement text — it stays a parameter, and the
+ *   wildcard escaping it receives is about matching the right rows, not about safety.
  */
 
 /**
@@ -45,6 +49,86 @@ export function placeholders(count: number): string {
   }
 
   return Array.from({ length: count }, () => '?').join(', ');
+}
+
+/**
+ * Character used to escape `LIKE` wildcards in a search pattern.
+ *
+ * A backslash is conventional, and SQLite has no default escape character — one only exists when a
+ * statement says `ESCAPE '\'`, which {@link searchCondition} always emits alongside a pattern built
+ * by {@link searchPattern}. The two must be used together; neither is correct alone.
+ */
+const LIKE_ESCAPE_CHARACTER = '\\';
+
+/**
+ * Turn a validated search term into a bound `LIKE` pattern matching it as a substring.
+ *
+ * The wildcards `%` and `_` are metacharacters in `LIKE`, and a search term is by definition text a
+ * user typed, so it can contain both. Left alone they would silently change the query's meaning:
+ * searching for `100%` would match every row beginning `100`, and `a_b` would match `axb`. That is
+ * a correctness bug rather than a security one — the term is always a _bound parameter_, never
+ * interpolated into the statement, so no input can alter the statement's structure — but it is the
+ * kind of bug a user experiences as "search is broken" and cannot work around.
+ *
+ * The escape character itself is escaped first. Doing it in any other order would double-escape the
+ * backslashes introduced for `%` and `_`, turning a search for `%` into a search for `\%`.
+ *
+ * @param term Validated, trimmed search term from `validateSearchTerm` in
+ *   `../../domain/search-term.ts`.
+ * @returns A pattern of the form `%term%` with wildcards neutralised, to be bound as a parameter
+ *   against a condition built by {@link searchCondition}.
+ */
+export function searchPattern(term: string): string {
+  const escaped = term
+    .replaceAll(LIKE_ESCAPE_CHARACTER, `${LIKE_ESCAPE_CHARACTER}${LIKE_ESCAPE_CHARACTER}`)
+    .replaceAll('%', `${LIKE_ESCAPE_CHARACTER}%`)
+    .replaceAll('_', `${LIKE_ESCAPE_CHARACTER}_`);
+
+  return `%${escaped}%`;
+}
+
+/**
+ * Build the `LIKE` condition matching a search pattern against one or more columns.
+ *
+ * Every column contributes one `?`, so a caller binds the same pattern once per column named here.
+ * Grouping them in parentheses matters: the condition is composed into a larger `WHERE` clause with
+ * `AND` in the relation queries, and without the parentheses `OR` would bind more loosely than the
+ * surrounding `AND` and quietly widen the result set.
+ *
+ * ## Case sensitivity is ASCII-only
+ *
+ * SQLite's `LIKE` is case-insensitive by default, which is what makes `walker` find `Luke
+ * Skywalker` without any `LOWER()` calls — but only for ASCII. `Á` and `á` are distinct to this
+ * operator. Every searchable name in this dataset is ASCII, so the limitation is invisible here; it
+ * is recorded because it would not stay invisible in a dataset with accented names, and the fix at
+ * that point is a normalised search column rather than a bigger `LIKE`.
+ *
+ * ## No index supports this
+ *
+ * A leading-wildcard pattern cannot use a B-tree index: the index is ordered by prefix, and `%foo%`
+ * has no known prefix to seek to. Every search here is therefore a full scan of the table. That is
+ * a deliberate acceptance rather than an oversight — the largest table holds 82 rows, so a scan is
+ * measured in microseconds, and the alternatives (an FTS5 virtual table, or a trigram index) would
+ * add a second copy of the data to keep in sync and a second thing for a reader of this demo to
+ * understand. The decision would flip somewhere in the tens of thousands of rows; at that point
+ * FTS5 is the answer, not a cleverer `LIKE`.
+ *
+ * @param columns Qualified column names to match against, for example `person.name`. Every entry is
+ * source-controlled text from `./tables.ts` or `./statements.ts`, never request data. @returns A
+ * parenthesised condition such as `(person.name LIKE ? ESCAPE '\')`. @throws {RangeError} When no
+ * columns are supplied, which would otherwise produce an empty condition that silently matches
+ * every row — the exact opposite of filtering.
+ */
+export function searchCondition(columns: readonly string[]): string {
+  if (columns.length === 0) {
+    throw new RangeError('A search condition needs at least one column to match against.');
+  }
+
+  const comparisons = columns
+    .map((column) => `${column} LIKE ? ESCAPE '${LIKE_ESCAPE_CHARACTER}'`)
+    .join(' OR ');
+
+  return `(${comparisons})`;
 }
 
 /**
