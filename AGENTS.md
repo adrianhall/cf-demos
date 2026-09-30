@@ -27,6 +27,30 @@ production-quality reference material: someone will copy it.
 - Do not add a dependency to work around a problem that a first-party Cloudflare tool already
   solves.
 
+## D1 migrations
+
+For a D1-backed demo, use the repository-root migration helper; do not call `cf d1 migrations apply`
+directly from a demo script.
+
+- Add a scalar `d1_database_id` Terraform output and a matching value in the demo's committed
+  `infra/local-outputs.json`.
+- Bind D1 by that ID in `cloudflare.config.ts` in both local and production modes.
+- Add these individually runnable demo scripts, adjusting the relative path only as needed:
+
+  ```json
+  {
+    "migrate:local": "node ../../scripts/d1-migrate.ts --cwd . --outputs infra/local-outputs.json --local",
+    "migrate:remote": "node ../../scripts/d1-migrate.ts --cwd . --outputs infra/outputs.json"
+  }
+  ```
+
+- Run `migrate:local` before `cf dev`, and start `cf dev` with
+  `--persist-to .cloudflare/state`.
+- Run `migrate:remote` after Terraform writes `infra/outputs.json` and before building/deploying the
+  Worker.
+- Use `readD1Migrations()` from `@cloudflare/vitest-plugin` and `applyD1Migrations()` from
+  `cloudflare:test` to apply migrations in Workers-runtime integration tests.
+
 ## Required scripts
 
 Every demo's `package.json` must define these five scripts with these exact names and meanings:

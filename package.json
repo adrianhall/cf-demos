@@ -4,7 +4,8 @@
   "description": "A set of demos for the Cloudflare Workers platform.",
   "main": "index.js",
   "scripts": {
-    "create-env": "node scripts/create-env.ts"
+    "create-env": "node scripts/create-env.ts",
+    "d1-migrate": "node scripts/d1-migrate.ts"
   },
   "keywords": [
     "cloudflare",
