@@ -179,6 +179,58 @@ Supporting rules:
 - A demo may be small, but the seams must still be visible. Collapsing tiers teaches the wrong
   lesson.
 
+## WebSockets and Durable Objects
+
+Hold a WebSocket in a Durable Object, never in a plain Worker: a Worker isolate can be evicted and
+the connection is then simply lost, because nothing durable is holding it. Accept the socket with
+`ctx.acceptWebSocket()` (the Hibernation API) rather than `socket.accept()`, so an idle connection
+stays open at the edge while the object is evicted and stops accruing charges.
+
+**Forward the caller's upgrade request to the Durable Object.** Do not try to replace the upgrade
+with an RPC method. Two independent constraints make RPC impossible, and both are runtime failures
+rather than type errors:
+
+- A `WebSocket` is not serializable, so returning a `101` response from an RPC method fails with
+  `DataCloneError: Could not serialize object of type "WebSocket"`.
+- The Hibernation API completes the protocol switch against the incoming request itself, so the
+  request has to reach the object.
+
+Every *other* call into the object should still be a typed RPC method. The upgrade is the
+exception, not the pattern.
+
+Because the upgrade travels as a request, the verified identity has to travel as a request header,
+and that carries an obvious hazard — a client can send the same header. Handle it explicitly:
+
+- **Delete any inbound copy of the identity header before setting the verified value.** Do this in
+  one named function so the deletion and the assignment cannot be half-performed, and so there is a
+  single place to test.
+- Test that a smuggled header is ignored, at both the unit level (including a differently-cased
+  spelling, since header names are case-insensitive) and in the Workers-runtime suite.
+- Pin the identity to the socket with `serializeAttachment()` and read the author back from the
+  attachment on every message. Never take an author from the frame; the wire protocol should have
+  no author field at all, and the domain should reject a payload that adds one.
+- State in a comment why the object may trust the header: it has no route of its own, so the only
+  way to reach it is through a Worker that authenticated the caller first.
+
+Anything the object needs after hibernation must live in its storage or in a socket attachment. An
+instance field will be empty when the object is reconstructed, which is precisely when the value is
+needed.
+
+Other rules that follow from the transport:
+
+- Put the upgrade route under the same path prefix the Access policies already cover, so it is
+  gated by the same rule as every other API route rather than needing its own.
+- Use `redirect: false` for that policy. A browser's `WebSocket` constructor cannot follow a
+  redirect to a login page, so redirecting an unauthenticated upgrade surfaces as an unexplained
+  connection failure instead of an authentication error.
+- Persist a message before broadcasting it. Broadcasting first lets a client see a message that a
+  later history replay would not contain.
+- Answer a non-upgrade request to the socket route with `426 Upgrade Required`, not `400`. The
+  request is well-formed and the resource exists; it is the protocol that is wrong.
+- Share one module defining the frame types between the object and the browser, as a discriminated
+  union, so a `switch` on the client is checked for exhaustiveness and adding a frame fails the
+  build until the client handles it.
+
 ## Access control: Cloudflare Access
 
 - Protect every administrative or privileged surface with **Cloudflare Access**. Do not hand-roll
@@ -260,6 +312,8 @@ When Terraform is the selected lifecycle owner:
 - Test each tier at the appropriate level: domain/validation and repository logic as unit tests, UI
   behaviour in a DOM environment, and the deployed surface in the real runtime.
 - Integration tests must exercise authorization outcomes, not just the happy path.
+- **Every integration-test project must specify a finite test timeout.** This prevents a blocked
+  integration test from hanging CI or an agentic process indefinitely.
 - Tests must pass offline and must not depend on live infrastructure.
 
 ## Definition of done

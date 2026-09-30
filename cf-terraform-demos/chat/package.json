@@ -1,0 +1,80 @@
+{
+  "name": "@cf-demos/chat",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "run-s migrate:local start:dev",
+    "start:dev": "cf dev --persist-to .cloudflare/state",
+    "build": "vite build --mode development",
+    "check": "run-s check:types check:format check:lint check:infra check:infra:fmt",
+    "check:types": "run-s generate:types check:types:tsc",
+    "check:types:tsc": "tsc --noEmit",
+    "generate:types": "cf workers types --mode development",
+    "check:format": "oxfmt --check .",
+    "check:lint": "oxlint --type-aware --type-check .",
+    "check:infra": "terraform -chdir=infra validate",
+    "check:infra:fmt": "terraform -chdir=infra fmt -check",
+    "fix": "run-s fix:format fix:lint fix:infra",
+    "fix:format": "oxfmt --write .",
+    "fix:lint": "oxlint --type-aware --type-check --fix .",
+    "fix:infra": "terraform -chdir=infra fmt",
+    "format": "pnpm fix:format",
+    "migrate:local": "node ../../scripts/d1-migrate.ts --cwd . --outputs infra/local-outputs.json --local",
+    "migrate:remote": "node ../../scripts/d1-migrate.ts --cwd . --outputs infra/outputs.json",
+    "deploy": "run-s deploy:infra deploy:worker",
+    "deploy:infra": "run-s deploy:infra:init deploy:infra:apply",
+    "deploy:infra:init": "terraform -chdir=infra init",
+    "deploy:infra:apply": "terraform -chdir=infra apply -auto-approve",
+    "postdeploy:infra:apply": "terraform -chdir=infra output -json > infra/outputs.json",
+    "deploy:worker": "run-s migrate:remote deploy:worker:build deploy:worker:upload",
+    "deploy:worker:build": "vite build --mode production",
+    "deploy:worker:upload": "cf deploy --prebuilt",
+    "teardown": "run-s teardown:worker teardown:infra",
+    "teardown:worker": "cf workers delete chat --force || true",
+    "teardown:infra": "terraform -chdir=infra destroy -auto-approve",
+    "test": "NODE_OPTIONS=--no-experimental-webstorage vitest run",
+    "test:client": "NODE_OPTIONS=--no-experimental-webstorage vitest run --project client",
+    "test:worker": "NODE_OPTIONS=--no-experimental-webstorage vitest run --project worker",
+    "test:integration": "NODE_OPTIONS=--no-experimental-webstorage vitest run --project integration",
+    "test:coverage": "NODE_OPTIONS=--no-experimental-webstorage vitest run --coverage"
+  },
+  "dependencies": {
+    "@adrianhall/cloudflare-toolkit": "^2.6.0",
+    "hono": "^4.13.11",
+    "pinia": "^4.0.3",
+    "vue": "^3.5.43",
+    "vue-router": "^5.3.1",
+    "vuetify": "^4.2.2"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-beta.sha-ad79608dd",
+    "@cloudflare/vitest-plugin": "1.1.6",
+    "@cloudflare/workers-types": "^5.20260910.1",
+    "@pinia/testing": "^2.0.1",
+    "@types/node": "^26.6.3",
+    "@vitejs/plugin-vue": "^6.0.9",
+    "@vitest/coverage-istanbul": "^4.1.11",
+    "@vue/test-utils": "^2.5.1",
+    "cf": "^1.0.0-beta.5",
+    "commander": "15.0.0",
+    "jsdom": "^30.1.1",
+    "npm-run-all2": "^9.0.3",
+    "oxfmt": "^0.71.0",
+    "oxlint": "^1.86.0",
+    "oxlint-tsgolint": "^7.0.2003",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=12.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd"
+    ]
+  }
+}

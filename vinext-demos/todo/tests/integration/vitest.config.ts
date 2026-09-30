@@ -47,6 +47,7 @@ export default defineProject(async () => {
     ],
     test: {
       name: 'integration',
+      testTimeout: 10_000,
       include: ['**/*.test.ts']
     }
   };

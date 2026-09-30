@@ -1,0 +1,4 @@
+# Written by the postdeploy:infra:apply npm hook (terraform output -json > infra/outputs.json).
+# Regenerated on every `terraform apply`; cloudflare.config.ts reads it directly in production
+# mode instead of shelling out to `terraform output` itself.
+outputs.json
