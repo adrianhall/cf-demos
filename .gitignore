@@ -7,6 +7,9 @@
 .env.*
 !.env.example
 
+### OpenChamber Snapshots ###
+.openchamber/
+
 ### Astro ###
 .astro
 
