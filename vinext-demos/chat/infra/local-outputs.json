@@ -1,0 +1,37 @@
+{
+  "access_aud": {
+    "sensitive": false,
+    "type": "string",
+    "value": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "cloudflare_team_domain": {
+    "sensitive": false,
+    "type": "string",
+    "value": "local.cloudflareaccess.com"
+  },
+  "d1_database_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "00000000-0000-4000-8000-000000000002"
+  },
+  "d1_database_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "vinext-chat-db-local"
+  },
+  "environment": {
+    "sensitive": false,
+    "type": "string",
+    "value": "development"
+  },
+  "hostname": {
+    "sensitive": false,
+    "type": "string",
+    "value": "vinext-chat.localhost"
+  },
+  "worker_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "vinext-chat-local"
+  }
+}

@@ -86,6 +86,38 @@ If a genuine platform corner case appears to require Wrangler or an embedded Wra
 do not silently work around this rule. Flag it explicitly in the demo README and in this family
 `AGENTS.md` so product teams can address the missing `cf` capability.
 
+### Known Vinext limitations
+
+Flagged here per the rule above, so product teams can address them rather than each demo
+rediscovering the workaround. Both are exercised by [`chat`](./chat).
+
+**A WebSocket upgrade cannot be served from an `app/api/**/route.ts` handler.** Vinext 1.0.0's
+route-handler pipeline reconstructs every handler response — `new Response(body, { status, headers })`
+— to apply cache-control and cookie policy. A `101 Switching Protocols` cannot survive that:
+`new Response()` rejects the status outright (*"Responses may only be constructed with status codes
+in the range 200 to 599"*), reconstruction drops the `webSocket` property, and the pipeline's
+`response.clone()` throws *"Cannot clone a response to a WebSocket handshake."*
+
+Until Vinext passes a `101` through untouched, a demo needing WebSockets must dispatch the upgrade
+from its own Worker entrypoint module before Vinext sees it. Keep that exception minimal and make
+it provable:
+
+- Key it on the **`Upgrade` header**, never on a path, so the framework keeps ownership of routing
+  and a non-upgrade request to the socket route still travels the ordinary Vinext route.
+- Send the upgrade into the same API application every route handler uses, so the same Access
+  middleware authenticates it. Bypassing the framework must never mean bypassing authentication.
+- Unit-test the dispatch so a later change cannot widen the exception unnoticed.
+
+**A Durable Object class must be exported from the Worker entrypoint module.** `exports.durableObject`
+binds a namespace to a named class export on the entry module, and `vinext/server/app-router-entry`
+exports only its handler. Such a demo therefore names its own module as the `cf` entrypoint and
+re-exports both Vinext's handler and the class.
+
+**`new Request(request, { headers })` fails under Vinext.** The incoming object is Vinext's own
+`Request` subclass, so passing it as the first argument makes the constructor stringify it as a URL
+and throw `TypeError: Invalid URL: [object Request]`. Build from `request.url` with an explicit
+`method` instead.
+
 Use the `cf` + `cloudflare.config.ts` model when Terraform owns a Worker registration, bindings,
 hostname, or Access resources:
 
