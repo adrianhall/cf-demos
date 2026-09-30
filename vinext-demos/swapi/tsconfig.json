@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024", "DOM", "DOM.Iterable", "WebWorker"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "jsx": "react-jsx",
+    "types": [
+      "@cloudflare/vitest-plugin/types",
+      "@cloudflare/workers-types",
+      "node",
+      "vite/client",
+      "vinext/types"
+    ]
+  },
+  "include": [
+    "app",
+    "src",
+    "scripts",
+    "tests/client",
+    "tests/worker",
+    "infra/outputs.ts",
+    "cloudflare.config.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    ".cloudflare/types/index.d.ts"
+  ]
+}

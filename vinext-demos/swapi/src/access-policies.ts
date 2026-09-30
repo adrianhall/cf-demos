@@ -1,0 +1,51 @@
+import type { PathPolicy } from '@adrianhall/cloudflare-toolkit/hono';
+
+/**
+ * Shared Cloudflare Access path policies, used by both the local development plugin
+ * (`cloudflareAccessPlugin` in `vite.config.ts`) and the deployed Worker's middleware
+ * (`cloudflareAccess` in `src/worker/middleware/access.ts`).
+ *
+ * Keeping one definition for both is the point: local development and production evaluate the
+ * identical policy list, so an authorization mistake cannot hide behind a development-only bypass.
+ *
+ * Like the sibling `todo` demo — and unlike `link` — this application has **no public surface**, so
+ * there is no bypass policy here and the middleware's fail-closed `defaultAction: 'block'` never
+ * has to be relaxed. That also means the `/_next/*` client-asset bypass `link` needs is
+ * deliberately absent: no document here renders for an unauthenticated visitor, so its chunks are
+ * only ever requested by a browser that already holds a valid Access session and sends the cookie
+ * with them.
+ *
+ * Every entry therefore sets `authenticate: true`; they differ only in how an unauthenticated
+ * request is answered:
+ *
+ * - `/graphql` uses `redirect: false`. Both GraphiQL and the explorer's own client reach it with
+ *   `fetch`, so an RFC 9457 `401` they can react to is far more useful than the HTML of a login
+ *   page, which would otherwise arrive where a GraphQL response was expected and fail to parse.
+ *   This is what lets the explorer detect an expired session and offer to sign in again rather than
+ *   rendering a login page's markup as data — see `src/ui/api/graphql-client.ts`.
+ * - `/api/*` uses `redirect: false` for the same reason: it is only ever called with `fetch`.
+ * - Everything else — the explorer's own pages — uses `redirect: true`, which is the right answer for
+ *   a page navigation.
+ *
+ * The page policy is not enforced by this Worker's Hono middleware in production. Vinext's App
+ * Router entrypoint serves pages, and only `app/api/**` and `app/graphql/**` route handlers
+ * delegate into the Hono application (see `src/worker/index.ts`), so a page request never reaches
+ * that middleware. Pages are protected instead by the Cloudflare Access application in
+ * `infra/access.tf`, which gates the whole hostname at the edge, and locally by the Vite plugin —
+ * which is exactly why the page entry stays in this shared list rather than being dropped as dead
+ * configuration.
+ *
+ * @param audience Cloudflare Access Application Audience (AUD) tag that every authenticated request
+ *   must carry in its JWT `aud` claim. Required, and threaded through from the Terraform output of
+ *   the same name, because every Access application in a team shares one JWKS: without an `aud`
+ *   check, a token minted for an unrelated application in the same team would be accepted here
+ *   too.
+ * @returns The ordered policy list; the first pattern that matches a request path wins.
+ */
+export function buildAccessPolicies(audience: string): PathPolicy[] {
+  return [
+    { pattern: /^\/graphql(?:\/|$)/u, authenticate: true, redirect: false, audience },
+    { pattern: /^\/api(?:\/|$)/u, authenticate: true, redirect: false, audience },
+    { pattern: /^\//u, authenticate: true, redirect: true, audience }
+  ];
+}

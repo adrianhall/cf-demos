@@ -1,0 +1,650 @@
+/*
+ * Hand-written CSS rather than a component library. The `cf-terraform-demos/swapi` sibling uses
+ * Vuetify; here the point is to keep the React tier small enough that the architecture — a browser
+ * talking to a GraphQL API behind Cloudflare Access — stays the visible part of the demo. The
+ * palette mirrors that demo's dark theme so the two implementations are recognisably the same
+ * application.
+ *
+ * Two rules the markup depends on, worth stating because breaking either is easy:
+ *
+ * 1. Every colour is a custom property declared here. No component names a colour, so a light
+ *    theme would be a second `:root` block rather than an edit to twenty files.
+ * 2. The de-emphasised text — sentinel values (`.missing`) and provenance — uses
+ *    `--on-surface-variant`, which is chosen to clear WCAG AA (4.5:1) against `--surface`.
+ *    "De-emphasised" must not become "unreadable" (UISPEC §14), so that value is a deliberate
+ *    contrast choice and not simply a faded body colour.
+ */
+
+:root {
+  --background: #0b1020;
+  --surface: #151b2e;
+  --surface-variant: #222a41;
+  --on-surface: #f2f4fb;
+  /* Lightened well past a typical muted grey so secondary text clears AA on --surface. */
+  --on-surface-variant: #b9c0d4;
+  --primary: #8ab4ff;
+  --on-primary: #0b1020;
+  --secondary: #ffd479;
+  --error: #ff8a8a;
+  --outline: #8b93a8;
+  --outline-variant: #3a4257;
+  --banner-height: 3.5rem;
+
+  background: var(--background);
+  color: var(--on-surface);
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-block-size: 100dvh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--primary);
+}
+
+button,
+.button {
+  background: var(--primary);
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  color: var(--on-primary);
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.4rem 0.8rem;
+}
+
+.button,
+.button:visited {
+  display: inline-block;
+  text-decoration: none;
+}
+
+button.secondary,
+.button.secondary {
+  background: transparent;
+  border-color: var(--outline);
+  color: var(--on-surface);
+}
+
+input[type='search'] {
+  background: var(--surface-variant);
+  border: 1px solid var(--outline);
+  border-radius: 0.375rem;
+  color: var(--on-surface);
+  inline-size: 100%;
+  padding: 0.45rem 0.6rem;
+}
+
+/* Keeps an accessible label available to screen readers without showing it visually. */
+.sr-only {
+  clip: rect(0, 0, 0, 0);
+  block-size: 1px;
+  inline-size: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- Application shell */
+
+.client-loading {
+  align-items: center;
+  block-size: 100dvh;
+  color: var(--on-surface-variant);
+  display: grid;
+  justify-items: center;
+}
+
+.explorer {
+  block-size: 100dvh;
+  display: grid;
+  grid-template-rows: var(--banner-height) minmax(0, 1fr);
+}
+
+/*
+ * Three fixed columns. Navigation is narrow, the collection is modestly flexible, and the detail
+ * column takes the rest — it is where the user spends their attention, so it gets the room
+ * (UISPEC §3).
+ */
+.explorer-grid {
+  display: grid;
+  grid-template-columns: 12rem minmax(16rem, 22rem) minmax(0, 1fr);
+  min-block-size: 0;
+}
+
+/* Each column scrolls independently, so a long detail view never pushes the list out of reach. */
+.navigation,
+.collection,
+.detail {
+  block-size: 100%;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+.navigation,
+.collection {
+  border-inline-end: 1px solid var(--outline-variant);
+}
+
+/* ---------------------------------------------------------------- Banner */
+
+.banner {
+  align-items: center;
+  background: var(--surface);
+  border-block-end: 1px solid var(--outline-variant);
+  display: flex;
+  gap: 0.75rem;
+  padding-inline: 1rem;
+}
+
+.brand {
+  color: var(--on-surface);
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.global-search {
+  flex: 1 1 auto;
+  max-inline-size: 32rem;
+  position: relative;
+}
+
+.global-search input {
+  padding-inline-end: 3rem;
+}
+
+.shortcut {
+  color: var(--on-surface-variant);
+  font: inherit;
+  font-size: 0.75rem;
+  inset-block-start: 50%;
+  inset-inline-end: 0.6rem;
+  position: absolute;
+  transform: translateY(-50%);
+}
+
+.search-results {
+  background: var(--surface);
+  border: 1px solid var(--outline-variant);
+  border-radius: 0.5rem;
+  box-shadow: 0 1rem 2rem rgb(0 0 0 / 45%);
+  inset-block-start: calc(100% + 0.35rem);
+  inset-inline: 0;
+  max-block-size: min(30rem, 65vh);
+  overflow-y: auto;
+  padding-block-end: 0.5rem;
+  position: absolute;
+  z-index: 20;
+}
+
+.result-heading {
+  color: var(--on-surface-variant);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0;
+  padding: 0.75rem 0.75rem 0.25rem;
+  text-transform: uppercase;
+}
+
+.result-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.banner-link {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.identity {
+  color: var(--on-surface-variant);
+  font-size: 0.875rem;
+  margin-inline-start: auto;
+  overflow-wrap: anywhere;
+}
+
+.session-alert {
+  background: var(--surface-variant);
+  border: 1px solid var(--secondary);
+  border-radius: 0.5rem;
+  inset-block-start: calc(var(--banner-height) + 0.75rem);
+  inset-inline: 1rem;
+  padding: 0.75rem 1rem;
+  position: fixed;
+  z-index: 30;
+}
+
+/* ---------------------------------------------------------------- Navigation column */
+
+.navigation {
+  padding: 1rem 0.5rem;
+}
+
+.column-heading {
+  color: var(--on-surface-variant);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  margin: 0 0.75rem 0.5rem;
+  text-transform: uppercase;
+}
+
+.navigation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.navigation-item {
+  background: transparent;
+  border: 0;
+  border-radius: 0.375rem;
+  color: var(--on-surface);
+  font-weight: 500;
+  inline-size: 100%;
+  /* Comfortably above the 24px minimum target size, since these are the primary controls. */
+  min-block-size: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  text-align: start;
+}
+
+.navigation-item:hover {
+  background: var(--surface-variant);
+}
+
+/*
+ * Selection is conveyed by `aria-current` in the markup, so it is available to assistive
+ * technology; these rules give it a visual form that is not colour alone — the bar and the weight
+ * change carry it too (UISPEC §14).
+ */
+.navigation-item[aria-current] {
+  background: var(--surface-variant);
+  border-inline-start: 3px solid var(--primary);
+  font-weight: 700;
+  padding-inline-start: calc(0.75rem - 3px);
+}
+
+/* ---------------------------------------------------------------- Collection column */
+
+.collection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  /* The record list owns scrolling, so the column itself must not also scroll. */
+  overflow: hidden;
+  padding: 1rem;
+}
+
+.collection-header {
+  align-items: baseline;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.5rem;
+}
+
+.collection-title {
+  font-size: 1.125rem;
+  margin: 0;
+}
+
+.result-count {
+  color: var(--on-surface-variant);
+  font-size: 0.875rem;
+  margin-inline-start: auto;
+}
+
+/*
+ * This column is a flex container, so without an explicit basis the filter is a stretchable child
+ * and grows to share the leftover height with the list. It must stay exactly one input tall: the
+ * list is what should absorb free space, not the control that narrows it.
+ */
+.collection-filter {
+  flex: 0 0 auto;
+}
+
+.entity-list {
+  /* The records are what consume the column's remaining height and scroll within it. */
+  flex: 1 1 auto;
+  list-style: none;
+  margin: 0;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.entity-row {
+  background: transparent;
+  border: 0;
+  border-radius: 0.375rem;
+  color: var(--on-surface);
+  display: grid;
+  font-weight: 400;
+  gap: 0.1rem;
+  inline-size: 100%;
+  min-block-size: 2.75rem;
+  padding: 0.45rem 0.6rem;
+  text-align: start;
+}
+
+.entity-row:hover {
+  background: var(--surface-variant);
+}
+
+.entity-row[aria-current] {
+  background: var(--surface-variant);
+  border-inline-start: 3px solid var(--primary);
+  padding-inline-start: calc(0.6rem - 3px);
+}
+
+.entity-row-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.entity-row[aria-current] .entity-row-title {
+  color: var(--primary);
+}
+
+.entity-row-subtitle {
+  color: var(--on-surface-variant);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- Detail column */
+
+.detail-inner {
+  padding: 1.5rem clamp(1rem, 4vw, 4rem);
+}
+
+.welcome {
+  color: var(--on-surface-variant);
+  margin: 6vh auto;
+  max-inline-size: 38rem;
+}
+
+.welcome h1,
+.detail-header h1 {
+  color: var(--on-surface);
+  font-size: clamp(1.75rem, 4vw, 3rem);
+  line-height: 1.1;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.eyebrow {
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.episode {
+  color: var(--secondary);
+  font-weight: 600;
+  margin: 0;
+}
+
+.breadcrumb ol {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  list-style: none;
+  margin: 0 0 1.25rem;
+  padding: 0;
+}
+
+.breadcrumb li + li::before {
+  color: var(--on-surface-variant);
+  content: '›';
+  margin-inline-end: 0.15rem;
+}
+
+.breadcrumb-step {
+  background: transparent;
+  border: 0;
+  border-radius: 0.25rem;
+  color: var(--primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  min-block-size: 1.75rem;
+  padding: 0.15rem 0.35rem;
+}
+
+.breadcrumb-step[aria-current='page'] {
+  color: var(--on-surface);
+  font-weight: 700;
+}
+
+.breadcrumb-ellipsis {
+  color: var(--on-surface-variant);
+  padding-inline: 0.25rem;
+}
+
+.attribute-group {
+  margin-block: 2rem;
+}
+
+.section-heading {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.attributes {
+  display: grid;
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+
+.attribute {
+  display: grid;
+  gap: 0.5rem 1rem;
+  grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
+}
+
+.attribute dt {
+  color: var(--on-surface-variant);
+}
+
+.attribute dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.missing,
+.provenance-value {
+  color: var(--on-surface-variant);
+}
+
+/*
+ * A film's opening crawl carries ~20 real newlines, and those breaks are its original line
+ * structure. Collapsing them turns it into a wall of prose (UISPEC §6.2).
+ */
+.long-form {
+  white-space: pre-wrap;
+}
+
+.relations {
+  display: grid;
+  gap: 0.5rem;
+  margin-block: 2rem;
+}
+
+.relation-panel,
+.provenance {
+  background: var(--surface);
+  border: 1px solid var(--outline-variant);
+  border-radius: 0.5rem;
+}
+
+.relation-panel summary,
+.provenance summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 0.75rem;
+  min-block-size: 2.75rem;
+  padding: 0.6rem 0.9rem;
+}
+
+.relation-label {
+  font-weight: 600;
+}
+
+.relation-count {
+  background: var(--surface-variant);
+  border-radius: 999px;
+  color: var(--on-surface-variant);
+  font-size: 0.8125rem;
+  padding: 0.05rem 0.5rem;
+}
+
+.relation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.5rem 0.5rem;
+}
+
+.empty-relation {
+  color: var(--on-surface-variant);
+  margin: 0;
+  padding: 0 0.9rem 0.9rem;
+}
+
+.provenance {
+  margin-block: 1rem;
+}
+
+.provenance .attributes {
+  padding: 0 0.9rem 0.9rem;
+}
+
+/* ---------------------------------------------------------------- Shared states */
+
+.empty-note {
+  color: var(--on-surface-variant);
+  padding: 1rem 0.5rem;
+}
+
+.panel-error {
+  align-items: center;
+  border: 1px solid var(--error);
+  border-radius: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+  padding: 0.75rem 1rem;
+}
+
+.panel-error p {
+  color: var(--error);
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------- Responsive */
+
+/*
+ * Medium: the navigation column narrows but stays visible, leaving the collection and detail
+ * columns the room they need (UISPEC §13).
+ */
+@media (max-width: 62rem) {
+  .explorer-grid {
+    grid-template-columns: 9rem minmax(14rem, 18rem) minmax(0, 1fr);
+  }
+
+  .identity {
+    display: none;
+  }
+}
+
+/*
+ * Narrow: one column at a time is the specified degradation, and the page scrolls as a whole with
+ * the breadcrumb doing double duty as the way back up. The columns stack in depth order, so the
+ * deepest meaningful level is what a user scrolls to.
+ */
+@media (max-width: 45rem) {
+  .explorer {
+    block-size: auto;
+    grid-template-rows: auto;
+  }
+
+  .explorer-grid {
+    display: block;
+  }
+
+  .navigation,
+  .collection,
+  .detail {
+    block-size: auto;
+    overflow: visible;
+  }
+
+  .navigation,
+  .collection {
+    border-block-end: 1px solid var(--outline-variant);
+    border-inline-end: 0;
+  }
+
+  .collection {
+    max-block-size: 24rem;
+  }
+
+  .navigation-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .navigation-item {
+    inline-size: auto;
+  }
+
+  .banner {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-block: 0.5rem;
+  }
+
+  .attribute {
+    gap: 0.15rem;
+    grid-template-columns: 1fr;
+    margin-block-end: 0.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
