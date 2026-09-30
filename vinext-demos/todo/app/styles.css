@@ -1,0 +1,232 @@
+/*
+ * Hand-written CSS rather than a component library. The Vue sibling of this demo uses Vuetify;
+ * here the point is to keep the React tier small enough that the architecture — UI calling its own
+ * API, which enforces per-user ownership — stays the visible part of the demo.
+ *
+ * The palette mirrors the Vue demo's dark theme so the two implementations are recognisably the
+ * same application.
+ */
+
+:root {
+  --surface: #171d2e;
+  --surface-variant: #252d42;
+  --on-surface: #f6f3ff;
+  --on-surface-variant: #d0c8dc;
+  --outline: #4b4554;
+  --primary: #8ab4ff;
+  --error: #ff7979;
+
+  background: #0b1020;
+  color: var(--on-surface);
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  background: #0b1020;
+  margin: 0;
+  min-height: 100vh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button,
+.button {
+  background: var(--primary);
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  color: #0b1020;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.55rem 0.9rem;
+}
+
+.button,
+.button:visited {
+  display: inline-block;
+  text-decoration: none;
+}
+
+button.secondary,
+.button.secondary {
+  background: transparent;
+  border-color: var(--outline);
+  color: var(--on-surface);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.app-header {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  margin: 0 auto;
+  max-width: 56rem;
+  padding: 1rem;
+}
+
+.app-name {
+  font-weight: 700;
+}
+
+.identity {
+  color: var(--on-surface-variant);
+  margin-left: auto;
+  overflow-wrap: anywhere;
+}
+
+.container {
+  margin: 0 auto;
+  max-width: 56rem;
+  padding: 1rem 1rem 3rem;
+}
+
+.intro {
+  margin-bottom: 1.5rem;
+}
+
+.intro h1 {
+  margin: 0.25rem 0 0;
+}
+
+.eyebrow {
+  color: var(--primary);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.subtitle {
+  color: var(--on-surface-variant);
+  margin-bottom: 0;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.todo-form {
+  align-items: end;
+  display: flex;
+  gap: 0.75rem;
+}
+
+label {
+  display: grid;
+  flex: 1 1 auto;
+  font-weight: 600;
+  gap: 0.3rem;
+}
+
+input[type='text'] {
+  background: var(--surface-variant);
+  border: 1px solid var(--outline);
+  border-radius: 0.25rem;
+  color: var(--on-surface);
+  padding: 0.55rem;
+}
+
+input[type='checkbox'] {
+  accent-color: var(--primary);
+  block-size: 1.25rem;
+  cursor: pointer;
+  inline-size: 1.25rem;
+}
+
+.todo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.todo-list li {
+  align-items: center;
+  border-bottom: 1px solid var(--outline);
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+}
+
+.todo-item {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 auto;
+  font-weight: 400;
+  gap: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.todo-list button {
+  background: transparent;
+  border-color: var(--outline);
+  color: var(--error);
+  flex: 0 0 auto;
+}
+
+.completed {
+  color: var(--on-surface-variant);
+  text-decoration: line-through;
+}
+
+.todo-footer {
+  align-items: center;
+  color: var(--on-surface-variant);
+  display: flex;
+  font-size: 0.875rem;
+  gap: 1rem;
+  justify-content: space-between;
+  padding-top: 1rem;
+}
+
+.todo-footer button {
+  background: transparent;
+  border-color: var(--outline);
+  color: var(--on-surface);
+}
+
+.status {
+  margin-top: 1rem;
+}
+
+/* Keeps a section's accessible heading available to screen readers without showing it visually. */
+.sr-only {
+  clip: rect(0, 0, 0, 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+@media (max-width: 40rem) {
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .identity {
+    margin-left: 0;
+  }
+
+  .todo-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
