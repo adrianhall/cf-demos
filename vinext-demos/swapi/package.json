@@ -41,7 +41,7 @@
     "test:coverage": "NODE_OPTIONS=--no-experimental-webstorage vitest run --coverage"
   },
   "dependencies": {
-    "@adrianhall/cloudflare-toolkit": "^2.6.0",
+    "@adrianhall/cloudflare-toolkit": "^2.7.0",
     "@demos/worker-common": "workspace:*",
     "@pothos/core": "^4.15.1",
     "@pothos/plugin-complexity": "^4.2.3",

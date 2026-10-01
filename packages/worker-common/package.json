@@ -22,7 +22,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
-    "@adrianhall/cloudflare-toolkit": "^2.6.0",
+    "@adrianhall/cloudflare-toolkit": "^2.7.0",
     "@cloudflare/workers-types": "^5.20260930.1",
     "@types/node": "^26.6.3",
     "@vitest/coverage-istanbul": "^4.1.11",
@@ -35,7 +35,7 @@
     "vitest": "^4.1.11"
   },
   "peerDependencies": {
-    "@adrianhall/cloudflare-toolkit": "^2.6.0",
+    "@adrianhall/cloudflare-toolkit": "^2.7.0",
     "hono": "^4.13.11"
   },
   "engines": {

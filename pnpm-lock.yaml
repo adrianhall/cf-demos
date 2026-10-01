@@ -195,8 +195,8 @@ importers:
   cf-terraform-demos/chat:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
-        specifier: ^2.6.0
-        version: 2.6.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
+        specifier: ^2.7.0
+        version: 2.7.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -274,8 +274,8 @@ importers:
   cf-terraform-demos/link:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
-        specifier: ^2.6.0
-        version: 2.6.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
+        specifier: ^2.7.0
+        version: 2.7.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -350,8 +350,8 @@ importers:
   cf-terraform-demos/swapi:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
-        specifier: ^2.6.0
-        version: 2.6.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
+        specifier: ^2.7.0
+        version: 2.7.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -447,8 +447,8 @@ importers:
   cf-terraform-demos/todo:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
-        specifier: ^2.6.0
-        version: 2.6.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
+        specifier: ^2.7.0
+        version: 2.7.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -526,8 +526,8 @@ importers:
   packages/worker-common:
     devDependencies:
       '@adrianhall/cloudflare-toolkit':
-        specifier: ^2.6.0
-        version: 2.6.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
+        specifier: ^2.7.0
+        version: 2.7.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
       '@cloudflare/workers-types':
         specifier: ^5.20260930.1
         version: 5.20260930.1
@@ -562,8 +562,8 @@ importers:
   vinext-demos/chat:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
-        specifier: ^2.6.0
-        version: 2.6.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
+        specifier: ^2.7.0
+        version: 2.7.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -650,8 +650,8 @@ importers:
   vinext-demos/link:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
-        specifier: ^2.6.0
-        version: 2.6.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
+        specifier: ^2.7.0
+        version: 2.7.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -735,8 +735,8 @@ importers:
   vinext-demos/swapi:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
-        specifier: ^2.6.0
-        version: 2.6.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
+        specifier: ^2.7.0
+        version: 2.7.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -841,8 +841,8 @@ importers:
   vinext-demos/todo:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
-        specifier: ^2.6.0
-        version: 2.6.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
+        specifier: ^2.7.0
+        version: 2.7.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -931,12 +931,12 @@ packages:
   '@adobe/css-tools@4.5.0':
     resolution: {integrity: sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q==}
 
-  '@adrianhall/cloudflare-toolkit@2.6.0':
-    resolution: {integrity: sha512-BZItdix8lKBeVg/Vnu4g3AsgmPfCpQZrEdjI01cMdSmAMvEBPe+8bvSCW0dnnObDJ2oO3B7Z3TW8bnTWwBwqYw==}
+  '@adrianhall/cloudflare-toolkit@2.7.0':
+    resolution: {integrity: sha512-nrwfMLRQd3Q6m5lzEMU1EfF8lgIkpUi6BULOMIr6OSGYL5E8v7Rx9r/yDA98E26zXsEqEJt+QpDgJUr2JJ1XRA==}
     engines: {node: '>=24', npm: '>=11'}
     hasBin: true
     peerDependencies:
-      cf: '>=0.6.0 <1'
+      cf: '>=0.6.0 <2 || >=1.0.0-0 <2'
       hono: ^4.12.28
       vite: ^8.1.4
     peerDependenciesMeta:
@@ -4093,7 +4093,7 @@ snapshots:
 
   '@adobe/css-tools@4.5.0': {}
 
-  '@adrianhall/cloudflare-toolkit@2.6.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))':
+  '@adrianhall/cloudflare-toolkit@2.7.0(cf@1.0.0-beta.10(@types/node@26.6.3))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.1)(terser@5.51.2))':
     dependencies:
       chalk: 5.6.2
       commander: 15.0.0

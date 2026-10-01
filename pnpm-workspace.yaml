@@ -30,3 +30,4 @@ minimumReleaseAgeExclude:
   - '@cloudflare/workerd-windows-64@1.20260930.2'
   - miniflare@5.20260930.0-alpha
   - workerd@1.20260930.2
+  - '@adrianhall/cloudflare-toolkit@2.7.0'

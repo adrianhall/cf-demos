@@ -40,7 +40,7 @@
     "test:coverage": "NODE_OPTIONS=--no-experimental-webstorage vitest run --coverage"
   },
   "dependencies": {
-    "@adrianhall/cloudflare-toolkit": "^2.6.0",
+    "@adrianhall/cloudflare-toolkit": "^2.7.0",
     "@demos/worker-common": "workspace:*",
     "hono": "^4.13.11",
     "react": "19.3.0",
