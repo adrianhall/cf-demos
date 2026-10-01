@@ -50,12 +50,20 @@ app.use(accessMiddleware);
 app.use('/api/*', async (context, next) => {
   const inference = new GatewayInferenceClient({
     ai: context.env.AI,
-    gatewayId: context.env.AI_GATEWAY_ID
+    gatewayId: context.env.AI_GATEWAY_ID,
+    // The request-scoped logger, so a provider failure is recorded with the same request identifier
+    // as every other line from this request. The client logs the provider's real message and
+    // returns a sanitised one to the browser; both are required, and neither substitutes for the
+    // other.
+    logger: context.var.LOGGER
   });
   const runs = createMemoryRunRepository();
 
   context.set('CHAT_SERVICE', new ChatService({ inference, runs }));
-  context.set('CREATE_IMAGE_SERVICE', new CreateImageService({ inference, runs }));
+  context.set(
+    'CREATE_IMAGE_SERVICE',
+    new CreateImageService({ inference, runs, logger: context.var.LOGGER })
+  );
   context.set('METRICS_SERVICE', new MetricsService({ inference, runs }));
 
   await next();

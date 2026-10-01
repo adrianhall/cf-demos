@@ -177,6 +177,38 @@ naming its tokenizer is a number people will quote.
 - **Worker logs record neither.** Structured logs carry request identifiers, task and model
   identifiers, duration, and outcome — no prompts, no content, and not the email.
 
+## Diagnosing a failure
+
+A panel that fails has to be diagnosable from the logs alone, which takes more than a status code.
+Every inference failure writes three things under one `runId`:
+
+| Event                       | Written by                                | Carries                                                                                       |
+| --------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `create_image_run_started`  | the route, **before** the model is called | run ID, model, which controls were set and to what, prompt _length_                           |
+| `inference_provider_failed` | the inference client                      | the provider's own error message and type, the gateway log ID, the exact parameter names sent |
+| `create_image_run_failed`   | the route                                 | the panel-level outcome, repeating the settings                                               |
+
+Searching one run identifier therefore returns both what was asked for and what the provider said
+about it. Two POSTs that look identical in an access log are distinguishable by their run ID and
+their settings.
+
+Three details make this work in practice:
+
+- **The start line is written before the call**, so a request that fails inside the provider, times
+  out, or is cancelled still leaves a record of having been attempted — which is exactly when
+  knowing the parameters matters most.
+- **`parameterNames` records what actually went on the wire.** The most common integration failure
+  is sending a model a parameter its schema does not accept, and that list diagnoses it in one line.
+- **A rejected output is distinguished from a provider error.** Both are a `502` to the browser, but
+  `create_image_output_unusable` names the reason — `unrenderable_format`, `unrecognised_shape`,
+  `too_large` — and logs the payload's leading bytes in hex, which is how you tell a GIF from a JSON
+  error document without logging the payload.
+
+The provider's message is logged server-side and **never** returned to the browser: it can carry
+prompt fragments and internal endpoint names. An earlier version discarded it entirely, which made a
+deployed `502` undiagnosable; an architecture test now fails the build if a `try` around a provider
+call swallows its cause again.
+
 ## Authentication
 
 The whole application is behind Cloudflare Access. There is **no application-level allowlist**:
@@ -187,6 +219,19 @@ Authentication is there to attribute usage, not to gatekeep it. The Worker nonet
 JWT's signature, audience, and expiry itself as defence in depth: every Access application in a team
 shares one JWKS, so without the audience check a token minted for an unrelated application would be
 accepted here too.
+
+### The gateway is authenticated too
+
+`infra/playground.tf` sets `authentication = true`, which is a boundary Cloudflare Access does not
+provide. A gateway's provider-native endpoint is reachable from the internet by anyone who learns
+the account ID and the gateway's name, and with authentication off such a request **succeeds** —
+spending this account's inference credit and inflating the log store the cost figures are read from.
+That path never touches the Worker, so neither Access nor the Worker's own authorization sees it.
+
+It costs this demo nothing, because requests that reach a gateway through a Worker's **AI binding
+are pre-authenticated** by the account owning both. No token has to be minted, stored, or rotated
+for the panels to keep working. The visible trade-off is that a `curl` against the gateway endpoint
+now needs a token with `AI Gateway Run` — which is the entire point.
 
 ## Prerequisites
 

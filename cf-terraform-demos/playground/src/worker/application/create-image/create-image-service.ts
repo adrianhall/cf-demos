@@ -20,6 +20,7 @@ import {
 } from '../../domain/create-image';
 import { decodeBase64, encodeBase64, sniffImageMediaType } from '../../domain/image-bytes';
 import { initialCostStatus } from '../../domain/metrics';
+import type { DiagnosticLogger } from '../ports/diagnostic-logger-port';
 import type { InferencePort, VerifiedActor } from '../ports/inference-port';
 import type { RunRepositoryPort } from '../ports/run-repository-port';
 
@@ -57,6 +58,13 @@ export interface CreateImageServiceOptions {
    * Clock reading epoch milliseconds. Injected so a test can assert on timing without waiting.
    */
   now?: () => number;
+  /**
+   * Where an unusable provider output is recorded.
+   *
+   * A refusal here is indistinguishable from a provider error at the HTTP boundary — both are a
+   * `502` — but the two have entirely different causes, so the distinction has to be recorded.
+   */
+  logger?: DiagnosticLogger;
 }
 
 /**
@@ -66,6 +74,7 @@ export class CreateImageService {
   readonly #inference: InferencePort;
   readonly #runs: RunRepositoryPort;
   readonly #now: () => number;
+  readonly #logger: DiagnosticLogger | undefined;
 
   /**
    * Creates the service.
@@ -77,6 +86,7 @@ export class CreateImageService {
     this.#inference = options.inference;
     this.#runs = options.runs;
     this.#now = options.now ?? Date.now;
+    this.#logger = options.logger;
   }
 
   /**
@@ -111,7 +121,7 @@ export class CreateImageService {
       input: buildCreateImageInput(request)
     });
 
-    const image = await normaliseImageOutput(result.output);
+    const image = await normaliseImageOutput(result.output, this.#logger);
 
     const logIds = result.logId === undefined ? [] : [result.logId];
     const receipt: RunReceipt = {
@@ -152,14 +162,26 @@ export class CreateImageService {
  * Every path converges on the same signature check, so no shape is trusted more than another.
  *
  * @param output The provider's raw output.
+ * @param logger Where a refusal is recorded, so an operator can tell a rejected output from a
+ *   provider error.
  * @returns The verified image, with its media type determined from its content.
  * @throws {ProblemDetailsError} With `502` when the output is not one of the recognised shapes, is
  *   not a renderable image, or exceeds the size cap.
  */
-async function normaliseImageOutput(output: unknown): Promise<GeneratedImage> {
+async function normaliseImageOutput(
+  output: unknown,
+  logger?: DiagnosticLogger
+): Promise<GeneratedImage> {
   const bytes = await extractBytes(output);
 
   if (bytes === undefined || bytes.length === 0) {
+    // Logged with a description of what the provider actually sent. A refusal here looks identical
+    // to a provider error from the browser's point of view, so without this line the two are
+    // indistinguishable in an incident — and they have completely different fixes.
+    logger?.error('create_image_output_unusable', {
+      reason: bytes === undefined ? 'unrecognised_shape' : 'empty',
+      ...describeOutput(output)
+    });
     throw imageFailure(
       'The model did not return an image. Try again, or choose a different model for this panel.'
     );
@@ -168,6 +190,11 @@ async function normaliseImageOutput(output: unknown): Promise<GeneratedImage> {
   // Checked after reading, because a stream's length is not known in advance. The read itself is
   // bounded by the same cap, so an unbounded provider response cannot exhaust the isolate.
   if (bytes.length > MAX_IMAGE_BYTES) {
+    logger?.error('create_image_output_unusable', {
+      reason: 'too_large',
+      byteLength: bytes.length,
+      maxBytes: MAX_IMAGE_BYTES
+    });
     throw imageFailure('The generated image was larger than this demo will relay.');
   }
 
@@ -175,6 +202,15 @@ async function normaliseImageOutput(output: unknown): Promise<GeneratedImage> {
   // how the browser treats the payload, so it is derived from the bytes themselves.
   const mediaType = sniffImageMediaType(bytes);
   if (mediaType === undefined) {
+    logger?.error('create_image_output_unusable', {
+      reason: 'unrenderable_format',
+      byteLength: bytes.length,
+      // The first bytes in hex, which is how a sniff failure is diagnosed: it reveals whether the
+      // payload was a GIF, a JSON error document, or HTML, without logging the payload itself.
+      signature: [...bytes.subarray(0, 12)]
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join(' ')
+    });
     throw imageFailure(
       'The model returned data this demo will not render as an image. Only PNG, JPEG, and WebP '
         + 'are accepted.'
@@ -182,6 +218,31 @@ async function normaliseImageOutput(output: unknown): Promise<GeneratedImage> {
   }
 
   return { base64: encodeBase64(bytes), mediaType, byteLength: bytes.length };
+}
+
+/**
+ * Describes an unrecognised provider output for a log.
+ *
+ * Reports the output's _shape_ — its type, constructor, and top-level keys — never its content. A
+ * model that changed its response envelope is identified immediately from the key list.
+ *
+ * @param output The provider's raw output.
+ * @returns Structured fields describing the shape.
+ */
+function describeOutput(output: unknown): Record<string, unknown> {
+  if (output === null || output === undefined) {
+    return { outputType: String(output) };
+  }
+
+  if (typeof output !== 'object') {
+    return { outputType: typeof output };
+  }
+
+  return {
+    outputType: 'object',
+    outputConstructor: output.constructor.name,
+    outputKeys: Object.keys(output as Record<string, unknown>)
+  };
 }
 
 /**

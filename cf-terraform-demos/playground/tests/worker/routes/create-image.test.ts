@@ -13,7 +13,7 @@ import {
   createImageRouter
 } from '../../../src/worker/routes/create-image';
 import { FakeInference, type FakeInferenceOptions } from '../support/fake-inference';
-import { mountRoute, type LogCapture } from '../support/mount';
+import { createLogCapture, mountRoute, type LogCapture } from '../support/mount';
 
 /**
  * A reviewed image model exposing the full control set.
@@ -58,14 +58,21 @@ function mountCreateImage(
   identity: { email: string; sub: string } = { email: 'alice@example.com', sub: 'sub-alice' }
 ) {
   const inference = new FakeInference(options);
+  // The route's own logger and the service's are the same recorder, mirroring the composition root
+  // where both receive the request-scoped logger. A test that gave the service a separate one would
+  // not notice if the composition root stopped wiring it.
+  const { capture, logger } = createLogCapture();
   const createImageService = new CreateImageService({
     inference,
-    runs: createMemoryRunRepository()
+    runs: createMemoryRunRepository(),
+    logger
   });
-  const { app, logs } = mountRoute('/api/create-image', createImageRouter, {
+  const { app } = mountRoute('/api/create-image', createImageRouter, {
     identity,
-    createImageService
+    createImageService,
+    logger
   });
+  const logs = capture;
   app.onError(problemDetailsErrorHandler({ includeStack: false }));
   return { app, inference, logs };
 }
@@ -318,5 +325,110 @@ describe('POST /api/create-image', () => {
       );
       expect(completed?.context).toMatchObject({ runId: RUN_ID, model: MODEL.id });
     });
+  });
+});
+
+describe('POST /api/create-image diagnostics', () => {
+  // The question the logs could not answer: with two visually identical POSTs in an access log,
+  // which one was this? A start line carrying the run identifier and the settings answers it, and
+  // it is written before the model is called so it survives a failure, a timeout, or a cancellation.
+  it('logs the attempt before calling the model', async () => {
+    const { app, logs } = mountCreateImage({ failWith: new Error('boom') });
+    await post(app, body({ steps: 20, guidance: 7.5 }));
+
+    const started = logs.entries.find((entry) => entry.message === 'create_image_run_started');
+    expect(started).toBeDefined();
+    expect(started?.context).toMatchObject({ runId: RUN_ID, model: MODEL.id });
+  });
+
+  it('logs the requested controls and their values', async () => {
+    const { app, logs } = mountCreateImage();
+    await post(app, body({ steps: 20, guidance: 7.5, width: 512, height: 512, seed: 42 }));
+
+    const started = logs.entries.find((entry) => entry.message === 'create_image_run_started');
+    expect(started?.context?.['requested']).toMatchObject({
+      steps: 20,
+      guidance: 7.5,
+      width: 512,
+      height: 512,
+      seed: 42
+    });
+  });
+
+  // Naming only the controls that were supplied makes the line read as the visitor's decisions
+  // rather than a fixed set of fields padded with nulls.
+  it('names only the controls that were supplied', async () => {
+    const { app, logs } = mountCreateImage();
+    await post(app, body({ steps: 12 }));
+
+    const started = logs.entries.find((entry) => entry.message === 'create_image_run_started');
+    expect(started?.context?.['requestedControls']).toEqual(['steps']);
+  });
+
+  it('records whether a negative prompt was used without logging it', async () => {
+    const { app, logs } = mountCreateImage();
+    await post(app, body({ negativePrompt: 'people, cars' }));
+
+    const started = logs.entries.find((entry) => entry.message === 'create_image_run_started');
+    expect(started?.context?.['hasNegativePrompt']).toBe(true);
+    expect(started?.context?.['negativePromptLength']).toBe(12);
+    expect(logs.text()).not.toContain('people, cars');
+  });
+
+  it('records the prompt length but never the prompt text', async () => {
+    const { app, logs } = mountCreateImage();
+    await post(app, body({ prompt: 'a lighthouse' }));
+
+    const started = logs.entries.find((entry) => entry.message === 'create_image_run_started');
+    expect(started?.context?.['promptLength']).toBe(12);
+    expect(logs.text()).not.toContain('a lighthouse');
+  });
+
+  // Both halves of the story under one run identifier: the panel-level outcome and, from the
+  // inference client, the provider's own message.
+  it('repeats the settings on the failure line', async () => {
+    const { app, logs } = mountCreateImage({ failWith: new Error('boom') });
+    await post(app, body({ steps: 20 }));
+
+    const failed = logs.entries.find((entry) => entry.message === 'create_image_run_failed');
+    expect(failed?.context).toMatchObject({ runId: RUN_ID });
+    expect(failed?.context?.['requested']).toMatchObject({ steps: 20 });
+  });
+
+  it('never logs the verified email on any line', async () => {
+    const { app, logs } = mountCreateImage({ failWith: new Error('boom') });
+    await post(app, body({ steps: 20 }));
+
+    expect(logs.text()).not.toContain('alice@example.com');
+  });
+
+  // A refusal by our own validation looks identical to a provider error from the browser — both are
+  // a 502 — so the two must be distinguishable in the logs. They have different fixes.
+  it('logs an unusable provider output as a rejection, not a provider error', async () => {
+    const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x00, 0x00]);
+    const { app, logs } = mountCreateImage({ output: () => ({ image: encodeBase64(gif) }) });
+    await post(app, body());
+
+    const rejected = logs.entries.find((entry) => entry.message === 'create_image_output_unusable');
+    expect(rejected?.context?.['reason']).toBe('unrenderable_format');
+  });
+
+  // The leading bytes in hex reveal whether the payload was a GIF, a JSON error document, or HTML,
+  // without putting the payload itself in a log.
+  it('logs the leading bytes of an unrenderable payload', async () => {
+    const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x00, 0x00]);
+    const { app, logs } = mountCreateImage({ output: () => ({ image: encodeBase64(gif) }) });
+    await post(app, body());
+
+    const rejected = logs.entries.find((entry) => entry.message === 'create_image_output_unusable');
+    expect(String(rejected?.context?.['signature'])).toContain('47 49 46 38');
+  });
+
+  it('logs the keys of an unrecognised output envelope', async () => {
+    const { app, logs } = mountCreateImage({ output: () => ({ unexpected: 'shape', code: 7 }) });
+    await post(app, body());
+
+    const rejected = logs.entries.find((entry) => entry.message === 'create_image_output_unusable');
+    expect(rejected?.context?.['outputKeys']).toEqual(['unexpected', 'code']);
   });
 });

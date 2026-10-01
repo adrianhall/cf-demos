@@ -178,6 +178,66 @@ describe('browser code does not import the Worker\u2019s server tiers', () => {
   });
 });
 
+describe('failure diagnostics', () => {
+  // The regression that made a deployed 502 undiagnosable: the inference client caught the
+  // provider's error with a bare `catch {}` and threw a sanitised one, discarding the only
+  // description of what had actually gone wrong. Sanitising for the browser is right; discarding
+  // the cause is not, and the two are easy to conflate.
+  it('does not discard a thrown cause around a provider call', async () => {
+    const client = 'src/worker/infrastructure/ai/gateway-inference-client.ts';
+    const contents = stripComments(await readFile(path.join(demoRoot, client), 'utf8'));
+
+    // Scoped to `try` blocks that actually invoke the binding. A bare `catch` is legitimate when
+    // parsing one malformed SSE frame, where the cause carries no information a reader of the log
+    // could act on; it is not legitimate around a call whose failure is the thing being diagnosed.
+    const providerCalls = contents.matchAll(
+      /try\s*\{(?<body>[^}]*#ai\.(?:run|gateway)[^}]*)\}\s*catch(?<binding>\s*\{|\s*\()/gsu
+    );
+
+    const offenders = [...providerCalls].filter(
+      (match) => !match.groups?.['binding']?.includes('(')
+    );
+
+    expect(offenders.map((match) => match[0].slice(0, 80))).toEqual([]);
+  });
+
+  // Every provider call must be able to say why it failed. A client constructed without a logger
+  // is valid for a unit test, but the composition root has to supply one or the deployed Worker is
+  // blind in exactly the situation the logger exists for.
+  it('gives the inference client a logger in the composition root', async () => {
+    const contents = stripComments(
+      await readFile(path.join(demoRoot, 'src/worker/index.ts'), 'utf8')
+    );
+
+    expect(contents).toMatch(/new GatewayInferenceClient\(\{[^}]*logger:/su);
+  });
+
+  it('gives the Create Image service a logger in the composition root', async () => {
+    const contents = stripComments(
+      await readFile(path.join(demoRoot, 'src/worker/index.ts'), 'utf8')
+    );
+
+    expect(contents).toMatch(/new CreateImageService\(\{[^}]*logger:/su);
+  });
+
+  // A structured log must never carry the verified email: it belongs in AI Gateway metadata, which
+  // is a different retention domain with different access control. The literal field name is the
+  // thing to watch for, since that is how it would be added.
+  it('does not log the verified identity email anywhere in the Worker', async () => {
+    const offenders: string[] = [];
+
+    for (const file of await listSourceFiles(path.join(demoRoot, 'src/worker'))) {
+      const contents = stripComments(await readFile(path.join(demoRoot, file), 'utf8'));
+      // Matches a log call whose context object mentions an email field.
+      if (/logger[^;]*\b(?:warn|info|error)\s*\([^;]*\b(?:email|userEmail)\b/su.test(contents)) {
+        offenders.push(file);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('media handling', () => {
   // The specification requires generated media to stay transient in this phase: no R2 bucket, no
   // retention policy, no cleanup step at teardown. Introducing storage to make a panel work is a

@@ -46,10 +46,23 @@ resource "cloudflare_ai_gateway" "demo" {
   rate_limiting_interval  = 60
   rate_limiting_technique = "sliding"
 
-  # The gateway is only reachable through this Worker's own AI binding, which is already behind
-  # Cloudflare Access. An additional gateway authentication token would add a second secret to
-  # manage without adding a second boundary.
-  authentication = false
+  # Authenticated gateway: every request must carry a valid Cloudflare API token.
+  #
+  # This closes a real hole. A gateway's provider-native endpoint is reachable from the internet by
+  # anyone who learns the account ID and this gateway's name, and with authentication off such a
+  # request *succeeds* — spending this account's inference credit and inflating the log store that
+  # the demo's own cost figures are read from. Neither Cloudflare Access nor the Worker's own
+  # authorization protects that path, because it never touches the Worker.
+  #
+  # It costs this demo nothing, which is why the earlier "second secret to manage" reasoning was
+  # wrong: requests reaching a gateway through a Worker's AI binding are pre-authenticated by the
+  # account that owns both, so no token has to be minted, stored, or rotated for the binding to
+  # keep working. See
+  # https://developers.cloudflare.com/ai-gateway/configuration/authentication/#expected-behavior.
+  #
+  # The trade-off is deliberate and worth stating: with this on, a `curl` against the gateway's
+  # provider endpoint needs a token with `AI Gateway Run`. That is the point.
+  authentication = true
 
   # Third-party catalog models bill through Unified Billing with Cloudflare-managed credentials, so
   # the demo works without the presenter holding provider API keys. `byok_only` would require them.

@@ -2,7 +2,10 @@ import { Hono } from 'hono';
 import { currentIdentity, jsonBodyLimit, readJsonBody } from '@demos/worker-common';
 import type { CreateImageResponse } from '../../images';
 import type { AppBindings } from '../bindings';
-import { validateCreateImageRequest } from '../domain/create-image';
+import {
+  validateCreateImageRequest,
+  type ValidatedCreateImageRequest
+} from '../domain/create-image';
 
 /**
  * Largest Create Image request body accepted.
@@ -34,6 +37,42 @@ export const createImageRouter = new Hono<AppBindings>();
 createImageRouter.use(jsonBodyLimit(CREATE_IMAGE_BODY_LIMIT_BYTES));
 
 /**
+ * Summarises which controls a validated request actually asked for.
+ *
+ * Only the controls that were supplied appear, so a log line reads as the decisions the visitor
+ * made rather than a fixed set of fields padded with nulls. Every value here is a bounded number
+ * the visitor chose, which is what makes a failed attempt reproducible.
+ *
+ * @param request The validated request.
+ * @returns Structured fields naming the requested controls and their values.
+ */
+function describeRequestedControls(request: ValidatedCreateImageRequest): Record<string, unknown> {
+  const requested: Record<string, number> = {};
+
+  if (request.width !== undefined) {
+    requested['width'] = request.width;
+  }
+  if (request.height !== undefined) {
+    requested['height'] = request.height;
+  }
+  if (request.steps !== undefined) {
+    requested['steps'] = request.steps;
+  }
+  if (request.guidance !== undefined) {
+    requested['guidance'] = request.guidance;
+  }
+  if (request.seed !== undefined) {
+    requested['seed'] = request.seed;
+  }
+
+  return {
+    requestedControls: Object.keys(requested),
+    requested,
+    hasNegativePrompt: request.negativePrompt !== undefined
+  };
+}
+
+/**
  * Generates one image and returns it with its run receipt.
  *
  * Every failure is an ordinary RFC 9457 problem-details response. Unlike Chat there is no partially
@@ -57,6 +96,24 @@ createImageRouter.post('/', async (context) => {
   const actor = { email: identity.email, sub: identity.sub };
 
   const logger = context.var.LOGGER;
+
+  // Logged before the model is called, not only after. A request that fails inside the provider, or
+  // times out, or is cancelled mid-flight would otherwise leave no record of having been attempted
+  // — which is precisely the case where knowing what was asked for matters most. With this line,
+  // two POSTs that look identical in an access log are distinguishable by their run identifier and
+  // their settings.
+  //
+  // The prompt's length is recorded rather than its text: the text is the visitor's content, and
+  // the length still distinguishes an empty-looking request from a real one.
+  logger.info('create_image_run_started', {
+    runId: request.runId,
+    model: request.model.id,
+    contractVersion: request.model.contractVersion,
+    promptLength: [...request.prompt].length,
+    negativePromptLength:
+      request.negativePrompt === undefined ? 0 : [...request.negativePrompt].length,
+    ...describeRequestedControls(request)
+  });
 
   try {
     const result = await context.var.CREATE_IMAGE_SERVICE.generate(request, actor);
@@ -82,9 +139,13 @@ createImageRouter.post('/', async (context) => {
     };
     return context.json(response);
   } catch (cause) {
+    // The inference client has already logged the provider's own message against this same run
+    // identifier. This line records the panel-level outcome and repeats the settings, so one search
+    // for the run identifier returns both halves of the story.
     logger.warn('create_image_run_failed', {
       runId: request.runId,
-      model: request.model.id
+      model: request.model.id,
+      ...describeRequestedControls(request)
     });
     throw cause;
   }

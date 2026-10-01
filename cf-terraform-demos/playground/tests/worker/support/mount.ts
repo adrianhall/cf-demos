@@ -52,6 +52,11 @@ export interface MountOptions {
    * Create Image service the route should use.
    */
   createImageService?: CreateImageService;
+  /**
+   * Logger to place on the context, so a caller can share one recorder between the route and the
+   * services it calls — which is how the composition root wires them. Defaults to a fresh one.
+   */
+  logger?: Logger;
 }
 
 /**
@@ -103,7 +108,9 @@ export function mountRoute(
   router: Hono<AppBindings>,
   options: MountOptions = {}
 ): { app: Hono<AppBindings>; logs: LogCapture } {
-  const { capture, logger } = createLogCapture();
+  const fallback = createLogCapture();
+  const capture = fallback.capture;
+  const logger = options.logger ?? fallback.logger;
   // Typed with the application's own bindings, so `context.set` is checked against the real
   // `AppVariables` rather than silently accepting any key a test invents.
   const app = new Hono<AppBindings>();

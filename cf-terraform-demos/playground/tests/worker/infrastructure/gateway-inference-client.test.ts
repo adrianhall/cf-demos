@@ -479,3 +479,230 @@ describe('GatewayInferenceClient', () => {
     });
   });
 });
+
+describe('provider failure diagnostics', () => {
+  /**
+   * Builds a recorder matching the diagnostic logger port.
+   *
+   * @returns The recorder and its captured entries.
+   */
+  function recorder() {
+    const entries: { level: string; message: string; context?: Record<string, unknown> }[] = [];
+    return {
+      entries,
+      logger: {
+        warn: (message: string, context?: Record<string, unknown>) => {
+          entries.push({ level: 'warn', message, ...(context === undefined ? {} : { context }) });
+        },
+        error: (message: string, context?: Record<string, unknown>) => {
+          entries.push({ level: 'error', message, ...(context === undefined ? {} : { context }) });
+        }
+      }
+    };
+  }
+
+  /**
+   * Runs a failing call and returns what was logged.
+   *
+   * @param cause Error the binding should throw.
+   * @param input Model input to send.
+   * @returns The single logged entry's context.
+   */
+  async function failureContext(
+    cause: Error,
+    input: Record<string, unknown> = { prompt: 'a lighthouse', num_steps: 20 }
+  ): Promise<Record<string, unknown>> {
+    const { ai } = fakeAi({
+      run: () => {
+        throw cause;
+      },
+      logId: 'log-fail'
+    });
+    const { entries, logger } = recorder();
+    const client = new GatewayInferenceClient({ ai, gatewayId: 'playground', logger });
+
+    await client.run({ ...requestFrom(), input } as never).catch(() => undefined);
+
+    expect(entries).toHaveLength(1);
+    return (entries[0]?.context ?? {}) as Record<string, unknown>;
+  }
+
+  // The regression this whole change exists to prevent. A bare `catch` discarded the provider's own
+  // message, which left a 502 with nothing behind it and no way to tell why a panel had failed.
+  it('logs the provider\u2019s actual error message', async () => {
+    const context = await failureContext(new Error('input must be an object'));
+    expect(context['errorMessage']).toBe('input must be an object');
+  });
+
+  it('logs the error type', async () => {
+    const context = await failureContext(new TypeError('bad input'));
+    expect(context['errorName']).toBe('TypeError');
+  });
+
+  it('logs a wrapped cause one level down', async () => {
+    const context = await failureContext(
+      new Error('outer', { cause: new Error('the real reason') })
+    );
+    expect(context['errorCause']).toBe('the real reason');
+  });
+
+  it('survives a thrown non-Error', async () => {
+    const { ai } = fakeAi({
+      run: () => {
+        throw 'a bare string';
+      }
+    });
+    const { entries, logger } = recorder();
+    const client = new GatewayInferenceClient({ ai, gatewayId: 'playground', logger });
+
+    await client.run(requestFrom()).catch(() => undefined);
+    expect(entries[0]?.context?.['errorMessage']).toBe('a bare string');
+  });
+
+  // Answers "was this the first or the second POST?" — the question that was unanswerable from the
+  // logs before.
+  it('logs the run identifier, model, and panel', async () => {
+    const context = await failureContext(new Error('boom'));
+    expect(context['runId']).toBe('run-1');
+    expect(context['model']).toBe('@cf/test/model');
+    expect(context['task']).toBe('chat');
+  });
+
+  // The most common integration failure is sending a parameter a model's schema does not accept.
+  // Recording the exact keys that went on the wire diagnoses it in one line.
+  it('logs the parameter names that were sent', async () => {
+    const context = await failureContext(new Error('boom'), {
+      prompt: 'x',
+      negative_prompt: 'people, cars',
+      num_steps: 20,
+      guidance: 7.5
+    });
+    expect(context['parameterNames']).toEqual([
+      'prompt',
+      'negative_prompt',
+      'num_steps',
+      'guidance'
+    ]);
+  });
+
+  it('logs the values of bounded numeric controls', async () => {
+    const context = await failureContext(new Error('boom'), {
+      prompt: 'x',
+      num_steps: 20,
+      guidance: 7.5,
+      seed: 42
+    });
+    expect(context['parameters']).toMatchObject({ num_steps: 20, guidance: 7.5, seed: 42 });
+  });
+
+  // The prompt is the visitor's content and belongs in neither Worker logs nor gateway logs. Its
+  // length is still recorded, because an empty prompt and a real one fail differently.
+  it('logs prompt length but never prompt text', async () => {
+    const context = await failureContext(new Error('boom'), {
+      prompt: 'my private prompt',
+      negative_prompt: 'people'
+    });
+
+    const serialised = JSON.stringify(context);
+    expect(serialised).not.toContain('my private prompt');
+    expect(serialised).not.toContain('people');
+    expect((context['parameters'] as Record<string, unknown>)['promptLength']).toBe(17);
+  });
+
+  it('never logs the verified email', async () => {
+    const context = await failureContext(new Error('boom'));
+    expect(JSON.stringify(context)).not.toContain('alice@example.com');
+  });
+
+  // The thread between a Worker log line and the AI Gateway dashboard entry. Its absence is itself
+  // a finding: the request never reached the gateway.
+  it('logs the gateway log identifier when one was assigned', async () => {
+    const context = await failureContext(new Error('boom'));
+    expect(context['gatewayLogId']).toBe('log-fail');
+  });
+
+  it('logs a null gateway log identifier when none was assigned', async () => {
+    const { ai } = fakeAi({
+      run: () => {
+        throw new Error('boom');
+      },
+      logId: null
+    });
+    const { entries, logger } = recorder();
+    const client = new GatewayInferenceClient({ ai, gatewayId: 'playground', logger });
+
+    await client.run(requestFrom()).catch(() => undefined);
+    expect(entries[0]?.context?.['gatewayLogId']).toBeNull();
+  });
+
+  it('logs the gateway the request was routed through', async () => {
+    const context = await failureContext(new Error('boom'));
+    expect(context['gatewayId']).toBe('playground');
+  });
+
+  it('records the failure at error level under a searchable name', async () => {
+    const { ai } = fakeAi({
+      run: () => {
+        throw new Error('boom');
+      }
+    });
+    const { entries, logger } = recorder();
+    const client = new GatewayInferenceClient({ ai, gatewayId: 'playground', logger });
+
+    await client.run(requestFrom()).catch(() => undefined);
+    expect(entries[0]?.level).toBe('error');
+    expect(entries[0]?.message).toBe('inference_provider_failed');
+  });
+
+  // Logging the provider's message must not change what the browser is told.
+  it('still returns a sanitised message to the caller', async () => {
+    const { ai } = fakeAi({
+      run: () => {
+        throw new Error('upstream: prompt "my secret" rejected by internal-host-7');
+      }
+    });
+    const { logger } = recorder();
+    const client = new GatewayInferenceClient({ ai, gatewayId: 'playground', logger });
+
+    const error = await client.run(requestFrom()).catch((cause: unknown) => cause);
+    const serialised = JSON.stringify(error);
+    expect(serialised).not.toContain('my secret');
+    expect(serialised).not.toContain('internal-host-7');
+  });
+
+  it('works without a logger, as a unit test may omit one', async () => {
+    const { ai } = fakeAi({
+      run: () => {
+        throw new Error('boom');
+      }
+    });
+    const client = new GatewayInferenceClient({ ai, gatewayId: 'playground' });
+
+    await expect(client.run(requestFrom())).rejects.toMatchObject(problemWithStatus(502));
+  });
+
+  // A streamed call fails through the same path, so it gets the same diagnostics.
+  it('logs a streamed call\u2019s failure the same way', async () => {
+    const { ai } = fakeAi({
+      run: () => {
+        throw new Error('stream refused');
+      }
+    });
+    const { entries, logger } = recorder();
+    const client = new GatewayInferenceClient({ ai, gatewayId: 'playground', logger });
+
+    await client.runStream(requestFrom()).catch(() => undefined);
+    expect(entries[0]?.context?.['errorMessage']).toBe('stream refused');
+  });
+
+  // Asking for a stream and receiving an object is a contract mismatch, and the log says so rather
+  // than reporting a generic provider error.
+  it('logs a non-stream response as a shape mismatch', async () => {
+    const { ai } = fakeAi({ run: () => ({ response: 'not a stream' }) });
+    const { entries, logger } = recorder();
+    const client = new GatewayInferenceClient({ ai, gatewayId: 'playground', logger });
+
+    await client.runStream(requestFrom()).catch(() => undefined);
+    expect(String(entries[0]?.context?.['errorMessage'])).toMatch(/Expected a stream/u);
+  });
+});

@@ -10,6 +10,7 @@
 import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-details';
 import type { GatewayRequestMetric } from '../../../runs';
 import { parseSseBuffer } from '../../../sse';
+import type { DiagnosticLogger } from '../../application/ports/diagnostic-logger-port';
 import type {
   InferencePort,
   InferenceRequest,
@@ -76,6 +77,70 @@ function extractStreamedText(data: string): string | undefined {
 }
 
 /**
+ * Input fields whose _values_ are safe to log.
+ *
+ * An allowlist, not a denylist. Every entry here is a numeric or boolean control a visitor chose
+ * from a bounded range, which is exactly what is needed to reproduce a failed attempt — and nothing
+ * here is the visitor's content. A denylist would eventually leak a field somebody added later.
+ */
+const LOGGABLE_PARAMETER_VALUES: readonly string[] = [
+  'steps',
+  'num_steps',
+  'width',
+  'height',
+  'guidance',
+  'seed',
+  'strength',
+  'temperature',
+  'max_tokens',
+  'top_p',
+  'top_k',
+  'stream',
+  'raw'
+];
+
+/**
+ * Summarises a model input for a structured log.
+ *
+ * Reports two things: the full list of parameter _names_ sent, and the values of those on the
+ * allowlist. The name list is what catches the most common integration failure — sending a model a
+ * parameter its schema does not accept — because it shows what actually went on the wire rather
+ * than what the code intended.
+ *
+ * Text and binary fields are reduced to their length. A prompt is the visitor's content and does
+ * not belong in a Worker log, but knowing it was 48 characters rather than empty is often the
+ * difference between a quick diagnosis and a long one.
+ *
+ * @param input The model input that was sent.
+ * @returns Structured fields describing the request's shape.
+ */
+function describeParameters(input: unknown): Record<string, unknown> {
+  if (typeof input !== 'object' || input === null) {
+    return { inputShape: typeof input };
+  }
+
+  const record = input as Record<string, unknown>;
+  const parameters: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(record)) {
+    if (LOGGABLE_PARAMETER_VALUES.includes(key)) {
+      parameters[key] = value;
+    } else if (typeof value === 'string') {
+      parameters[`${key}Length`] = value.length;
+    } else if (Array.isArray(value)) {
+      parameters[`${key}Count`] = value.length;
+    }
+  }
+
+  return {
+    // The exact keys sent, in order. A model that rejects an undeclared parameter is diagnosed
+    // immediately from this line.
+    parameterNames: Object.keys(record),
+    parameters
+  };
+}
+
+/**
  * Dependencies required to talk to Workers AI through the configured gateway.
  */
 export interface GatewayInferenceClientOptions {
@@ -88,6 +153,69 @@ export interface GatewayInferenceClientOptions {
    * binding that Terraform's output populates.
    */
   gatewayId: string;
+  /**
+   * Where provider failures are recorded.
+   *
+   * Supplied by the composition root. The client logs the provider's own message here and returns a
+   * sanitised one to the caller, which is the only arrangement that satisfies both requirements at
+   * once: a visitor must not see a provider's internals, and an operator must not be left
+   * guessing.
+   *
+   * Optional so a unit test can omit it, but the composition root always passes one.
+   */
+  logger?: DiagnosticLogger;
+}
+
+/**
+ * Extracts a loggable description from an unknown thrown value.
+ *
+ * Workers AI throws `Error` subclasses whose `message` carries the provider's actual complaint —
+ * "input must be an object", a model-specific validation failure, a capacity error. That text is
+ * the single most useful thing when a panel fails, and discarding it was why a `502` from this
+ * client used to be undiagnosable.
+ *
+ * @param cause The thrown value.
+ * @returns Name, message, and stack where available, ready to put in a structured log.
+ */
+function describeCause(cause: unknown): Record<string, unknown> {
+  if (cause instanceof Error) {
+    return {
+      errorName: cause.name,
+      errorMessage: cause.message,
+      // A provider error frequently wraps another. Reading one level down is usually where the
+      // actionable detail is. A non-Error cause is JSON-encoded rather than coerced with `String`,
+      // which would render an object as the useless `[object Object]`.
+      ...(cause.cause === undefined ? {} : { errorCause: describeUnknown(cause.cause) })
+    };
+  }
+
+  return { errorName: 'NonError', errorMessage: describeUnknown(cause) };
+}
+
+/**
+ * Renders an unknown thrown value as readable text.
+ *
+ * `String(value)` on an object produces `[object Object]`, which occupies a log line while saying
+ * nothing. JSON encoding keeps the detail; a value that cannot be encoded — a circular structure —
+ * falls back to its type so the line still records that something was thrown.
+ *
+ * @param value The value to describe.
+ * @returns A readable description.
+ */
+function describeUnknown(value: unknown): string {
+  if (value instanceof Error) {
+    return value.message;
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return `[unserialisable ${value.constructor.name}]`;
+    }
+  }
+
+  return typeof value === 'string' ? value : (JSON.stringify(value) ?? typeof value);
 }
 
 /**
@@ -100,6 +228,7 @@ export interface GatewayInferenceClientOptions {
 export class GatewayInferenceClient implements InferencePort {
   readonly #ai: Ai;
   readonly #gatewayId: string;
+  readonly #logger: DiagnosticLogger | undefined;
 
   /**
    * Creates a client bound to one gateway.
@@ -121,6 +250,7 @@ export class GatewayInferenceClient implements InferencePort {
 
     this.#ai = options.ai;
     this.#gatewayId = options.gatewayId;
+    this.#logger = options.logger;
   }
 
   /**
@@ -159,8 +289,8 @@ export class GatewayInferenceClient implements InferencePort {
         logId: this.#ai.aiGatewayLogId ?? undefined,
         elapsedMs: Date.now() - startedAt
       };
-    } catch {
-      throw this.#providerFailure();
+    } catch (cause) {
+      throw this.#providerFailure(request, cause, Date.now() - startedAt);
     }
   }
 
@@ -187,15 +317,23 @@ export class GatewayInferenceClient implements InferencePort {
     const options = this.#optionsFor(request);
     const input = { ...(request.input as Record<string, unknown>), stream: true };
 
+    const startedAt = Date.now();
     let raw: unknown;
     try {
       raw = await this.#ai.run(request.model.id, input, options);
-    } catch {
-      throw this.#providerFailure();
+    } catch (cause) {
+      throw this.#providerFailure(request, cause, Date.now() - startedAt);
     }
 
     if (!(raw instanceof ReadableStream)) {
-      throw this.#providerFailure();
+      // Asking for a stream and receiving something else is a contract mismatch, so it is reported
+      // as one rather than as a generic provider error — the distinction matters when a model's
+      // output shape changes under us.
+      throw this.#providerFailure(
+        request,
+        new Error(`Expected a stream but the provider returned ${typeof raw}.`),
+        Date.now() - startedAt
+      );
     }
 
     // Captured before the first chunk is read and resolved after the last. `aiGatewayLogId` always
@@ -278,14 +416,45 @@ export class GatewayInferenceClient implements InferencePort {
   }
 
   /**
-   * Builds the sanitised error returned when a provider call fails.
+   * Logs a provider failure in full and returns the sanitised error to raise.
    *
-   * The provider's own message is never included. It can contain prompt fragments and internal
-   * endpoint names, and neither belongs in a response to a browser.
+   * These two jobs are deliberately in one function, because doing only one of them is the bug this
+   * replaced. The provider's own message cannot go to the browser — it can carry prompt fragments
+   * and internal endpoint names — but discarding it entirely left a `502` with nothing behind it,
+   * and no way to tell which request had failed or why.
    *
+   * The log records the shape of the request rather than its content: the model, the panel, the run
+   * identifier, which parameters were sent and what they were set to. Those are the fields that
+   * identify _which_ attempt failed and make a provider's complaint actionable. The prompt text and
+   * the verified email are both excluded — the email belongs in AI Gateway metadata only, and the
+   * prompt is the visitor's content.
+   *
+   * @typeParam TInput Model-specific input payload.
+   * @param request The call that failed.
+   * @param cause The value the binding threw.
+   * @param elapsedMs How long the attempt took before failing.
    * @returns A `502` problem-details error with a message a visitor can act on.
    */
-  #providerFailure(): ProblemDetailsError {
+  #providerFailure<TInput>(
+    request: InferenceRequest<TInput>,
+    cause: unknown,
+    elapsedMs: number
+  ): ProblemDetailsError {
+    this.#logger?.error('inference_provider_failed', {
+      task: request.task,
+      model: request.model.id,
+      runId: request.runId,
+      gatewayId: this.#gatewayId,
+      contractVersion: request.model.contractVersion,
+      elapsedMs,
+      // The gateway may have assigned a log before failing. When it did, this is the thread that
+      // ties the Worker log to the AI Gateway dashboard entry; when it did not, its absence is
+      // itself the finding — the request never reached the gateway.
+      gatewayLogId: this.#ai.aiGatewayLogId ?? null,
+      ...describeParameters(request.input),
+      ...describeCause(cause)
+    });
+
     return new ProblemDetailsError({
       status: 502,
       title: 'The model could not complete this request',
@@ -317,7 +486,16 @@ export class GatewayInferenceClient implements InferencePort {
         tokensIn: log.tokens_in,
         tokensOut: log.tokens_out
       };
-    } catch {
+    } catch (cause) {
+      // A log that has not propagated yet is the common case and is not an error, so this stays at
+      // `warn` and still returns `undefined` for the caller to retry. The cause is recorded anyway:
+      // an unpropagated log and a genuinely broken `getLog` call are indistinguishable from the
+      // return value alone, and a run stuck permanently at "cost pending" is diagnosed from here.
+      this.#logger?.warn('gateway_log_unavailable', {
+        logId,
+        gatewayId: this.#gatewayId,
+        ...describeCause(cause)
+      });
       return undefined;
     }
   }
