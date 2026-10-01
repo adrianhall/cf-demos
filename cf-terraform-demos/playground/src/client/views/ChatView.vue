@@ -91,11 +91,17 @@ function onKeydown(event: KeyboardEvent): void {
         Stated before the first request rather than in a footnote afterwards. The demo records the
         visitor's verified email in AI Gateway metadata, and they are entitled to know that before
         they send anything rather than after.
+
+        It deliberately makes no promise about what the gateway retains. This demo asks AI Gateway
+        not to store payloads, but a retention guarantee is the platform's to give, not this
+        application's — so the panel tells a visitor to assume their prompt is logged rather than
+        asserting something it cannot verify on the visitor's behalf.
       -->
       <p class="attribution" role="note">
         This panel calls a real model and spends real inference credit. Your verified email is
-        recorded in the AI Gateway log for each request so spending can be attributed; your prompt
-        and the answer are not stored.
+        recorded in the AI Gateway log for each request so spending can be attributed. Assume your
+        prompt and the answer are logged too: treat this as you would any shared AI service and do
+        not enter anything confidential.
       </p>
 
       <ChatTranscript :turns="turns" />

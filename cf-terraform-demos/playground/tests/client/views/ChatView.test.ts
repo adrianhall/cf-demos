@@ -96,8 +96,21 @@ describe('ChatView', () => {
     expect((await mountChat()).text()).toMatch(/real inference credit/iu);
   });
 
-  it('states that the prompt and answer are not stored', async () => {
-    expect((await mountChat()).text()).toMatch(/not stored/iu);
+  // Tells the visitor to assume their prompt is logged, rather than promising it is not. Payload
+  // retention is AI Gateway's behaviour, the AI binding exposes no payload-collection option, and
+  // the gateway documents that a log can include the prompt — so a reassurance here would be a
+  // claim this application cannot keep on a visitor's behalf.
+  it('warns that the prompt should be assumed logged', async () => {
+    const text = (await mountChat()).text();
+    expect(text).toMatch(/assume your prompt and the answer are logged/iu);
+    expect(text).toMatch(/nothing confidential|anything confidential/iu);
+  });
+
+  it('makes no promise that the prompt or answer is unretained', async () => {
+    const text = (await mountChat()).text();
+    expect(text).not.toMatch(/not stored/iu);
+    expect(text).not.toMatch(/not retained/iu);
+    expect(text).not.toMatch(/never stored/iu);
   });
 
   it('offers every reviewed model from the catalogue', async () => {

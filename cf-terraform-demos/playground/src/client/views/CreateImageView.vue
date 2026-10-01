@@ -116,12 +116,17 @@ function loadExample(example: ImageExample): void {
         Stated before the first request rather than in a footnote afterwards, exactly as Chat does.
         Image models are billed per image or per step, which is materially more per click than a
         short chat answer, so the warning is worth making concrete.
+
+        It deliberately makes no promise about what the gateway retains. This demo asks AI Gateway
+        not to store payloads, but a retention guarantee is the platform's to give, not this
+        application's — so the panel tells a visitor to assume their prompt is logged rather than
+        asserting something it cannot verify on the visitor's behalf.
       -->
       <p class="attribution" role="note">
         This panel calls a real model and spends real inference credit — an image costs noticeably
         more per request than a short chat answer. Your verified email is recorded in the AI Gateway
-        log for each request so spending can be attributed; your prompt and the generated image are
-        not stored.
+        log for each request so spending can be attributed. Assume your prompt is logged too: treat
+        this as you would any shared AI service and do not enter anything confidential.
       </p>
 
       <p v-if="error" class="error" role="alert">{{ error }}</p>

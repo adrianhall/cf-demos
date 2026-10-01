@@ -113,8 +113,21 @@ describe('CreateImageView', () => {
     expect((await mountView()).text()).toMatch(/more per request than a short chat answer/iu);
   });
 
-  it('states that the prompt and image are not stored', async () => {
-    expect((await mountView()).text()).toMatch(/not stored/iu);
+  // Tells the visitor to assume their prompt is logged, rather than promising it is not. Payload
+  // retention is AI Gateway's behaviour, the AI binding exposes no payload-collection option, and
+  // the gateway documents that a log can include the prompt — so a reassurance here would be a
+  // claim this application cannot keep on a visitor's behalf.
+  it('warns that the prompt should be assumed logged', async () => {
+    const text = (await mountView()).text();
+    expect(text).toMatch(/assume your prompt is logged/iu);
+    expect(text).toMatch(/nothing confidential|anything confidential/iu);
+  });
+
+  it('makes no promise that the prompt or image is unretained', async () => {
+    const text = (await mountView()).text();
+    expect(text).not.toMatch(/not stored/iu);
+    expect(text).not.toMatch(/not retained/iu);
+    expect(text).not.toMatch(/never stored/iu);
   });
 
   it('labels the prompt field', async () => {

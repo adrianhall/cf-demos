@@ -20,11 +20,15 @@ resource "cloudflare_ai_gateway" "demo" {
   # this off would leave every panel showing "Unavailable" for cost.
   collect_logs = true
 
-  # Log *metadata* is collected, but request and response payloads are not stored. The demo sends
-  # `cf-aig-collect-log-payload: false` per request (see the inference client), so prompts,
-  # generated images, transcripts, and model output never land in a retained log. The verified user
-  # email is attached as custom metadata instead, which is the identifying field this demo
-  # deliberately keeps and documents in the UI.
+  # The demo asks for metadata-only logging by sending `cf-aig-collect-log-payload: false` per
+  # request (see the inference client). That is good practice, not a guarantee the application can
+  # make on a visitor's behalf: payload retention is the gateway's behaviour, the AI binding exposes
+  # no payload-collection option so the request travels as an extra header, and AI Gateway documents
+  # that a log can include the prompt and response. The panels therefore tell visitors to assume
+  # their prompt is logged rather than promising otherwise.
+  #
+  # The verified user email is attached as custom metadata, which is the identifying field this demo
+  # deliberately keeps and states plainly in the UI before anything is submitted.
   log_management          = 10000
   log_management_strategy = "DELETE_OLDEST"
   # Classification would have Cloudflare process stored prompts and responses to categorise them.

@@ -20,11 +20,18 @@ import type {
 import { buildGatewayMetadata } from './gateway-metadata';
 
 /**
- * Header that tells AI Gateway to log metadata but not store request and response payloads.
+ * Header asking AI Gateway to log metadata without storing request and response payloads.
  *
- * Without it the gateway retains prompts and model output alongside the metrics. This demo needs
- * only the metrics — cost, tokens, cache state, duration — so it opts out of payload storage and
- * can then truthfully tell a visitor that their prompt is not retained.
+ * This demo needs only the metrics — cost, tokens, cache state, duration — so it opts out of
+ * payload storage as a matter of good practice.
+ *
+ * It is deliberately **not** the basis of a privacy promise to the visitor, and the UI makes no
+ * such promise. Three reasons: payload retention is AI Gateway's behaviour rather than this
+ * application's to guarantee; `GatewayOptions` on the AI binding exposes no payload-collection
+ * field, so this travels as `extraHeaders` and the application cannot confirm it was honoured; and
+ * the gateway's own documentation states that a log can include the prompt and response. The panels
+ * therefore tell a visitor to assume their prompt is logged, which is a claim that stays true
+ * whatever the platform does.
  */
 const COLLECT_LOG_PAYLOAD_HEADER = 'cf-aig-collect-log-payload';
 

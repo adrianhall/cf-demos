@@ -150,8 +150,18 @@ describe('ImageGallery', () => {
 
   // The images are transient by design — no R2 bucket, no retention policy — and a visitor who
   // reloads and loses their results deserves to have been told.
-  it('states that results are not stored on the server', () => {
-    expect(mountGallery([entry()]).text()).toMatch(/nothing is stored on the server/iu);
+  //
+  // Scoped to this demo's own storage, which is a claim it can keep. Phrasing it as "nothing is
+  // stored anywhere" would extend it to AI Gateway's retention, which this application does not
+  // control and must not speak for.
+  it('states that this demo keeps no copy of a result', () => {
+    expect(mountGallery([entry()]).text()).toMatch(/this demo keeps no copy/iu);
+  });
+
+  it('does not claim that nothing is stored anywhere', () => {
+    const text = mountGallery([entry()]).text();
+    expect(text).not.toMatch(/nothing is stored on the server/iu);
+    expect(text).not.toMatch(/not retained/iu);
   });
 
   it('labels itself for assistive technology', () => {

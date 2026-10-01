@@ -19,9 +19,16 @@ defineProps<{
 <template>
   <section v-if="entries.length > 0" class="gallery" aria-labelledby="gallery-heading">
     <h2 id="gallery-heading" class="section-heading">Results</h2>
+    <!--
+      Scoped to what this application does, which is a claim it can actually keep: no R2 bucket, no
+      database, nothing persisted (an architecture test fails the build if a storage binding is
+      added). It says "this demo stores no copy" rather than "nothing is stored anywhere", because
+      the latter would be a statement about AI Gateway's retention that this application is in no
+      position to make.
+    -->
     <p class="gallery-note">
-      Newest first. Images are held in this browser tab only — nothing is stored on the server, so
-      they are gone when you reload.
+      Newest first. Images are held in this browser tab only — this demo keeps no copy, so they are
+      gone when you reload.
     </p>
 
     <ol class="results">

@@ -168,8 +168,14 @@ naming its tokenizer is a number people will quote.
   never substitutes `$0.00`. A free-looking run and an unmeasured run are different claims.
 - **Pricing units are not all tokens.** Music bills per track, speech per second of audio. The
   session meter labels the unit rather than implying the numbers are comparable.
-- **Prompts and output are not retained.** Each request sends `cf-aig-collect-log-payload: false`,
-  so the gateway records metrics without storing what you typed or what came back.
+- **Assume your prompt is logged.** Each request sends `cf-aig-collect-log-payload: false`, which
+  asks AI Gateway to record metrics without storing payloads — but the panels do **not** promise
+  that your prompt is unretained, and neither does this README. AI Gateway's own documentation says
+  a log "can include the prompt, response, provider, timestamp, status, token usage, cost,
+  duration", payload storage is the platform's behaviour rather than this application's to
+  guarantee, and the request header is not something the application can verify took effect. A
+  privacy claim nobody can check is worth less than an honest warning, so each panel tells a visitor
+  to treat it as any shared AI service and enter nothing confidential.
 - **Your email _is_ recorded.** Every inference request attaches the verified Access email to its
   gateway metadata, so spending in a shared demo can be traced to the person who caused it. This is
   a deliberate departure from logging nothing personal, and the Activity page states it plainly
