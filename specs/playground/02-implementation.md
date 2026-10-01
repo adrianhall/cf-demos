@@ -445,7 +445,7 @@ Deliver **Classify Text** as fixed-label classification, distinct from Evaluate 
 
 ### Goal
 
-Deliver **Evaluate Choices**, the structured-evaluation panel for `typesafe/jev`.
+Deliver **Evaluate Choices**, the structured-evaluation panel for `typesafe/jev`.  In addition, `clef` is now available from Cloudflare and should be the default choice.  See <https://blog.cloudflare.com/clef-decision-models/>.
 
 ### Deliverables
 
