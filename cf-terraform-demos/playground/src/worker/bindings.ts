@@ -1,5 +1,6 @@
 import type { CloudflareToolkitVariables } from '@adrianhall/cloudflare-toolkit/hono';
 import type { ChatService } from './application/chat/chat-service';
+import type { CreateImageService } from './application/create-image/create-image-service';
 import type { MetricsService } from './application/metrics/metrics-service';
 
 /**
@@ -15,6 +16,10 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * The Chat use case, bound to this request's gateway client and run store.
    */
   CHAT_SERVICE: ChatService;
+  /**
+   * The Create Image use case, sharing this request's gateway client and run store.
+   */
+  CREATE_IMAGE_SERVICE: CreateImageService;
   /**
    * The run-metrics use case, sharing this request's gateway client and run store.
    */

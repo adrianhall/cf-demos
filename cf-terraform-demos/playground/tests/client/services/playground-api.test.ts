@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatRequest, ChatStreamEvent } from '../../../src/chat';
-import { ApiError, fetchRunMetrics, streamChat } from '../../../src/client/services/playground-api';
+import {
+  ApiError,
+  createImage,
+  fetchRunMetrics,
+  streamChat
+} from '../../../src/client/services/playground-api';
+import type { CreateImageRequest } from '../../../src/images';
 import { formatSseFrame } from '../../../src/sse';
 
 /**
@@ -238,5 +244,107 @@ describe('fetchRunMetrics', () => {
     const error = await fetchRunMetrics('run-1').catch((cause: unknown) => cause);
     expect((error as ApiError).status).toBe(403);
     expect((error as ApiError).message).toBe('Not yours.');
+  });
+});
+
+describe('createImage', () => {
+  /**
+   * A valid image request.
+   */
+  const IMAGE_REQUEST: CreateImageRequest = {
+    prompt: 'a lighthouse',
+    model: '@cf/black-forest-labs/flux-1-schnell',
+    runId: 'f00dbabe-1111-4222-8333-444455556666'
+  };
+
+  /**
+   * A successful response body.
+   */
+  const RESULT = {
+    image: { base64: 'AAAA', mediaType: 'image/png', byteLength: 1_024 },
+    receipt: {
+      runId: IMAGE_REQUEST.runId,
+      task: 'create-image',
+      model: IMAGE_REQUEST.model,
+      gatewayRouted: true,
+      logIds: ['log-1'],
+      status: 'completed',
+      costStatus: 'pending',
+      elapsedMs: 4_200,
+      startedAt: '2026-04-01T09:15:00.000Z'
+    },
+    applied: { prompt: 'a lighthouse', model: IMAGE_REQUEST.model, steps: 4 }
+  };
+
+  /**
+   * Stubs `fetch` with a JSON response.
+   *
+   * @param payload Body to return.
+   * @param status HTTP status to return.
+   * @returns The fetch spy.
+   */
+  function stubJson(payload: unknown, status = 200) {
+    const spy = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(payload), {
+          status,
+          headers: { 'content-type': 'application/json' }
+        })
+      )
+    );
+    vi.stubGlobal('fetch', spy);
+    return spy;
+  }
+
+  it('posts the request as JSON to the image route', async () => {
+    const spy = stubJson(RESULT);
+    await createImage(IMAGE_REQUEST);
+
+    const [url, init] = lastCall(spy);
+    expect(url).toBe('/api/create-image');
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(typeof init?.body === 'string' ? init.body : '')).toEqual(IMAGE_REQUEST);
+  });
+
+  it('returns the image, receipt, and applied controls', async () => {
+    stubJson(RESULT);
+    const result = await createImage(IMAGE_REQUEST);
+
+    expect(result.image.mediaType).toBe('image/png');
+    expect(result.receipt.task).toBe('create-image');
+    expect(result.applied.steps).toBe(4);
+  });
+
+  // The server's own explanation is the one written for a visitor — particularly here, where it
+  // names the control and the model that does not support it.
+  it('throws an ApiError carrying the problem detail', async () => {
+    stubJson({ status: 400, detail: 'FLUX.1 [schnell] does not support "seed".' }, 400);
+
+    await expect(createImage(IMAGE_REQUEST)).rejects.toThrow(/does not support "seed"/u);
+  });
+
+  it('reports the status on the thrown ApiError', async () => {
+    stubJson({ status: 502, detail: 'The image could not be generated.' }, 502);
+
+    const error = await createImage(IMAGE_REQUEST).catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(502);
+  });
+
+  it('falls back to a status message when the failure is not a problem document', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response('<html>Gateway timeout</html>', { status: 504 })))
+    );
+
+    await expect(createImage(IMAGE_REQUEST)).rejects.toThrow(/504/u);
+  });
+
+  it('forwards an abort signal to fetch', async () => {
+    const spy = stubJson(RESULT);
+    const controller = new AbortController();
+
+    await createImage(IMAGE_REQUEST, controller.signal);
+    expect(lastCall(spy)[1]?.signal).toBe(controller.signal);
   });
 });

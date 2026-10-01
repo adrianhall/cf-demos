@@ -43,6 +43,18 @@ export interface FakeInferenceOptions {
    * How many chunks to yield before `failMidStream` is thrown.
    */
   failAfter?: number;
+  /**
+   * Exact output the synchronous call returns, replacing the default text shape.
+   *
+   * Needed because providers genuinely disagree about output shape: a text model answers `{
+   * response }`, one image model answers `{ image: "<base64>" }`, and another answers with a raw
+   * byte stream. A fake that could only produce one shape could not exercise the normalisation that
+   * exists precisely to absorb that disagreement.
+   *
+   * A function rather than a value, so a test can hand over a fresh `ReadableStream` per call — a
+   * stream is single-use, and a shared one would be consumed by the first test to read it.
+   */
+  output?: () => unknown;
 }
 
 /**
@@ -77,7 +89,8 @@ export class FakeInference implements InferencePort {
    * @typeParam TInput Model-specific input payload.
    * @typeParam TOutput Model-specific output payload.
    * @param request The call being made.
-   * @returns The joined chunks as a `response` field, mirroring the real text-generation contract.
+   * @returns The configured `output` when one was given, otherwise the joined chunks as a
+   *   `response` field, mirroring the real text-generation contract.
    * @throws {Error} The configured `failWith`, when one was given.
    */
   async run<TInput, TOutput>(request: InferenceRequest<TInput>): Promise<InferenceResult<TOutput>> {
@@ -86,8 +99,13 @@ export class FakeInference implements InferencePort {
       throw this.#options.failWith;
     }
 
+    const output =
+      this.#options.output === undefined
+        ? { response: (this.#options.chunks ?? []).join('') }
+        : this.#options.output();
+
     return {
-      output: { response: (this.#options.chunks ?? []).join('') } as TOutput,
+      output: output as TOutput,
       ...(this.#logId() === undefined ? {} : { logId: this.#logId() }),
       elapsedMs: 1
     };

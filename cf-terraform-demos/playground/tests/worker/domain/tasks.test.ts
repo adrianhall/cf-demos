@@ -53,13 +53,17 @@ describe('TASK_DESCRIPTORS', () => {
   // view of its own.
   it('marks exactly the panels delivered so far as available', () => {
     const available = TASK_DESCRIPTORS.filter((task) => task.availability === 'available');
-    expect(available.map((task) => task.id).sort()).toEqual(['chat', 'view-tokens']);
+    expect(available.map((task) => task.id).sort()).toEqual([
+      'chat',
+      'create-image',
+      'view-tokens'
+    ]);
   });
 
   // The phase number is quoted in the placeholder, so a panel still marked planned for a phase
   // already delivered would tell a visitor to wait for something that exists.
   it('marks every panel from a delivered phase as available', () => {
-    const deliveredThroughPhase = 3;
+    const deliveredThroughPhase = 4;
     for (const task of TASK_DESCRIPTORS) {
       if (task.phase <= deliveredThroughPhase) {
         expect(task.availability, `${task.name} is in a delivered phase`).toBe('available');

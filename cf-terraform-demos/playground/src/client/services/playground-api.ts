@@ -5,6 +5,7 @@
  */
 
 import type { ChatRequest, ChatStreamEvent } from '../../chat';
+import type { CreateImageRequest, CreateImageResponse } from '../../images';
 import type { RunMetrics } from '../../runs';
 import { parseSseBuffer } from '../../sse';
 
@@ -141,6 +142,39 @@ function parseEvent(data: string): ChatStreamEvent | undefined {
   }
 
   return undefined;
+}
+
+/**
+ * Generates one image.
+ *
+ * A single request/response rather than a stream: a diffusion model produces its image at the end
+ * of its run, so there is nothing to deliver incrementally.
+ *
+ * @param request The image request to send.
+ * @param signal Abort signal, so the caller's Cancel button aborts the HTTP request itself rather
+ *   than merely ignoring the result. The provider's work is not cancelled — and the panel says so —
+ *   but the browser stops waiting.
+ * @returns The generated image, its run receipt, and the controls the server applied.
+ * @throws {ApiError} When the server rejects the request (`400` for an unsupported control or a
+ *   malformed body, `401` for an expired Access session) or when the provider fails or returns
+ *   something that is not a renderable image (`502`).
+ */
+export async function createImage(
+  request: CreateImageRequest,
+  signal?: AbortSignal
+): Promise<CreateImageResponse> {
+  const response = await fetch('/api/create-image', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+
+  return (await response.json()) as CreateImageResponse;
 }
 
 /**

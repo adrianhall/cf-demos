@@ -129,7 +129,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Turn a written description into a picture.',
     group: 'Generate',
     gateway: 'required',
-    availability: 'planned',
+    availability: 'available',
     phase: 4
   },
   {

@@ -8,6 +8,7 @@
  *   in a reviewed form rather than inventing one.
  */
 
+import type { ImageControlSupport } from '../../images';
 import type { TaskId } from '../../tasks';
 
 /**
@@ -84,6 +85,33 @@ export interface ModelDescriptor {
    * a window a prompt consumes, and by panels to reject obviously oversized input early.
    */
   contextWindowTokens?: number;
+  /**
+   * Which optional controls an image model accepts, and within what ranges.
+   *
+   * Present only for a text-to-image descriptor. The two reviewed image models differ sharply —
+   * different parameter names, different step ceilings, one without dimensions at all — so the
+   * capability is declared per model rather than assumed per panel. The UI renders only the
+   * controls named here and validation accepts only the controls named here, which is what stops a
+   * parameter reaching a provider that never agreed to accept it.
+   */
+  imageControls?: ImageControlSupport;
+  /**
+   * How the model names its diffusion-step parameter in the request it expects.
+   *
+   * Needed because the reviewed models disagree: FLUX calls it `steps` and Stable Diffusion XL
+   * calls it `num_steps`. Recording the wire name in the reviewed descriptor keeps the mapping
+   * beside the contract it came from, rather than in a conditional inside the request builder.
+   */
+  stepsParameterName?: 'steps' | 'num_steps';
+  /**
+   * Whether the model's input schema forbids properties it does not declare.
+   *
+   * FLUX.1 [schnell] sets `additionalProperties: false`, so sending it any extra field is a request
+   * the provider is entitled to reject outright. Its own documentation example passes a `seed` that
+   * its schema does not permit, which is precisely the kind of discrepancy worth pinning in a
+   * reviewed descriptor rather than discovering in production.
+   */
+  rejectsUndeclaredParameters?: boolean;
 }
 
 /**
@@ -117,6 +145,49 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
     invocation: 'streamed',
     documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/llama-3.2-3b-instruct/',
     contextWindowTokens: 80_000
+  },
+  // The two image models were chosen because they *disagree*, not in spite of it. One takes a
+  // prompt and up to 8 steps and returns base64 JSON; the other takes a negative prompt,
+  // dimensions, guidance, and a seed, allows 20 steps, and returns a raw PNG stream. A panel that
+  // handles both honestly cannot paper over the difference with a single hardcoded form, which is
+  // the lesson worth demonstrating.
+  {
+    id: '@cf/black-forest-labs/flux-1-schnell',
+    name: 'FLUX.1 [schnell]',
+    provider: 'workers-ai',
+    task: 'create-image',
+    contractVersion: 1,
+    pricingUnit: 'image',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/flux-1-schnell/',
+    imageControls: {
+      // Its schema declares `prompt` and `steps` and nothing else. No negative prompt, no
+      // dimensions, and — despite the example on its own catalog page — no seed.
+      negativePrompt: false,
+      seed: false,
+      steps: { min: 1, max: 8, step: 1, default: 4 }
+    },
+    stepsParameterName: 'steps',
+    rejectsUndeclaredParameters: true
+  },
+  {
+    id: '@cf/stabilityai/stable-diffusion-xl-base-1.0',
+    name: 'Stable Diffusion XL (beta)',
+    provider: 'workers-ai',
+    task: 'create-image',
+    contractVersion: 1,
+    pricingUnit: 'image',
+    invocation: 'synchronous',
+    documentationUrl:
+      'https://developers.cloudflare.com/workers-ai/models/stable-diffusion-xl-base-1.0/',
+    imageControls: {
+      negativePrompt: true,
+      seed: true,
+      dimensions: { min: 256, max: 2_048, step: 64, default: 1_024 },
+      steps: { min: 1, max: 20, step: 1, default: 20 },
+      guidance: { min: 0, max: 20, step: 0.5, default: 7.5 }
+    },
+    stepsParameterName: 'num_steps'
   }
 ];
 

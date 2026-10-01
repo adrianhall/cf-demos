@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import type { ImageControlSupport } from '../../images';
 import type { TaskId } from '../../tasks';
 
 /**
@@ -40,6 +41,14 @@ export interface CatalogueModel {
    * Context window in tokens, when the model declares one.
    */
   contextWindowTokens?: number;
+  /**
+   * Which optional controls an image model accepts, and within what ranges.
+   *
+   * Present only for a text-to-image model. The UI renders exactly the controls named here, so a
+   * model that does not expose a negative prompt or a seed simply has no such field — rather than a
+   * disabled one, or worse, an enabled one whose value the API then refuses.
+   */
+  imageControls?: ImageControlSupport;
 }
 
 /**

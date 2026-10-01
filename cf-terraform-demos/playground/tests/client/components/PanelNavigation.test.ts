@@ -68,8 +68,8 @@ describe('PanelNavigation', () => {
   // misrepresent the product; labelling them is what makes the list honest rather than broken.
   it('labels an unbuilt panel with the phase that delivers it', () => {
     const wrapper = mountNavigation();
-    const createImage = wrapper.find('a[data-task="create-image"]');
-    expect(createImage.text()).toContain('Phase 4');
+    const describeImage = wrapper.find('a[data-task="describe-image"]');
+    expect(describeImage.text()).toContain('Phase 5');
   });
 
   // A delivered panel carries no phase label. Leaving one behind would make the sidebar read as if

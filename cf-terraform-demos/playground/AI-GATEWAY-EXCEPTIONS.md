@@ -52,3 +52,10 @@ Chat, delivered in phase 3, is the first panel to perform real inference, and it
 exception: `runStream` assembles its gateway options in the same single place the synchronous path
 does, so a streamed call cannot omit them either. Streaming is where a shortcut is most tempting,
 which is why both paths are pinned by their own tests.
+
+Create Image, delivered in phase 4, needed no exception either. It is the first panel whose model
+returns **binary** output rather than text, and binary is the other place a shortcut is tempting —
+it is easy to reach for `fetch` against a provider endpoint when a binding's return type is awkward.
+It does not: the image arrives through the same `run()` call every other panel uses, and the
+shape-normalisation that absorbs the providers' disagreement happens _after_ the gateway, in the
+application tier, where it has no way to bypass anything.

@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import type { CloudflareAccessIdentity } from '@adrianhall/cloudflare-toolkit/hono';
 import type { Logger } from '@adrianhall/cloudflare-toolkit/logging';
 import type { ChatService } from '../../../src/worker/application/chat/chat-service';
+import type { CreateImageService } from '../../../src/worker/application/create-image/create-image-service';
 import type { MetricsService } from '../../../src/worker/application/metrics/metrics-service';
 import type { AppBindings } from '../../../src/worker/bindings';
 
@@ -47,6 +48,10 @@ export interface MountOptions {
    * Metrics service the route should use.
    */
   metricsService?: MetricsService;
+  /**
+   * Create Image service the route should use.
+   */
+  createImageService?: CreateImageService;
 }
 
 /**
@@ -118,6 +123,9 @@ export function mountRoute(
     }
     if (options.metricsService !== undefined) {
       context.set('METRICS_SERVICE', options.metricsService);
+    }
+    if (options.createImageService !== undefined) {
+      context.set('CREATE_IMAGE_SERVICE', options.createImageService);
     }
     await next();
   });

@@ -8,6 +8,7 @@ import {
 import { TASK_DESCRIPTORS, type TaskId } from '../tasks';
 import ActivityView from './views/ActivityView.vue';
 import ChatView from './views/ChatView.vue';
+import CreateImageView from './views/CreateImageView.vue';
 import PlannedPanelView from './views/PlannedPanelView.vue';
 import ViewTokensView from './views/ViewTokensView.vue';
 
@@ -21,6 +22,7 @@ import ViewTokensView from './views/ViewTokensView.vue';
  */
 const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
   'chat': ChatView,
+  'create-image': CreateImageView,
   'view-tokens': ViewTokensView
 };
 

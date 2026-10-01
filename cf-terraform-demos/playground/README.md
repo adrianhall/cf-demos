@@ -37,7 +37,7 @@ teaches the vocabulary instead of assuming it.
 | Panel            | Task type                    | Status            |
 | ---------------- | ---------------------------- | ----------------- |
 | **Chat**         | **Text generation**          | **Available now** |
-| Create Image     | Text to image                | Phase 4           |
+| **Create Image** | **Text to image**            | **Available now** |
 | Describe Image   | Image to text                | Phase 5           |
 | Remix Image      | Image to image               | Phase 6           |
 | Classify Image   | Image classification         | Phase 7           |
@@ -84,6 +84,57 @@ not an empty result — a blank answer would hide the attempt.
 
 Ask the same question twice to see the gateway serve the second request from its cache: a real
 answer that legitimately costs nothing new, labelled as such rather than as an unmeasured cost.
+
+## Create Image
+
+The panel that shows why a model's _contract_ matters more than its name. Its two reviewed models
+disagree about almost everything, and the panel handles that honestly rather than hiding it behind a
+single lowest-common-denominator form.
+
+|          | FLUX.1 \[schnell]         | Stable Diffusion XL (beta)                                                 |
+| -------- | ------------------------- | -------------------------------------------------------------------------- |
+| Controls | prompt, steps (max **8**) | prompt, negative prompt, width, height, steps (max **20**), guidance, seed |
+| Returns  | `{ image: "<base64>" }`   | a raw PNG byte stream                                                      |
+
+That has two consequences the panel makes visible:
+
+- **The form changes shape with the model.** Selecting FLUX.1 removes the negative prompt,
+  dimensions, guidance, and seed, and lowers the step ceiling from 20 to 8. The controls are
+  _absent_ rather than disabled, and a note says which model offers what — a disabled control
+  invites "why can't I use this?", whereas an absent one plus an explanation answers it.
+- **An unsupported control is refused, not ignored.** Asking FLUX.1 for a seed returns a `400`
+  naming both the control and the model. Silently dropping it would teach you that the control did
+  nothing, when the truth is that this model does not have it. Its input schema sets
+  `additionalProperties: false`, so an extra field is a request the provider is entitled to reject
+  outright — and its own catalog page shows an example passing a `seed` the schema does not permit.
+
+Capabilities are declared per model in `src/worker/domain/models.ts` and published through
+`/api/catalogue`, so the UI renders exactly the controls the server will accept. One definition
+means a control cannot offer a value the API then refuses.
+
+### Never trusting a declared content type
+
+A generated image is identified by its **file signature**, never by what the provider called it.
+This matters because the browser renders the result in a `data:` URI, and a `data:` URI's media type
+decides how the payload is treated — `image/svg+xml` is a scripting context, not a picture. Only
+PNG, JPEG, and WebP are accepted; markup, an HTML page, and a JSON error document returned under a
+success status are all refused with a `502` before they can reach the page.
+
+Media stays transient: no R2 bucket, no retention policy, and no cleanup step at teardown. The image
+comes back base64-encoded in the JSON response rather than from a follow-up URL, because a URL would
+require storing the bytes between two requests. An architecture test fails the build if a storage
+binding is ever introduced to make a panel work.
+
+### Comparing results
+
+Each result is kept in a bounded in-browser gallery with the settings that produced it — model,
+steps, size, guidance, seed — which is what makes it a comparison tool rather than a scrapbook. Two
+images of one prompt at different step counts only teach something if you can see which was which,
+and the run details beside them show what each one cost.
+
+Alt text names the prompt an image was _generated from_ rather than asserting what it contains:
+nothing in this panel has looked at the picture, and a diffusion model frequently does not produce
+what was asked for. Describe Image, in phase 5, is the panel that can actually describe one.
 
 ## View Tokens
 
@@ -246,18 +297,21 @@ obvious and stops browser code importing Worker-only bindings. `src/worker/index
 composition root and the only module allowed to depend on every tier — composing them is its single
 responsibility.
 
-`tasks.ts` and `runs.ts` sit at `src/` because they are genuinely shared wire contracts. They
-contain types and constants only: no bindings, no secrets, no model contracts. Model descriptors
-stay in the Worker's domain tier and reach the browser only through `/api/catalogue`.
+`tasks.ts`, `runs.ts`, `chat.ts`, `sse.ts`, and `images.ts` sit at `src/` because they are genuinely
+shared wire contracts. They contain types and constants only: no bindings, no secrets, no model
+contracts. Model descriptors stay in the Worker's domain tier and reach the browser only through
+`/api/catalogue` — which is how the browser learns each image model's control capabilities without
+being able to decide them.
 
 ## API
 
-| Route                          | Purpose                                                                      |
-| ------------------------------ | ---------------------------------------------------------------------------- |
-| `GET /api/me`                  | The server's verified view of who you are.                                   |
-| `GET /api/catalogue`           | Panels, reviewed models, and the gateway exception register.                 |
-| `POST /api/chat/stream`        | Chat as server-sent events: `start`, `delta`, then `completed` or `problem`. |
-| `GET /api/runs/:runId/metrics` | Resolved or pending gateway cost for one of your own runs.                   |
+| Route                          | Purpose                                                                       |
+| ------------------------------ | ----------------------------------------------------------------------------- |
+| `GET /api/me`                  | The server's verified view of who you are.                                    |
+| `GET /api/catalogue`           | Panels, reviewed models, and the gateway exception register.                  |
+| `POST /api/chat/stream`        | Chat as server-sent events: `start`, `delta`, then `completed` or `problem`.  |
+| `POST /api/create-image`       | Generates one image and returns it with its run receipt and applied controls. |
+| `GET /api/runs/:runId/metrics` | Resolved or pending gateway cost for one of your own runs.                    |
 
 Every route is behind Access, derives identity only from the verified JWT, and returns RFC 9457
 `application/problem+json` on failure. More routes arrive with the panels that need them; there is
@@ -267,13 +321,17 @@ Chat is `POST` rather than `GET`, which rules out `EventSource` on the client an
 trade: a prompt belongs in a request body, not in a URL that ends up in browser history, proxy logs,
 and referrer headers.
 
+Create Image is plain JSON rather than SSE, because there is nothing to stream: a diffusion model
+returns one image at the end of its run, so streaming would add framing for a single payload without
+giving a visitor earlier feedback than a spinner already does.
+
 A request body may not carry `user`, `email`, `actor`, `sub`, or `system`. Such a body is
 **rejected** rather than having the field stripped, because stripping is a silent correction that
 makes an attempt look like success and leaves nothing for a test to assert on.
 
 ## Implementation status
 
-Built to **phase 3** of
+Built to **phase 4** of
 [`specs/playground/02-implementation.md`](../../specs/playground/02-implementation.md).
 
 - **Phase 1** delivered the shell, the Terraform lifecycle, Access, the mandatory-gateway
@@ -281,6 +339,8 @@ Built to **phase 3** of
 - **Phase 2** delivered View Tokens, the first usable panel.
 - **Phase 3** delivered Chat: the first gateway-routed inference, streaming output, the run receipt
   and metrics lifecycle, and the first real figure in the session cost meter.
+- **Phase 4** delivered Create Image: per-model control capabilities, byte-level media validation, a
+  comparison gallery, and the first binary output.
 
-Every other panel renders a placeholder stating the phase that delivers it. Create Image, in phase
-4, is next.
+Every other panel renders a placeholder stating the phase that delivers it. Describe Image, in phase
+5, is next.
