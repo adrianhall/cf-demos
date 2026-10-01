@@ -2,12 +2,17 @@ import { defineConfig } from 'vite';
 import { cloudflareAccessPlugin } from '@adrianhall/cloudflare-toolkit/vite';
 import { cloudflare } from '@cloudflare/vite-plugin';
 import vue from '@vitejs/plugin-vue';
-import { accessPolicies } from './src/access-policies.ts';
+import localOutputs from './infra/local-outputs.json' with { type: 'json' };
+import { buildAccessPolicies } from './src/access-policies.ts';
 
 export default defineConfig({
   plugins: [
     cloudflareAccessPlugin({
-      policies: accessPolicies,
+      // The same policy list the Worker enforces, including its audience, built from the same
+      // committed local placeholder that `cloudflare.config.ts` binds as `ACCESS_AUD`. Sharing one
+      // definition means a local sign-in exercises the identical audience check the deployed
+      // Worker performs, rather than a weaker development-only variant.
+      policies: buildAccessPolicies(localOutputs.access_aud.value),
       // Selectable identity on the local dev login form instead of a free-text email input —
       // matches the `adminEmail` value in `cloudflare.config.ts`'s `LOCAL_DEV_DEFAULTS` object,
       // so picking it and moving on resolves as this demo's administrator. Never seen outside

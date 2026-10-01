@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
+import { jsonBodyLimit, readJsonBody } from '@demos/worker-common';
 import type { AppBindings } from '../bindings';
-import { readJsonBody } from '../lib/read-json-body';
-import { requestBodyLimit } from '../middleware/body-limit';
 import { requireAdmin } from '../middleware/require-admin';
 
 /**
@@ -12,7 +11,7 @@ import { requireAdmin } from '../middleware/require-admin';
 export const linksRouter = new Hono<AppBindings>();
 
 linksRouter.use(requireAdmin);
-linksRouter.use(requestBodyLimit);
+linksRouter.use(jsonBodyLimit());
 
 /**
  * List every short link, newest update first.

@@ -1,0 +1,45 @@
+{
+  "name": "@demos/worker-common",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared Worker-tier building blocks used by every demo in this repository.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "check": "run-s check:types check:format check:lint",
+    "check:types": "tsc --noEmit",
+    "check:format": "oxfmt --check .",
+    "check:lint": "oxlint --type-aware --type-check .",
+    "fix": "run-s fix:format fix:lint",
+    "fix:format": "oxfmt --write .",
+    "fix:lint": "oxlint --type-aware --type-check --fix .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@adrianhall/cloudflare-toolkit": "^2.6.0",
+    "@cloudflare/workers-types": "^5.20260930.1",
+    "@types/node": "^26.6.3",
+    "@vitest/coverage-istanbul": "^4.1.11",
+    "hono": "^4.13.11",
+    "npm-run-all2": "^9.0.3",
+    "oxfmt": "^0.71.0",
+    "oxlint": "^1.86.0",
+    "oxlint-tsgolint": "^7.0.2003",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  },
+  "peerDependencies": {
+    "@adrianhall/cloudflare-toolkit": "^2.6.0",
+    "hono": "^4.13.11"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=12.0.0"
+  }
+}

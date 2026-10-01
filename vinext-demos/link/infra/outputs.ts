@@ -3,10 +3,15 @@
  */
 
 /**
- * TypeScript mirror of the six outputs declared in `infra/outputs.tf`, camelCased from their
+ * TypeScript mirror of the seven outputs declared in `infra/outputs.tf`, camelCased from their
  * snake_case Terraform output names.
  */
 export type TerraformOutputs = {
+  /**
+   * Cloudflare Access Application Audience (AUD) tag the Worker validates the JWT `aud` claim
+   * against.
+   */
+  accessAud: string;
   /**
    * Sole administrator email the Worker authorizes management requests against.
    */
@@ -37,6 +42,7 @@ export type TerraformOutputs = {
  * Maps `TerraformOutputs`' keys to the output names declared in `infra/outputs.tf`.
  */
 export const OUTPUT_KEYS = {
+  accessAud: 'access_aud',
   adminEmail: 'admin_email',
   cloudflareTeamDomain: 'cloudflare_team_domain',
   environment: 'environment',

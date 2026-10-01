@@ -1,4 +1,9 @@
 {
+  "access_aud": {
+    "sensitive": false,
+    "type": "string",
+    "value": "local-development-access-aud"
+  },
   "admin_email": {
     "sensitive": false,
     "type": "string",

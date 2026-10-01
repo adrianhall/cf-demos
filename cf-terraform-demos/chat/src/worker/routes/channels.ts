@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
+import {
+  currentIdentityEmail,
+  jsonBodyLimit,
+  readJsonBody,
+  upgradeRequired
+} from '@demos/worker-common';
 import type { AppBindings } from '../bindings';
-import { readJsonBody } from '../lib/read-json-body';
-import { upgradeRequired } from '../lib/upgrade-required';
-import { requestBodyLimit } from '../middleware/body-limit';
-import { currentParticipant } from './identity';
 
 /**
  * Channel API, mounted at `/api/channels`.
@@ -45,10 +47,10 @@ channelsRouter.get('/', async (context) =>
  *   malformed (`422`), or a channel with that name already exists (`409`).
  * @throws {Error} When the directory cannot be written.
  */
-channelsRouter.post('/', requestBodyLimit, async (context) => {
+channelsRouter.post('/', jsonBodyLimit(), async (context) => {
   const channel = await context
     .get('CHAT_SERVICE')
-    .createChannel(await readJsonBody(context.req.raw), currentParticipant(context));
+    .createChannel(await readJsonBody(context.req.raw), currentIdentityEmail(context));
   // The channel name is shared, non-personal data, so it is safe to log; the creator's identity
   // is not, and is deliberately omitted.
   context.get('LOGGER').info('channel_created', { channel: channel.name });
@@ -104,7 +106,7 @@ channelsRouter.get('/:channel/socket', async (context) => {
   const channel = context.req.param('channel');
   const response = await context
     .get('CHAT_SERVICE')
-    .joinChannel(channel, context.req.raw, currentParticipant(context));
+    .joinChannel(channel, context.req.raw, currentIdentityEmail(context));
   context.get('LOGGER').info('channel_joined', { channel });
   return response;
 });

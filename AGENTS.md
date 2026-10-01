@@ -274,6 +274,30 @@ Prefer existing, tested utilities over bespoke code.
 - Return errors as RFC 9457 `application/problem+json`. Never leak stack traces from a deployed
   application.
 
+### Shared Worker library
+
+`@demos/worker-common` is the repository's shared Worker-tier library. Add it as
+`"@demos/worker-common": "workspace:*"` in a demo that uses an exported concern, and prefer its
+implementation over writing a demo-local version. Its unit tests own the reusable behaviour; a demo
+keeps tests for its policy choices, routes, authorization, and end-to-end wiring.
+
+- Use `createAccessMiddleware({ buildPolicies, enableDevTokens: import.meta.env.DEV })` for
+  Cloudflare Access verification. Bind `ACCESS_AUD` from the Access application's Terraform output,
+  thread that audience into every authenticating `PathPolicy`, and pass the same policy builder and
+  committed local audience placeholder to `cloudflareAccessPlugin` in Vite. Do not reimplement
+  audience lookup, middleware memoization, or fail-closed Access defaults locally.
+- Use `currentIdentity()` or `currentIdentityEmail()` to derive the actor only from the Access
+  middleware's verified identity. Do not accept an actor from a request parameter, body, or header.
+- Use `createMeRouter()` for `/api/me`; pass its `middleware` option when that endpoint needs an
+  additional authorization check such as `requireAdmin`.
+- Use `jsonBodyLimit()` before parsing JSON and `readJsonBody()` to parse it. Do not replace their
+  RFC 9457 error handling with local copies. The default body limit is 8 KiB; pass an explicit byte
+  count only when the endpoint has a documented larger payload contract.
+- Use `upgradeRequired(detail)` for an HTTP request made to a WebSocket-only endpoint.
+- If a need is not covered by this package, first decide whether it belongs in
+  `@adrianhall/cloudflare-toolkit`; when it is repository-specific and needed by multiple demos,
+  add it to `packages/worker-common` with complete JSDoc and unit tests rather than duplicating it.
+
 ## Infrastructure lifecycle
 
 Choose the least complex lifecycle owner that can provide all three required operations:

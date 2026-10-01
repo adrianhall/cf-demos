@@ -15,8 +15,9 @@ export default defineProject({
         compatibilityFlags: ['nodejs_compat'],
         kvNamespaces: ['LINKS'],
         bindings: {
-          // Matches the identity `adminRequest` (worker.test.ts) signs development JWTs for, and
-          // the Access team domain those tokens are issued against.
+          // Matches the identity and audience `adminRequest` (worker.test.ts) signs development
+          // JWTs for, and the Access team domain those tokens are issued against.
+          ACCESS_AUD: 'vinext-link-test-access-aud',
           ADMIN_EMAIL: 'admin@example.com',
           CLOUDFLARE_TEAM_DOMAIN: 'local.cloudflareaccess.com',
           ENVIRONMENT: 'test'

@@ -4,10 +4,10 @@ import {
   notFoundHandler,
   problemDetailsErrorHandler
 } from '@adrianhall/cloudflare-toolkit/hono';
+import { createMeRouter } from '@demos/worker-common';
 import type { AppBindings } from './bindings';
 import { accessMiddleware } from './middleware/access';
 import { graphqlRouter } from './routes/graphql';
-import { meRouter } from './routes/me';
 
 /**
  * Worker entry point and composition root.
@@ -44,7 +44,7 @@ app.use(accessMiddleware);
 // cached by the browser of everyone who had ever visited, and they would never see the explorer.
 // GraphiQL remains reachable at its own path, as UISPEC §11 requires.
 
-app.route('/api/me', meRouter);
+app.route('/api/me', createMeRouter<AppBindings>());
 app.route('/graphql', graphqlRouter);
 
 // `includeStack` is gated on `import.meta.env.DEV`, which Vite replaces with the literal `false` in

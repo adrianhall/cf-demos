@@ -1,20 +1,18 @@
 import { Hono } from 'hono';
+import { currentIdentityEmail, jsonBodyLimit, readJsonBody } from '@demos/worker-common';
 import type { AppBindings } from '../bindings';
-import { readJsonBody } from '../lib/read-json-body';
-import { requestBodyLimit } from '../middleware/body-limit';
-import { currentUserId } from './identity';
 
 /**
  * Personal task API, mounted at `/api/todos`.
  *
  * Every route is behind Cloudflare Access (see `../middleware/access.ts`) and scoped to the
- * verified identity by {@link currentUserId}. No route accepts a user identifier from the request:
- * the owner always comes from the validated JWT, so a caller cannot act on another user's tasks by
- * changing a parameter.
+ * verified identity by {@link currentIdentityEmail}. No route accepts a user identifier from the
+ * request: the owner always comes from the validated JWT, so a caller cannot act on another user's
+ * tasks by changing a parameter.
  */
 export const todosRouter = new Hono<AppBindings>();
 
-todosRouter.use(requestBodyLimit);
+todosRouter.use(jsonBodyLimit());
 
 /**
  * List the signed-in user's tasks.
@@ -26,7 +24,7 @@ todosRouter.use(requestBodyLimit);
  */
 todosRouter.get('/', async (context) =>
   context.json({
-    todos: await context.get('TODO_SERVICE').listTodos(currentUserId(context))
+    todos: await context.get('TODO_SERVICE').listTodos(currentIdentityEmail(context))
   })
 );
 
@@ -43,7 +41,7 @@ todosRouter.get('/', async (context) =>
 todosRouter.post('/', async (context) => {
   const todo = await context
     .get('TODO_SERVICE')
-    .createTodo(currentUserId(context), await readJsonBody(context.req.raw));
+    .createTodo(currentIdentityEmail(context), await readJsonBody(context.req.raw));
   // Log the identifier only. The title is user content and the identity is personal data; neither
   // belongs in an observability record that is retained and widely readable.
   context.get('LOGGER').info('todo_created', { todoId: todo.id });
@@ -63,7 +61,9 @@ todosRouter.post('/', async (context) => {
  * @throws {Error} When the repository cannot delete the tasks.
  */
 todosRouter.delete('/completed', async (context) => {
-  const cleared = await context.get('TODO_SERVICE').clearCompletedTodos(currentUserId(context));
+  const cleared = await context
+    .get('TODO_SERVICE')
+    .clearCompletedTodos(currentIdentityEmail(context));
   context.get('LOGGER').info('completed_todos_removed', { cleared });
   return new Response(null, { status: 204 });
 });
@@ -83,7 +83,7 @@ todosRouter.patch('/:id', async (context) => {
   const todo = await context
     .get('TODO_SERVICE')
     .updateTodo(
-      currentUserId(context),
+      currentIdentityEmail(context),
       context.req.param('id'),
       await readJsonBody(context.req.raw)
     );
@@ -106,7 +106,7 @@ todosRouter.patch('/:id', async (context) => {
  */
 todosRouter.delete('/:id', async (context) => {
   const todoId = context.req.param('id');
-  await context.get('TODO_SERVICE').deleteTodo(currentUserId(context), todoId);
+  await context.get('TODO_SERVICE').deleteTodo(currentIdentityEmail(context), todoId);
   context.get('LOGGER').info('todo_removed', { todoId });
   return new Response(null, { status: 204 });
 });

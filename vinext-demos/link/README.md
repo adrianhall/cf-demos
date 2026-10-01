@@ -88,7 +88,9 @@ Terraform provisioned.
 
 Visit `https://vinext-link.${CLOUDFLARE_DOMAIN}/admin`, authenticate as `ADMIN_EMAIL`, create a
 link, and open `/l/:code`. The redirect stays public; administrative UI and APIs require Cloudflare
-Access and an in-application exact-email authorization check.
+Access and an in-application exact-email authorization check. The Worker also validates the Access
+application's Audience tag (`access_aud` from Terraform), so a valid token for a different
+application in the same Zero Trust team cannot authorize this API.
 
 ## Teardown
 

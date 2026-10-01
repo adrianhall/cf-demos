@@ -1,6 +1,8 @@
+import type { PathPolicy } from '@adrianhall/cloudflare-toolkit/hono';
+
 /**
  * Shared Cloudflare Access path policies for local development (`cloudflareAccessPlugin` in
- * `vite.config.ts`) and Worker validation (`cloudflareAccess` in
+ * `vite.config.ts`) and Worker validation (`createAccessMiddleware` in
  * `src/worker/middleware/access.ts`).
  *
  * The middleware runs with `defaultAction: 'block'`, so an unmatched path fails closed. Every
@@ -17,20 +19,19 @@
  * - `/_next/*` — Vinext's built client chunks, CSS, and RSC payload assets. An unauthenticated
  *   visitor must be able to load these to render the public root document at all.
  * - `/l/:code` — the public short-link redirect, the whole point of the demo.
+ *
+ * @param audience Cloudflare Access Application Audience (AUD) tag that every authenticated request
+ *   must carry in its JWT `aud` claim. It is applied only to authenticating policies, because a
+ *   bypass policy has no token to check.
+ * @returns The ordered policy list; the first pattern that matches a request path wins.
  */
-export const accessPolicies = [
-  {
-    pattern: /^\/api\/links(?:\/|$)/u,
-    authenticate: true,
-    redirect: false
-  },
-  {
-    pattern: /^\/api\/me(?:\/|$)/u,
-    authenticate: true,
-    redirect: false
-  },
-  { pattern: /^\/admin(?:\/|$)/u, authenticate: true, redirect: true },
-  { pattern: /^\/$/u, authenticate: false },
-  { pattern: /^\/_next(?:\/|$)/u, authenticate: false },
-  { pattern: /^\/l(?:\/|$)/u, authenticate: false }
-];
+export function buildAccessPolicies(audience: string): PathPolicy[] {
+  return [
+    { pattern: /^\/api\/links(?:\/|$)/u, authenticate: true, redirect: false, audience },
+    { pattern: /^\/api\/me(?:\/|$)/u, authenticate: true, redirect: false, audience },
+    { pattern: /^\/admin(?:\/|$)/u, authenticate: true, redirect: true, audience },
+    { pattern: /^\/$/u, authenticate: false },
+    { pattern: /^\/_next(?:\/|$)/u, authenticate: false },
+    { pattern: /^\/l(?:\/|$)/u, authenticate: false }
+  ];
+}

@@ -1,12 +1,11 @@
-import { cloudflareAccess } from '@adrianhall/cloudflare-toolkit/hono';
-import { accessPolicies } from '../../access-policies';
+import { createAccessMiddleware } from '@demos/worker-common';
+import { buildAccessPolicies } from '../../access-policies';
+import type { AppBindings } from '../bindings';
 
 /**
- * Cloudflare Access middleware protecting every route except public short-link redirects. Local
- * development uses the toolkit's development token flow.
+ * Cloudflare Access middleware protecting the administrative routes.
  */
-export const accessMiddleware = cloudflareAccess({
-  defaultAction: 'block',
-  enableDevTokens: import.meta.env.DEV,
-  policies: accessPolicies
+export const accessMiddleware = createAccessMiddleware<AppBindings>({
+  buildPolicies: buildAccessPolicies,
+  enableDevTokens: import.meta.env.DEV
 });

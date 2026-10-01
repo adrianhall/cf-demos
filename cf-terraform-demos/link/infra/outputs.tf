@@ -1,3 +1,8 @@
+output "access_aud" {
+  description = "Cloudflare Access Application Audience (AUD) tag the Worker validates the JWT `aud` claim against, so a token minted for a different Access application in the same team is rejected."
+  value       = cloudflare_zero_trust_access_application.admin.aud
+}
+
 output "admin_email" {
   description = "Administrator email the Worker checks the verified Cloudflare Access identity against, as defense-in-depth against cross-application Access token replay."
   value       = local.admin_email

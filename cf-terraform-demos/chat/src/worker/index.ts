@@ -4,13 +4,13 @@ import {
   notFoundHandler,
   problemDetailsErrorHandler
 } from '@adrianhall/cloudflare-toolkit/hono';
+import { createMeRouter } from '@demos/worker-common';
 import { ChatService } from './application/chat-service';
 import type { AppBindings } from './bindings';
 import { D1ChannelRepository } from './infrastructure/d1-channel-repository';
 import { DurableChatRooms } from './infrastructure/durable-chat-rooms';
 import { accessMiddleware } from './middleware/access';
 import { channelsRouter } from './routes/channels';
-import { meRouter } from './routes/me';
 
 /**
  * The `CHAT_ROOM` Durable Object class, re-exported from the Worker's entry module.
@@ -65,7 +65,7 @@ app.use(async (context, next) => {
   await next();
 });
 
-app.route('/api/me', meRouter);
+app.route('/api/me', createMeRouter<AppBindings>());
 app.route('/api/channels', channelsRouter);
 
 // `includeStack` is gated on `import.meta.env.DEV`, which Vite replaces with the literal `false`

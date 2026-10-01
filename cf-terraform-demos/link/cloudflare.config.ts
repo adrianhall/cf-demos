@@ -22,7 +22,7 @@ export default defineConfig({
   worker: defineWorker((ctx) => {
     const isProduction = ctx.mode === 'production';
 
-    // Read the six Terraform outputs from the appropriate JSON file, validating that all six exist.
+    // Read the Terraform outputs from the appropriate JSON file, validating that all of them exist.
     const values: TerraformOutputs = requireTerraformOutputs<TerraformOutputs>({
       path: isProduction ? 'infra/outputs.json' : 'infra/local-outputs.json',
       keys: OUTPUT_KEYS,
@@ -64,6 +64,7 @@ export default defineConfig({
 
       env: {
         LINKS: bindings.kv(isProduction ? { id: values.linksKvNamespaceId } : {}),
+        ACCESS_AUD: bindings.text(values.accessAud),
         ADMIN_EMAIL: bindings.text(values.adminEmail),
         CLOUDFLARE_TEAM_DOMAIN: bindings.text(values.cloudflareTeamDomain),
         ...(isProduction ? { ENVIRONMENT: bindings.text(values.environment) } : {})

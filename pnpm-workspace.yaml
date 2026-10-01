@@ -1,5 +1,6 @@
 packages:
   - 'cf-terraform-demos/*'
+  - 'packages/*'
   - 'vinext-demos/*'
 allowBuilds:
   workerd: true
@@ -8,8 +9,8 @@ minimumReleaseAgeExclude:
   - '@cloudflare/codemods@0.2.1'
   - cf@1.0.0-beta.6
   - '@cloudflare/vite-plugin@1.62.0 || 2.0.0-beta.sha-ad79608dd'
-  - '@cloudflare/vitest-plugin@1.3.1'
-  - '@cloudflare/workers-types@5.20260929.1'
+  - '@cloudflare/vitest-plugin@1.3.3'
+  - '@cloudflare/workers-types@5.20260930.1'
   - '@oxlint/binding-win32-x64-msvc@1.86.0'
   - hono@4.13.11
   - oxfmt@0.71.0

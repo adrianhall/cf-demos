@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { accessPolicies } from '../../../src/access-policies';
+import { buildAccessPolicies } from '../../../src/access-policies';
+
+const AUDIENCE = 'link-demo-audience';
+const accessPolicies = buildAccessPolicies(AUDIENCE);
 
 /**
  * Find the first shared Access policy matching a request path.
+ *
+ * @param path Request pathname to look up.
+ * @returns The first matching policy, or `undefined` when the fail-closed default applies.
  */
 function policyFor(path: string): (typeof accessPolicies)[number] | undefined {
   return accessPolicies.find((policy) => policy.pattern.test(path));
@@ -13,6 +19,7 @@ describe('Access path policies', () => {
     'allows public path %s so an unauthenticated visitor can reach it',
     (path) => {
       expect(policyFor(path)).toMatchObject({ authenticate: false });
+      expect(policyFor(path)).not.toHaveProperty('audience');
     }
   );
 
@@ -27,6 +34,7 @@ describe('Access path policies', () => {
     (path) => {
       expect(policyFor(path)).toMatchObject({
         authenticate: true,
+        audience: AUDIENCE,
         redirect: true
       });
     }
@@ -37,6 +45,7 @@ describe('Access path policies', () => {
     (path) => {
       expect(policyFor(path)).toMatchObject({
         authenticate: true,
+        audience: AUDIENCE,
         redirect: false
       });
     }

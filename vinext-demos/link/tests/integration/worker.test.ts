@@ -2,11 +2,25 @@ import { env, exports } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { JWT_HEADER, signDevJwt } from '@adrianhall/cloudflare-toolkit/testing';
 
+const ACCESS_AUD = 'vinext-link-test-access-aud';
+
 /**
  * Build an authenticated request for a protected management route as a given identity.
+ *
+ * @param email Email claim to include in the development JWT.
+ * @param path Same-origin Worker path to request.
+ * @param init Optional request settings.
+ * @param audience Audience claim to include in the token. Defaults to this demo's Access
+ *   application audience.
+ * @returns A request carrying the signed development JWT.
  */
-async function requestAs(email: string, path: string, init: RequestInit = {}): Promise<Request> {
-  const token = await signDevJwt(email);
+async function requestAs(
+  email: string,
+  path: string,
+  init: RequestInit = {},
+  audience: string = ACCESS_AUD
+): Promise<Request> {
+  const token = await signDevJwt(email, { audience });
   return new Request(`https://link.example${path}`, {
     ...init,
     headers: { [JWT_HEADER]: token, ...init.headers }
@@ -67,6 +81,15 @@ describe('URL shortener Worker', () => {
       expect(response.headers.get('content-type')).toContain('application/problem+json');
     }
   );
+
+  it('rejects a validly signed token minted for another Access application', async () => {
+    const response = await request(
+      await requestAs('admin@example.com', '/api/me', {}, 'unrelated-application-access-aud')
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('content-type')).toContain('application/problem+json');
+  });
 
   it("reports the authenticated administrator's identity", async () => {
     const response = await request(await adminRequest('/api/me'));

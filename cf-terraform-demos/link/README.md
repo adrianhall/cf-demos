@@ -109,6 +109,8 @@ The command:
 Afterward, visit `https://link.${CLOUDFLARE_DOMAIN}/admin`, authenticate as `ADMIN_EMAIL`, create a
 link, and open its `/l/:code` URL. The public redirect is intentionally reachable without Access;
 the administrative page and API require Access plus an in-Worker exact-email authorization check.
+The Worker also validates the Access application's Audience tag (`access_aud` from Terraform), so a
+valid token for a different application in the same Zero Trust team cannot authorize this API.
 
 ## Teardown
 

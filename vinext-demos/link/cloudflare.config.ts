@@ -62,6 +62,7 @@ export default defineConfig({
 
       env: {
         LINKS: bindings.kv(isProduction ? { id: values.linksKvNamespaceId } : {}),
+        ACCESS_AUD: bindings.text(values.accessAud),
         ADMIN_EMAIL: bindings.text(values.adminEmail),
         CLOUDFLARE_TEAM_DOMAIN: bindings.text(values.cloudflareTeamDomain),
         ...(isProduction ? { ENVIRONMENT: bindings.text(values.environment) } : {})

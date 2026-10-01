@@ -4,12 +4,13 @@ import {
   notFoundHandler,
   problemDetailsErrorHandler
 } from '@adrianhall/cloudflare-toolkit/hono';
+import { createMeRouter } from '@demos/worker-common';
 import { LinkService } from './application/link-service';
 import type { AppBindings } from './bindings';
 import { KvLinkRepository } from './infrastructure/kv-link-repository';
 import { accessMiddleware } from './middleware/access';
+import { requireAdmin } from './middleware/require-admin';
 import { linksRouter } from './routes/links';
-import { meRouter } from './routes/me';
 import { redirectsRouter } from './routes/redirects';
 
 const app = new Hono<AppBindings>();
@@ -32,7 +33,7 @@ app.use(async (context, next) => {
 });
 
 app.route('/api/links', linksRouter);
-app.route('/api/me', meRouter);
+app.route('/api/me', createMeRouter<AppBindings>({ middleware: [requireAdmin] }));
 app.route('/l', redirectsRouter);
 
 app.onError(problemDetailsErrorHandler({ includeStack: import.meta.env.DEV }));

@@ -4,11 +4,11 @@ import {
   notFoundHandler,
   problemDetailsErrorHandler
 } from '@adrianhall/cloudflare-toolkit/hono';
+import { createMeRouter } from '@demos/worker-common';
 import { TodoService } from './application/todo-service';
 import type { AppBindings } from './bindings';
 import { D1TodoRepository } from './infrastructure/d1-todo-repository';
 import { accessMiddleware } from './middleware/access';
-import { meRouter } from './routes/me';
 import { todosRouter } from './routes/todos';
 
 /**
@@ -47,7 +47,7 @@ app.use(async (context, next) => {
   await next();
 });
 
-app.route('/api/me', meRouter);
+app.route('/api/me', createMeRouter<AppBindings>());
 app.route('/api/todos', todosRouter);
 
 // `includeStack` is gated on `import.meta.env.DEV`, which Vite replaces with the literal `false` in
