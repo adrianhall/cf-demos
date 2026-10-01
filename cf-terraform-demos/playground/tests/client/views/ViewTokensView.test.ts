@@ -222,6 +222,6 @@ describe('ViewTokensView', () => {
   it('explains why the panel produces no cost', () => {
     const text = mountPanel().text();
     expect(text).toContain('never sent anywhere');
-    expect(text).toContain('not listed as a gateway exception');
+    expect(text).toContain('no AI Gateway log is created');
   });
 });

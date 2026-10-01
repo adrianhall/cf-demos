@@ -193,12 +193,7 @@ function loadExample(example: TokenExample): void {
         <p>
           Tokenization is arithmetic over a lookup table, not a model call. The encodings are
           bundled with this page and run on your machine, so your text is never sent anywhere, no AI
-          Gateway log is created, and nothing is charged. That is also why this panel is not listed
-          as a gateway exception: there is no request to route.
-        </p>
-        <p>
-          Every other panel here does call a model, and each of those requests goes through AI
-          Gateway and appears in the session cost meter.
+          Gateway log is created, and nothing is charged.
         </p>
       </section>
     </div>
