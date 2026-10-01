@@ -1,0 +1,37 @@
+{
+  "access_aud": {
+    "sensitive": false,
+    "type": "string",
+    "value": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "ai_gateway_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "playground-local"
+  },
+  "cloudflare_account_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "00000000000000000000000000000000"
+  },
+  "cloudflare_team_domain": {
+    "sensitive": false,
+    "type": "string",
+    "value": "local.cloudflareaccess.com"
+  },
+  "environment": {
+    "sensitive": false,
+    "type": "string",
+    "value": "development"
+  },
+  "hostname": {
+    "sensitive": false,
+    "type": "string",
+    "value": "playground.localhost"
+  },
+  "worker_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "playground-local"
+  }
+}

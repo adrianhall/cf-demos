@@ -1,0 +1,56 @@
+import {
+  createRouter,
+  createWebHistory,
+  type RouteRecordRaw,
+  type Router,
+  type RouterHistory
+} from 'vue-router';
+import { TASK_DESCRIPTORS } from '../tasks';
+import ActivityView from './views/ActivityView.vue';
+import PlannedPanelView from './views/PlannedPanelView.vue';
+
+/**
+ * Builds the Playground's routes from the panel catalogue.
+ *
+ * Generating the routes rather than listing them is what keeps the promise that the sidebar and the
+ * router cannot disagree: both read `TASK_DESCRIPTORS`, so a panel is either present in both or in
+ * neither. It also means a panel's route is `/create-image` — the task identifier itself — rather
+ * than a separately invented path that could drift from the API's task parameter.
+ *
+ * Every panel gets a top-level path. There are no nested routes, no mode query parameters, and no
+ * panel reachable only through another, because the navigation is deliberately one level deep.
+ *
+ * @returns The ordered route table: one route per panel, the activity page, and a catch-all.
+ */
+export function buildRoutes(): RouteRecordRaw[] {
+  const panelRoutes: RouteRecordRaw[] = TASK_DESCRIPTORS.map((task) => ({
+    path: `/${task.id}`,
+    name: task.id,
+    // Phase 1 renders every panel through the placeholder. As each phase lands, its panel swaps
+    // this for its own view and the rest keep the placeholder, so the route table never has to be
+    // restructured — only one entry changes.
+    component: PlannedPanelView,
+    props: { taskId: task.id },
+    meta: { taskId: task.id }
+  }));
+
+  return [
+    // The Playground has no dashboard worth the name, so `/` goes straight to the one panel that
+    // works. Landing on an empty overview would make a visitor's first click a wasted one.
+    { path: '/', redirect: '/view-tokens' },
+    ...panelRoutes,
+    { path: '/activity', name: 'activity', component: ActivityView },
+    { path: '/:pathMatch(.*)*', redirect: '/view-tokens' }
+  ];
+}
+
+/**
+ * Creates the application router.
+ *
+ * @param history History implementation to use. Defaults to HTML5 history; tests pass a memory
+ *   history so navigation can be exercised without a browser URL bar.
+ * @returns A router configured with every panel route.
+ */
+export function createAppRouter(history: RouterHistory = createWebHistory()): Router {
+  return createRouter({ history, routes: buildRoutes() });
+}

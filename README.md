@@ -88,12 +88,22 @@ An implementation of the Star Wars API [GraphQL] service with [GraphiQL].
 | Services | [Workers], [D1], [Durable Objects], [Access] |
 | Implementations | [Plain](./cf-terraform-demos/chat), [vinext](./vinext-demos/chat) |
 
+## playground - An AI model playground
+
+| Services | [Workers], [Workers AI], [AI Gateway], [Access] |
+| Implementations | [Plain](./cf-terraform-demos/playground) |
+
+A playground for AI model task types where every inference request is routed through AI Gateway
+and its reported cost is shown to the user who caused it. Being unable to bypass the gateway is
+enforced by a build-failing test, not by convention.
 
 <!-- Links -->
 [Access]: https://developers.cloudflare.com/cloudflare-one/access-controls/policies/
+[AI Gateway]: https://developers.cloudflare.com/ai-gateway/
 [D1]: https://developers.cloudflare.com/d1/
 [Durable Objects]: https://developers.cloudflare.com/durable-objects/
 [Workers]: https://developers.cloudflare.com/workers/
+[Workers AI]: https://developers.cloudflare.com/workers-ai/
 [Workers KV Storage]: https://developers.cloudflare.com/kv/
 [GraphQL]: https://graphql.org/
 [GraphiQL]: https://github.com/graphql/graphiql/tree/main/packages/graphiql
