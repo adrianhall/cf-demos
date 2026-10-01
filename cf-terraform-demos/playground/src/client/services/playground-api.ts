@@ -5,6 +5,7 @@
  */
 
 import type { ChatRequest, ChatStreamEvent } from '../../chat';
+import type { DescribeImageRequest, DescribeImageResponse } from '../../describe-image';
 import type { CreateImageRequest, CreateImageResponse } from '../../images';
 import type { RunMetrics } from '../../runs';
 import { parseSseBuffer } from '../../sse';
@@ -175,6 +176,37 @@ export async function createImage(
   }
 
   return (await response.json()) as CreateImageResponse;
+}
+
+/**
+ * Describes one picture.
+ *
+ * @param request The description request to send, carrying the base64 picture.
+ * @param signal Abort signal, so the caller's Cancel button aborts the HTTP request itself rather
+ *   than merely ignoring the result.
+ * @returns The description, the facts the server verified about the picture, its run receipt, and
+ *   the controls the server applied.
+ * @throws {ApiError} When the server rejects the request (`400` for an unsupported control, a
+ *   missing required question, or a picture that is not an accepted format; `413` when the body is
+ *   too large; `401` for an expired Access session) or when the provider fails or returns no usable
+ *   description (`502`).
+ */
+export async function describeImage(
+  request: DescribeImageRequest,
+  signal?: AbortSignal
+): Promise<DescribeImageResponse> {
+  const response = await fetch('/api/describe-image', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+
+  return (await response.json()) as DescribeImageResponse;
 }
 
 /**

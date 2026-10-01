@@ -34,23 +34,23 @@ The navigation is one level deep. Every panel is one click from anywhere, named 
 wants to do rather than after a model task type. The task type is shown underneath, so the panel
 teaches the vocabulary instead of assuming it.
 
-| Panel            | Task type                    | Status            |
-| ---------------- | ---------------------------- | ----------------- |
-| **Chat**         | **Text generation**          | **Available now** |
-| **Create Image** | **Text to image**            | **Available now** |
-| Describe Image   | Image to text                | Phase 5           |
-| Remix Image      | Image to image               | Phase 6           |
-| Classify Image   | Image classification         | Phase 7           |
-| Create Video     | Text to video                | Phase 8           |
-| Animate Image    | Image to video               | Phase 9           |
-| Generate Music   | Text to music                | Phase 10          |
-| Read Text        | Text to speech               | Phase 11          |
-| Transcribe Audio | Automatic speech recognition | Phase 12          |
-| Translate Text   | Translation                  | Phase 13          |
-| Classify Text    | Text classification          | Phase 14          |
-| Evaluate Choices | Structured evaluation        | Phase 15          |
-| Semantic Search  | Text embeddings              | Phase 16          |
-| **View Tokens**  | **Tokenization**             | **Available now** |
+| Panel              | Task type                    | Status            |
+| ------------------ | ---------------------------- | ----------------- |
+| **Chat**           | **Text generation**          | **Available now** |
+| **Create Image**   | **Text to image**            | **Available now** |
+| **Describe Image** | **Image to text**            | **Available now** |
+| Remix Image        | Image to image               | Phase 6           |
+| Classify Image     | Image classification         | Phase 7           |
+| Create Video       | Text to video                | Phase 8           |
+| Animate Image      | Image to video               | Phase 9           |
+| Generate Music     | Text to music                | Phase 10          |
+| Read Text          | Text to speech               | Phase 11          |
+| Transcribe Audio   | Automatic speech recognition | Phase 12          |
+| Translate Text     | Translation                  | Phase 13          |
+| Classify Text      | Text classification          | Phase 14          |
+| Evaluate Choices   | Structured evaluation        | Phase 15          |
+| Semantic Search    | Text embeddings              | Phase 16          |
+| **View Tokens**    | **Tokenization**             | **Available now** |
 
 Panels that are not built yet are still listed, each stating the phase that delivers it. Hiding them
 would misrepresent the product; a sidebar that quietly grows tells a visitor nothing about where the
@@ -134,7 +134,71 @@ and the run details beside them show what each one cost.
 
 Alt text names the prompt an image was _generated from_ rather than asserting what it contains:
 nothing in this panel has looked at the picture, and a diffusion model frequently does not produce
-what was asked for. Describe Image, in phase 5, is the panel that can actually describe one.
+what was asked for. **Describe Image** is the panel that can actually describe one, and each result
+carries a "Describe this image" button that hands the bytes straight to it.
+
+## Describe Image
+
+The reverse of Create Image in every dimension that matters. The request carries the megabytes and
+the answer is a paragraph, the untrusted input is now a _file_, and the two reviewed models disagree
+about something more fundamental than a slider range.
+
+|            | LLaVA 1.5 7B (beta)             | Llama 3.2 11B Vision          |
+| ---------- | ------------------------------- | ----------------------------- |
+| A question | **Optional** — captions unasked | **Required** (`minLength: 1`) |
+| Answer cap | 32–1,024 tokens, default 512    | 32–2,048 tokens, default 256  |
+| Returns    | `{ description: "..." }`        | `{ response: "..." }`         |
+
+Three consequences the panel makes visible:
+
+- **Whether the panel can be submitted at all depends on the model.** Selecting Llama 3.2 Vision
+  makes the question mandatory and the Describe button explains why it is disabled. Supplying a
+  default question like "Describe this image" would have been friendlier and would have hidden a
+  real contract difference — as well as putting words in the visitor's mouth.
+- **The answer field is read from the reviewed descriptor, not guessed.** Trying `description`, then
+  `response`, then any other string field would be more forgiving and considerably worse: a contract
+  change would silently return some other field as the description. Insisting on the declared field
+  turns that same break into a logged `502`.
+- **The two defaults differ by a factor of two,** which a visitor sees as one model answering at
+  roughly twice the length of the other for the same picture.
+
+### The picture is whatever its bytes say it is
+
+Nothing the browser claims about an upload is used. The format comes from the **file signature** and
+the dimensions come from the **file header**, both read server-side, and a body that tries to
+describe its own image — `mediaType`, `width`, `fileName` — is **rejected rather than ignored**, on
+the same principle as an identity field. After a run the panel shows what the server established, so
+a file named `.png` whose bytes are JPEG is visible rather than silently resolved.
+
+Two limits rather than one, because they bound genuinely different costs:
+
+- **1 MB**, which bounds _this Worker's_ memory, and is measured rather than chosen. Both reviewed
+  models document their image field as a JSON array of one number per byte, and that expansion is
+  brutally expensive: peak resident memory is ~55 MB for a 1 MiB picture, ~80 MB at 2 MiB, and
+  **~234 MB at 4 MiB** — past the 128 MB an isolate gets. A larger ceiling would let one ordinary
+  request exhaust the isolate and take unrelated requests down with it. It costs nothing in quality,
+  because both models downscale heavily before they look at anything.
+- **4,096 pixels on the longest edge**, which bounds the decode work the _provider_ does on our
+  behalf. A flat-coloured image compresses to almost nothing while still being enormous to decode,
+  so a file that passes the byte check can still be unreasonable. Neither limit subsumes the other.
+
+Only PNG, JPEG, and WebP are accepted. SVG is excluded as a scripting context rather than a picture,
+and GIF is excluded too: the list is an allowlist, not an "is it an image" check.
+
+### Supplying a picture
+
+Three routes — a file picker, drag-and-drop, and **paste** — all converging on one validation path.
+Paste earns its place because a screenshot is the likeliest thing someone wants described, and
+making them save it to disk first would be the slowest path to the thing the panel exists to do.
+
+A fourth route comes from Create Image: any generated result can be handed straight over. The bytes
+travel through a store rather than the URL, because a route parameter would put several megabytes of
+base64 into browser history and into any intermediary's logs — exactly what this demo refuses to do
+with a prompt. The handoff is consumed on read, so returning later does not reload a stale picture.
+
+The pairing is more than a convenience. Create Image's alt text can only name the prompt, because
+nothing there has looked at the result; this panel is the one that can say what was actually
+produced.
 
 ## View Tokens
 
@@ -362,6 +426,7 @@ being able to decide them.
 | `GET /api/catalogue`           | Panels, reviewed models, and the gateway exception register.                  |
 | `POST /api/chat/stream`        | Chat as server-sent events: `start`, `delta`, then `completed` or `problem`.  |
 | `POST /api/create-image`       | Generates one image and returns it with its run receipt and applied controls. |
+| `POST /api/describe-image`     | Describe a picture with a reviewed vision model.                              |
 | `GET /api/runs/:runId/metrics` | Resolved or pending gateway cost for one of your own runs.                    |
 
 Every route is behind Access, derives identity only from the verified JWT, and returns RFC 9457
@@ -376,13 +441,21 @@ Create Image is plain JSON rather than SSE, because there is nothing to stream: 
 returns one image at the end of its run, so streaming would add framing for a single payload without
 giving a visitor earlier feedback than a spinner already does.
 
+Describe Image is plain JSON too, and reverses the traffic: its request carries the picture and its
+response is a paragraph. Its body limit is therefore derived from the image budget rather than
+written separately, so the two cannot drift into a state where a picture the panel accepts is
+refused by the transport. Both reviewed models can stream, but the answer is a short paragraph about
+a picture already on screen.
+
 A request body may not carry `user`, `email`, `actor`, `sub`, or `system`. Such a body is
 **rejected** rather than having the field stripped, because stripping is a silent correction that
-makes an attempt look like success and leaves nothing for a test to assert on.
+makes an attempt look like success and leaves nothing for a test to assert on. Describe Image
+extends the same rule to fields that would describe its picture — `mediaType`, `width`, `fileName` —
+since the server determines those from the bytes.
 
 ## Implementation status
 
-Built to **phase 4** of
+Built to **phase 5** of
 [`specs/playground/02-implementation.md`](../../specs/playground/02-implementation.md).
 
 - **Phase 1** delivered the shell, the Terraform lifecycle, Access, the mandatory-gateway
@@ -392,6 +465,8 @@ Built to **phase 4** of
   and metrics lifecycle, and the first real figure in the session cost meter.
 - **Phase 4** delivered Create Image: per-model control capabilities, byte-level media validation, a
   comparison gallery, and the first binary output.
+- **Phase 5** delivered Describe Image: the first _uploaded_ media, header-level dimension limits,
+  per-model required/optional contracts, and the handoff from Create Image.
 
-Every other panel renders a placeholder stating the phase that delivers it. Describe Image, in phase
-5, is next.
+Every other panel renders a placeholder stating the phase that delivers it. Remix Image, in phase 6,
+is next.

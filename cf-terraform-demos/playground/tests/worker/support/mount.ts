@@ -10,6 +10,7 @@ import type { CloudflareAccessIdentity } from '@adrianhall/cloudflare-toolkit/ho
 import type { Logger } from '@adrianhall/cloudflare-toolkit/logging';
 import type { ChatService } from '../../../src/worker/application/chat/chat-service';
 import type { CreateImageService } from '../../../src/worker/application/create-image/create-image-service';
+import type { DescribeImageService } from '../../../src/worker/application/describe-image/describe-image-service';
 import type { MetricsService } from '../../../src/worker/application/metrics/metrics-service';
 import type { AppBindings } from '../../../src/worker/bindings';
 
@@ -52,6 +53,10 @@ export interface MountOptions {
    * Create Image service the route should use.
    */
   createImageService?: CreateImageService;
+  /**
+   * Describe Image service the route should use.
+   */
+  describeImageService?: DescribeImageService;
   /**
    * Logger to place on the context, so a caller can share one recorder between the route and the
    * services it calls — which is how the composition root wires them. Defaults to a fresh one.
@@ -133,6 +138,9 @@ export function mountRoute(
     }
     if (options.createImageService !== undefined) {
       context.set('CREATE_IMAGE_SERVICE', options.createImageService);
+    }
+    if (options.describeImageService !== undefined) {
+      context.set('DESCRIBE_IMAGE_SERVICE', options.describeImageService);
     }
     await next();
   });

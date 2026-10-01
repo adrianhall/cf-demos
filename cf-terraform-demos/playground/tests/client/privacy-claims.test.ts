@@ -122,7 +122,13 @@ describe('privacy claims across every panel', () => {
         await readFile(path.join(demoRoot, view), 'utf8')
       ).replaceAll(/\s+/gu, ' ');
 
-      expect(contents, `${task.name} warns about logging`).toMatch(/assume your prompt/iu);
+      // "Assume your <something> is logged" rather than "assume your prompt": a panel's input is
+      // not always a prompt. Describe Image's is a picture, and later phases will submit audio and
+      // video. Pinning the noun would have forced those panels to describe a visitor's upload as a
+      // "prompt", which is the guard dictating the prose rather than checking it.
+      expect(contents, `${task.name} warns that its input is logged`).toMatch(
+        /assume your [^.]*\b(?:is|are) logged/iu
+      );
       expect(contents, `${task.name} advises against confidential input`).toMatch(
         /nothing confidential|anything confidential/iu
       );

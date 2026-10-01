@@ -21,3 +21,24 @@
 export function problemWithStatus(status: number): { problemDetails: { status: number } } {
   return { problemDetails: { status } };
 }
+
+/**
+ * Captures the error a synchronous call throws.
+ *
+ * `expect(fn).toThrow(problemWithStatus(400))` does not work: `toThrow` compares against a message,
+ * a class, or a regular expression, and silently treats a plain object as a message match.
+ * Capturing the thrown value and using `toMatchObject` is the combination that actually asserts on
+ * the status.
+ *
+ * @param call The call expected to throw.
+ * @returns The thrown value, or `undefined` when the call returned normally — which fails the
+ *   following `toMatchObject` rather than passing silently.
+ */
+export function thrownBy(call: () => unknown): unknown {
+  try {
+    call();
+    return undefined;
+  } catch (cause: unknown) {
+    return cause;
+  }
+}

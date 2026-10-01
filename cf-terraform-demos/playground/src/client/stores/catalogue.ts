@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import type { VisionControlSupport } from '../../describe-image';
 import type { ImageControlSupport } from '../../images';
 import type { TaskId } from '../../tasks';
 
@@ -49,6 +50,14 @@ export interface CatalogueModel {
    * disabled one, or worse, an enabled one whose value the API then refuses.
    */
   imageControls?: ImageControlSupport;
+  /**
+   * Which optional controls a vision model accepts, and whether it requires a question.
+   *
+   * Present only for an image-to-text model. The UI reads `instructionRequired` to decide whether
+   * the question field is mandatory, which is the clearest case yet of the server telling the
+   * browser what it will accept rather than the browser assuming.
+   */
+  visionControls?: VisionControlSupport;
 }
 
 /**

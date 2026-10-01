@@ -212,12 +212,47 @@ describe('failure diagnostics', () => {
     expect(contents).toMatch(/new GatewayInferenceClient\(\{[^}]*logger:/su);
   });
 
-  it('gives the Create Image service a logger in the composition root', async () => {
-    const contents = stripComments(
-      await readFile(path.join(demoRoot, 'src/worker/index.ts'), 'utf8')
-    );
+  // Driven from the source rather than from a hand-written service list. A service that declares
+  // a `logger` option has one because it needs to explain a failure; the composition root is the
+  // only place that can supply the request-scoped one, and forgetting to is invisible until an
+  // incident. Scanning for the declaration means a service added in a later phase is covered the
+  // moment it is written.
+  it('gives every logger-accepting service a logger in the composition root', async () => {
+    const root = stripComments(await readFile(path.join(demoRoot, 'src/worker/index.ts'), 'utf8'));
+    const offenders: string[] = [];
 
-    expect(contents).toMatch(/new CreateImageService\(\{[^}]*logger:/su);
+    for (const file of await listSourceFiles(path.join(demoRoot, 'src/worker/application'))) {
+      const contents = stripComments(await readFile(path.join(demoRoot, file), 'utf8'));
+
+      // The exported service class whose options interface declares a logger.
+      const declaresLogger = /logger\?:\s*DiagnosticLogger/u.test(contents);
+      const className = /export class (?<name>\w+Service)\b/u.exec(contents)?.groups?.['name'];
+
+      if (!declaresLogger || className === undefined) {
+        continue;
+      }
+
+      if (!new RegExp(String.raw`new ${className}\(\{[^}]*logger:`, 'su').test(root)) {
+        offenders.push(className);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  // A guard on the guard above: if the scan found no logger-accepting service it would pass while
+  // checking nothing at all.
+  it('finds at least two logger-accepting services to check', async () => {
+    let found = 0;
+
+    for (const file of await listSourceFiles(path.join(demoRoot, 'src/worker/application'))) {
+      const contents = stripComments(await readFile(path.join(demoRoot, file), 'utf8'));
+      if (/logger\?:\s*DiagnosticLogger/u.test(contents)) {
+        found += 1;
+      }
+    }
+
+    expect(found).toBeGreaterThanOrEqual(2);
   });
 
   // A structured log must never carry the verified email: it belongs in AI Gateway metadata, which

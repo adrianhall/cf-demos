@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useRouter } from 'vue-router';
+import { useHandoffStore } from '../../stores/handoff';
 import {
   downloadFileName,
   downloadLabel,
@@ -14,6 +16,34 @@ defineProps<{
    */
   entries: GalleryEntry[];
 }>();
+
+const router = useRouter();
+const handoff = useHandoffStore();
+
+/**
+ * Sends a generated image to the Describe Image panel.
+ *
+ * The bytes travel through a store rather than the URL. A route parameter would put several
+ * megabytes of base64 into browser history and into any intermediary's logs, which is exactly what
+ * this demo refuses to do with a prompt.
+ *
+ * The pairing is more than a convenience. The alt text here can only say what the image was asked
+ * to be, because nothing has looked at it; Describe Image is the panel that can say what it
+ * actually is. Moving one result between the two is the shortest demonstration of the difference.
+ *
+ * @param entry The result to hand over.
+ * @returns A promise fulfilled once the other panel has been navigated to.
+ */
+async function describeThis(entry: GalleryEntry): Promise<void> {
+  handoff.offer({
+    base64: entry.image.base64,
+    mediaType: entry.image.mediaType,
+    byteLength: entry.image.byteLength,
+    origin: `Generated in Create Image (${entry.modelName})`
+  });
+
+  await router.push('/describe-image');
+}
 </script>
 
 <template>
@@ -93,14 +123,30 @@ defineProps<{
             sniff, so a saved file's name always agrees with its actual contents. The accessible
             label names the format, because "Download" alone does not say what is about to be saved.
           -->
-          <a
-            class="download"
-            :href="toDataUri(entry.image)"
-            :download="downloadFileName(entry)"
-            :aria-label="downloadLabel(entry)"
-          >
-            Download {{ entry.image.mediaType.replace('image/', '').toUpperCase() }}
-          </a>
+          <div class="result-actions">
+            <a
+              class="download"
+              :href="toDataUri(entry.image)"
+              :download="downloadFileName(entry)"
+              :aria-label="downloadLabel(entry)"
+            >
+              Download {{ entry.image.mediaType.replace('image/', '').toUpperCase() }}
+            </a>
+
+            <!--
+              The honest counterpart to this gallery's alt text. Nothing here has looked at the
+              picture, so the panel can only report the prompt; handing the image to a vision
+              model is how a visitor finds out what was actually produced.
+            -->
+            <button
+              type="button"
+              class="describe-link"
+              :data-describe="entry.runId"
+              @click="describeThis(entry)"
+            >
+              Describe this image
+            </button>
+          </div>
         </div>
       </li>
     </ol>
@@ -187,6 +233,28 @@ defineProps<{
 .setting dd {
   font-size: 0.875rem;
   margin: 0;
+}
+
+.result-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+/*
+  Styled as a link rather than a button because it navigates. It is a `button` element because it
+  also stages state before navigating, and a bare anchor would offer a URL that does not carry the
+  image.
+*/
+.describe-link {
+  background: none;
+  border: none;
+  color: rgb(var(--v-theme-primary));
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
 }
 
 .download {

@@ -7,6 +7,7 @@ import {
 import { createMeRouter } from '@demos/worker-common';
 import { ChatService } from './application/chat/chat-service';
 import { CreateImageService } from './application/create-image/create-image-service';
+import { DescribeImageService } from './application/describe-image/describe-image-service';
 import { MetricsService } from './application/metrics/metrics-service';
 import type { AppBindings } from './bindings';
 import { GatewayInferenceClient } from './infrastructure/ai/gateway-inference-client';
@@ -15,6 +16,7 @@ import { accessMiddleware } from './middleware/access';
 import { catalogueRouter } from './routes/catalogue';
 import { chatRouter } from './routes/chat';
 import { createImageRouter } from './routes/create-image';
+import { describeImageRouter } from './routes/describe-image';
 import { runsRouter } from './routes/runs';
 
 /**
@@ -64,6 +66,10 @@ app.use('/api/*', async (context, next) => {
     'CREATE_IMAGE_SERVICE',
     new CreateImageService({ inference, runs, logger: context.var.LOGGER })
   );
+  context.set(
+    'DESCRIBE_IMAGE_SERVICE',
+    new DescribeImageService({ inference, runs, logger: context.var.LOGGER })
+  );
   context.set('METRICS_SERVICE', new MetricsService({ inference, runs }));
 
   await next();
@@ -73,6 +79,7 @@ app.route('/api/me', createMeRouter<AppBindings>());
 app.route('/api/catalogue', catalogueRouter);
 app.route('/api/chat', chatRouter);
 app.route('/api/create-image', createImageRouter);
+app.route('/api/describe-image', describeImageRouter);
 app.route('/api/runs', runsRouter);
 
 // `includeStack` is gated on `import.meta.env.DEV`, which Vite replaces with the literal `false` in

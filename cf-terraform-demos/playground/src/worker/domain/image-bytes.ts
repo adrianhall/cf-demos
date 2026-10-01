@@ -179,3 +179,203 @@ export function imageFileName(runId: string, extension: string): string {
 export function isRenderable(value: string): boolean {
   return isRenderableImageMediaType(value);
 }
+
+/**
+ * A picture's pixel dimensions, as declared by its own header.
+ */
+export interface ImageDimensions {
+  /**
+   * Width in pixels.
+   */
+  width: number;
+  /**
+   * Height in pixels.
+   */
+  height: number;
+}
+
+/**
+ * Reads a big-endian unsigned integer.
+ *
+ * @param bytes Buffer to read from.
+ * @param offset Position of the first byte.
+ * @param length Number of bytes to combine.
+ * @returns The value, or `undefined` when the buffer is too short.
+ */
+function readBigEndian(bytes: Uint8Array, offset: number, length: number): number | undefined {
+  if (bytes.length < offset + length) {
+    return undefined;
+  }
+
+  let value = 0;
+  for (let index = 0; index < length; index += 1) {
+    value = value * 256 + (bytes[offset + index] ?? 0);
+  }
+  return value;
+}
+
+/**
+ * Reads a little-endian unsigned integer.
+ *
+ * @param bytes Buffer to read from.
+ * @param offset Position of the first byte.
+ * @param length Number of bytes to combine.
+ * @returns The value, or `undefined` when the buffer is too short.
+ */
+function readLittleEndian(bytes: Uint8Array, offset: number, length: number): number | undefined {
+  if (bytes.length < offset + length) {
+    return undefined;
+  }
+
+  let value = 0;
+  for (let index = length - 1; index >= 0; index -= 1) {
+    value = value * 256 + (bytes[offset + index] ?? 0);
+  }
+  return value;
+}
+
+/**
+ * Reads a PNG's dimensions from its IHDR chunk.
+ *
+ * IHDR is required by the specification to be the first chunk, so the offsets are fixed: the
+ * signature occupies eight bytes, the chunk length and type eight more, and the two dimensions
+ * follow as big-endian 32-bit integers.
+ *
+ * @param bytes The full file.
+ * @returns The dimensions, or `undefined` when the header is truncated.
+ */
+function pngDimensions(bytes: Uint8Array): ImageDimensions | undefined {
+  const width = readBigEndian(bytes, 16, 4);
+  const height = readBigEndian(bytes, 20, 4);
+  return width === undefined || height === undefined ? undefined : { width, height };
+}
+
+/**
+ * Reads a JPEG's dimensions by walking its segment markers.
+ *
+ * Unlike PNG there is no fixed offset: a JPEG is a chain of variable-length segments, and the size
+ * lives in whichever start-of-frame segment the encoder used. The walk therefore follows each
+ * segment's declared length until it meets a frame header.
+ *
+ * @param bytes The full file.
+ * @returns The dimensions, or `undefined` when no frame header is found before the data ends.
+ */
+function jpegDimensions(bytes: Uint8Array): ImageDimensions | undefined {
+  // Start after the two-byte start-of-image marker.
+  let offset = 2;
+
+  while (offset + 9 < bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      // Not sitting on a marker. A padding byte or a corrupt stream; give up rather than guess,
+      // because a misaligned walk could read an arbitrary pair of bytes as a size.
+      return undefined;
+    }
+
+    const marker = bytes[offset + 1] ?? 0;
+    const length = readBigEndian(bytes, offset + 2, 2);
+    if (length === undefined || length < 2) {
+      return undefined;
+    }
+
+    // Start-of-frame markers carry the dimensions. The three exclusions are not frame headers
+    // despite falling inside the range: define-huffman-table, define-arithmetic-coding, and
+    // restart-interval.
+    const isStartOfFrame =
+      marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+
+    if (isStartOfFrame) {
+      // Within a frame header: one byte of precision, then height, then width.
+      const height = readBigEndian(bytes, offset + 5, 2);
+      const width = readBigEndian(bytes, offset + 7, 2);
+      return width === undefined || height === undefined ? undefined : { width, height };
+    }
+
+    offset += 2 + length;
+  }
+
+  return undefined;
+}
+
+/**
+ * Reads a WebP's dimensions.
+ *
+ * WebP is three formats behind one signature, and they store their size differently: lossy (`VP8 `)
+ * in a VP8 keyframe header, lossless (`VP8L`) as two 14-bit fields packed across a bit stream, and
+ * extended (`VP8X`) as two 24-bit fields. All three are handled because all three are produced by
+ * ordinary tools, and a visitor has no way to know which one their file is.
+ *
+ * @param bytes The full file.
+ * @returns The dimensions, or `undefined` when the variant is unrecognised or the header is
+ *   truncated.
+ */
+function webpDimensions(bytes: Uint8Array): ImageDimensions | undefined {
+  const variant = String.fromCharCode(...bytes.subarray(12, 16));
+
+  if (variant === 'VP8 ') {
+    // Lossy: a three-byte sync code precedes the dimensions, which are 14-bit values with the
+    // upper two bits used as a scale factor this demo ignores.
+    const width = readLittleEndian(bytes, 26, 2);
+    const height = readLittleEndian(bytes, 28, 2);
+    return width === undefined || height === undefined
+      ? undefined
+      : { width: width & 0x3fff, height: height & 0x3fff };
+  }
+
+  if (variant === 'VP8L') {
+    // Lossless: dimensions are stored minus one, packed as 14 bits each across four bytes that
+    // follow the one-byte signature.
+    const packed = readLittleEndian(bytes, 21, 4);
+    if (packed === undefined) {
+      return undefined;
+    }
+    return { width: (packed & 0x3fff) + 1, height: ((packed >> 14) & 0x3fff) + 1 };
+  }
+
+  if (variant === 'VP8X') {
+    // Extended: 24-bit canvas dimensions, also stored minus one.
+    const width = readLittleEndian(bytes, 24, 3);
+    const height = readLittleEndian(bytes, 27, 3);
+    return width === undefined || height === undefined
+      ? undefined
+      : { width: width + 1, height: height + 1 };
+  }
+
+  return undefined;
+}
+
+/**
+ * Reads a picture's pixel dimensions from its own header.
+ *
+ * Exists because a byte limit is not a pixel limit. A large flat-coloured image compresses to
+ * almost nothing while still being enormous to decode, so a file that passes a size check can still
+ * be an unreasonable thing to hand a vision model. Reading the declared dimensions bounds that
+ * before a request is made, and does so without decoding the image.
+ *
+ * The dimensions are read from the file rather than from anything the browser said, for the same
+ * reason the media type is: a value the client supplied is a value the client chose.
+ *
+ * @param bytes The full file.
+ * @param mediaType The type already determined by {@link sniffImageMediaType}. Passed in rather
+ *   than re-sniffed so the caller cannot accidentally read one format's header as another's.
+ * @returns The dimensions, or `undefined` when the header is truncated, malformed, or uses a
+ *   variant this demo does not parse.
+ */
+export function readImageDimensions(
+  bytes: Uint8Array,
+  mediaType: ImageMediaType
+): ImageDimensions | undefined {
+  const dimensions =
+    mediaType === 'image/png'
+      ? pngDimensions(bytes)
+      : mediaType === 'image/jpeg'
+        ? jpegDimensions(bytes)
+        : webpDimensions(bytes);
+
+  // A zero or negative edge is a malformed header rather than a tiny picture, and letting it
+  // through would turn a validation rule into a division by zero somewhere downstream.
+  if (dimensions === undefined || dimensions.width <= 0 || dimensions.height <= 0) {
+    return undefined;
+  }
+
+  return dimensions;
+}

@@ -139,7 +139,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Ask a vision model what is in a picture.',
     group: 'Understand',
     gateway: 'required',
-    availability: 'planned',
+    availability: 'available',
     phase: 5
   },
   {

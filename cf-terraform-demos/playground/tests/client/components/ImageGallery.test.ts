@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { describe, expect, it, vi } from 'vitest';
+import { createMemoryHistory, createRouter } from 'vue-router';
+import { createTestingPinia } from '@pinia/testing';
+import { mount, flushPromises } from '@vue/test-utils';
 import type { GalleryEntry } from '../../../src/client/features/create-image/gallery';
 import ImageGallery from '../../../src/client/features/create-image/ImageGallery.vue';
+import { useHandoffStore } from '../../../src/client/stores/handoff';
 
 /**
  * Builds a gallery entry.
@@ -27,13 +30,39 @@ function entry(overrides: Partial<GalleryEntry> = {}): GalleryEntry {
 }
 
 /**
- * Mounts the gallery.
+ * Mounts the gallery with a real router over memory history.
+ *
+ * A real router rather than a stub, because the handoff is a navigation _and_ a state write, and
+ * the pair only means anything together: the picture must be waiting in the store by the time the
+ * other panel is reached. A push spy would let a broken order pass.
  *
  * @param entries Results to render.
- * @returns The mounted wrapper.
+ * @returns The mounted wrapper and the router, so a test can read the resulting route.
  */
 function mountGallery(entries: GalleryEntry[]) {
-  return mount(ImageGallery, { props: { entries } });
+  const pinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/describe-image', component: { template: '<div />' } }
+    ]
+  });
+
+  const wrapper = mount(ImageGallery, {
+    props: { entries },
+    global: {
+      plugins: [pinia, router],
+      stubs: {
+        'v-btn': {
+          props: ['disabled'],
+          template: '<button :disabled="disabled"><slot /></button>'
+        }
+      }
+    }
+  });
+
+  return Object.assign(wrapper, { pinia, router });
 }
 
 describe('ImageGallery', () => {
@@ -173,5 +202,56 @@ describe('ImageGallery', () => {
   it('uses a list so the result count is conveyed', () => {
     const wrapper = mountGallery([entry({ runId: 'a' }), entry({ runId: 'b' })]);
     expect(wrapper.findAll('ol > li')).toHaveLength(2);
+  });
+});
+
+describe('handing an image to Describe Image', () => {
+  // The pairing is the point of the button. This gallery's alt text can only name the prompt,
+  // because nothing has looked at the picture; Describe Image is the panel that can say what was
+  // actually produced.
+  it('offers a button for each result', () => {
+    const wrapper = mountGallery([entry({ runId: 'a' }), entry({ runId: 'b' })]);
+    expect(wrapper.findAll('[data-describe]')).toHaveLength(2);
+  });
+
+  it('navigates to the Describe Image panel', async () => {
+    const wrapper = mountGallery([entry()]);
+    await wrapper.find('[data-describe]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.router.currentRoute.value.path).toBe('/describe-image');
+  });
+
+  // The bytes travel through the store rather than the URL. A route parameter would put several
+  // megabytes of base64 into browser history and into any intermediary's logs, which is exactly
+  // what this demo refuses to do with a prompt.
+  it('stages the image in the store rather than in the URL', async () => {
+    const wrapper = mountGallery([entry()]);
+    await wrapper.find('[data-describe]').trigger('click');
+    await flushPromises();
+
+    const handoff = useHandoffStore(wrapper.pinia);
+    expect(handoff.pending).toMatchObject({ base64: 'AAAA', mediaType: 'image/png' });
+    expect(wrapper.router.currentRoute.value.fullPath).not.toContain('AAAA');
+  });
+
+  it('records where the picture came from, since it has no file name', async () => {
+    const wrapper = mountGallery([entry()]);
+    await wrapper.find('[data-describe]').trigger('click');
+    await flushPromises();
+
+    expect(useHandoffStore(wrapper.pinia).pending?.origin).toContain('Rich Model');
+  });
+
+  // Consumed on read, so returning to the panel later does not silently reload a picture the
+  // visitor has moved on from.
+  it('clears the staged picture once it is taken', async () => {
+    const wrapper = mountGallery([entry()]);
+    await wrapper.find('[data-describe]').trigger('click');
+    await flushPromises();
+
+    const handoff = useHandoffStore(wrapper.pinia);
+    expect(handoff.take()).toBeDefined();
+    expect(handoff.take()).toBeUndefined();
   });
 });

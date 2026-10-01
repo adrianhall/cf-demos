@@ -8,6 +8,7 @@
  *   in a reviewed form rather than inventing one.
  */
 
+import type { VisionControlSupport } from '../../describe-image';
 import type { ImageControlSupport } from '../../images';
 import type { TaskId } from '../../tasks';
 
@@ -112,6 +113,23 @@ export interface ModelDescriptor {
    * reviewed descriptor rather than discovering in production.
    */
   rejectsUndeclaredParameters?: boolean;
+  /**
+   * Which optional controls a vision model accepts, and whether it requires a question.
+   *
+   * Present only for an image-to-text descriptor. The two reviewed vision models disagree about the
+   * most basic thing a panel needs to know — whether a question is optional — so it is declared per
+   * model rather than assumed per panel.
+   */
+  visionControls?: VisionControlSupport;
+  /**
+   * The field a vision model puts its answer in.
+   *
+   * Needed because the reviewed models disagree: LLaVA's output schema declares `description` while
+   * Llama 3.2 Vision declares `response`. Recording the field name in the reviewed descriptor keeps
+   * the mapping beside the contract it came from, rather than leaving the service to guess from a
+   * list of candidate keys.
+   */
+  descriptionField?: 'description' | 'response';
 }
 
 /**
@@ -188,6 +206,49 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       guidance: { min: 0, max: 20, step: 0.5, default: 7.5 }
     },
     stepsParameterName: 'num_steps'
+  },
+  // The two vision models disagree more sharply than the image pair did, and again that is why
+  // they were chosen. One will caption a bare picture and returns its answer in `description`; the
+  // other requires a question, allows twice the answer length, and returns `response`. A panel
+  // that handles both honestly has to let the form itself change between "ask a question" and
+  // "ask a question, or don't".
+  {
+    id: '@cf/llava-hf/llava-1.5-7b-hf',
+    name: 'LLaVA 1.5 7B (beta)',
+    provider: 'workers-ai',
+    task: 'describe-image',
+    contractVersion: 1,
+    // Billed per token like the text models, but the input token count is dominated by the image
+    // rather than by the question, so the figure moves with picture size more than prompt length.
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/llava-1.5-7b-hf/',
+    visionControls: {
+      // Its schema requires only `image`; `prompt` is optional. Asked nothing, it captions the
+      // picture, which is a genuinely different interaction from the other model's.
+      instructionRequired: false,
+      maxTokens: { min: 32, max: 1_024, step: 32, default: 512 }
+    },
+    descriptionField: 'description'
+  },
+  {
+    id: '@cf/meta/llama-3.2-11b-vision-instruct',
+    name: 'Llama 3.2 11B Vision',
+    provider: 'workers-ai',
+    task: 'describe-image',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl:
+      'https://developers.cloudflare.com/workers-ai/models/llama-3.2-11b-vision-instruct/',
+    contextWindowTokens: 128_000,
+    visionControls: {
+      // `prompt` is required with `minLength: 1`, so a bare picture is an invalid request rather
+      // than an implied "describe this".
+      instructionRequired: true,
+      maxTokens: { min: 32, max: 2_048, step: 32, default: 256 }
+    },
+    descriptionField: 'response'
   }
 ];
 
