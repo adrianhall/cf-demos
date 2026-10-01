@@ -8,6 +8,7 @@
 - The entire application is authenticated from the first phase. Anyone who can authenticate through the configured Access identity provider may use it; there is no application-level email allowlist.
 - Every inference request derives the user email from the verified Access identity and includes it in AI Gateway metadata. The email must never come from a browser value, request header, or request body.
 - Each phase adds tests at the lowest suitable tier: domain validation/use-case tests, Worker route tests, Vue DOM tests, and Workers-runtime integration tests for the public surface and authorization outcomes.
+- Every phase must leave its failures diagnosable from logs alone. See [Cross-phase observability requirements](#cross-phase-observability-requirements); a phase whose panel can fail with nothing but a status code is not complete.
 - `pnpm check` and `pnpm test` pass at the end of **every** phase. Tests remain offline; no phase adds a live-inference dependency to normal tests.
 - Add a model only after confirming its current input/output contract in the unified model catalog. Pin that reviewed contract in the typed model descriptor and test it.
 
@@ -23,6 +24,47 @@ pnpm test
 `pnpm check` must stay read-only and includes TypeScript, Oxfmt check, type-aware Oxlint, generated type freshness, Terraform format/validation, descriptor validation, and AI Gateway exception-register consistency. `pnpm test` includes domain, Worker, client, and Workers-runtime integration suites as applicable to the completed phase.
 
 A phase may add focused commands such as `pnpm test -- --project client`, but those are diagnostic aids, not substitutes for the full commands above.
+
+## Cross-phase observability requirements
+
+These apply to **every** phase that adds an inference panel, a job, or any other operation that can fail. They exist because of a concrete incident in Phase 4: a deployed Create Image request failed with a `502`, and the logs could not say why, which request it was, or whether the provider had even been reached. The central inference client had caught the provider's error with a bare `catch {}` and thrown a sanitised one, discarding the only description of the fault. The fault itself turned out to be transient — but it was undiagnosable, and that was the real defect.
+
+The rules below are the generalisation of that fix. A panel is not finished when it works; it is finished when its failure can be understood by someone reading the logs a week later.
+
+### Correlation
+
+- Every operation carries the browser-generated **run ID** through every log line it produces, in the Worker and in AI Gateway metadata alike. One search on a run ID must return the whole story of that request.
+- Where a gateway log ID exists, record it. It is the only thread between a Worker log line and the AI Gateway dashboard entry, and **its absence is itself a finding**: the request never reached the gateway.
+- Two requests that look identical in an access log must be distinguishable in the structured logs by their run ID and their parameters.
+
+### Log an attempt before it can fail
+
+- Write a `<task>_run_started` line **before** calling the model, not only on completion. A request that fails inside the provider, times out, or is cancelled mid-flight must still leave a record of what it attempted — that is precisely the case where the parameters matter most.
+- Record the **shape** of the request: the model, the contract version, the exact parameter names sent, and the values of bounded controls (steps, dimensions, guidance, seed, temperature). The most common integration failure is sending a model a parameter its schema does not accept, and a list of the keys that actually went on the wire diagnoses it in one line.
+- Record text and binary inputs as **lengths or byte counts**, never content. "48 characters" distinguishes a real request from an empty one without retaining the visitor's prompt.
+
+### Never discard a cause
+
+- A `try` around a provider call must bind its error (`catch (cause)`) and log it. Sanitising the message for the browser is required; discarding it is a defect. Both are needed, and neither substitutes for the other.
+- Log the error's type, message, and one level of wrapped `cause`. Coerce an unknown thrown value readably — `String(someObject)` yields `[object Object]`, which occupies a log line while saying nothing.
+- Distinguish **our** refusal from **their** failure. When validation rejects a provider's output, say so with a reason code and a description of what arrived; a rejected payload and an upstream error are both a `502` to the browser but have entirely different fixes.
+- An expected-empty result still deserves a line when it may indicate a fault. A gateway log that has not propagated is routine, but a permanently unresolvable one is the cause of a run stuck forever at "cost pending".
+
+### What must never be logged
+
+- No prompt text, generated media, transcript, model output, or raw file name.
+- **Not the verified email.** It belongs in AI Gateway metadata only, which is a different retention domain with different access control.
+- A new panel's log lines must be checked against both rules, and the check belongs in that phase's tests rather than in review.
+
+### Tests each phase must include
+
+- Assertions that a provider failure logs the provider's own message, the run ID, the model, and the parameter names.
+- Assertions that no log line contains the prompt or the verified email — written as "must not contain", since that is the direction that silently rots.
+- An architecture guard that fails the build if a `try` wrapping a provider call swallows its cause, and if the composition root stops supplying a logger to a client or service that needs one.
+
+### Deployment reality check
+
+Offline tests cannot prove observability is wired correctly, because a test double never produces the error a real provider does. Each phase's exit criteria therefore include **one real deployed request per new panel**, confirming that a success and an induced failure both produce the expected correlated log lines. A panel whose logging has only ever been exercised against a fake is unverified.
 
 ---
 
@@ -202,6 +244,7 @@ Deliver **Describe Image** for image-to-text/vision models.
 ### Exit criteria
 
 - A visitor can upload an image or hand off one generated in-app and receive a gateway-routed description with run cost.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -228,6 +271,7 @@ Deliver **Remix Image** for image-to-image transformation.
 ### Exit criteria
 
 - A user can safely submit a source image plus supported transformation controls and compare result/cost.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -253,6 +297,7 @@ Deliver **Classify Image** with structured top-k results.
 ### Exit criteria
 
 - Results are accessible, ordered, and understandable without relying on bar colour alone; runs show gateway metrics/cost.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -282,6 +327,7 @@ Deliver **Create Video** with a task-neutral async media-job contract.
 
 - A user sees truthful progress, failure, and cancellation state instead of a frozen request.
 - Gateway cost is shown when available; a documented exception displays uncosted status clearly if unavoidable.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -307,6 +353,7 @@ Deliver **Animate Image** as its own top-level panel while sharing the Phase 8 m
 ### Exit criteria
 
 - A user can animate an upload or generated image on `/animate-image`, with the same truthful job/cost behaviour as Create Video.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -335,6 +382,7 @@ Deliver **Generate Music** with audio-asset response handling and non-token bill
 ### Exit criteria
 
 - The session meter demonstrates different billing units correctly and never derives a music charge from tokens.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -360,6 +408,7 @@ Deliver **Read Text** (text-to-speech).
 ### Exit criteria
 
 - Text is rendered as playable audio with an accessible equivalent and reported cost.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -387,6 +436,7 @@ Deliver **Transcribe Audio** (automatic speech recognition / speech-to-text).
 ### Exit criteria
 
 - Audio can be transcribed without microphone permission, and recorded audio failure/permission states are clear.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -412,6 +462,7 @@ Deliver **Translate Text**.
 ### Exit criteria
 
 - The translated text is visibly separate from source, copyable, and transferable to Read Text; metrics/cost work as for other inference panels.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -437,6 +488,7 @@ Deliver **Classify Text** as fixed-label classification, distinct from Evaluate 
 ### Exit criteria
 
 - The panel teaches conventional classification and is demonstrably distinct from structured Jev evaluation.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -465,6 +517,7 @@ Deliver **Evaluate Choices**, the structured-evaluation panel for `typesafe/jev`
 ### Exit criteria
 
 - Caller-defined typed questions receive typed, calibrated results with no “parse model prose as JSON” path.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -495,6 +548,7 @@ Deliver **Semantic Search** using gateway-routed embeddings and local vector com
 
 - A visitor sees semantic similarity outrank lexical overlap where the curated data demonstrates it.
 - Aggregate cost accurately reflects all inference calls in a search, while cached passages remain visibly free of new inference.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -522,12 +576,14 @@ Turn the completed panels into a polished reference demo without changing the ma
 5. Reconcile every model descriptor against the current catalog; remove unavailable models rather than leaving dead selectors.
 6. Verify clean-checkout developer journey with repository-root `.env` only: install, local Access, `pnpm start`, and no `.dev.vars` dependence.
 7. Perform an actual deploy/teardown smoke run in a deliberately approved account, checking that the account is clean afterwards. This is manual verification, not an offline test.
+8. Audit observability across every panel against [Cross-phase observability requirements](#cross-phase-observability-requirements). Per-phase compliance does not guarantee consistency: confirm that event names follow one `<task>_run_started` / `<task>_run_failed` convention, that every panel correlates on the same run-ID field name, that no panel logs prompt content or the verified email, and that a single run ID search returns a complete story for each one. Inconsistent field names are the failure mode here — they make a cross-panel log search impossible while every individual panel looks correct.
 
 ### Tests introduced
 
 - Cross-panel keyboard/E2E-style DOM tests for route navigation, shared run details, history, session meter, and all handoffs.
 - Exception-register checker test covering empty and non-empty fixture registers.
 - Privacy regression scan/assertions for absent prompt/media payloads from structured logs and metadata builders, and for the email appearing in gateway metadata but never in Worker structured logs.
+- A cross-panel observability test, driven from the task catalogue so a later panel is covered automatically, asserting that every delivered inference panel emits a start line before its model call, logs a bound cause on failure, and uses the shared run-ID field name.
 - A metadata-contract test that runs across every delivered inference task, so a panel added later cannot omit the verified email.
 - Terraform/config contract test confirming gateway lifecycle and Access audience output remain wired correctly.
 
