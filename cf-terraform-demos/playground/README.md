@@ -36,7 +36,7 @@ teaches the vocabulary instead of assuming it.
 
 | Panel            | Task type                    | Status            |
 | ---------------- | ---------------------------- | ----------------- |
-| Chat             | Text generation              | Phase 3           |
+| **Chat**         | **Text generation**          | **Available now** |
 | Create Image     | Text to image                | Phase 4           |
 | Describe Image   | Image to text                | Phase 5           |
 | Remix Image      | Image to image               | Phase 6           |
@@ -55,6 +55,35 @@ teaches the vocabulary instead of assuming it.
 Panels that are not built yet are still listed, each stating the phase that delivers it. Hiding them
 would misrepresent the product; a sidebar that quietly grows tells a visitor nothing about where the
 work is going.
+
+## Chat
+
+The first panel that calls a model, and so the first that puts a figure in the session cost meter.
+It streams its answer over server-sent events and shows what the request actually cost once AI
+Gateway has written its log.
+
+- **Two reviewed models** to compare: Llama 3.3 70B and Llama 3.2 3B. The same prompt against both
+  shows that the larger model costs materially more per token and is not always the better value.
+- **Streaming output**, with a Cancel button that aborts the HTTP request rather than merely
+  ignoring what keeps arriving. A cancelled answer keeps the text it already generated, because that
+  text was generated and paid for.
+- **Run details** after every answer: model, elapsed time, gateway log identifier, token counts,
+  cache state, and the reported cost.
+- **A truthful cost lifecycle.** The answer is never delayed waiting for a gateway log. The receipt
+  arrives with `costStatus: pending`, the browser polls `GET /api/runs/:runId/metrics`, and the
+  figure appears when the log does. If it never arrives, the panel says `Unavailable` rather than
+  `$0.00`.
+- **Prepared examples**, each demonstrating one thing: a repeatable question that shows the gateway
+  cache on a second ask, a long answer that makes output-token billing visible, a token-heavy input
+  of identifiers and timestamps, and a reasoning question worth running against both models.
+- **A View Tokens handoff**, because a model bills by the token and this is where you can see what
+  that means for your own text at no cost.
+
+A run belongs to the identity that created it. Asking for another identity's run metrics is a `403`,
+not an empty result — a blank answer would hide the attempt.
+
+Ask the same question twice to see the gateway serve the second request from its cache: a real
+answer that legitimately costs nothing new, labelled as such rather than as an unmeasured cost.
 
 ## View Tokens
 
@@ -180,17 +209,36 @@ Vue UI  →  routes  →  application  →  domain / infrastructure
 src/
 ├── tasks.ts         # Panel catalogue, shared by both tiers
 ├── runs.ts          # Run, receipt, and cost contracts, shared by both tiers
+├── chat.ts          # Chat request and stream-event contracts, shared by both tiers
+├── sse.ts           # Server-sent events framing, shared by both tiers
 ├── access-policies.ts
 ├── client/          # Vue 3 single-page application
+│   ├── components/runs/   # Run details, shared by every inference panel
+│   ├── composables/       # useRun: metrics polling, shared by every inference panel
+│   ├── features/chat/     # Conversation state, transcript, examples
+│   ├── services/          # The browser's only route to the API
+│   └── stores/            # Session identity, model catalogue, cost ledger
 └── worker/
     ├── index.ts     # Worker entry point and composition root
-    ├── routes/      # Thin Hono handlers
+    ├── routes/      # Thin Hono/SSE handlers
     ├── middleware/  # Access, limits, errors
     ├── application/ # Use cases and ports
-    ├── domain/      # Model descriptors, exception register
+    ├── domain/      # Model descriptors, validation, cost rules, exception register
     └── infrastructure/
-        └── ai/      # The only module that talks to Workers AI
+        ├── ai/      # The only module that talks to Workers AI
+        └── runs/    # In-memory run records
 ```
+
+`sse.ts` is shared because two different places parse the same wire format: the Worker parses what
+Workers AI streams to it, and the browser parses the typed events the Worker streams onward. One
+parser means they cannot drift apart.
+
+Run records are held **in memory**, which is a design choice rather than a stopgap. A record exists
+only to authorise and resolve a metrics lookup in the few seconds between an answer and its gateway
+log propagating, and a Worker isolate comfortably outlives that. Adding KV or D1 would mean a
+storage product, a Terraform resource, a teardown step, and a retention policy for data that is
+worthless within a minute. The trade-off is visible and honest: if an isolate is recycled in
+between, the metrics request answers `404` and the UI shows the cost as unavailable.
 
 Every server-side tier lives under `src/worker/` because the Worker is both the Cloudflare runtime
 entry point and the application's HTTP host; keeping them together makes the execution boundary
@@ -204,23 +252,35 @@ stay in the Worker's domain tier and reach the browser only through `/api/catalo
 
 ## API
 
-| Route                | Purpose                                                      |
-| -------------------- | ------------------------------------------------------------ |
-| `GET /api/me`        | The server's verified view of who you are.                   |
-| `GET /api/catalogue` | Panels, reviewed models, and the gateway exception register. |
+| Route                          | Purpose                                                                      |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| `GET /api/me`                  | The server's verified view of who you are.                                   |
+| `GET /api/catalogue`           | Panels, reviewed models, and the gateway exception register.                 |
+| `POST /api/chat/stream`        | Chat as server-sent events: `start`, `delta`, then `completed` or `problem`. |
+| `GET /api/runs/:runId/metrics` | Resolved or pending gateway cost for one of your own runs.                   |
 
 Every route is behind Access, derives identity only from the verified JWT, and returns RFC 9457
 `application/problem+json` on failure. More routes arrive with the panels that need them; there is
 deliberately no generic `{ model, input }` passthrough.
 
+Chat is `POST` rather than `GET`, which rules out `EventSource` on the client and is the right
+trade: a prompt belongs in a request body, not in a URL that ends up in browser history, proxy logs,
+and referrer headers.
+
+A request body may not carry `user`, `email`, `actor`, `sub`, or `system`. Such a body is
+**rejected** rather than having the field stripped, because stripping is a silent correction that
+makes an attempt look like success and leaves nothing for a test to assert on.
+
 ## Implementation status
 
-Built to **phase 2** of
+Built to **phase 3** of
 [`specs/playground/02-implementation.md`](../../specs/playground/02-implementation.md).
 
 - **Phase 1** delivered the shell, the Terraform lifecycle, Access, the mandatory-gateway
   foundation, the shared contracts, and the test harness.
 - **Phase 2** delivered View Tokens, the first usable panel.
+- **Phase 3** delivered Chat: the first gateway-routed inference, streaming output, the run receipt
+  and metrics lifecycle, and the first real figure in the session cost meter.
 
-Every other panel renders a placeholder stating the phase that delivers it. Chat, in phase 3, will
-be the first to call a model and the first to put a figure in the session cost meter.
+Every other panel renders a placeholder stating the phase that delivers it. Create Image, in phase
+4, is next.

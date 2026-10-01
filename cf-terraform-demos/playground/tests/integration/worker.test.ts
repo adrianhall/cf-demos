@@ -70,13 +70,21 @@ describe('GET /api/catalogue', () => {
 
     const body = (await response.json()) as {
       tasks: { id: string; name: string; gateway: string }[];
-      models: unknown[];
+      models: { task: string }[];
       gatewayExceptions: unknown[];
     };
 
     expect(body.tasks).toHaveLength(TASK_DESCRIPTORS.length);
-    expect(body.models).toEqual([]);
     expect(body.gatewayExceptions).toEqual([]);
+
+    // A reviewed model is only advertised for a panel that is built, so the catalogue never offers
+    // a choice that goes nowhere.
+    const delivered = new Set(
+      TASK_DESCRIPTORS.filter((task) => task.availability === 'available').map((task) => task.id)
+    );
+    for (const model of body.models) {
+      expect(delivered.has(model.task as (typeof TASK_DESCRIPTORS)[number]['id'])).toBe(true);
+    }
   });
 
   it('marks every inference panel as gateway-routed', async () => {

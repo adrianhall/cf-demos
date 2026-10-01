@@ -51,9 +51,22 @@ describe('TASK_DESCRIPTORS', () => {
   // "not built yet" would make the sidebar lie in the one way a visitor notices immediately.
   // `tests/client/router.test.ts` enforces the other direction, that an available panel has a
   // view of its own.
-  it('marks View Tokens as the only panel built so far', () => {
+  it('marks exactly the panels delivered so far as available', () => {
     const available = TASK_DESCRIPTORS.filter((task) => task.availability === 'available');
-    expect(available.map((task) => task.id)).toEqual(['view-tokens']);
+    expect(available.map((task) => task.id).sort()).toEqual(['chat', 'view-tokens']);
+  });
+
+  // The phase number is quoted in the placeholder, so a panel still marked planned for a phase
+  // already delivered would tell a visitor to wait for something that exists.
+  it('marks every panel from a delivered phase as available', () => {
+    const deliveredThroughPhase = 3;
+    for (const task of TASK_DESCRIPTORS) {
+      if (task.phase <= deliveredThroughPhase) {
+        expect(task.availability, `${task.name} is in a delivered phase`).toBe('available');
+      } else {
+        expect(task.availability, `${task.name} is not delivered yet`).toBe('planned');
+      }
+    }
   });
 
   it('records a delivery phase for every panel', () => {

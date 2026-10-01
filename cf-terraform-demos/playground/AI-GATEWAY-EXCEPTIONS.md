@@ -47,3 +47,8 @@ alternative badge, not the standard one.
 ## Registered exceptions
 
 None.
+
+Chat, delivered in phase 3, is the first panel to perform real inference, and it needed no
+exception: `runStream` assembles its gateway options in the same single place the synchronous path
+does, so a streamed call cannot omit them either. Streaming is where a shortcut is most tempting,
+which is why both paths are pinned by their own tests.

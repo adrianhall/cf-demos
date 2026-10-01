@@ -33,14 +33,26 @@ describe('PlannedPanelView', () => {
 
   // A placeholder that leaves a visitor with nowhere to go has wasted their click. Pointing at
   // the panel that lands first costs a sentence.
-  it('points the visitor at the panel that arrives first', () => {
-    const wrapper = mountPlaceholder('chat');
+  it('points the visitor at a panel they can use now', () => {
+    const wrapper = mountPlaceholder('create-video');
     expect(wrapper.find('a[href="/view-tokens"]').exists()).toBe(true);
   });
 
   // A page that invites you to visit the page you are already on is noise dressed as help.
   it('does not link View Tokens to itself', () => {
     expect(mountPlaceholder('view-tokens').find('a[href="/view-tokens"]').exists()).toBe(false);
+  });
+
+  it('does not link Chat to itself', () => {
+    expect(mountPlaceholder('chat').find('a[href="/chat"]').exists()).toBe(false);
+  });
+
+  // Both delivered panels are offered, so a visitor sees one that calls a model and one that does
+  // not — which is the distinction the whole demo is built around.
+  it('points the visitor at both delivered panels', () => {
+    const wrapper = mountPlaceholder('create-image');
+    expect(wrapper.find('a[href="/chat"]').exists()).toBe(true);
+    expect(wrapper.find('a[href="/view-tokens"]').exists()).toBe(true);
   });
 
   // The badge is read by screen readers in document order, so the "not built yet" message has to

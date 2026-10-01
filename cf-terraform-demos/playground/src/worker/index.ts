@@ -5,9 +5,15 @@ import {
   problemDetailsErrorHandler
 } from '@adrianhall/cloudflare-toolkit/hono';
 import { createMeRouter } from '@demos/worker-common';
+import { ChatService } from './application/chat/chat-service';
+import { MetricsService } from './application/metrics/metrics-service';
 import type { AppBindings } from './bindings';
+import { GatewayInferenceClient } from './infrastructure/ai/gateway-inference-client';
+import { createMemoryRunRepository } from './infrastructure/runs/memory-run-repository';
 import { accessMiddleware } from './middleware/access';
 import { catalogueRouter } from './routes/catalogue';
+import { chatRouter } from './routes/chat';
+import { runsRouter } from './routes/runs';
 
 /**
  * Worker entry point and composition root.
@@ -28,8 +34,34 @@ const app = new Hono<AppBindings>();
 app.use(cloudflareLogger());
 app.use(accessMiddleware);
 
+/**
+ * Builds the request-scoped application services and puts them on the context.
+ *
+ * Construction is per request because the gateway client closes over `c.env`, which is only
+ * available inside a request. The run repository's storage is module-scoped, so a record written by
+ * one request is still readable by the next within the same isolate — which is what makes a
+ * follow-up metrics lookup possible at all.
+ *
+ * Mounted after the Access middleware so it never runs for an unauthenticated request: there is no
+ * point constructing an inference client for a caller who is about to receive a `401`.
+ */
+app.use('/api/*', async (context, next) => {
+  const inference = new GatewayInferenceClient({
+    ai: context.env.AI,
+    gatewayId: context.env.AI_GATEWAY_ID
+  });
+  const runs = createMemoryRunRepository();
+
+  context.set('CHAT_SERVICE', new ChatService({ inference, runs }));
+  context.set('METRICS_SERVICE', new MetricsService({ inference, runs }));
+
+  await next();
+});
+
 app.route('/api/me', createMeRouter<AppBindings>());
 app.route('/api/catalogue', catalogueRouter);
+app.route('/api/chat', chatRouter);
+app.route('/api/runs', runsRouter);
 
 // `includeStack` is gated on `import.meta.env.DEV`, which Vite replaces with the literal `false` in
 // a production build, so a deployed Worker can never emit a stack trace to a client.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
 import { buildRoutes, createAppRouter } from '../../src/client/router';
+import PlannedPanelView from '../../src/client/views/PlannedPanelView.vue';
 import { TASK_DESCRIPTORS } from '../../src/tasks';
 
 describe('buildRoutes', () => {
@@ -28,11 +29,21 @@ describe('buildRoutes', () => {
   // saying "ready" above a page saying "not built yet".
   it('gives every panel marked available a view of its own', () => {
     const routes = buildRoutes();
-    const placeholder = routes.find((route) => route.path === '/chat')?.component;
 
     for (const task of TASK_DESCRIPTORS.filter((item) => item.availability === 'available')) {
       const route = routes.find((candidate) => candidate.path === `/${task.id}`);
-      expect(route?.component, `${task.name} needs its own view`).not.toBe(placeholder);
+      expect(route?.component, `${task.name} needs its own view`).not.toBe(PlannedPanelView);
+    }
+  });
+
+  // The other direction: a panel that is not built must still render the placeholder, so a view
+  // registered ahead of its catalogue entry cannot quietly go live.
+  it('gives every panel still planned the placeholder', () => {
+    const routes = buildRoutes();
+
+    for (const task of TASK_DESCRIPTORS.filter((item) => item.availability === 'planned')) {
+      const route = routes.find((candidate) => candidate.path === `/${task.id}`);
+      expect(route?.component, `${task.name} should still be a placeholder`).toBe(PlannedPanelView);
     }
   });
 });

@@ -68,8 +68,15 @@ describe('PanelNavigation', () => {
   // misrepresent the product; labelling them is what makes the list honest rather than broken.
   it('labels an unbuilt panel with the phase that delivers it', () => {
     const wrapper = mountNavigation();
-    const chat = wrapper.find('a[data-task="chat"]');
-    expect(chat.text()).toContain('Phase 3');
+    const createImage = wrapper.find('a[data-task="create-image"]');
+    expect(createImage.text()).toContain('Phase 4');
+  });
+
+  // A delivered panel carries no phase label. Leaving one behind would make the sidebar read as if
+  // the panel were still pending while it was in fact usable.
+  it('does not label a delivered panel with a phase', () => {
+    const wrapper = mountNavigation();
+    expect(wrapper.find('a[data-task="chat"]').text()).not.toContain('Phase');
   });
 
   // The badge marks what is still to come. Once a panel is delivered its badge disappears, so the

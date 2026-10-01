@@ -1,13 +1,25 @@
 import type { CloudflareToolkitVariables } from '@adrianhall/cloudflare-toolkit/hono';
+import type { ChatService } from './application/chat/chat-service';
+import type { MetricsService } from './application/metrics/metrics-service';
 
 /**
  * Hono context variables added by this Worker: the toolkit's `Cloudflare_Access_Identity` and
- * `LOGGER`.
+ * `LOGGER`, plus the request-scoped application services.
  *
- * Request-scoped application services are added here as each panel arrives, so routes receive them
- * ready-made and never construct an inference client or repository themselves.
+ * The services are declared here and set by the composition root's middleware, so a route handler
+ * receives them ready-made. That is what keeps `routes/` thin: a handler reads a service off the
+ * context, and there is no constructor call it could reach for instead.
  */
-export interface AppVariables extends CloudflareToolkitVariables {}
+export interface AppVariables extends CloudflareToolkitVariables {
+  /**
+   * The Chat use case, bound to this request's gateway client and run store.
+   */
+  CHAT_SERVICE: ChatService;
+  /**
+   * The run-metrics use case, sharing this request's gateway client and run store.
+   */
+  METRICS_SERVICE: MetricsService;
+}
 
 /**
  * Hono environment shape shared by the top-level app and every sub-router/middleware in this

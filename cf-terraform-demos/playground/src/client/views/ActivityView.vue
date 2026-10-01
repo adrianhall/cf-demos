@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import type { GatewayException } from '../../worker/domain/gateway-exceptions';
+import type { CatalogueException } from '../stores/catalogue';
 import { useLedgerStore } from '../stores/ledger';
 import { useSessionStore } from '../stores/session';
 
@@ -14,7 +14,7 @@ const session = useSessionStore();
  * one the Worker enforces. A browser-side copy could be stale in exactly the situation that
  * matters.
  */
-const exceptions = ref<GatewayException[]>([]);
+const exceptions = ref<CatalogueException[]>([]);
 
 /**
  * Whether the exception register has been read successfully.
@@ -38,7 +38,7 @@ async function loadExceptions(): Promise<void> {
     if (!response.ok) {
       return;
     }
-    const body = (await response.json()) as { gatewayExceptions: GatewayException[] };
+    const body = (await response.json()) as { gatewayExceptions: CatalogueException[] };
     exceptions.value = body.gatewayExceptions;
     exceptionsLoaded.value = true;
   } catch {
@@ -106,6 +106,11 @@ onMounted(() => void loadExceptions());
         <li>
           Cost, token counts, cache state, and duration are read back from the gateway's log after
           the answer arrives. Nothing is estimated from token counts in the browser.
+        </li>
+        <li>
+          A gateway log is written a moment after the answer, so a cost can show as
+          <strong>Pending</strong> briefly. If it never arrives it shows as
+          <strong>Unavailable</strong> — never as $0.00, which would read as free.
         </li>
         <li>
           Prompts, uploads, and model output are <strong>not</strong> stored in gateway logs. Each

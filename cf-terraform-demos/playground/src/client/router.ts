@@ -7,6 +7,7 @@ import {
 } from 'vue-router';
 import { TASK_DESCRIPTORS, type TaskId } from '../tasks';
 import ActivityView from './views/ActivityView.vue';
+import ChatView from './views/ChatView.vue';
 import PlannedPanelView from './views/PlannedPanelView.vue';
 import ViewTokensView from './views/ViewTokensView.vue';
 
@@ -19,6 +20,7 @@ import ViewTokensView from './views/ViewTokensView.vue';
  * `tests/client/router.test.ts` treats as a failure.
  */
 const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
+  'chat': ChatView,
   'view-tokens': ViewTokensView
 };
 

@@ -119,7 +119,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Hold a short conversation with a text model and watch the answer stream in.',
     group: 'Generate',
     gateway: 'required',
-    availability: 'planned',
+    availability: 'available',
     phase: 3
   },
   {

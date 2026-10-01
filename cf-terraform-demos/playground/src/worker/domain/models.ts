@@ -3,10 +3,9 @@
  *   catalog, not a runtime scrape. A scraped catalogue would let a model appear in the UI whose
  *   input contract nobody has read, and would turn this demo into an arbitrary-provider proxy. Each
  *   entry here was read against its catalog page before being added, and its contract is pinned by
- *   `contractVersion`. The list is empty until Phase 3 introduces the first inference panel. The
- *   types exist from Phase 1 so the catalogue endpoint, the validation tests, and the inference
- *   client all have the shape they will need, and so adding a model later is filling in a reviewed
- *   form rather than inventing one.
+ *   `contractVersion`. The types exist from Phase 1 so the catalogue endpoint, the validation
+ *   tests, and the inference client all have the shape they need, and so adding a model is filling
+ *   in a reviewed form rather than inventing one.
  */
 
 import type { TaskId } from '../../tasks';
@@ -90,11 +89,49 @@ export interface ModelDescriptor {
 /**
  * Every reviewed model, grouped by nothing: panels filter this list by `task`.
  *
- * Deliberately empty in Phases 1 and 2. View Tokens is the only delivered panel and it calls no
- * model at all, so a populated catalogue here would advertise capability the application does not
- * have.
+ * Two Chat models rather than one, because having something to compare is what makes the cost meter
+ * interesting: the same prompt against a 70B and a 3B model produces visibly different latency and
+ * a materially different figure in the session total. Both were read against their catalog pages,
+ * both accept the `messages` array this demo sends, and both stream.
  */
-export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [];
+export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
+  {
+    id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    name: 'Llama 3.3 70B (fast)',
+    provider: 'workers-ai',
+    task: 'chat',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'streamed',
+    documentationUrl:
+      'https://developers.cloudflare.com/workers-ai/models/llama-3.3-70b-instruct-fp8-fast/',
+    contextWindowTokens: 24_000
+  },
+  {
+    id: '@cf/meta/llama-3.2-3b-instruct',
+    name: 'Llama 3.2 3B',
+    provider: 'workers-ai',
+    task: 'chat',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'streamed',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/llama-3.2-3b-instruct/',
+    contextWindowTokens: 80_000
+  }
+];
+
+/**
+ * Default model for a panel's selector.
+ *
+ * Returns the first reviewed descriptor, so the catalogue order doubles as the preference order and
+ * there is no second list to keep in step with it.
+ *
+ * @param task Panel to choose a default for.
+ * @returns The panel's first reviewed model, or `undefined` when it has none yet.
+ */
+export function defaultModelForTask(task: TaskId): ModelDescriptor | undefined {
+  return MODEL_DESCRIPTORS.find((model) => model.task === task);
+}
 
 /**
  * Lists the reviewed models a panel may use.

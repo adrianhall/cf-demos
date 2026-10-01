@@ -33,7 +33,12 @@ function fakeAi(
     log?: unknown;
     logId?: string | null;
   } = {}
-) {
+): {
+  ai: Ai;
+  run: ReturnType<typeof vi.fn>;
+  gateway: ReturnType<typeof vi.fn>;
+  getLog: ReturnType<typeof vi.fn>;
+} {
   const behaviour = overrides.run ?? (() => ({ response: 'ok' }));
   const run = vi.fn((_model: string, _input: unknown, _options: unknown) => behaviour());
   const getLog = vi.fn(() =>
@@ -174,6 +179,236 @@ describe('GatewayInferenceClient', () => {
     const serialised = JSON.stringify(error, Object.getOwnPropertyNames(error));
     expect(serialised).not.toContain('secret prompt');
     expect(serialised).not.toContain('internal-host-7');
+  });
+
+  describe('runStream', () => {
+    /**
+     * Builds a `ReadableStream` of SSE text, as Workers AI returns for a streamed call.
+     *
+     * @param frames Raw frame strings to emit, in order.
+     * @param chunkSize Bytes per stream chunk, so a test can split frames across chunk boundaries
+     *   the way a real network does.
+     * @returns A byte stream carrying those frames.
+     */
+    function sseStream(frames: string[], chunkSize?: number): ReadableStream<Uint8Array> {
+      const bytes = new TextEncoder().encode(frames.join(''));
+      const size = chunkSize ?? bytes.length;
+
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (let offset = 0; offset < bytes.length; offset += size) {
+            controller.enqueue(bytes.slice(offset, offset + size));
+          }
+          controller.close();
+        }
+      });
+    }
+
+    /**
+     * Collects every chunk a stream yields.
+     *
+     * @param iterable The chunk stream.
+     * @returns The yielded text, in order.
+     */
+    async function collect(iterable: AsyncIterable<string>): Promise<string[]> {
+      const chunks: string[] = [];
+      for await (const chunk of iterable) {
+        chunks.push(chunk);
+      }
+      return chunks;
+    }
+
+    it('yields the generated text from each frame', async () => {
+      const { ai } = fakeAi({
+        run: () =>
+          sseStream([
+            'data: {"response":"Hel"}\n\n',
+            'data: {"response":"lo"}\n\n',
+            'data: [DONE]\n\n'
+          ])
+      });
+
+      const stream = await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).runStream(
+        requestFrom()
+      );
+      expect(await collect(stream.chunks)).toEqual(['Hel', 'lo']);
+    });
+
+    // The gateway option cannot be omitted on this path either. Streaming is where a shortcut is
+    // most tempting, so it is pinned the same way the synchronous path is.
+    it('always passes the configured gateway and collects a log', async () => {
+      const { ai, run } = fakeAi({ run: () => sseStream(['data: [DONE]\n\n']) });
+      await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).runStream(requestFrom());
+
+      const options = run.mock.calls[0]![2] as { gateway: { id: string; collectLog: boolean } };
+      expect(options.gateway.id).toBe('playground');
+      expect(options.gateway.collectLog).toBe(true);
+    });
+
+    it('attaches the verified email to the streamed call\u2019s metadata', async () => {
+      const { ai, run } = fakeAi({ run: () => sseStream(['data: [DONE]\n\n']) });
+      await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).runStream(requestFrom());
+
+      const options = run.mock.calls[0]![2] as { gateway: { metadata: Record<string, unknown> } };
+      expect(options.gateway.metadata).toMatchObject({
+        task: 'chat',
+        user: 'alice@example.com'
+      });
+    });
+
+    it('asks the gateway not to store payloads on a streamed call', async () => {
+      const { ai, run } = fakeAi({ run: () => sseStream(['data: [DONE]\n\n']) });
+      await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).runStream(requestFrom());
+
+      const options = run.mock.calls[0]![2] as { extraHeaders: Record<string, string> };
+      expect(options.extraHeaders['cf-aig-collect-log-payload']).toBe('false');
+    });
+
+    // Set by the client rather than trusted from the caller's input, so there is no way to call
+    // this method and receive a non-streamed response — a mismatch that would look like an empty
+    // answer.
+    it('sets the streaming flag itself', async () => {
+      const { ai, run } = fakeAi({ run: () => sseStream(['data: [DONE]\n\n']) });
+      await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).runStream(requestFrom());
+
+      expect((run.mock.calls[0]![1] as { stream: boolean }).stream).toBe(true);
+    });
+
+    it('refuses to dispatch a streamed request with no verified email', async () => {
+      const { ai, run } = fakeAi({ run: () => sseStream(['data: [DONE]\n\n']) });
+      const client = new GatewayInferenceClient({ ai, gatewayId: 'playground' });
+
+      await expect(client.runStream(requestFrom(''))).rejects.toThrow(/verified user/iu);
+      expect(run).not.toHaveBeenCalled();
+    });
+
+    // A chunk boundary falls wherever the network puts it, routinely mid-frame. Reassembly is the
+    // difference between a correct answer and a silently truncated one.
+    it('reassembles frames split across chunk boundaries', async () => {
+      const { ai } = fakeAi({
+        run: () =>
+          sseStream(
+            ['data: {"response":"one"}\n\n', 'data: {"response":"two"}\n\n', 'data: [DONE]\n\n'],
+            7
+          )
+      });
+
+      const stream = await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).runStream(
+        requestFrom()
+      );
+      expect((await collect(stream.chunks)).join('')).toBe('onetwo');
+    });
+
+    // A multi-byte character split across chunks must not decode to a replacement character, which
+    // would corrupt any non-ASCII answer.
+    it('decodes a multi-byte character split across chunks', async () => {
+      const { ai } = fakeAi({
+        run: () => sseStream(['data: {"response":"\u3053\u3093\u306b\u3061\u306f"}\n\n'], 5)
+      });
+
+      const stream = await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).runStream(
+        requestFrom()
+      );
+      expect((await collect(stream.chunks)).join('')).toBe('\u3053\u3093\u306b\u3061\u306f');
+    });
+
+    it('accepts the OpenAI-compatible delta shape', async () => {
+      const { ai } = fakeAi({
+        run: () => sseStream(['data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'])
+      });
+
+      const stream = await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).runStream(
+        requestFrom()
+      );
+      expect(await collect(stream.chunks)).toEqual(['hi']);
+    });
+
+    // A single malformed or novel frame should cost one increment of text, not the whole answer the
+    // visitor is already reading.
+    it('skips an unparseable frame rather than failing the stream', async () => {
+      const { ai } = fakeAi({
+        run: () =>
+          sseStream([
+            'data: {"response":"good"}\n\n',
+            'data: not json\n\n',
+            'data: {"response":"also good"}\n\n'
+          ])
+      });
+
+      const stream = await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).runStream(
+        requestFrom()
+      );
+      expect(await collect(stream.chunks)).toEqual(['good', 'also good']);
+    });
+
+    it('does not yield the completion marker as text', async () => {
+      const { ai } = fakeAi({
+        run: () => sseStream(['data: {"response":"x"}\n\n', 'data: [DONE]\n\n'])
+      });
+
+      const stream = await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).runStream(
+        requestFrom()
+      );
+      expect(await collect(stream.chunks)).toEqual(['x']);
+    });
+
+    it('skips an empty text increment', async () => {
+      const { ai } = fakeAi({
+        run: () => sseStream(['data: {"response":""}\n\n', 'data: {"response":"x"}\n\n'])
+      });
+
+      const stream = await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).runStream(
+        requestFrom()
+      );
+      expect(await collect(stream.chunks)).toEqual(['x']);
+    });
+
+    // The log identifier is only meaningful once the stream has settled: the binding reports the
+    // identifier of its most recent request, so reading it mid-stream reads it too early.
+    it('reports the gateway log identifier only after the stream settles', async () => {
+      const { ai } = fakeAi({
+        run: () => sseStream(['data: {"response":"x"}\n\n']),
+        logId: 'log-stream'
+      });
+
+      const stream = await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).runStream(
+        requestFrom()
+      );
+      expect(stream.logId()).toBeUndefined();
+
+      await collect(stream.chunks);
+      expect(stream.logId()).toBe('log-stream');
+    });
+
+    it('reports an absent log identifier as undefined after streaming', async () => {
+      const { ai } = fakeAi({ run: () => sseStream(['data: [DONE]\n\n']), logId: null });
+
+      const stream = await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).runStream(
+        requestFrom()
+      );
+      await collect(stream.chunks);
+      expect(stream.logId()).toBeUndefined();
+    });
+
+    it('maps a provider failure before streaming to a sanitised 502', async () => {
+      const { ai } = fakeAi({
+        run: () => {
+          throw new Error('upstream 500: prompt "my secret prompt" rejected');
+        }
+      });
+      const client = new GatewayInferenceClient({ ai, gatewayId: 'playground' });
+
+      await expect(client.runStream(requestFrom())).rejects.toMatchObject(problemWithStatus(502));
+    });
+
+    // Asking for a stream and receiving an object is a contract mismatch that would otherwise
+    // surface as an answer that never arrives.
+    it('maps a non-stream response to a 502', async () => {
+      const { ai } = fakeAi({ run: () => ({ response: 'not a stream' }) });
+      const client = new GatewayInferenceClient({ ai, gatewayId: 'playground' });
+
+      await expect(client.runStream(requestFrom())).rejects.toMatchObject(problemWithStatus(502));
+    });
   });
 
   describe('readMetric', () => {

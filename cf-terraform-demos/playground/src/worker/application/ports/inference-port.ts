@@ -84,6 +84,32 @@ export interface InferenceResult<TOutput = unknown> {
 }
 
 /**
+ * The outcome of one streamed inference call.
+ *
+ * @typeParam TChunk Type each stream increment decodes to.
+ */
+export interface InferenceStream<TChunk = string> {
+  /**
+   * The stream increments, in order.
+   *
+   * An async iterable rather than a callback so the route can `for await` over it and let
+   * backpressure and cancellation work the way the runtime intends. A caller that abandons the
+   * iteration cancels the underlying stream.
+   */
+  chunks: AsyncIterable<TChunk>;
+  /**
+   * Reads the gateway log identifier for the call.
+   *
+   * A function rather than a value because the identifier is only meaningful once the stream has
+   * settled: the binding reports the identifier of its most recent request, so reading it while
+   * chunks are still arriving would be reading it before there is anything to read.
+   *
+   * @returns The log identifier, or `undefined` when the gateway assigned none.
+   */
+  logId: () => string | undefined;
+}
+
+/**
  * The application tier's contract for running a model through AI Gateway.
  *
  * Every implementation routes through the gateway. There is no parameter to turn that off, no
@@ -105,6 +131,26 @@ export interface InferencePort {
    *   rather than a request fault and must not be reported to the caller as a client error.
    */
   run<TInput, TOutput>(request: InferenceRequest<TInput>): Promise<InferenceResult<TOutput>>;
+
+  /**
+   * Runs one model call through AI Gateway, streaming its output.
+   *
+   * Separate from {@link InferencePort.run} rather than a flag on it, because the two have genuinely
+   * different shapes: a streamed call has no single return value and its gateway log identifier is
+   * not readable until the stream settles. Collapsing them would give every caller an optional
+   * stream and an optional result to handle.
+   *
+   * @typeParam TInput Model-specific input payload. The implementation sets `stream` itself, so a
+   *   caller does not have to remember to.
+   * @param request The call to make, including the verified actor; see {@link InferenceRequest}.
+   * @returns The stream increments and a way to read the gateway log identifier afterwards; see
+   *   {@link InferenceStream}.
+   * @throws {ProblemDetailsError} With `502` when the provider or gateway fails before streaming
+   *   begins, carrying a sanitised message. A failure _during_ the stream surfaces as an error
+   *   thrown from the iteration instead, because by then a response has already started.
+   * @throws {Error} When the verified actor carries no email, or the gateway is not configured.
+   */
+  runStream<TInput>(request: InferenceRequest<TInput>): Promise<InferenceStream>;
 
   /**
    * Reads back the AI Gateway log for a completed call.

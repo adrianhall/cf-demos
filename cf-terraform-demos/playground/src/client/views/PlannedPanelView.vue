@@ -34,9 +34,25 @@ const task = computed(() => findTask(props.taskId));
         listed here from the start so the full shape of the product is visible, rather than the
         sidebar quietly growing as work lands.
       </p>
-      <p v-if="task.id !== 'view-tokens'">
-        <router-link to="/view-tokens">View Tokens</router-link>
-        arrives in phase 2 and will be the first panel you can actually use.
+      <!--
+        A placeholder that leaves a visitor with nowhere to go has wasted their click, so it points
+        at the panels that do work: one that calls a model and one that does not. Each link is
+        omitted on its own page, because inviting someone to visit the page they are already on is
+        noise dressed as help.
+      -->
+      <p>
+        In the meantime,
+        <template v-if="task.id !== 'chat'">
+          <router-link to="/chat">Chat</router-link>
+          streams an answer from a real model and shows what it cost<template
+            v-if="task.id !== 'view-tokens'"
+            >, and
+          </template>
+        </template>
+        <template v-if="task.id !== 'view-tokens'">
+          <router-link to="/view-tokens">View Tokens</router-link>
+          runs entirely in your browser at no cost </template
+        >.
       </p>
     </section>
   </PanelPage>
