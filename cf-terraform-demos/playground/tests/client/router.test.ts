@@ -22,6 +22,19 @@ describe('buildRoutes', () => {
   it('routes the activity page', () => {
     expect(buildRoutes().map((route) => route.path)).toContain('/activity');
   });
+
+  // The sidebar promises a working panel; the router has to deliver one. Without this, marking a
+  // panel `available` in the catalogue and forgetting to register its view would produce a badge
+  // saying "ready" above a page saying "not built yet".
+  it('gives every panel marked available a view of its own', () => {
+    const routes = buildRoutes();
+    const placeholder = routes.find((route) => route.path === '/chat')?.component;
+
+    for (const task of TASK_DESCRIPTORS.filter((item) => item.availability === 'available')) {
+      const route = routes.find((candidate) => candidate.path === `/${task.id}`);
+      expect(route?.component, `${task.name} needs its own view`).not.toBe(placeholder);
+    }
+  });
 });
 
 describe('createAppRouter', () => {

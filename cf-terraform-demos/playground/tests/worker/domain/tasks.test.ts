@@ -47,11 +47,13 @@ describe('TASK_DESCRIPTORS', () => {
     expect(exempt.map((task) => task.id)).toEqual(['view-tokens']);
   });
 
-  // Phase 1 ships the shell only, so every panel still renders a placeholder. Claiming a panel is
-  // available while it shows "not built yet" would make the sidebar lie in the one way a visitor
-  // would immediately notice.
-  it('marks no panel available while only the shell exists', () => {
-    expect(TASK_DESCRIPTORS.filter((task) => task.availability === 'available')).toEqual([]);
+  // Availability has to track what is actually built: a panel marked available while it renders
+  // "not built yet" would make the sidebar lie in the one way a visitor notices immediately.
+  // `tests/client/router.test.ts` enforces the other direction, that an available panel has a
+  // view of its own.
+  it('marks View Tokens as the only panel built so far', () => {
+    const available = TASK_DESCRIPTORS.filter((task) => task.availability === 'available');
+    expect(available.map((task) => task.id)).toEqual(['view-tokens']);
   });
 
   it('records a delivery phase for every panel', () => {

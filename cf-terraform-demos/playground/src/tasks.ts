@@ -265,7 +265,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     // AI-GATEWAY-EXCEPTIONS.md, which says so explicitly so the absence is a decision rather than
     // an oversight.
     gateway: 'none',
-    availability: 'planned',
+    availability: 'available',
     phase: 2
   }
 ];

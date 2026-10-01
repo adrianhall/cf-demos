@@ -5,9 +5,22 @@ import {
   type Router,
   type RouterHistory
 } from 'vue-router';
-import { TASK_DESCRIPTORS } from '../tasks';
+import { TASK_DESCRIPTORS, type TaskId } from '../tasks';
 import ActivityView from './views/ActivityView.vue';
 import PlannedPanelView from './views/PlannedPanelView.vue';
+import ViewTokensView from './views/ViewTokensView.vue';
+
+/**
+ * Views for the panels that are built, keyed by task identifier.
+ *
+ * A panel absent from this map renders the placeholder. Each phase adds one entry rather than
+ * restructuring the route table, and a panel marked `available` in the catalogue without a view
+ * here would show a placeholder while the sidebar claimed otherwise — which
+ * `tests/client/router.test.ts` treats as a failure.
+ */
+const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
+  'view-tokens': ViewTokensView
+};
 
 /**
  * Builds the Playground's routes from the panel catalogue.
@@ -26,10 +39,7 @@ export function buildRoutes(): RouteRecordRaw[] {
   const panelRoutes: RouteRecordRaw[] = TASK_DESCRIPTORS.map((task) => ({
     path: `/${task.id}`,
     name: task.id,
-    // Phase 1 renders every panel through the placeholder. As each phase lands, its panel swaps
-    // this for its own view and the rest keep the placeholder, so the route table never has to be
-    // restructured — only one entry changes.
-    component: PlannedPanelView,
+    component: DELIVERED_VIEWS[task.id] ?? PlannedPanelView,
     props: { taskId: task.id },
     meta: { taskId: task.id }
   }));

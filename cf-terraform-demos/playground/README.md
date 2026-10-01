@@ -34,31 +34,52 @@ The navigation is one level deep. Every panel is one click from anywhere, named 
 wants to do rather than after a model task type. The task type is shown underneath, so the panel
 teaches the vocabulary instead of assuming it.
 
-| Panel            | Task type                    | Status   |
-| ---------------- | ---------------------------- | -------- |
-| Chat             | Text generation              | Phase 3  |
-| Create Image     | Text to image                | Phase 4  |
-| Describe Image   | Image to text                | Phase 5  |
-| Remix Image      | Image to image               | Phase 6  |
-| Classify Image   | Image classification         | Phase 7  |
-| Create Video     | Text to video                | Phase 8  |
-| Animate Image    | Image to video               | Phase 9  |
-| Generate Music   | Text to music                | Phase 10 |
-| Read Text        | Text to speech               | Phase 11 |
-| Transcribe Audio | Automatic speech recognition | Phase 12 |
-| Translate Text   | Translation                  | Phase 13 |
-| Classify Text    | Text classification          | Phase 14 |
-| Evaluate Choices | Structured evaluation        | Phase 15 |
-| Semantic Search  | Text embeddings              | Phase 16 |
-| View Tokens      | Tokenization                 | Phase 2  |
+| Panel            | Task type                    | Status            |
+| ---------------- | ---------------------------- | ----------------- |
+| Chat             | Text generation              | Phase 3           |
+| Create Image     | Text to image                | Phase 4           |
+| Describe Image   | Image to text                | Phase 5           |
+| Remix Image      | Image to image               | Phase 6           |
+| Classify Image   | Image classification         | Phase 7           |
+| Create Video     | Text to video                | Phase 8           |
+| Animate Image    | Image to video               | Phase 9           |
+| Generate Music   | Text to music                | Phase 10          |
+| Read Text        | Text to speech               | Phase 11          |
+| Transcribe Audio | Automatic speech recognition | Phase 12          |
+| Translate Text   | Translation                  | Phase 13          |
+| Classify Text    | Text classification          | Phase 14          |
+| Evaluate Choices | Structured evaluation        | Phase 15          |
+| Semantic Search  | Text embeddings              | Phase 16          |
+| **View Tokens**  | **Tokenization**             | **Available now** |
 
 Panels that are not built yet are still listed, each stating the phase that delivers it. Hiding them
 would misrepresent the product; a sidebar that quietly grows tells a visitor nothing about where the
 work is going.
 
-**View Tokens** is the one panel that performs no inference at all. It tokenizes in your browser,
-contacts no model, produces no gateway log, and costs nothing. That is why it is explicitly _not_ an
-entry in the exception register: there is no request to route anywhere.
+## View Tokens
+
+The one panel that performs no inference at all. It tokenizes in your browser, contacts no model,
+produces no gateway log, and costs nothing — which is why it is explicitly _not_ an entry in the
+exception register: there is no request to route anywhere. It also means the panel works offline.
+
+It shows what a model would actually charge you for:
+
+- **Coloured token boxes**, separated by outline and spacing as well as colour, with the whitespace
+  made visible. The surprise for most people is that a leading space belongs to the word that
+  follows it, so `gateway` and ` gateway` are different tokens.
+- **Live counts** — tokens, characters, words, characters per token, and the proportion of a
+  reference context window. The familiar "about four characters per token" is an English-prose
+  average, and the panel makes its failure on code, other scripts, and emoji immediately visible.
+- **A token table** with each token's exact escaped text and its vocabulary identifier, which is
+  also the non-visual equivalent of the coloured sequence.
+- **Four encodings** to compare. The same Japanese sentence costs 18 tokens under `o200k_base` and
+  27 under `gpt2`: a real difference in what that sentence costs to send.
+- **Prepared examples**, each chosen to demonstrate one counter-intuitive property: leading spaces,
+  source code, long numbers, non-English scripts, and emoji.
+
+Tokenizers are lazily loaded, so the shell does not ship four vocabulary tables to someone who never
+opens the panel. Each tokenizer states which models it is exact for; a count presented without
+naming its tokenizer is a number people will quote.
 
 ## Cost and privacy
 
@@ -194,10 +215,12 @@ deliberately no generic `{ model, input }` passthrough.
 
 ## Implementation status
 
-Built to **phase 1** of
-[`specs/playground/02-implementation.md`](../../specs/playground/02-implementation.md): the shell,
-the Terraform lifecycle, Access, the mandatory-gateway foundation, the shared contracts, and the
-test harness.
+Built to **phase 2** of
+[`specs/playground/02-implementation.md`](../../specs/playground/02-implementation.md).
 
-No panel is usable yet — every one renders a placeholder stating the phase that delivers it. View
-Tokens arrives in phase 2 and will be the first.
+- **Phase 1** delivered the shell, the Terraform lifecycle, Access, the mandatory-gateway
+  foundation, the shared contracts, and the test harness.
+- **Phase 2** delivered View Tokens, the first usable panel.
+
+Every other panel renders a placeholder stating the phase that delivers it. Chat, in phase 3, will
+be the first to call a model and the first to put a figure in the session cost meter.
