@@ -154,8 +154,7 @@ and the run details beside them show what each one cost.
 
 Alt text names the prompt an image was _generated from_ rather than asserting what it contains:
 nothing in this panel has looked at the picture, and a diffusion model frequently does not produce
-what was asked for. **Describe Image** is the panel that can actually describe one, and each result
-carries a "Describe this image" button that hands the bytes straight to it.
+what was asked for. **Describe Image** is the separate panel that can actually inspect one.
 
 ## Describe Image
 
@@ -210,15 +209,6 @@ and GIF is excluded too: the list is an allowlist, not an "is it an image" check
 Three routes — a file picker, drag-and-drop, and **paste** — all converging on one validation path.
 Paste earns its place because a screenshot is the likeliest thing someone wants described, and
 making them save it to disk first would be the slowest path to the thing the panel exists to do.
-
-A fourth route comes from Create Image: any generated result can be handed straight over. The bytes
-travel through a store rather than the URL, because a route parameter would put several megabytes of
-base64 into browser history and into any intermediary's logs — exactly what this demo refuses to do
-with a prompt. The handoff is consumed on read, so returning later does not reload a stale picture.
-
-The pairing is more than a convenience. Create Image's alt text can only name the prompt, because
-nothing there has looked at the result; this panel is the one that can say what was actually
-produced.
 
 ## View Tokens
 
@@ -486,7 +476,7 @@ Built to **phase 5** of
 - **Phase 4** delivered Create Image: per-model control capabilities, byte-level media validation, a
   comparison gallery, and the first binary output.
 - **Phase 5** delivered Describe Image: the first _uploaded_ media, header-level dimension limits,
-  per-model required/optional contracts, and the handoff from Create Image.
+  and per-model required/optional contracts.
 
 Every other panel renders a placeholder stating the phase that delivers it. Remix Image, in phase 6,
 is next.

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router';
-import { useHandoffStore } from '../../stores/handoff';
 import {
   downloadFileName,
   downloadLabel,
@@ -16,51 +14,11 @@ defineProps<{
    */
   entries: GalleryEntry[];
 }>();
-
-const router = useRouter();
-const handoff = useHandoffStore();
-
-/**
- * Sends a generated image to the Describe Image panel.
- *
- * The bytes travel through a store rather than the URL. A route parameter would put several
- * megabytes of base64 into browser history and into any intermediary's logs, which is exactly what
- * this demo refuses to do with a prompt.
- *
- * The pairing is more than a convenience. The alt text here can only say what the image was asked
- * to be, because nothing has looked at it; Describe Image is the panel that can say what it
- * actually is. Moving one result between the two is the shortest demonstration of the difference.
- *
- * @param entry The result to hand over.
- * @returns A promise fulfilled once the other panel has been navigated to.
- */
-async function describeThis(entry: GalleryEntry): Promise<void> {
-  handoff.offer({
-    base64: entry.image.base64,
-    mediaType: entry.image.mediaType,
-    byteLength: entry.image.byteLength,
-    origin: `Generated in Create Image (${entry.modelName})`
-  });
-
-  await router.push('/describe-image');
-}
 </script>
 
 <template>
   <section v-if="entries.length > 0" class="gallery" aria-labelledby="gallery-heading">
     <h2 id="gallery-heading" class="section-heading">Results</h2>
-    <!--
-      Scoped to what this application does, which is a claim it can actually keep: no R2 bucket, no
-      database, nothing persisted (an architecture test fails the build if a storage binding is
-      added). It says "this demo stores no copy" rather than "nothing is stored anywhere", because
-      the latter would be a statement about AI Gateway's retention that this application is in no
-      position to make.
-    -->
-    <p class="gallery-note">
-      Newest first. Images are held in this browser tab only — this demo keeps no copy, so they are
-      gone when you reload.
-    </p>
-
     <ol class="results">
       <li v-for="entry in entries" :key="entry.runId" class="result">
         <!--
@@ -112,41 +70,24 @@ async function describeThis(entry: GalleryEntry): Promise<void> {
             <div class="setting">
               <dt>File</dt>
               <dd>
-                {{ entry.image.mediaType.replace('image/', '').toUpperCase() }},
-                {{ formatBytes(entry.image.byteLength) }}
+                <!--
+                  The file facts themselves are the download link, so the card has one compact
+                  action instead of repeating the format in a separate "Download JPEG" row. The
+                  extension follows the server's byte-level sniff, keeping the saved name aligned
+                  with the actual contents rather than with anything the provider declared.
+                -->
+                <a
+                  class="file-download"
+                  :href="toDataUri(entry.image)"
+                  :download="downloadFileName(entry)"
+                  :aria-label="downloadLabel(entry)"
+                >
+                  {{ entry.image.mediaType.replace('image/', '').toUpperCase() }},
+                  {{ formatBytes(entry.image.byteLength) }}
+                </a>
               </dd>
             </div>
           </dl>
-
-          <!--
-            `download` with an explicit file name whose extension follows the server's byte-level
-            sniff, so a saved file's name always agrees with its actual contents. The accessible
-            label names the format, because "Download" alone does not say what is about to be saved.
-          -->
-          <div class="result-actions">
-            <a
-              class="download"
-              :href="toDataUri(entry.image)"
-              :download="downloadFileName(entry)"
-              :aria-label="downloadLabel(entry)"
-            >
-              Download {{ entry.image.mediaType.replace('image/', '').toUpperCase() }}
-            </a>
-
-            <!--
-              The honest counterpart to this gallery's alt text. Nothing here has looked at the
-              picture, so the panel can only report the prompt; handing the image to a vision
-              model is how a visitor finds out what was actually produced.
-            -->
-            <button
-              type="button"
-              class="describe-link"
-              :data-describe="entry.runId"
-              @click="describeThis(entry)"
-            >
-              Describe this image
-            </button>
-          </div>
         </div>
       </li>
     </ol>
@@ -163,12 +104,6 @@ async function describeThis(entry: GalleryEntry): Promise<void> {
 .section-heading {
   font-size: 1.125rem;
   margin: 0;
-}
-
-.gallery-note {
-  color: rgb(var(--v-theme-on-surface-variant));
-  font-size: 0.875rem;
-  margin: 0 0 0.5rem;
 }
 
 .results {
@@ -235,32 +170,21 @@ async function describeThis(entry: GalleryEntry): Promise<void> {
   margin: 0;
 }
 
-.result-actions {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
 /*
-  Styled as a link rather than a button because it navigates. It is a `button` element because it
-  also stages state before navigating, and a bare anchor would offer a URL that does not carry the
-  image.
+  The metadata remains visually a value in the settings list while the underline and colour make
+  its download action explicit. Padding extends the clickable area beyond the text without adding
+  another row or button-shaped box to the card.
 */
-.describe-link {
-  background: none;
-  border: none;
+.file-download {
   color: rgb(var(--v-theme-primary));
-  cursor: pointer;
-  font: inherit;
-  padding: 0;
-  text-decoration: underline;
+  display: inline-block;
+  min-height: 1.5rem;
+  padding-block: 0.125rem;
+  text-underline-offset: 0.125rem;
 }
 
-.download {
-  align-self: flex-start;
-  /* Comfortably above the minimum target size for a pointer or a touch. */
-  min-height: 2.25rem;
-  padding: 0.375rem 0;
+.file-download:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
 }
 </style>

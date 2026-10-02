@@ -323,6 +323,22 @@ describe('CreateImageView', () => {
       const button = wrapper.find(`[data-example="${IMAGE_EXAMPLES[0]!.id}"]`);
       expect(button.attributes('title')).toBe(IMAGE_EXAMPLES[0]!.teaches);
     });
+
+    // Examples replace the prompt, so they belong immediately after that editor and before the
+    // Generate control that acts on the chosen text.
+    it('places the examples between the prompt and Generate button', async () => {
+      const wrapper = await mountView();
+      const prompt = wrapper.find('#image-prompt').element;
+      const examples = wrapper.find('.example-group').element;
+      const generate = wrapper.find('.generate-button').element;
+
+      expect(
+        prompt.compareDocumentPosition(examples) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+      expect(
+        examples.compareDocumentPosition(generate) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    });
   });
 
   it('links the selected model to its catalog page', async () => {

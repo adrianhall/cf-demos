@@ -108,8 +108,8 @@ export function downloadLabel(entry: GalleryEntry): string {
  * panel does not have, which matters because a diffusion model frequently does not produce what was
  * requested.
  *
- * Describe Image, in the next phase, is the panel that can actually describe a picture — and the
- * handoff between the two is the honest way to get a real description.
+ * Describe Image is the panel that can actually inspect picture contents; this alt text does not
+ * pretend that Create Image has done so.
  *
  * @param entry The gallery entry.
  * @returns Alt text naming the prompt it was generated from.

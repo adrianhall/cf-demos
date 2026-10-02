@@ -1,10 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createMemoryHistory, createRouter } from 'vue-router';
-import { createTestingPinia } from '@pinia/testing';
-import { mount, flushPromises } from '@vue/test-utils';
+import { describe, expect, it } from 'vitest';
+import { mount } from '@vue/test-utils';
 import type { GalleryEntry } from '../../../src/client/features/create-image/gallery';
 import ImageGallery from '../../../src/client/features/create-image/ImageGallery.vue';
-import { useHandoffStore } from '../../../src/client/stores/handoff';
 
 /**
  * Builds a gallery entry.
@@ -30,39 +27,13 @@ function entry(overrides: Partial<GalleryEntry> = {}): GalleryEntry {
 }
 
 /**
- * Mounts the gallery with a real router over memory history.
- *
- * A real router rather than a stub, because the handoff is a navigation _and_ a state write, and
- * the pair only means anything together: the picture must be waiting in the store by the time the
- * other panel is reached. A push spy would let a broken order pass.
+ * Mounts the gallery.
  *
  * @param entries Results to render.
- * @returns The mounted wrapper and the router, so a test can read the resulting route.
+ * @returns The mounted wrapper.
  */
 function mountGallery(entries: GalleryEntry[]) {
-  const pinia = createTestingPinia({ createSpy: vi.fn, stubActions: false });
-  const router = createRouter({
-    history: createMemoryHistory(),
-    routes: [
-      { path: '/', component: { template: '<div />' } },
-      { path: '/describe-image', component: { template: '<div />' } }
-    ]
-  });
-
-  const wrapper = mount(ImageGallery, {
-    props: { entries },
-    global: {
-      plugins: [pinia, router],
-      stubs: {
-        'v-btn': {
-          props: ['disabled'],
-          template: '<button :disabled="disabled"><slot /></button>'
-        }
-      }
-    }
-  });
-
-  return Object.assign(wrapper, { pinia, router });
+  return mount(ImageGallery, { props: { entries } });
 }
 
 describe('ImageGallery', () => {
@@ -153,19 +124,19 @@ describe('ImageGallery', () => {
 
   describe('downloading', () => {
     it('offers a download with the extension matching the sniffed type', () => {
-      const link = mountGallery([entry()]).find('a.download');
+      const link = mountGallery([entry()]).find('a.file-download');
       expect(link.attributes('download')).toBe('playground-run-1.png');
     });
 
     // "Download" alone does not say what is about to be saved, and the format is not conveyed
     // anywhere else for a screen-reader user.
     it('names the format in the accessible label', () => {
-      const link = mountGallery([entry()]).find('a.download');
+      const link = mountGallery([entry()]).find('a.file-download');
       expect(link.attributes('aria-label')).toBe('Download this image as PNG');
     });
 
     it('points the download at the image itself', () => {
-      const link = mountGallery([entry()]).find('a.download');
+      const link = mountGallery([entry()]).find('a.file-download');
       expect(link.attributes('href')).toBe('data:image/png;base64,AAAA');
     });
 
@@ -173,24 +144,32 @@ describe('ImageGallery', () => {
       const wrapper = mountGallery([
         entry({ image: { base64: 'AAAA', mediaType: 'image/jpeg', byteLength: 10 } })
       ]);
-      expect(wrapper.find('a.download').attributes('download')).toBe('playground-run-1.jpg');
+      expect(wrapper.find('a.file-download').attributes('download')).toBe('playground-run-1.jpg');
+    });
+
+    // The metadata itself is the action, replacing the separate "Download JPEG" line.
+    it('makes the file format and size the download link', () => {
+      const link = mountGallery([entry()]).find('a.file-download');
+      expect(link.text()).toContain('PNG');
+      expect(link.text()).toContain('2 KB');
+      expect(link.text()).not.toContain('Download');
+    });
+
+    it('offers no separate download or Describe Image action', () => {
+      const wrapper = mountGallery([entry()]);
+      expect(wrapper.find('.download').exists()).toBe(false);
+      expect(wrapper.find('[data-describe]').exists()).toBe(false);
+      expect(wrapper.text()).not.toContain('Describe this image');
     });
   });
 
-  // The images are transient by design — no R2 bucket, no retention policy — and a visitor who
-  // reloads and loses their results deserves to have been told.
-  //
-  // Scoped to this demo's own storage, which is a claim it can keep. Phrasing it as "nothing is
-  // stored anywhere" would extend it to AI Gateway's retention, which this application does not
-  // control and must not speak for.
-  it('states that this demo keeps no copy of a result', () => {
-    expect(mountGallery([entry()]).text()).toMatch(/this demo keeps no copy/iu);
-  });
-
-  it('does not claim that nothing is stored anywhere', () => {
-    const text = mountGallery([entry()]).text();
-    expect(text).not.toMatch(/nothing is stored on the server/iu);
-    expect(text).not.toMatch(/not retained/iu);
+  // The gallery no longer spends a full line explaining its in-memory ordering and lifetime;
+  // those implementation details were competing with the result itself.
+  it('omits the old gallery note', () => {
+    const wrapper = mountGallery([entry()]);
+    expect(wrapper.text()).not.toContain('Newest first');
+    expect(wrapper.text()).not.toContain('Images are held in this browser tab only');
+    expect(wrapper.find('.gallery-note').exists()).toBe(false);
   });
 
   it('labels itself for assistive technology', () => {
@@ -202,56 +181,5 @@ describe('ImageGallery', () => {
   it('uses a list so the result count is conveyed', () => {
     const wrapper = mountGallery([entry({ runId: 'a' }), entry({ runId: 'b' })]);
     expect(wrapper.findAll('ol > li')).toHaveLength(2);
-  });
-});
-
-describe('handing an image to Describe Image', () => {
-  // The pairing is the point of the button. This gallery's alt text can only name the prompt,
-  // because nothing has looked at the picture; Describe Image is the panel that can say what was
-  // actually produced.
-  it('offers a button for each result', () => {
-    const wrapper = mountGallery([entry({ runId: 'a' }), entry({ runId: 'b' })]);
-    expect(wrapper.findAll('[data-describe]')).toHaveLength(2);
-  });
-
-  it('navigates to the Describe Image panel', async () => {
-    const wrapper = mountGallery([entry()]);
-    await wrapper.find('[data-describe]').trigger('click');
-    await flushPromises();
-
-    expect(wrapper.router.currentRoute.value.path).toBe('/describe-image');
-  });
-
-  // The bytes travel through the store rather than the URL. A route parameter would put several
-  // megabytes of base64 into browser history and into any intermediary's logs, which is exactly
-  // what this demo refuses to do with a prompt.
-  it('stages the image in the store rather than in the URL', async () => {
-    const wrapper = mountGallery([entry()]);
-    await wrapper.find('[data-describe]').trigger('click');
-    await flushPromises();
-
-    const handoff = useHandoffStore(wrapper.pinia);
-    expect(handoff.pending).toMatchObject({ base64: 'AAAA', mediaType: 'image/png' });
-    expect(wrapper.router.currentRoute.value.fullPath).not.toContain('AAAA');
-  });
-
-  it('records where the picture came from, since it has no file name', async () => {
-    const wrapper = mountGallery([entry()]);
-    await wrapper.find('[data-describe]').trigger('click');
-    await flushPromises();
-
-    expect(useHandoffStore(wrapper.pinia).pending?.origin).toContain('Rich Model');
-  });
-
-  // Consumed on read, so returning to the panel later does not silently reload a picture the
-  // visitor has moved on from.
-  it('clears the staged picture once it is taken', async () => {
-    const wrapper = mountGallery([entry()]);
-    await wrapper.find('[data-describe]').trigger('click');
-    await flushPromises();
-
-    const handoff = useHandoffStore(wrapper.pinia);
-    expect(handoff.take()).toBeDefined();
-    expect(handoff.take()).toBeUndefined();
   });
 });

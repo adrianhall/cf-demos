@@ -179,6 +179,28 @@ function loadExample(example: ImageExample): void {
               </span>
             </div>
 
+            <!--
+              Examples belong to the prompt editor rather than to the run controls, so they sit
+              immediately below the box they replace and before the Generate button that acts on
+              the chosen text.
+            -->
+            <div class="example-group" role="group" aria-labelledby="examples-heading">
+              <h3 id="examples-heading" class="field-label">Or try an example</h3>
+              <div class="examples">
+                <button
+                  v-for="example in IMAGE_EXAMPLES"
+                  :key="example.id"
+                  type="button"
+                  class="example-button"
+                  :data-example="example.id"
+                  :title="example.teaches"
+                  @click="loadExample(example)"
+                >
+                  {{ example.label }}
+                </button>
+              </div>
+            </div>
+
             <div class="actions">
               <v-btn
                 class="generate-button"
@@ -208,23 +230,6 @@ function loadExample(example: ImageExample): void {
               <template v-if="generating">Generating. This usually takes a few seconds.</template>
               <template v-else-if="receipt">Image generated.</template>
             </p>
-
-            <div class="example-group" role="group" aria-labelledby="examples-heading">
-              <h3 id="examples-heading" class="field-label">Or try an example</h3>
-              <div class="examples">
-                <button
-                  v-for="example in IMAGE_EXAMPLES"
-                  :key="example.id"
-                  type="button"
-                  class="example-button"
-                  :data-example="example.id"
-                  :title="example.teaches"
-                  @click="loadExample(example)"
-                >
-                  {{ example.label }}
-                </button>
-              </div>
-            </div>
           </section>
 
           <!--
