@@ -146,6 +146,16 @@ export class CreateVideoWorkflow extends WorkflowEntrypoint<
     const actor = { email: actorEmail, sub: actorSub };
 
     const startedAtMs = Date.now();
+    const logger = workflowLogger();
+
+    // Logged on entry so an instance that dies before its first step still records what it was
+    // asked to do. A Workflow's own observability shows that it ran; this shows what it ran *with*.
+    logger.warn('create_video_workflow_started', {
+      runId: validated.runId,
+      model: validated.model.id,
+      resolution: validated.resolution,
+      duration: validated.duration
+    });
 
     const generated = await step.do(
       'generate-video',
@@ -161,7 +171,7 @@ export class CreateVideoWorkflow extends WorkflowEntrypoint<
           // defect: the client logs the provider's own message and this step logs only a
           // classification, so with no logger the actual cause of a failed render was recorded
           // nowhere at all — leaving a `create-video` failure diagnosable only as "it failed".
-          logger: workflowLogger()
+          logger
         });
 
         try {
@@ -184,11 +194,36 @@ export class CreateVideoWorkflow extends WorkflowEntrypoint<
           // visitor-facing detail are dropped on the way out. Without this, "the account is out of
           // AI Gateway credit" and "the provider broke" arrive at the status route
           // indistinguishable — and the first is the one a visitor can actually fix.
-          //
+          const reason = classifyProviderFailure(cause);
+
+          // Logged at the point of classification, showing both the input and the verdict. This is
+          // the line that makes a misclassification self-evident: it records what the step was
+          // handed — including whether it was already a sanitised problem-details error and what
+          // status that carried — beside the reason derived from it. Reconstructing this by
+          // inference is what made the same bug survive three fixes.
+          logger.error('create_video_inference_failed', {
+            runId: validated.runId,
+            model: validated.model.id,
+            reason,
+            errorName: cause instanceof Error ? cause.name : typeof cause,
+            errorMessage: cause instanceof Error ? cause.message : String(cause),
+            // The decisive field: a non-null status proves the error reached here already
+            // sanitised, which is precisely the condition text matching cannot see through.
+            problemStatus:
+              typeof cause === 'object' && cause !== null && 'problemDetails' in cause
+                ? ((cause as { problemDetails?: { status?: unknown } }).problemDetails?.status
+                  ?? null)
+                : null,
+            nestedCause:
+              cause instanceof Error && cause.cause instanceof Error
+                ? `${cause.cause.name}: ${cause.cause.message}`
+                : undefined,
+            stack: cause instanceof Error ? cause.stack : undefined
+          });
+
           // The re-thrown message is a fixed slug carrying no provider text, so using the error
           // message as the channel does not leak anything the request path would have sanitised.
-          // The client has already logged the provider's real message against this run id.
-          throw new Error(encodeFailureReason(classifyProviderFailure(cause)), { cause });
+          throw new Error(encodeFailureReason(reason), { cause });
         }
       }
     );

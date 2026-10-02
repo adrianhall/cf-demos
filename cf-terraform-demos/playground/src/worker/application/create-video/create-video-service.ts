@@ -215,8 +215,32 @@ export class CreateVideoService {
    * @returns The job's status, or `undefined` when no such job exists for this identity.
    */
   async status(runId: string, actor: VerifiedActor): Promise<VideoJobStatus | undefined> {
-    const jobId = await deriveMediaJobId(actor.email, runId, this.#jobIdKey);
-    const status = await this.#jobs.status(jobId);
+    // Each stage is wrapped separately rather than under one `try`, so a failure names the stage it
+    // came from. Three successive misdiagnoses of one bug all came from not knowing which call in
+    // this chain had thrown.
+    let jobId: string;
+    try {
+      jobId = await deriveMediaJobId(actor.email, runId, this.#jobIdKey);
+    } catch (cause) {
+      // Derivation needs a non-empty email, run id, and key. An empty `ACCESS_AUD` binding would
+      // fail here on every poll — a deployment fault, not a request fault, and one worth naming
+      // rather than reporting as a generic failure.
+      this.#logger?.error('create_video_job_id_derivation_failed', {
+        runId,
+        hasKey: this.#jobIdKey !== '',
+        ...describeThrown(cause)
+      });
+      throw cause;
+    }
+
+    let status;
+    try {
+      status = await this.#jobs.status(jobId);
+    } catch (cause) {
+      this.#logger?.error('create_video_job_status_failed', { runId, ...describeThrown(cause) });
+      throw cause;
+    }
+
     if (status === undefined) {
       return undefined;
     }
@@ -236,6 +260,17 @@ export class CreateVideoService {
         typeof status.error === 'string'
           ? (decodeFailureReason(status.error) ?? 'provider-failure')
           : 'provider-failure';
+
+      // The recorded message *as it arrived*, beside the reason derived from it. This is the pairing
+      // that settles whether a classification is wrong or merely unreachable, and its absence is
+      // why the same bug was misdiagnosed repeatedly. Safe to log: the Workflow writes a fixed slug
+      // here, and anything else is reported as unclassified rather than shown to a visitor.
+      this.#logger?.warn('create_video_instance_error_decoded', {
+        runId,
+        reason,
+        recordedErrorType: status.error === null ? 'null' : typeof status.error,
+        recordedError: typeof status.error === 'string' ? status.error : undefined
+      });
 
       // Logged at the panel level so a billing failure is searchable by run id without reading the
       // Workflow's own observability. The reason is a fixed slug, never provider text.
@@ -396,6 +431,27 @@ function asJobOutput(value: unknown): CreateVideoJobOutput | undefined {
   }
 
   return candidate as CreateVideoJobOutput;
+}
+
+/**
+ * Describes a thrown value for a structured log line.
+ *
+ * Name, message, stack, and one level of wrapped cause. The stack is the field that makes an
+ * unexpected throw locatable, and one level of `cause` is where a binding's real complaint usually
+ * sits — the Workers AI binding in particular wraps the provider's error.
+ *
+ * @param cause The thrown value.
+ * @returns Structured fields naming the failure.
+ */
+function describeThrown(cause: unknown): Record<string, unknown> {
+  return {
+    errorName: cause instanceof Error ? cause.name : typeof cause,
+    errorMessage: cause instanceof Error ? cause.message : String(cause),
+    ...(cause instanceof Error && cause.stack !== undefined ? { stack: cause.stack } : {}),
+    ...(cause instanceof Error && cause.cause instanceof Error
+      ? { cause: `${cause.cause.name}: ${cause.cause.message}` }
+      : {})
+  };
 }
 
 /**

@@ -77,10 +77,21 @@ export class WorkflowMediaJobs implements MediaJobPort {
       return { state: 'failed' };
     }
 
+    // The platform's own vocabulary, logged once per poll beside the state it maps to. Without this
+    // there is no way to tell a mapping mistake from a status this demo has not been taught, and
+    // both present as a job that never finishes.
+    this.#logger?.warn('media_job_status_read', {
+      workflowStatus: status.status,
+      mappedState: mediaJobStateFromWorkflow(status.status),
+      outputType: status.output === null ? 'null' : typeof status.output,
+      errorType: status.error === null ? 'null' : typeof status.error,
+      errorMessage: typeof status.error?.message === 'string' ? status.error.message : undefined
+    });
+
     return {
       state: mediaJobStateFromWorkflow(status.status),
-      ...(status.output === undefined ? {} : { output: status.output }),
-      ...(status.error === undefined ? {} : { error: status.error.message })
+      ...(status.output === undefined || status.output === null ? {} : { output: status.output }),
+      ...(typeof status.error?.message === 'string' ? { error: status.error.message } : {})
     };
   }
 
@@ -113,11 +124,18 @@ export class WorkflowMediaJobs implements MediaJobPort {
   async #instance(jobId: string): Promise<WorkflowInstance | undefined> {
     try {
       return await this.#workflow.get(jobId);
-    } catch {
-      // Deliberately swallowed, and the one place in this demo where that is correct: the binding
-      // uses an exception to signal absence, and absence is an expected, meaningful outcome here
-      // rather than a fault. Nothing diagnostic is lost — the caller reports a `404`, which is the
-      // whole of what there is to say.
+    } catch (cause) {
+      // Logged rather than silently swallowed. The binding does use an exception to signal absence,
+      // so this is usually an expected outcome — but it is *also* how a misconfigured or missing
+      // binding would present, and treating both as "not found" hid a real fault behind a `404`.
+      // Recording it at `warn` keeps the ordinary case quiet enough to ignore while making the
+      // unusual one visible.
+      this.#logger?.warn('media_job_lookup_failed', {
+        errorName: cause instanceof Error ? cause.name : typeof cause,
+        errorMessage: cause instanceof Error ? cause.message : String(cause),
+        // No job identifier: it is derived from a verified email and is therefore identifying.
+        bindingPresent: this.#workflow !== undefined && this.#workflow !== null
+      });
       return undefined;
     }
   }

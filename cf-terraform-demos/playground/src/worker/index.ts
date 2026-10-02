@@ -4,6 +4,7 @@ import {
   notFoundHandler,
   problemDetailsErrorHandler
 } from '@adrianhall/cloudflare-toolkit/hono';
+import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-details';
 import { createMeRouter } from '@demos/worker-common';
 import { ChatService } from './application/chat/chat-service';
 import { ClassifyImageService } from './application/classify-image/classify-image-service';
@@ -116,9 +117,47 @@ app.route('/api/describe-image', describeImageRouter);
 app.route('/api/remix-image', remixImageRouter);
 app.route('/api/runs', runsRouter);
 
-// `includeStack` is gated on `import.meta.env.DEV`, which Vite replaces with the literal `false` in
-// a production build, so a deployed Worker can never emit a stack trace to a client.
-app.onError(problemDetailsErrorHandler({ includeStack: import.meta.env.DEV }));
+/**
+ * Records an error the request pipeline did not expect, then delegates to the problem-details
+ * handler.
+ *
+ * This wrapper exists because of a concrete, repeated failure. The toolkit's handler converts any
+ * error that is not a `ProblemDetailsError` into a `500` carrying "An unexpected error occurred" —
+ * and **logs nothing at all**. That is the single largest hole in this demo's observability: the
+ * one class of failure nobody anticipated is the one class that leaves no record, so the logs show
+ * a `500` with no cause and every diagnosis becomes guesswork. It cost three failed attempts at one
+ * bug to notice.
+ *
+ * A `ProblemDetailsError` is deliberately _not_ logged here: those are expected outcomes, already
+ * described by their status, and the route that raised one has already logged whatever context
+ * mattered. Logging them again would bury the unexpected ones in noise.
+ *
+ * `includeStack` is gated on `import.meta.env.DEV`, which Vite replaces with the literal `false` in
+ * a production build, so a deployed Worker can never emit a stack trace to a client. The stack is
+ * still recorded in the log, where it is safe and is exactly what is needed.
+ */
+const renderProblem = problemDetailsErrorHandler({ includeStack: import.meta.env.DEV });
+
+app.onError((error, context) => {
+  if (!(error instanceof ProblemDetailsError)) {
+    context.var.LOGGER?.error('unhandled_request_error', {
+      path: new URL(context.req.url).pathname,
+      method: context.req.method,
+      errorName: error instanceof Error ? error.name : typeof error,
+      // The message and stack of an error nobody expected. This is the information the toolkit's
+      // handler discards, and without it a `500` says only that something went wrong.
+      errorMessage: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      // One level of wrapped cause, which is where a binding's real complaint usually sits.
+      cause:
+        error instanceof Error && error.cause instanceof Error
+          ? `${error.cause.name}: ${error.cause.message}`
+          : undefined
+    });
+  }
+
+  return renderProblem(error, context);
+});
 app.notFound(notFoundHandler());
 
 export default app;

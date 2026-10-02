@@ -31,7 +31,14 @@ const demoRoot = path.resolve(import.meta.dirname, '../..');
  * @returns The same text with block and line comments removed.
  */
 function stripComments(source: string): string {
-  return source.replaceAll(/\/\*[\s\S]*?\*\//gu, '').replaceAll(/\/\/[^\n]*/gu, '');
+  // Block comments are matched only where one *starts a line*, because `'/api/*'` — a real route
+  // pattern in the composition root — otherwise reads as a comment opener and swallows everything
+  // up to the next `*/`. That silently removed the entire service-composition block from the text
+  // these guards scan, so they passed while checking nothing. A guard that cannot see the code it
+  // audits is worse than no guard, since it reports success either way.
+  return source
+    .replaceAll(/^[ \t]*\/\*[\s\S]*?\*\/[ \t]*$/gmu, '')
+    .replaceAll(/^[ \t]*\/\/[^\n]*$/gmu, '');
 }
 
 /**
@@ -207,6 +214,20 @@ describe('failure diagnostics', () => {
   // Every provider call must be able to say why it failed. A client constructed without a logger
   // is valid for a unit test, but the composition root has to supply one or the deployed Worker is
   // blind in exactly the situation the logger exists for.
+  // The toolkit's error handler turns any non-problem-details error into a `500` carrying "An
+  // unexpected error occurred" and logs nothing at all, which makes the one class of failure nobody
+  // anticipated the one class that leaves no record. The composition root must therefore log before
+  // delegating. This cost three failed attempts at a single bug to notice.
+  it('logs an unexpected error before the handler converts it to a 500', async () => {
+    const root = stripComments(await readFile(path.join(demoRoot, 'src/worker/index.ts'), 'utf8'));
+
+    expect(root).toMatch(/app\.onError\(/u);
+    expect(root).toMatch(/unhandled_request_error/u);
+    // The fields that make such an error diagnosable at all.
+    expect(root).toMatch(/stack/u);
+    expect(root).toMatch(/errorMessage/u);
+  });
+
   it('gives the inference client a logger in the composition root', async () => {
     const contents = stripComments(
       await readFile(path.join(demoRoot, 'src/worker/index.ts'), 'utf8')

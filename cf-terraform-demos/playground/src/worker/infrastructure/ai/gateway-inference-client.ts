@@ -483,6 +483,16 @@ export class GatewayInferenceClient implements InferencePort {
     // withholding every provider detail. Treat it as unavailable capacity (`503`), not a malformed
     // upstream response (`502`): retrying the same request cannot work until the account is topped up.
     if (isInsufficientGatewayCredit(cause)) {
+      // Logged separately from `inference_provider_failed` so the *decision* is recorded, not just
+      // the failure. A caller further out classifies by reading this error's status, so knowing
+      // which status this method chose is what makes that chain verifiable end to end.
+      this.#logger?.error('inference_billing_failure', {
+        task: request.task,
+        runId: request.runId,
+        model: request.model.id,
+        sanitisedStatus: 503
+      });
+
       return new ProblemDetailsError({
         status: 503,
         title: 'AI Gateway credits are unavailable',

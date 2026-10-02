@@ -134,14 +134,43 @@ createVideoRouter.get('/:runId/status', async (context) => {
   }
 
   const identity = currentIdentity(context);
-  const status = await context.var.CREATE_VIDEO_SERVICE.status(runId, {
-    email: identity.email,
-    sub: identity.sub
-  });
+
+  // Wrapped and logged before rethrowing. The status route is polled rather than submitted, so a
+  // throw here surfaces as a bare `500` in a browser's network tab with nothing tying it to a
+  // cause. Catching, recording, and rethrowing keeps the response behaviour identical while making
+  // the failure attributable to this run.
+  let status;
+  try {
+    status = await context.var.CREATE_VIDEO_SERVICE.status(runId, {
+      email: identity.email,
+      sub: identity.sub
+    });
+  } catch (cause) {
+    context.var.LOGGER.error('create_video_status_failed', {
+      runId,
+      errorName: cause instanceof Error ? cause.name : typeof cause,
+      errorMessage: cause instanceof Error ? cause.message : String(cause),
+      stack: cause instanceof Error ? cause.stack : undefined,
+      cause:
+        cause instanceof Error && cause.cause instanceof Error
+          ? `${cause.cause.name}: ${cause.cause.message}`
+          : undefined
+    });
+    throw cause;
+  }
 
   if (status === undefined) {
     throw notFound({ detail: 'No such video job.' });
   }
+
+  // Logged at `info` so a poll's own outcome is visible in sequence. A job that reports `failed`
+  // with a reason, and a job whose poll threw, are indistinguishable in an access log — both are
+  // just a request — so the distinction has to be recorded here.
+  context.var.LOGGER.info('create_video_status_reported', {
+    runId,
+    state: status.state,
+    ...(status.reason === undefined ? {} : { reason: status.reason })
+  });
 
   const response: CreateVideoStatusResponse = {
     runId: status.runId,
