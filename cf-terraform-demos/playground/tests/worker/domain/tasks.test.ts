@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findTask, isTaskId, TASK_DESCRIPTORS } from '../../../src/shared/tasks';
+import { findTask, isTaskId, TASK_DESCRIPTORS, type TaskId } from '../../../src/shared/tasks';
 
 describe('TASK_DESCRIPTORS', () => {
   // Sixteen panels is the agreed product scope. Asserting the count catches a panel being dropped
@@ -81,6 +81,48 @@ describe('TASK_DESCRIPTORS', () => {
     for (const task of TASK_DESCRIPTORS) {
       expect(task.phase).toBeGreaterThanOrEqual(2);
     }
+  });
+
+  it('gives every panel a distinct delivery phase', () => {
+    // Two panels sharing a phase would make "the phase that delivers it" ambiguous in the
+    // placeholder, and would hide a renumbering mistake — which is exactly what happens when the
+    // plan is reordered and one entry is missed.
+    const phases = TASK_DESCRIPTORS.map((task) => task.phase);
+    expect(new Set(phases).size).toBe(phases.length);
+  });
+
+  // Phases 9 onward are ordered by whether Cloudflare hosts a model for the task, because a
+  // third-party model bills against prepaid AI Gateway credits and a panel with only third-party
+  // options cannot be built on an unfunded account. The three panels known to have no hosted model
+  // must therefore stay after every panel that has one. Asserted so a future reshuffle has to
+  // confront the constraint rather than quietly reintroduce a credit-blocked next phase.
+  it('schedules credit-dependent panels after every credit-free one', () => {
+    const creditDependent = new Set<TaskId>(['generate-music', 'animate-image', 'detect-objects']);
+
+    const planned = TASK_DESCRIPTORS.filter((task) => task.availability === 'planned');
+    const freePhases = planned
+      .filter((task) => !creditDependent.has(task.id))
+      .map((task) => task.phase);
+    const paidPhases = planned
+      .filter((task) => creditDependent.has(task.id))
+      .map((task) => task.phase);
+
+    expect(freePhases.length).toBeGreaterThan(0);
+    expect(paidPhases.length).toBeGreaterThan(0);
+    expect(Math.min(...paidPhases)).toBeGreaterThan(Math.max(...freePhases));
+  });
+
+  // Detect Objects has no model at all: `@cf/facebook/detr-resnet-50` was removed from the
+  // catalogue, and neither catalogue declares an Object Detection task type. It stays listed so the
+  // product's shape is visible, but it must remain the *last* panel phase — delivering it would
+  // mean prompting a vision model for coordinates, which is the prose-parsing path the
+  // specification rules out.
+  it('keeps the panel with no available model last', () => {
+    const detect = TASK_DESCRIPTORS.find((task) => task.id === 'detect-objects');
+    const others = TASK_DESCRIPTORS.filter((task) => task.id !== 'detect-objects');
+
+    expect(detect).toBeDefined();
+    expect(detect!.phase).toBeGreaterThan(Math.max(...others.map((task) => task.phase)));
   });
 
   // Group labels are decorative, but an empty or whitespace label would still render as a gap in

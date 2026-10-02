@@ -46,14 +46,14 @@ came to use.
 | **Classify Image** | **Image classification**     | **Available now** |
 | Detect Objects     | Object detection             | Phase 17          |
 | **Create Video**   | **Text to video**            | **Available now** |
-| Animate Image      | Image to video               | Phase 9           |
-| Generate Music     | Text to music                | Phase 10          |
-| Read Text          | Text to speech               | Phase 11          |
-| Transcribe Audio   | Automatic speech recognition | Phase 12          |
-| Translate Text     | Translation                  | Phase 13          |
-| Classify Text      | Text classification          | Phase 14          |
-| Evaluate Choices   | Structured evaluation        | Phase 15          |
-| Semantic Search    | Text embeddings              | Phase 16          |
+| Animate Image      | Image to video               | Phase 16          |
+| Generate Music     | Text to music                | Phase 15          |
+| Read Text          | Text to speech               | Phase 9           |
+| Transcribe Audio   | Automatic speech recognition | Phase 10          |
+| Translate Text     | Translation                  | Phase 11          |
+| Classify Text      | Text classification          | Phase 12          |
+| Evaluate Choices   | Structured evaluation        | Phase 14          |
+| Semantic Search    | Text embeddings              | Phase 13          |
 | **View Tokens**    | **Tokenization**             | **Available now** |
 
 Panels that are not built yet are still listed, each stating the phase that delivers it. Hiding them
@@ -579,12 +579,28 @@ Built to **phase 7** of
   job. See [Create Video: storage and durable jobs](#create-video-storage-and-durable-jobs) for why
   both were necessary and why no job table came with them.
 
-Every remaining panel renders a placeholder stating the phase that delivers it. Animate Image, in
-phase 9, is next, and reuses Create Video's job and storage infrastructure rather than adding its
-own. **Detect Objects** was added to the plan as phase 17 — the last panel phase, before the
-cross-panel hardening pass — because the catalogue's object-detection model answers a genuinely
-different question from Classify Image: _where_ something is rather than _what_ the picture is of.
-It reuses Classify Image's ranked table and adds a validated overlay on top of it.
+Every remaining panel renders a placeholder stating the phase that delivers it. **Read Text**, in
+phase 9, is next.
+
+The remaining phases are ordered by **whether Cloudflare hosts a model for the task**, which is a
+practical constraint rather than a preference: a third-party model bills against prepaid AI Gateway
+credits, so a panel with only third-party options cannot be built or demonstrated on an unfunded
+account. Phases 9–14 — Read Text, Transcribe Audio, Translate Text, Classify Text, Semantic Search,
+and Evaluate Choices — all have Cloudflare-hosted models and need no credits. Generate Music (15)
+and Animate Image (16) have no hosted option in the catalogue, so they come after. Each phase
+records its candidate hosted and third-party models, and asks for the hosting to be re-confirmed
+before it starts, because the catalogue changes.
+
+Animate Image moved from phase 9 to phase 16 for exactly that reason: it shares all of Create
+Video's infrastructure and would otherwise be the obvious next step, but every image-to-video model
+is third-party.
+
+**Detect Objects** stays last and is **blocked**: `@cf/facebook/detr-resnet-50`, the model it was
+planned around, has been removed from the catalogue, and no object-detection task type exists in
+either catalogue now. It could be faked by prompting a vision model for coordinates, which is the
+prose-parsing path the specification rules out — so the panel stays listed and unstarted rather than
+being delivered in a form that teaches the wrong lesson. It reuses Classify Image's ranked table and
+adds a validated overlay on top of it.
 
 ## Create Video: storage and durable jobs
 

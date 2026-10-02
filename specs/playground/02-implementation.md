@@ -550,66 +550,29 @@ down: an undocumented gap here is indistinguishable from having forgotten.
 
 ---
 
-## Phase 9 — Animate Image
-
-### Goal
-
-Deliver **Animate Image** as its own top-level panel while sharing the Phase 8 media-job implementation.
-
-### Deliverables
-
-- Add image-to-video descriptors, validated source image intake, optional motion prompt, and supported duration/resolution controls.
-- Reuse `MediaJob` and player infrastructure, not Create Video’s UI route or a mode switch. That now includes Phase 8's R2 bucket, Workflow, and derived-instance-ID ownership scheme: reuse them rather than adding a second storage product or a parallel job mechanism. The source image still travels in the request and is still not persisted — Phase 8's Finding 10 applies unchanged.
-- Implement side-by-side image/video result layout and Create Image → Animate Image handoff.
-
-### Tests introduced
-
-- Image-to-video request validation and descriptor control compatibility.
-- Client confirms Animate Image has its own route/title and no nested Create Video mode.
-- Job adapter reuse contracts plus handoff/error states.
-
-### Exit criteria
-
-- A user can animate an upload or generated image on `/animate-image`, with the same truthful job/cost behaviour as Create Video.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
-- `pnpm check` and `pnpm test` pass.
-
----
-
-## Phase 10 — Generate Music
-
-### Goal
-
-Deliver **Generate Music** with audio-asset response handling and non-token billing education.
-
-### Deliverables
-
-- Add `elevenlabs/music-v2` and/or `minimax/music-2.6` only after confirming Unified Billing/gateway compatibility and account prerequisites.
-- Implement style/mood prompt, instrumental flag, optional lyrics, supported track length/output format controls, and explicit model-specific differences.
-- Normalise provider audio URLs into a safe media result; show provider-hosted/expiry caveat.
-- Add audio player, waveform if practical without a heavy dependency, lyrics display, download, duration, and reported pricing unit/cost.
-- Reuse the job infrastructure only if selected model is asynchronous; do not assume it is.
-
-### Tests introduced
-
-- Lyrics/track-length/format validation per descriptor.
-- Audio URL scheme/host policy and expiring-asset response behavior.
-- Client player keyboard controls, transcript/lyrics display, and per-track/per-second cost labels.
-- Session ledger test mixing Chat and music costs without assuming all costs are tokens.
-
-### Exit criteria
-
-- The session meter demonstrates different billing units correctly and never derives a music charge from tokens.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
-- `pnpm check` and `pnpm test` pass.
-
----
-
-## Phase 11 — Read Text
+## Phase 9 — Read Text
 
 ### Goal
 
 Deliver **Read Text** (text-to-speech).
+
+### Candidate models
+
+**Cloudflare-hosted** (no prepaid credits needed):
+
+- `@cf/deepgram/aura-2-en` — Deepgram Aura 2, English. Reviewed as the default: a partner model
+  hosted by Cloudflare, so it carries no credit prerequisite.
+- `@cf/myshell-ai/melotts` — MeloTTS. Multilingual, and a useful contrast because its voice and
+  language controls differ from Aura's, which is what makes the per-model control declaration do
+  visible work.
+- `@cf/deepgram/aura-1` — the previous Aura generation, for comparing output quality and cost.
+
+**Third-party** (requires prepaid AI Gateway credits):
+
+- `elevenlabs/eleven-v3`, `elevenlabs/eleven-turbo-v2-5` — richer voice control and latency
+  trade-offs.
+- `openai/tts-1`, `openai/tts-1-hd` — a familiar baseline.
+- `inworld/tts-2`.
 
 ### Deliverables
 
@@ -631,11 +594,28 @@ Deliver **Read Text** (text-to-speech).
 
 ---
 
-## Phase 12 — Transcribe Audio
+## Phase 10 — Transcribe Audio
 
 ### Goal
 
 Deliver **Transcribe Audio** (automatic speech recognition / speech-to-text).
+
+### Candidate models
+
+**Cloudflare-hosted** (no prepaid credits needed):
+
+- `@cf/openai/whisper-large-v3-turbo` — reviewed as the default: the strongest hosted option and the
+  one most likely to return usable segment timings.
+- `@cf/deepgram/nova-3` — a partner model with a different response envelope, which is exactly the
+  disagreement this panel's normaliser should be tested against.
+- `@cf/openai/whisper-tiny-en` — English-only and much cheaper, useful for showing the accuracy/cost
+  trade-off in one panel.
+
+**Third-party** (requires prepaid AI Gateway credits):
+
+- `assemblyai/universal-3.5-pro`, `assemblyai/universal-3-pro` — diarization and richer metadata.
+- `openai/gpt-4o-transcribe`.
+- `xai/grok-stt`.
 
 ### Deliverables
 
@@ -659,11 +639,32 @@ Deliver **Transcribe Audio** (automatic speech recognition / speech-to-text).
 
 ---
 
-## Phase 13 — Translate Text
+## Phase 11 — Translate Text
 
 ### Goal
 
 Deliver **Translate Text**.
+
+### Candidate models
+
+**Cloudflare-hosted** (no prepaid credits needed):
+
+- `@cf/meta/m2m100-1.2b` — reviewed as the default and the only hosted model whose declared task
+  type is Translation. Its contract takes explicit source and target languages, which is what this
+  panel's validation is built around.
+- `@cf/utter-project/eurollm-9b-it` — a *text-generation* model with strong European-language
+  coverage. Including it is a deliberate teaching point: translating with a general LLM means
+  prompting rather than passing language codes, so the panel must either adapt the request per model
+  or decline to offer it. Decide which during the phase and say why.
+
+**Third-party** (requires prepaid AI Gateway credits):
+
+- Any catalogue text-generation model may translate by prompt. Prefer a hosted dedicated translator
+  over a third-party generalist here; a credit prerequisite for a task Cloudflare hosts natively is
+  a poor trade.
+
+Note that `@cf/ai4bharat/indictrans2-en-indic-1B` appears in the model list but its catalogue page
+was unreachable at review time. Re-check before offering it.
 
 ### Deliverables
 
@@ -685,11 +686,29 @@ Deliver **Translate Text**.
 
 ---
 
-## Phase 14 — Classify Text
+## Phase 12 — Classify Text
 
 ### Goal
 
 Deliver **Classify Text** as fixed-label classification, distinct from Evaluate Choices.
+
+### Candidate models
+
+**Cloudflare-hosted** (no prepaid credits needed):
+
+- `@cf/huggingface/distilbert-sst-2-int8` — reviewed as the default. A genuine fixed-label
+  classifier returning scored sentiment labels, which is the contract this panel exists to show.
+- `@cf/baai/bge-reranker-base` — also typed Text Classification, but it scores *relevance between a
+  query and a passage* rather than labelling one text. Offer it only if the panel can express that
+  honestly; otherwise record why it was excluded, since a mislabelled control would teach the wrong
+  thing.
+- `@cf/meta/llama-guard-3-8b` — safety classification over a fixed taxonomy. A good third example if
+  the panel can present its categories without implying they are general-purpose labels.
+
+**Third-party** (requires prepaid AI Gateway credits):
+
+- None needed. The hosted options cover this task, and the panel's lesson is the fixed-label
+  contract rather than model quality.
 
 ### Deliverables
 
@@ -711,40 +730,29 @@ Deliver **Classify Text** as fixed-label classification, distinct from Evaluate 
 
 ---
 
-## Phase 15 — Evaluate Choices
-
-### Goal
-
-Deliver **Evaluate Choices**, the structured-evaluation panel for `typesafe/jev`.  In addition, `clef` is now available from Cloudflare and should be the default choice.  See <https://blog.cloudflare.com/clef-decision-models/>.
-
-### Deliverables
-
-- Add the Jev descriptor, typed state input (text/JSON), and question-builder domain schema.
-- Support `noul`, `choice`, and `score` questions with criteria and explicit request JSON preview.
-- Render type-specific result cards: probability bar, choice distribution, score gauge/legend, and separate confidence display.
-- Add prepared support-triage, refund-policy, moderation, and lead-qualification scenarios.
-- Add a View Tokens handoff for state size/context awareness.
-
-### Tests introduced
-
-- Domain schema tests for each question type, criteria, JSON state, and response normalization.
-- Worker rejects generic Chat input and invalid/missing question contracts.
-- Client question add/remove/reorder, JSON synchronization, visual and textual result alternatives, and confidence distinction.
-- Cost-ledger test for the model’s input-priced/free-output shape without hardcoding a price calculation.
-
-### Exit criteria
-
-- Caller-defined typed questions receive typed, calibrated results with no “parse model prose as JSON” path.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
-- `pnpm check` and `pnpm test` pass.
-
----
-
-## Phase 16 — Semantic Search
+## Phase 13 — Semantic Search
 
 ### Goal
 
 Deliver **Semantic Search** using gateway-routed embeddings and local vector comparison.
+
+### Candidate models
+
+**Cloudflare-hosted** (no prepaid credits needed):
+
+- `@cf/baai/bge-m3` — reviewed as the default: multilingual and widely used, so the collection can
+  demonstrate cross-language matching.
+- `@cf/qwen/qwen3-embedding-0.6b` — a different dimension count, which is the point: the panel shows
+  that similarity scores are not comparable across models.
+- `@cf/google/embeddinggemma-300m` — small and fast, for a visible latency and cost contrast.
+
+Also hosted, if a fourth comparison is useful: `@cf/baai/bge-large-en-v1.5`,
+`@cf/baai/bge-base-en-v1.5`, `@cf/baai/bge-small-en-v1.5`, `@cf/pfnet/plamo-embedding-1b`.
+
+**Third-party** (requires prepaid AI Gateway credits):
+
+- None needed, and none recommended. Cloudflare hosts seven embedding models; adding a credit
+  prerequisite to this panel would buy nothing.
 
 ### Deliverables
 
@@ -771,11 +779,169 @@ Deliver **Semantic Search** using gateway-routed embeddings and local vector com
 
 ---
 
+## Phase 14 — Evaluate Choices
+
+### Goal
+
+Deliver **Evaluate Choices**, the structured-evaluation panel for `typesafe/jev`.  In addition, `clef` is now available from Cloudflare and should be the default choice.  See <https://blog.cloudflare.com/clef-decision-models/>.
+
+### Candidate models
+
+**Cloudflare-hosted** (no prepaid credits needed):
+
+- `@cf/cloudflare/clef` — reviewed as the default, per the phase goal. A Cloudflare decision model
+  built for exactly this task.
+- `@cf/cloudflare/clef-flash` — the faster, cheaper variant, for showing the latency/cost trade-off
+  on identical questions.
+- `@cf/openai/gpt-oss-120b` or `@cf/qwen/qwq-32b` — reasoning-capable general models, useful only if
+  the panel can obtain typed output from them without parsing prose. If it cannot, exclude them and
+  record that as the finding: it is the clearest demonstration of why a purpose-built decision model
+  matters.
+
+**Third-party** (requires prepaid AI Gateway credits):
+
+- `typesafe/jev` — the originally specified model; confirm it is still catalogued.
+
+Note the goal already names `clef` as the default, which is now also the credit-free choice — so
+this phase needs no third-party model to be useful.
+
+### Deliverables
+
+- Add the Jev descriptor, typed state input (text/JSON), and question-builder domain schema.
+- Support `noul`, `choice`, and `score` questions with criteria and explicit request JSON preview.
+- Render type-specific result cards: probability bar, choice distribution, score gauge/legend, and separate confidence display.
+- Add prepared support-triage, refund-policy, moderation, and lead-qualification scenarios.
+- Add a View Tokens handoff for state size/context awareness.
+
+### Tests introduced
+
+- Domain schema tests for each question type, criteria, JSON state, and response normalization.
+- Worker rejects generic Chat input and invalid/missing question contracts.
+- Client question add/remove/reorder, JSON synchronization, visual and textual result alternatives, and confidence distinction.
+- Cost-ledger test for the model’s input-priced/free-output shape without hardcoding a price calculation.
+
+### Exit criteria
+
+- Caller-defined typed questions receive typed, calibrated results with no “parse model prose as JSON” path.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- `pnpm check` and `pnpm test` pass.
+
+---
+
+## Phase 15 — Generate Music
+
+### Goal
+
+Deliver **Generate Music** with audio-asset response handling and non-token billing education.
+
+### Candidate models
+
+**Cloudflare-hosted**: none. The catalogue lists no Cloudflare-hosted music-generation model, which
+is why this phase sits after every credit-free panel. **Confirm this again before starting**: if a
+hosted music model has appeared, this phase should move earlier.
+
+**Third-party** (requires prepaid AI Gateway credits):
+
+- `elevenlabs/music-v2` — reviewed as the default. Priced per second of output audio
+  (~$0.0025/second at review time), which is cheap enough that the panel is demonstrable for cents.
+- `minimax/music-2.6` — the comparison model named in the original phase text.
+
+Because every option bills against credits, this panel must carry the same pre-request cost
+estimate and credit disclosure Create Video established, and reuse its
+`insufficient-credit` failure path rather than inventing another.
+
+### Deliverables
+
+- Add `elevenlabs/music-v2` and/or `minimax/music-2.6` only after confirming Unified Billing/gateway compatibility and account prerequisites.
+- Implement style/mood prompt, instrumental flag, optional lyrics, supported track length/output format controls, and explicit model-specific differences.
+- Normalise provider audio URLs into a safe media result; show provider-hosted/expiry caveat.
+- Add audio player, waveform if practical without a heavy dependency, lyrics display, download, duration, and reported pricing unit/cost.
+- Reuse the job infrastructure only if selected model is asynchronous; do not assume it is.
+
+### Tests introduced
+
+- Lyrics/track-length/format validation per descriptor.
+- Audio URL scheme/host policy and expiring-asset response behavior.
+- Client player keyboard controls, transcript/lyrics display, and per-track/per-second cost labels.
+- Session ledger test mixing Chat and music costs without assuming all costs are tokens.
+
+### Exit criteria
+
+- The session meter demonstrates different billing units correctly and never derives a music charge from tokens.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- `pnpm check` and `pnpm test` pass.
+
+---
+
+## Phase 16 — Animate Image
+
+### Goal
+
+Deliver **Animate Image** as its own top-level panel while sharing the Phase 8 media-job implementation.
+
+### Candidate models
+
+**Cloudflare-hosted**: none. Every image-to-video model in the catalogue is third-party, so this
+phase cannot run without prepaid credits — which is why it moved from phase 9 to late in the
+sequence despite sharing all of Create Video's infrastructure. **Re-confirm before starting.**
+
+**Third-party** (requires prepaid AI Gateway credits):
+
+- `alibaba/hh1.1-i2v` — reviewed as the default and the natural counterpart to Create Video's
+  `hh1.1-t2v`: the same vendor, the same control vocabulary, so the panel's reuse of the Phase 8
+  descriptor shape is immediately visible. ~$0.14/second at 720p.
+- `minimax/hailuo-2.3` and `runwayml/gen-4.5` — stronger motion models for comparison.
+- `lightricks/ltx-2-5-fast` or `pruna/p-video-animate` — faster and cheaper alternatives.
+
+Reuses Phase 8's R2 bucket, Workflow, derived-instance-ID ownership, cost estimate, and
+credit-failure path. Add no second storage product and no parallel job mechanism.
+
+### Deliverables
+
+- Add image-to-video descriptors, validated source image intake, optional motion prompt, and supported duration/resolution controls.
+- Reuse `MediaJob` and player infrastructure, not Create Video’s UI route or a mode switch. That now includes Phase 8's R2 bucket, Workflow, and derived-instance-ID ownership scheme: reuse them rather than adding a second storage product or a parallel job mechanism. The source image still travels in the request and is still not persisted — Phase 8's Finding 10 applies unchanged.
+- Implement side-by-side image/video result layout and Create Image → Animate Image handoff.
+
+### Tests introduced
+
+- Image-to-video request validation and descriptor control compatibility.
+- Client confirms Animate Image has its own route/title and no nested Create Video mode.
+- Job adapter reuse contracts plus handoff/error states.
+
+### Exit criteria
+
+- A user can animate an upload or generated image on `/animate-image`, with the same truthful job/cost behaviour as Create Video.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- `pnpm check` and `pnpm test` pass.
+
+---
+
 ## Phase 17 — Detect Objects
 
 ### Goal
 
 Deliver **Detect Objects**, which answers *where* rather than *what*. Classify Image scores a whole picture against a fixed label set; this panel returns a set of located regions, each with its own label and score. It is the first panel whose result is spatial, and the first whose primary rendering is an overlay on the visitor's own image.
+
+### Candidate models
+
+**Blocked: there is currently no suitable model.** `@cf/facebook/detr-resnet-50` was the model this
+phase was planned around, and at review time its catalogue page returns `404`, it is absent from the
+Workers AI model list, and neither catalogue declares an Object Detection task type at all. A search
+for object-detection models returns nothing.
+
+This phase therefore stays last and stays **unstarted** until a real detection model is available.
+Keeping it in the plan rather than deleting it is deliberate: the panel is genuinely useful, the
+sidebar entry shows the product's intended shape, and the work is ready to run the moment a model
+appears.
+
+**Do not deliver it with a vision model.** Prompting `@cf/meta/llama-3.2-11b-vision-instruct` or
+`@cf/moondream/moondream3.1-9B-A2B` for coordinates would produce boxes, but it means parsing prose
+as structured output — the exact path [§5](./01-specification.md) rules out, and the thing Evaluate
+Choices exists to argue against. A panel that teaches the wrong lesson is worse than a panel that is
+honestly absent.
+
+**Re-check at the start of the hardening phase.** If nothing has appeared, say so in the README and
+in the panel placeholder rather than leaving a phase number implying imminent delivery.
 
 ### Deliverables
 
@@ -805,6 +971,8 @@ Deliver **Detect Objects**, which answers *where* rather than *what*. Classify I
 - Runs show gateway metrics and cost; nothing about this panel is exempt from the gateway rule.
 - Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither the picture, a detected label, nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
+
+---
 
 ---
 

@@ -191,7 +191,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     group: 'Generate',
     gateway: 'required',
     availability: 'planned',
-    phase: 9
+    phase: 16
   },
   {
     id: 'generate-music',
@@ -201,7 +201,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     group: 'Generate',
     gateway: 'required',
     availability: 'planned',
-    phase: 10
+    phase: 15
   },
   {
     id: 'read-text',
@@ -211,7 +211,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     group: 'Speech',
     gateway: 'required',
     availability: 'planned',
-    phase: 11
+    phase: 9
   },
   {
     id: 'transcribe-audio',
@@ -221,7 +221,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     group: 'Speech',
     gateway: 'required',
     availability: 'planned',
-    phase: 12
+    phase: 10
   },
   {
     id: 'translate-text',
@@ -231,7 +231,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     group: 'Understand',
     gateway: 'required',
     availability: 'planned',
-    phase: 13
+    phase: 11
   },
   {
     id: 'classify-text',
@@ -241,7 +241,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     group: 'Understand',
     gateway: 'required',
     availability: 'planned',
-    phase: 14
+    phase: 12
   },
   {
     id: 'evaluate-choices',
@@ -253,7 +253,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     group: 'Reason',
     gateway: 'required',
     availability: 'planned',
-    phase: 15
+    phase: 14
   },
   {
     id: 'semantic-search',
@@ -263,7 +263,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     group: 'Reason',
     gateway: 'required',
     availability: 'planned',
-    phase: 16
+    phase: 13
   },
   {
     id: 'view-tokens',
