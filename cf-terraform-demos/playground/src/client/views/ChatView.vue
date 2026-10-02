@@ -1,11 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { MAX_MESSAGE_CHARACTERS, MAX_TEMPERATURE, MIN_TEMPERATURE } from '../../chat';
+/**
+ * Route-level composition for Chat.
+ *
+ * The feature has two deliberate modes. Before the first message, a centred welcome prompt and
+ * composer give the visitor one obvious place to begin. Once a message is sent, the transcript owns
+ * the page and the composer becomes a sticky control at the bottom, matching the interaction
+ * pattern people already know from ChatGPT, Gemini, and Cloudflare OS.
+ *
+ * Presentation is split into focused feature components; this view owns only catalogue wiring,
+ * modal state, and the scroll side effect that follows a streaming answer.
+ */
+import { computed, nextTick, onMounted, shallowRef, useTemplateRef, watch } from 'vue';
 import { findTask } from '../../tasks';
+import InfoDialog from '../components/InfoDialog.vue';
 import PanelPage from '../components/PanelPage.vue';
 import RunDetails from '../components/runs/RunDetails.vue';
+import ChatComposer from '../features/chat/ChatComposer.vue';
 import ChatTranscript from '../features/chat/ChatTranscript.vue';
-import { CHAT_EXAMPLES, type ChatExample } from '../features/chat/examples';
+import ChatWelcome from '../features/chat/ChatWelcome.vue';
+import { type ChatExample } from '../features/chat/examples';
 import { useChat } from '../features/chat/useChat';
 import { useCatalogueStore } from '../stores/catalogue';
 
@@ -29,30 +42,48 @@ const {
 } = useChat({ initialModel: '' });
 
 /**
- * Whether the advanced controls are shown.
- *
- * Collapsed by default: temperature is meaningful to someone who already knows what it does, and
- * putting it in front of everyone else is noise above the thing they came to use.
+ * Whether the optional temperature control is visible inside the composer.
  */
-const showOptions = ref(false);
+const showSampling = shallowRef(false);
+
+/**
+ * Whether details for the latest completed answer are open.
+ */
+const showRunDetails = shallowRef(false);
+
+/**
+ * Whether Chat has left its welcome state.
+ */
+const hasConversation = computed(() => turns.value.length > 0);
 
 /**
  * Reviewed models available for this panel, as the server reported them.
- *
- * Read from the catalogue endpoint rather than hard-coded, because the server is what decides which
- * models it will accept. A browser-side list could offer a model the API then rejects.
  */
 const models = computed(() => catalogue.modelsForTask('chat'));
 
 /**
- * The descriptor for the selected model, used for its documentation link and context window.
+ * Descriptor for the model the next message will use.
  */
 const selectedModel = computed(() => models.value.find((entry) => entry.id === model.value));
 
+/**
+ * Invisible anchor at the end of the transcript.
+ *
+ * A plain element reference rather than a child-component imperative API: scrolling is a layout
+ * side effect owned by this route composition, while the transcript remains a props-only renderer.
+ */
+const conversationEnd = shallowRef<HTMLElement | null>(null);
+
+/**
+ * Composer in whichever of the two layouts is currently mounted.
+ *
+ * Both conditional instances share this template-ref name. Only one exists at a time, and its
+ * exposed `focus()` method is the deliberate landing point when one layout replaces the other.
+ */
+const composer = useTemplateRef<InstanceType<typeof ChatComposer>>('composer');
+
 onMounted(async () => {
   await catalogue.load();
-  // The first reviewed model becomes the default, so the catalogue's order is the preference order
-  // and there is no second list to keep in step with it.
   const first = models.value[0];
   if (model.value === '' && first !== undefined) {
     model.value = first.id;
@@ -60,46 +91,58 @@ onMounted(async () => {
 });
 
 /**
- * Loads a prepared example into the editor.
+ * Loads a prepared question without sending it.
  *
- * @param example Example to load.
- * @returns Nothing; the draft is replaced. It is not sent automatically — a prepared prompt that
- *   spent money the moment it was clicked would be a trap in a panel that bills per request.
+ * @param example Suggested question to load.
+ * @returns Nothing; spending credit remains an explicit Send action.
  */
 function loadExample(example: ChatExample): void {
   draft.value = example.prompt;
 }
 
-/**
- * Sends the draft from a keyboard shortcut.
- *
- * @param event The keydown event.
- * @returns Nothing; the run starts when Enter is pressed without Shift.
- */
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
-    event.preventDefault();
-    void send();
+// Both Send and New chat replace the layout that contains the focused control. Move focus into the
+// replacement composer after the patch, so a keyboard user continues where they were instead of
+// being dropped at the top of the document and traversing the whole sidebar again.
+watch(hasConversation, async () => {
+  await nextTick();
+  composer.value?.focus();
+});
+
+// Follow the newest turn only while the visitor is already near the page bottom. A visitor who has
+// scrolled up to reread an earlier answer keeps their place, and `auto` avoids animated motion on
+// every stream delta (including for visitors who request reduced motion).
+watch(
+  () => turns.value.map((turn) => `${turn.id}:${turn.content.length}:${turn.streaming}`).join('|'),
+  async () => {
+    if (!hasConversation.value) {
+      return;
+    }
+
+    const distanceFromBottom =
+      document.documentElement.scrollHeight - (window.scrollY + window.innerHeight);
+    if (distanceFromBottom > 160) {
+      return;
+    }
+
+    await nextTick();
+    conversationEnd.value?.scrollIntoView?.({ behavior: 'auto', block: 'end' });
   }
+);
+
+/**
+ * Starts a new conversation and returns the optional UI to its quiet default.
+ *
+ * @returns Nothing.
+ */
+function startNewConversation(): void {
+  reset();
+  showSampling.value = false;
+  showRunDetails.value = false;
 }
 </script>
 
 <template>
   <PanelPage v-if="task" :task="task">
-    <!--
-      The credit-and-logging disclosure, reached through the header's info button. The demo records
-      the visitor's verified email in AI Gateway metadata, and they are entitled to know that
-      before they send anything rather than after.
-
-      It deliberately makes no promise about what the gateway retains. This demo asks AI Gateway
-      not to store payloads, but a retention guarantee is the platform's to give, not this
-      application's — so the panel tells a visitor to assume their prompt is logged rather than
-      asserting something it cannot verify on the visitor's behalf.
-
-      Chat keeps its single-column layout: a conversation is one running transcript, not an input
-      and a separate result, so the side-by-side workspace the other panels use does not apply.
-      Only the description moves here, which is the part every panel shares.
-    -->
     <template #description>
       <p class="attribution" role="note">
         This panel calls a real model and spends real inference credit. Your verified email is
@@ -107,275 +150,170 @@ function onKeydown(event: KeyboardEvent): void {
         prompt and the answer are logged too: treat this as you would any shared AI service and do
         not enter anything confidential.
       </p>
+      <p class="about-model">
+        A model bills by the token, not by the word.
+        <router-link to="/view-tokens">View Tokens</router-link>
+        shows how a message is split up in your browser at no cost.
+        <span v-if="selectedModel?.contextWindowTokens">
+          {{ selectedModel.name }} has a
+          {{ selectedModel.contextWindowTokens.toLocaleString() }}-token context window.
+        </span>
+      </p>
+      <p v-if="selectedModel" class="about-model-link">
+        <a :href="selectedModel.documentationUrl" rel="noreferrer" target="_blank">
+          {{ selectedModel.name }} in the model catalog
+        </a>
+      </p>
     </template>
 
-    <div class="chat">
-      <ChatTranscript :turns="turns" />
-
-      <p v-if="error" class="error" role="alert">{{ error }}</p>
-
-      <section class="composer" aria-labelledby="composer-heading">
-        <h2 id="composer-heading" class="section-heading">Your message</h2>
-
-        <label class="field-label" for="chat-input">Message</label>
-        <textarea
-          id="chat-input"
-          v-model="draft"
-          class="chat-input"
-          rows="4"
-          :maxlength="MAX_MESSAGE_CHARACTERS"
-          placeholder="Ask anything. Enter sends, Shift+Enter adds a line."
-          @keydown="onKeydown"
-        ></textarea>
-
-        <div class="composer-actions">
-          <v-btn
-            class="send-button"
-            color="primary"
-            :disabled="!canSend"
-            variant="flat"
-            @click="send"
-          >
-            Send
-          </v-btn>
-          <!--
-            Cancel is rendered only while streaming rather than disabled, so the control a visitor
-            needs mid-answer is the one in that position.
-          -->
-          <v-btn v-if="streaming" class="cancel-button" variant="outlined" @click="cancel">
-            Cancel
-          </v-btn>
-          <v-btn
-            v-if="turns.length > 0 && !streaming"
-            class="reset-button"
-            variant="text"
-            @click="reset"
-          >
-            New conversation
-          </v-btn>
-          <span class="counter" aria-live="polite">
-            {{ [...draft].length.toLocaleString() }} /
-            {{ MAX_MESSAGE_CHARACTERS.toLocaleString() }}
-          </span>
-        </div>
-
-        <div class="example-group" role="group" aria-labelledby="examples-heading">
-          <h3 id="examples-heading" class="field-label">Or try an example</h3>
-          <div class="examples">
-            <button
-              v-for="example in CHAT_EXAMPLES"
-              :key="example.id"
-              type="button"
-              class="example-button"
-              :data-example="example.id"
-              :title="example.teaches"
-              @click="loadExample(example)"
-            >
-              {{ example.label }}
-            </button>
-          </div>
-        </div>
-
-        <div class="options">
-          <div class="option">
-            <label class="field-label" for="model-select">Model</label>
-            <select id="model-select" v-model="model" class="model-select">
-              <option v-for="candidate in models" :key="candidate.id" :value="candidate.id">
-                {{ candidate.name }}
-              </option>
-            </select>
-          </div>
-
-          <label class="checkbox">
-            <input v-model="showOptions" type="checkbox" />
-            <span>Show sampling options</span>
-          </label>
-        </div>
-
-        <div v-if="showOptions" class="advanced">
-          <label class="field-label" for="temperature-input">
-            Temperature ({{ temperature ?? 'model default' }})
-          </label>
-          <input
-            id="temperature-input"
-            v-model.number="temperature"
-            class="temperature-input"
-            type="range"
-            :min="MIN_TEMPERATURE"
-            :max="MAX_TEMPERATURE"
-            step="0.1"
+    <div class="chat" :class="{ 'chat--active': hasConversation }">
+      <template v-if="!hasConversation">
+        <div class="welcome-layout">
+          <ChatWelcome @choose="loadExample" />
+          <ChatComposer
+            ref="composer"
+            v-model:draft="draft"
+            v-model:model="model"
+            v-model:temperature="temperature"
+            :models="models"
+            :can-send="canSend"
+            :streaming="streaming"
+            :has-conversation="false"
+            :has-run-details="false"
+            :show-sampling="showSampling"
+            @submit="send"
+            @cancel="cancel"
+            @reset="startNewConversation"
+            @show-run-details="showRunDetails = true"
+            @toggle-sampling="showSampling = !showSampling"
           />
-          <p class="hint">
-            Higher values produce more varied wording. It does not make an answer more accurate.
-          </p>
+          <p v-if="error" class="error" role="alert">{{ error }}</p>
         </div>
-      </section>
+      </template>
 
-      <RunDetails
-        v-if="receipt"
-        :receipt="receipt"
-        :metrics="metrics"
-        :cost-pending="costPending"
-      />
+      <template v-else>
+        <div class="conversation-layout">
+          <div class="conversation-scroll">
+            <ChatTranscript :turns="turns" />
+            <p v-if="error" class="error" role="alert">{{ error }}</p>
+            <div ref="conversationEnd" class="conversation-end" aria-hidden="true"></div>
+          </div>
 
-      <section class="handoff" aria-labelledby="handoff-heading">
-        <h2 id="handoff-heading" class="section-heading">See what you are paying for</h2>
-        <p>
-          A model bills by the token, not by the word.
-          <router-link to="/view-tokens">View Tokens</router-link>
-          shows how your message is split up, in your browser and at no cost.
-          <span v-if="selectedModel?.contextWindowTokens">
-            {{ selectedModel.name }} has a
-            {{ selectedModel.contextWindowTokens.toLocaleString() }}-token context window.
-          </span>
-        </p>
-        <p v-if="selectedModel">
-          <a :href="selectedModel.documentationUrl" rel="noreferrer" target="_blank">
-            {{ selectedModel.name }} in the model catalog
-          </a>
-        </p>
-      </section>
+          <!--
+            Sticky inside the chat workspace rather than fixed to the viewport. It remains at the
+            bottom while the page scrolls, without covering the application sidebar or escaping the
+            routed panel's width.
+          -->
+          <div class="composer-dock">
+            <ChatComposer
+              ref="composer"
+              v-model:draft="draft"
+              v-model:model="model"
+              v-model:temperature="temperature"
+              :models="models"
+              :can-send="canSend"
+              :streaming="streaming"
+              :has-conversation="true"
+              :has-run-details="receipt !== undefined"
+              :show-sampling="showSampling"
+              @submit="send"
+              @cancel="cancel"
+              @reset="startNewConversation"
+              @show-run-details="showRunDetails = true"
+              @toggle-sampling="showSampling = !showSampling"
+            />
+          </div>
+        </div>
+      </template>
+
+      <InfoDialog :open="showRunDetails" title="Run details" @close="showRunDetails = false">
+        <RunDetails
+          v-if="receipt"
+          embedded
+          :receipt="receipt"
+          :metrics="metrics"
+          :cost-pending="costPending"
+        />
+      </InfoDialog>
     </div>
   </PanelPage>
 </template>
 
 <style scoped>
-.chat {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.section-heading {
-  font-size: 1.125rem;
-  margin: 0 0 0.75rem;
-}
-
 /* Inside the description modal, which supplies its own padding and background. */
 .attribution {
   margin: 1rem 0 0;
 }
 
-.field-label {
-  color: rgb(var(--v-theme-on-surface-variant));
-  display: block;
-  font-size: 0.8125rem;
-  margin-bottom: 0.25rem;
+.about-model,
+.about-model-link {
+  margin: 0.75rem 0 0;
 }
 
-.chat-input {
-  background-color: rgb(var(--v-theme-surface));
-  border: 1px solid rgb(var(--v-theme-outline));
-  border-radius: 0.5rem;
-  color: rgb(var(--v-theme-on-surface));
-  font-size: 0.9375rem;
-  padding: 0.75rem;
-  resize: vertical;
-  width: 100%;
+.chat {
+  margin: 0 auto;
+  max-width: 54rem;
+  min-width: 0;
 }
 
-.chat-input:focus-visible {
-  border-color: rgb(var(--v-theme-primary));
-  outline: 2px solid rgb(var(--v-theme-primary));
-  outline-offset: 1px;
-}
-
-.composer-actions {
-  align-items: center;
+.welcome-layout {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
+  flex-direction: column;
+  gap: 1.5rem;
+  justify-content: center;
+  min-height: calc(100vh - 13rem);
 }
 
-.counter {
-  color: rgb(var(--v-theme-on-surface-variant));
-  font-size: 0.8125rem;
-  margin-left: auto;
-}
-
-.example-group {
-  margin-top: 1.25rem;
-}
-
-.examples {
+.conversation-layout {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-direction: column;
+  min-height: calc(100vh - 8rem);
 }
 
-.example-button {
-  background-color: rgb(var(--v-theme-surface-variant));
-  border: 1px solid rgb(var(--v-theme-outline-variant));
-  border-radius: 999px;
-  color: rgb(var(--v-theme-on-surface));
-  cursor: pointer;
-  /* Comfortably above the minimum target size for a pointer or a touch. */
-  min-height: 2.25rem;
-  padding: 0.375rem 0.875rem;
+.conversation-scroll {
+  flex: 1 1 auto;
+  padding: 0.5rem 0 1.5rem;
 }
 
-.example-button:hover,
-.example-button:focus-visible {
-  border-color: rgb(var(--v-theme-primary));
+.conversation-end {
+  height: 1px;
 }
 
-.options {
-  align-items: flex-end;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.25rem;
-  margin-top: 1.25rem;
-}
-
-.model-select {
-  background-color: rgb(var(--v-theme-surface));
-  border: 1px solid rgb(var(--v-theme-outline));
-  border-radius: 0.375rem;
-  color: rgb(var(--v-theme-on-surface));
-  min-height: 2.25rem;
-  padding: 0.375rem 0.5rem;
-}
-
-.checkbox {
-  align-items: center;
-  cursor: pointer;
-  display: flex;
-  gap: 0.5rem;
-  min-height: 2.25rem;
-}
-
-.advanced {
-  margin-top: 1rem;
-  max-width: 24rem;
-}
-
-.temperature-input {
-  width: 100%;
-}
-
-.hint {
-  color: rgb(var(--v-theme-on-surface-variant));
-  font-size: 0.8125rem;
-  margin: 0.25rem 0 0;
+.composer-dock {
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--v-theme-background) / 0%),
+    rgb(var(--v-theme-background)) 1.5rem
+  );
+  bottom: 0;
+  padding: 1.5rem 0 0.75rem;
+  position: sticky;
+  z-index: 5;
 }
 
 .error {
   color: rgb(var(--v-theme-error));
   margin: 0;
+  text-align: center;
 }
 
-.handoff {
-  border-top: 1px solid rgb(var(--v-theme-outline-variant));
-  max-width: 44rem;
-  padding-top: 1.25rem;
+@media (max-width: 40rem) {
+  .welcome-layout {
+    justify-content: flex-start;
+    min-height: auto;
+    padding-top: 1rem;
+  }
+
+  .conversation-layout {
+    min-height: calc(100vh - 6rem);
+  }
 }
 
-.handoff p {
-  margin: 0 0 0.5rem;
-}
-
-.handoff p:last-child {
-  margin-bottom: 0;
+/*
+  Leave enough room when the browser scrolls a focused transcript link into view, so the sticky
+  composer cannot cover it at the bottom edge.
+*/
+:global(#main-content) {
+  scroll-padding-bottom: 12rem;
 }
 </style>

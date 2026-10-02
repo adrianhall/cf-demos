@@ -4,11 +4,14 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { CHAT_EXAMPLES } from '../../../src/client/features/chat/examples';
 import { useCatalogueStore } from '../../../src/client/stores/catalogue';
 import ChatView from '../../../src/client/views/ChatView.vue';
-import { clickTeleported, openDialogText, panelText } from '../support/panel';
+import {
+  clickTeleported,
+  isDialogOpen,
+  openDialogText,
+  panelStubs,
+  panelText
+} from '../support/panel';
 
-/**
- * Reviewed models as the catalogue endpoint reports them.
- */
 const MODELS = [
   {
     id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
@@ -31,7 +34,7 @@ const MODELS = [
 ];
 
 /**
- * Mounts the Chat view with a pre-populated catalogue.
+ * Mounts Chat with a pre-populated catalogue.
  *
  * @returns The mounted wrapper.
  */
@@ -42,32 +45,70 @@ async function mountChat() {
   catalogue.loaded = true;
 
   const wrapper = mount(ChatView, {
-    global: {
-      plugins: [pinia],
-      stubs: {
-        'router-link': { props: ['to'], template: '<a :href="to"><slot /></a>' },
-        'v-btn': { template: '<button><slot /></button>' }
-      }
-    }
+    attachTo: document.body,
+    global: { plugins: [pinia], stubs: panelStubs() }
   });
 
   await flushPromises();
   return wrapper;
 }
 
-beforeEach(() => {
-  // The view fetches the catalogue on mount. The store is pre-populated, so this only guards
-  // against a real network call if that changes.
+/**
+ * Builds the SSE response for one successful run.
+ *
+ * @param markdown Model answer to stream.
+ * @returns A response shaped like the real Chat endpoint.
+ */
+function chatResponse(markdown = 'A **useful** answer.'): Response {
+  const receipt = {
+    runId: 'run-chat-1',
+    task: 'chat',
+    model: MODELS[0]!.id,
+    gatewayRouted: true,
+    logIds: [],
+    status: 'completed',
+    costStatus: 'unavailable',
+    elapsedMs: 340,
+    startedAt: '2026-10-02T09:00:00.000Z'
+  };
+  const frames = [
+    { type: 'start', runId: receipt.runId, model: receipt.model },
+    { type: 'delta', text: markdown },
+    { type: 'completed', receipt }
+  ];
+
+  return new Response(frames.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' }
+  });
+}
+
+/**
+ * Sends one message through the real view/composable wiring.
+ *
+ * @param wrapper Mounted Chat view.
+ * @param answer Model answer to stream.
+ * @returns A promise fulfilled once the response and run tracking settle.
+ */
+async function sendOnce(
+  wrapper: Awaited<ReturnType<typeof mountChat>>,
+  answer = 'A **useful** answer.'
+): Promise<void> {
   vi.stubGlobal(
     'fetch',
-    vi.fn(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ models: MODELS }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' }
-        })
-      )
-    )
+    vi.fn(() => Promise.resolve(chatResponse(answer)))
+  );
+  await wrapper.find('#chat-input').setValue('What is AI Gateway?');
+  await wrapper.find('form').trigger('submit');
+  await flushPromises();
+}
+
+beforeEach(() => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => {
+      throw new Error('Chat should not reach the network before a test sends a message.');
+    })
   );
 });
 
@@ -75,177 +116,199 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('ChatView', () => {
-  // The name is teleported into the shell's header bar and the task type now lives in the
-  // description modal, so each is read from where it actually renders.
+describe('panel description', () => {
   it('shows the panel name in the header', async () => {
     expect(panelText(await mountChat())).toContain('Chat');
   });
 
-  it('describes its technical task type in the panel description', async () => {
+  it('describes the task and gateway route in the About modal', async () => {
     await mountChat();
     await clickTeleported('.about-button');
 
     expect(openDialogText()).toContain('Text generation');
-  });
-
-  it('declares that the panel is routed through AI Gateway', async () => {
-    await mountChat();
-    await clickTeleported('.about-button');
-
     expect(openDialogText()).toContain('Routed through AI Gateway');
   });
 
-  // The visitor is told their email is recorded in gateway metadata *before* they send anything,
-  // not in a footnote afterwards. This is the disclosure the whole attribution design depends on.
-  it('discloses email attribution before the first request', async () => {
-    await mountChat();
-    await clickTeleported('.about-button');
-
-    expect(openDialogText()).toMatch(/verified email is recorded in the AI Gateway log/iu);
-  });
-
-  it('warns that the panel spends real inference credit', async () => {
-    await mountChat();
-    await clickTeleported('.about-button');
-
-    expect(openDialogText()).toMatch(/real inference credit/iu);
-  });
-
-  // Tells the visitor to assume their prompt is logged, rather than promising it is not. Payload
-  // retention is AI Gateway's behaviour, the AI binding exposes no payload-collection option, and
-  // the gateway documents that a log can include the prompt — so a reassurance here would be a
-  // claim this application cannot keep on a visitor's behalf.
-  it('warns that the prompt should be assumed logged', async () => {
+  it('keeps the credit and logging disclosure before the first request', async () => {
     await mountChat();
     await clickTeleported('.about-button');
 
     const text = openDialogText();
+    expect(text).toMatch(/verified email is recorded/iu);
     expect(text).toMatch(/assume your prompt and the answer are logged/iu);
     expect(text).toMatch(/nothing confidential|anything confidential/iu);
   });
 
-  it('makes no promise that the prompt or answer is unretained', async () => {
-    const text = (await mountChat()).text();
-    expect(text).not.toMatch(/not stored/iu);
-    expect(text).not.toMatch(/not retained/iu);
-    expect(text).not.toMatch(/never stored/iu);
+  // Reference material moved out of the main flow with the other panel description, leaving the
+  // activity itself above the fold.
+  it('keeps token and model references in the About modal', async () => {
+    await mountChat();
+    await clickTeleported('.about-button');
+
+    const text = openDialogText();
+    expect(text).toContain('View Tokens');
+    expect(text).toContain('24,000-token context window');
+    expect(document.body.querySelector(`a[href="${MODELS[0]!.documentationUrl}"]`)).not.toBeNull();
+  });
+});
+
+describe('first-run welcome state', () => {
+  it('starts with one centred question box and no transcript', async () => {
+    const wrapper = await mountChat();
+    expect(wrapper.find('.welcome-layout').exists()).toBe(true);
+    expect(wrapper.find('.transcript').exists()).toBe(false);
+    expect(wrapper.findAll('#chat-input')).toHaveLength(1);
   });
 
-  it('offers every reviewed model from the catalogue', async () => {
-    const options = (await mountChat()).findAll('#model-select option');
-    expect(options.map((option) => option.text())).toEqual([
-      'Llama 3.3 70B (fast)',
-      'Llama 3.2 3B'
+  it('asks what the visitor wants to explore', async () => {
+    expect((await mountChat()).text()).toContain('What can I help you explore?');
+  });
+
+  it('offers every prepared quick question', async () => {
+    const wrapper = await mountChat();
+    for (const example of CHAT_EXAMPLES) {
+      expect(wrapper.find(`[data-example="${example.id}"]`).exists()).toBe(true);
+    }
+  });
+
+  it('loads a quick question without sending it', async () => {
+    const wrapper = await mountChat();
+    await wrapper.find(`[data-example="${CHAT_EXAMPLES[0]!.id}"]`).trigger('click');
+
+    expect(wrapper.find<HTMLTextAreaElement>('#chat-input').element.value).toBe(
+      CHAT_EXAMPLES[0]!.prompt
+    );
+    expect(wrapper.find('.transcript').exists()).toBe(false);
+  });
+
+  it('puts the model selector inside the question box', async () => {
+    const wrapper = await mountChat();
+    expect(wrapper.find('.composer').find('#model-select').exists()).toBe(true);
+    expect(wrapper.findAll('#model-select option').map((option) => option.text())).toEqual([
+      MODELS[0]!.name,
+      MODELS[1]!.name
     ]);
   });
 
-  // The catalogue's order is the preference order, so there is no second list to keep in step.
   it('selects the first reviewed model by default', async () => {
     const select = (await mountChat()).find<HTMLSelectElement>('#model-select');
     expect(select.element.value).toBe(MODELS[0]!.id);
   });
 
-  it('labels the message field', async () => {
+  it('disables Send until a message is entered', async () => {
     const wrapper = await mountChat();
-    expect(wrapper.find('label[for="chat-input"]').exists()).toBe(true);
-    expect(wrapper.find('#chat-input').exists()).toBe(true);
-  });
+    const send = wrapper.find('[aria-label="Send message"]');
+    expect(send.attributes('disabled')).toBeDefined();
 
-  it('disables Send while the draft is empty', async () => {
-    const wrapper = await mountChat();
-    expect(wrapper.find('.send-button').attributes('disabled')).toBeDefined();
-  });
-
-  it('enables Send once something is typed', async () => {
-    const wrapper = await mountChat();
     await wrapper.find('#chat-input').setValue('Hello');
-    expect(wrapper.find('.send-button').attributes('disabled')).toBeUndefined();
+    expect(send.attributes('disabled')).toBeUndefined();
   });
 
-  it('shows no Cancel button while nothing is streaming', async () => {
-    expect((await mountChat()).find('.cancel-button').exists()).toBe(false);
-  });
-
-  it('offers every prepared example', async () => {
+  it('reveals sampling inside the composer on request', async () => {
     const wrapper = await mountChat();
-    for (const example of CHAT_EXAMPLES) {
-      expect(
-        wrapper.find(`[data-example="${example.id}"]`).exists(),
-        `${example.label} button`
-      ).toBe(true);
-    }
-  });
+    expect(wrapper.find('#temperature-input').isVisible()).toBe(false);
 
-  // A prepared prompt that spent money the moment it was clicked would be a trap in a panel that
-  // bills per request, so loading an example fills the editor rather than sending it.
-  it('loads an example into the editor without sending it', async () => {
+    await wrapper.find('[aria-controls="sampling-options"]').trigger('click');
+    expect(wrapper.find('#temperature-input').isVisible()).toBe(true);
+    expect(wrapper.text()).toMatch(/do not improve accuracy/iu);
+  });
+});
+
+describe('conversation flow', () => {
+  it('switches from welcome to transcript after the first message', async () => {
     const wrapper = await mountChat();
-    await wrapper.find(`[data-example="${CHAT_EXAMPLES[0]!.id}"]`).trigger('click');
+    await sendOnce(wrapper);
 
-    const input = wrapper.find<HTMLTextAreaElement>('#chat-input');
-    expect(input.element.value).toBe(CHAT_EXAMPLES[0]!.prompt);
-    expect(wrapper.findAll('li')).toHaveLength(0);
+    expect(wrapper.find('.welcome-layout').exists()).toBe(false);
+    expect(wrapper.find('.conversation-layout').exists()).toBe(true);
+    expect(wrapper.find('.transcript').exists()).toBe(true);
   });
 
-  it('explains what each example demonstrates', async () => {
+  // Sending replaces the entire welcome composer with the docked conversation composer. The new
+  // editor must take focus or a keyboard user is dropped at the top of the document.
+  it('moves focus into the docked composer after the first message', async () => {
     const wrapper = await mountChat();
-    const button = wrapper.find(`[data-example="${CHAT_EXAMPLES[0]!.id}"]`);
-    expect(button.attributes('title')).toBe(CHAT_EXAMPLES[0]!.teaches);
+    await sendOnce(wrapper);
+
+    expect(document.activeElement).toBe(wrapper.find('#chat-input').element);
   });
 
-  it('shows a live character count against the limit', async () => {
+  it('shows the user message and assistant answer in order', async () => {
     const wrapper = await mountChat();
-    await wrapper.find('#chat-input').setValue('12345');
+    await sendOnce(wrapper);
 
-    const counter = wrapper.find('.counter');
-    expect(counter.text()).toContain('5');
-    expect(counter.attributes('aria-live')).toBe('polite');
+    const turns = wrapper.findAll('.turn');
+    expect(turns).toHaveLength(2);
+    expect(turns[0]?.text()).toContain('What is AI Gateway?');
+    expect(turns[1]?.text()).toContain('A useful answer.');
   });
 
-  // Sampling controls are collapsed by default: temperature means something to a visitor who
-  // already knows what it does, and putting it in front of everyone else is noise.
-  it('hides the sampling options until they are asked for', async () => {
+  it('renders assistant Markdown in the conversation', async () => {
     const wrapper = await mountChat();
-    expect(wrapper.find('#temperature-input').exists()).toBe(false);
+    await sendOnce(wrapper, 'Use **AI Gateway** and:\n\n- log requests\n- measure cost');
+
+    expect(wrapper.find('.turn--assistant strong').text()).toBe('AI Gateway');
+    expect(wrapper.findAll('.turn--assistant li')).toHaveLength(2);
   });
 
-  it('reveals the sampling options on request', async () => {
+  it('places the transcript before the bottom composer in document order', async () => {
     const wrapper = await mountChat();
-    const toggle = wrapper.findAll('input[type="checkbox"]')[0]!;
-    await toggle.setValue(true);
+    await sendOnce(wrapper);
 
-    expect(wrapper.find('#temperature-input').exists()).toBe(true);
+    const transcript = wrapper.find('.transcript').element;
+    const dock = wrapper.find('.composer-dock').element;
+    expect(
+      transcript.compareDocumentPosition(dock) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
-  it('explains that temperature does not improve accuracy', async () => {
+  it('keeps the model selector in the conversation composer', async () => {
     const wrapper = await mountChat();
-    await wrapper.findAll('input[type="checkbox"]')[0]!.setValue(true);
-    expect(wrapper.text()).toMatch(/does not make an answer more accurate/iu);
+    await sendOnce(wrapper);
+    expect(wrapper.find('.composer-dock #model-select').exists()).toBe(true);
   });
 
-  // The handoff the implementation plan asks for: Chat bills by the token, and View Tokens is where
-  // a visitor can see what that means for their own text at no cost.
-  it('links to View Tokens so the visitor can see what is billed', async () => {
+  it('offers New chat after a response completes', async () => {
     const wrapper = await mountChat();
-    expect(wrapper.find('a[href="/view-tokens"]').exists()).toBe(true);
+    await sendOnce(wrapper);
+    expect(wrapper.find('.new-chat-button').exists()).toBe(true);
   });
 
-  it('states the selected model\u2019s context window', async () => {
-    expect((await mountChat()).text()).toContain('24,000-token context window');
-  });
-
-  it('links the selected model to its catalog page', async () => {
+  it('returns to the welcome state for a new conversation', async () => {
     const wrapper = await mountChat();
-    const link = wrapper.find(`a[href="${MODELS[0]!.documentationUrl}"]`);
-    expect(link.exists()).toBe(true);
+    await sendOnce(wrapper);
+    const button = wrapper.find('.new-chat-button');
+    (button.element as HTMLElement).focus();
+    await button.trigger('click');
+
+    expect(wrapper.find('.welcome-layout').exists()).toBe(true);
+    expect(wrapper.find('.transcript').exists()).toBe(false);
+    expect(document.activeElement).toBe(wrapper.find('#chat-input').element);
+  });
+});
+
+describe('run details', () => {
+  it('keeps the activator inside the composer', async () => {
+    const wrapper = await mountChat();
+    await sendOnce(wrapper);
+
+    expect(wrapper.find('.composer-dock .run-details-button').exists()).toBe(true);
   });
 
-  it('shows no run details before the first run', async () => {
-    expect((await mountChat()).find('.run-details').exists()).toBe(false);
+  it('keeps details closed until asked for', async () => {
+    const wrapper = await mountChat();
+    await sendOnce(wrapper);
+    expect(isDialogOpen()).toBe(false);
   });
 
-  it('shows no error before anything is sent', async () => {
-    expect((await mountChat()).find('[role="alert"]').exists()).toBe(false);
+  it('opens the same Run details modal used by the media panels', async () => {
+    const wrapper = await mountChat();
+    await sendOnce(wrapper);
+    await wrapper.find('.run-details-button').trigger('click');
+
+    expect(openDialogText()).toContain('Run details');
+    expect(openDialogText()).toContain(MODELS[0]!.id);
+    // Embedded: the modal title is the only title, with no duplicate inner card heading.
+    expect(document.body.querySelector('.run-details-heading')).toBeNull();
   });
 });

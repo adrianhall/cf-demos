@@ -40,8 +40,10 @@
   "dependencies": {
     "@adrianhall/cloudflare-toolkit": "^2.7.0",
     "@demos/worker-common": "workspace:*",
+    "dompurify": "^3.4.16",
     "gpt-tokenizer": "^4.0.0",
     "hono": "^4.13.11",
+    "marked": "^18.0.14",
     "pinia": "^4.0.3",
     "vue": "^3.5.43",
     "vue-router": "^5.3.1",

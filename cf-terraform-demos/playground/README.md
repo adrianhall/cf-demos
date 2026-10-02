@@ -84,11 +84,19 @@ Gateway has written its log.
 
 - **Two reviewed models** to compare: Llama 3.3 70B and Llama 3.2 3B. The same prompt against both
   shows that the larger model costs materially more per token and is not always the better value.
-- **Streaming output**, with a Cancel button that aborts the HTTP request rather than merely
-  ignoring what keeps arriving. A cancelled answer keeps the text it already generated, because that
-  text was generated and paid for.
-- **Run details** after every answer: model, elapsed time, gateway log identifier, token counts,
-  cache state, and the reported cost.
+- **A familiar two-state chat interface.** The first visit centres one question box beneath
+  suggested prompts. After the first send, the transcript starts at the top and the same composer
+  stays at the bottom, with the model selector inside it. New chat returns to the welcome state
+  without touching session cost totals.
+- **Streaming output**, with the Send control becoming Stop without replacing the focused button.
+  Stop aborts the HTTP request rather than merely ignoring what keeps arriving. A cancelled answer
+  keeps the text it already generated, because that text was generated and paid for.
+- **Sanitized Markdown answers.** Assistant headings, lists, links, tables, quotes, and code blocks
+  render as formatted content through `marked` and a strict DOMPurify allowlist. User messages
+  remain escaped text, and model output cannot render scripts, images, media, iframes, forms, or
+  styles.
+- **Run details** from an info button inside the composer: model, elapsed time, gateway log
+  identifier, token counts, cache state, and the reported cost.
 - **A truthful cost lifecycle.** The answer is never delayed waiting for a gateway log. The receipt
   arrives with `costStatus: pending`, the browser polls `GET /api/runs/:runId/metrics`, and the
   figure appears when the log does. If it never arrives, the panel says `Unavailable` rather than

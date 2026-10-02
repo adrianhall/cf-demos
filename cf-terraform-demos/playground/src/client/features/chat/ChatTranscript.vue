@@ -1,5 +1,14 @@
 <script setup lang="ts">
+/**
+ * Conversation transcript in the familiar assistant-chat pattern: full-width assistant answers and
+ * compact user bubbles aligned to the right.
+ *
+ * Assistant content is rendered through {@link MarkdownContent}; user content remains escaped text.
+ * That distinction is deliberate: models use Markdown as an output format, while a visitor's own
+ * message should never become active HTML merely because it contains Markdown syntax.
+ */
 import type { ConversationTurn } from './conversation';
+import MarkdownContent from './MarkdownContent.vue';
 
 defineProps<{
   /**
@@ -11,39 +20,35 @@ defineProps<{
 
 <template>
   <!--
-    `aria-live="polite"` on the transcript rather than on each turn, so a screen reader announces
-    new text as it streams instead of staying silent until the visitor goes looking for it.
-    `polite` because an assertive region would interrupt on every delta, which is unusable.
-    `aria-atomic="false"` so only the added text is announced rather than the whole conversation
-    being re-read on every increment.
+    The transcript itself is intentionally quiet while tokens stream. Making the growing answer a
+    live region re-announces the whole accumulated response for every delta and floods the speech
+    queue; one persistent status below reports the lifecycle instead.
   -->
-  <ol
-    v-if="turns.length > 0"
-    class="transcript"
-    aria-label="Conversation"
-    aria-live="polite"
-    aria-atomic="false"
-  >
+  <ol v-if="turns.length > 0" class="transcript" aria-label="Conversation">
     <li v-for="turn in turns" :key="turn.id" class="turn" :class="`turn--${turn.role}`">
-      <!--
-        The speaker is a real text label, not a colour or an alignment. A transcript that
-        distinguishes speakers only by which side of the screen they sit on conveys nothing to a
-        screen reader and nothing on a narrow viewport.
-      -->
-      <p class="turn-role">{{ turn.role === 'user' ? 'You' : 'Assistant' }}</p>
-      <div class="turn-content">
+      <div class="turn-inner">
         <!--
-          `white-space: pre-wrap` via the stylesheet rather than rendering Markdown. The panel is
-          about tokens and cost, and passing model output through a Markdown renderer would be an
-          HTML-injection surface added for presentation alone.
+          A visually compact avatar still carries a text alternative through the speaker label.
+          Alignment and colour are not the only way the speakers are distinguished.
         -->
-        <p class="turn-text">{{ turn.content }}</p>
-        <span v-if="turn.streaming" class="cursor" aria-hidden="true"></span>
+        <span v-if="turn.role === 'assistant'" class="assistant-avatar" aria-hidden="true">P</span>
+
+        <div class="turn-body">
+          <p class="turn-role">{{ turn.role === 'user' ? 'You' : 'Playground' }}</p>
+
+          <div class="turn-content">
+            <MarkdownContent v-if="turn.role === 'assistant'" :source="turn.content" />
+            <p v-else class="turn-text">{{ turn.content }}</p>
+            <span v-if="turn.streaming" class="cursor" aria-hidden="true"></span>
+          </div>
+
+          <p v-if="turn.role === 'assistant'" class="turn-status" role="status">
+            <template v-if="turn.streaming">Generating…</template>
+            <template v-else-if="turn.content === ''">No answer was generated.</template>
+            <template v-else>Answer complete.</template>
+          </p>
+        </div>
       </div>
-      <p v-if="turn.streaming" class="turn-status">Generating…</p>
-      <p v-else-if="turn.role === 'assistant' && turn.content === ''" class="turn-status">
-        No answer was generated.
-      </p>
     </li>
   </ol>
 </template>
@@ -52,61 +57,109 @@ defineProps<{
 .transcript {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.75rem;
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
 .turn {
-  border-radius: 0.75rem;
-  padding: 0.875rem 1rem;
+  display: flex;
+  width: 100%;
+}
+
+.turn-inner {
+  display: flex;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.turn--assistant .turn-inner {
+  width: 100%;
 }
 
 .turn--user {
-  background-color: rgb(var(--v-theme-surface-variant));
+  justify-content: flex-end;
 }
 
-.turn--assistant {
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+.turn--user .turn-inner {
+  background-color: rgb(var(--v-theme-surface-variant));
+  border-radius: 1.25rem;
+  max-width: min(80%, 38rem);
+  padding: 0.75rem 1rem;
+}
+
+.assistant-avatar {
+  align-items: center;
+  background: linear-gradient(145deg, rgb(var(--v-theme-primary)), #b58cff);
+  border-radius: 50%;
+  color: #081020;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  font-weight: 800;
+  height: 1.75rem;
+  justify-content: center;
+  margin-top: 0.1rem;
+  width: 1.75rem;
+}
+
+.turn-body {
+  min-width: 0;
+}
+
+.turn--assistant .turn-body {
+  flex: 1 1 auto;
 }
 
 .turn-role {
   color: rgb(var(--v-theme-on-surface-variant));
   font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
   margin: 0 0 0.375rem;
-  text-transform: uppercase;
+}
+
+.turn--user .turn-role {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .turn-content {
-  display: flex;
-  gap: 0.125rem;
+  min-width: 0;
 }
 
 .turn-text {
   margin: 0;
-  /* Preserves the paragraph breaks and indentation a model puts in its answer. */
   white-space: pre-wrap;
 }
 
 /*
-  A thin block that marks where text is still arriving. Hidden from assistive technology, which
-  gets the "Generating…" status instead, and it does not blink: a blinking element is both a
-  distraction and a motion-sensitivity problem for a decoration this small.
+  A thin block marks where text is still arriving. Hidden from assistive technology, which gets the
+  status text instead, and deliberately does not blink for motion-sensitive visitors.
 */
 .cursor {
-  align-self: flex-end;
   background-color: rgb(var(--v-theme-primary));
   display: inline-block;
   height: 1.05em;
-  width: 0.5ch;
+  margin-left: 0.15rem;
+  vertical-align: text-bottom;
+  width: 0.45ch;
 }
 
 .turn-status {
   color: rgb(var(--v-theme-on-surface-variant));
   font-size: 0.8125rem;
   margin: 0.375rem 0 0;
+}
+
+@media (max-width: 40rem) {
+  .turn--user .turn-inner {
+    max-width: 92%;
+  }
 }
 </style>

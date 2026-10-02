@@ -49,16 +49,14 @@ describe('ChatTranscript', () => {
     ]);
 
     expect(wrapper.findAll('li')[0]?.text()).toContain('You');
-    expect(wrapper.findAll('li')[1]?.text()).toContain('Assistant');
+    expect(wrapper.findAll('li')[1]?.text()).toContain('Playground');
   });
 
-  // The region is announced as it grows, so a screen-reader user hears the answer arrive instead of
-  // having to go looking for it. `polite` because interrupting on every delta would be unusable.
-  it('announces new text politely as it streams', () => {
+  // The growing answer itself stays quiet: putting it in a live region would re-announce the whole
+  // accumulated response on every stream delta and flood the speech queue.
+  it('keeps the transcript out of the live regions', () => {
     const list = mountTranscript([turn()]).find('ol');
-    expect(list.attributes('aria-live')).toBe('polite');
-    // Only the added text is announced rather than the whole conversation being re-read.
-    expect(list.attributes('aria-atomic')).toBe('false');
+    expect(list.attributes('aria-live')).toBeUndefined();
   });
 
   it('labels the transcript as a conversation', () => {
@@ -79,9 +77,10 @@ describe('ChatTranscript', () => {
     expect(wrapper.find('.cursor').attributes('aria-hidden')).toBe('true');
   });
 
-  it('shows no generating status once a turn has finished', () => {
+  it('announces when an answer has finished', () => {
     const wrapper = mountTranscript([turn({ id: 'b', role: 'assistant', content: 'done' })]);
-    expect(wrapper.text()).not.toContain('Generating…');
+    const status = wrapper.find('[role="status"]');
+    expect(status.text()).toBe('Answer complete.');
   });
 
   // A failed run leaves an empty assistant turn. Saying so is better than an empty box the visitor
@@ -91,22 +90,38 @@ describe('ChatTranscript', () => {
     expect(wrapper.text()).toContain('No answer was generated.');
   });
 
-  // Model output is rendered as text, not as HTML. Passing it through a Markdown renderer would be
-  // an injection surface added for presentation alone.
-  it('renders model output as text rather than markup', () => {
+  // Assistant output is Markdown, but its raw HTML is still untrusted and passes through the
+  // dedicated parser/sanitizer boundary.
+  it('renders assistant Markdown without executable markup', () => {
     const wrapper = mountTranscript([
-      turn({ id: 'b', role: 'assistant', content: '<script>alert(1)</script>' })
+      turn({
+        id: 'b',
+        role: 'assistant',
+        content: '**safe** <script>alert(1)</script>'
+      })
     ]);
 
+    expect(wrapper.find('strong').text()).toBe('safe');
     expect(wrapper.find('script').exists()).toBe(false);
-    expect(wrapper.text()).toContain('<script>alert(1)</script>');
   });
 
-  it('preserves the line breaks a model put in its answer', () => {
+  // User input remains escaped plain text. Markdown is a model-output presentation capability, not
+  // a route for a visitor's own message to become active HTML.
+  it('renders user content as text rather than Markdown or HTML', () => {
+    const wrapper = mountTranscript([
+      turn({ content: '**not bold** <script>alert(1)</script>', role: 'user' })
+    ]);
+
+    expect(wrapper.find('strong').exists()).toBe(false);
+    expect(wrapper.find('script').exists()).toBe(false);
+    expect(wrapper.text()).toContain('**not bold** <script>alert(1)</script>');
+  });
+
+  it('renders line breaks from assistant Markdown', () => {
     const wrapper = mountTranscript([
       turn({ id: 'b', role: 'assistant', content: 'line one\nline two' })
     ]);
-    expect(wrapper.find('.turn-text').text()).toContain('line one\nline two');
+    expect(wrapper.find('.markdown br').exists()).toBe(true);
   });
 
   // A list rather than a run of divs, so a screen reader announces how many turns there are and
