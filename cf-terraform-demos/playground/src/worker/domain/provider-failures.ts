@@ -96,7 +96,51 @@ export function classifyProviderFailure(cause: unknown): ProviderFailureReason {
   if (encoded !== undefined) {
     return encoded;
   }
+
+  // Read the sanitised error's own status *first*, and this ordering is the whole correction. The
+  // inference client catches the binding error, classifies it, and throws a `ProblemDetailsError`
+  // whose status already encodes the answer — `503` for a billing failure, `502` for anything else.
+  // By the time a caller sees that error the raw `2021: Insufficient AI Gateway credits` text has
+  // been deliberately discarded, so re-deriving the cause by matching text could never work: it was
+  // inspecting the sanitised message for words only the original carried.
+  //
+  // A `503` from this client means exactly one thing, because the client raises it in exactly one
+  // place. Trusting that structured fact is both simpler and more durable than pattern-matching
+  // prose that is explicitly not a contract.
+  const status = problemStatus(cause);
+  if (status === 503) {
+    return 'insufficient-credit';
+  }
+  if (status !== undefined) {
+    return 'provider-failure';
+  }
+
+  // Only reached for an unsanitised error — the binding's own, as seen inside the client itself.
   return isInsufficientGatewayCredit(cause) ? 'insufficient-credit' : 'provider-failure';
+}
+
+/**
+ * Reads the HTTP status out of a toolkit problem-details error.
+ *
+ * Structural rather than an `instanceof` check, so this module stays free of a dependency on the
+ * error class and keeps working across a module-duplication boundary — where `instanceof` silently
+ * answers `false` and would reintroduce the very bug this replaces.
+ *
+ * @param cause Value thrown by an inference call.
+ * @returns The status, or `undefined` when the value is not a problem-details error.
+ */
+function problemStatus(cause: unknown): number | undefined {
+  if (typeof cause !== 'object' || cause === null || !('problemDetails' in cause)) {
+    return undefined;
+  }
+
+  const details = (cause as { problemDetails?: unknown }).problemDetails;
+  if (typeof details !== 'object' || details === null || !('status' in details)) {
+    return undefined;
+  }
+
+  const status = (details as { status?: unknown }).status;
+  return typeof status === 'number' ? status : undefined;
 }
 
 /**

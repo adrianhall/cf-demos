@@ -10,6 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-details';
 import {
   classifyProviderFailure,
   decodeFailureReason,
@@ -93,6 +94,46 @@ describe('classifyProviderFailure', () => {
     // The safe direction: an unrecognised cause gets the generic explanation rather than a guess.
     expect(classifyProviderFailure(new Error('something else'))).toBe('provider-failure');
     expect(classifyProviderFailure(undefined)).toBe('provider-failure');
+  });
+
+  // The regression test for the real production chain, which two earlier attempts at this fix both
+  // missed. The inference client catches the binding error and throws a `ProblemDetailsError`
+  // *before* any caller sees it, deliberately discarding the provider's text. So what reaches the
+  // Workflow is the sanitised error, not `2021: Insufficient AI Gateway credits` — and classifying
+  // by matching text could never work, because the words it looked for had already been removed on
+  // purpose. The status is the fact that survives.
+  it('classifies the sanitised error the inference client actually throws', () => {
+    const sanitised = new ProblemDetailsError({
+      status: 503,
+      title: 'AI Gateway credits are unavailable',
+      detail:
+        'This model uses prepaid AI Gateway credits, and this account does not have enough credit '
+        + 'for the request. Add AI Gateway credits, then try again.'
+    });
+
+    expect(classifyProviderFailure(sanitised)).toBe('insufficient-credit');
+  });
+
+  it('classifies a sanitised provider fault as a provider failure', () => {
+    // The client raises `502` for everything that is not a billing failure, so the two statuses it
+    // emits have to map to the two reasons and nothing else.
+    const sanitised = new ProblemDetailsError({
+      status: 502,
+      title: 'The model could not complete this request',
+      detail: 'The AI provider did not return a usable response.'
+    });
+
+    expect(classifyProviderFailure(sanitised)).toBe('provider-failure');
+  });
+
+  it('reads the status structurally rather than by class identity', () => {
+    // `instanceof` answers `false` across a module-duplication boundary, which would silently
+    // reintroduce the bug. A plain object of the same shape must classify identically.
+    const lookalike = Object.assign(new Error('sanitised'), {
+      problemDetails: { status: 503, title: 'AI Gateway credits are unavailable' }
+    });
+
+    expect(classifyProviderFailure(lookalike)).toBe('insufficient-credit');
   });
 
   it('is idempotent over its own encoding', () => {

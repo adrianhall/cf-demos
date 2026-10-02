@@ -440,6 +440,64 @@ describe('CreateVideoService.status', () => {
     expect(failed?.context?.['runId']).toBe(RUN_ID);
   });
 
+  // The regression test for the deployed 500. A `complete` instance whose output is `null` passed
+  // the old `=== undefined` check, and the next line dereferenced it — a `TypeError` that the
+  // toolkit rendered as "An unexpected error occurred". Each malformed shape is covered, because
+  // the fault was a cast standing in for a check.
+  it.each([
+    ['null', null],
+    ['a string', 'done'],
+    ['an empty object', {}],
+    ['an output missing logIds', { byteLength: 1, elapsedMs: 1, applied: { model: 'm' } }],
+    ['an output missing applied', { logIds: [], byteLength: 1, elapsedMs: 1 }],
+    [
+      'an output whose applied has no model',
+      { logIds: [], byteLength: 1, elapsedMs: 1, applied: {} }
+    ]
+  ])(
+    'reports a completed job with %s output as failed rather than throwing',
+    async (_l, output) => {
+      const jobs = jobPort();
+      const lines: string[] = [];
+      const service = new CreateVideoService({
+        jobs: jobs.port,
+        storage: storagePort().port,
+        runs: runRepository().port,
+        jobIdKey: KEY,
+        logger: { warn: (message) => lines.push(message), error: (message) => lines.push(message) }
+      });
+
+      await service.accept(validateCreateVideoRequest(body()), body(), ALICE);
+      jobs.jobs.set(jobs.started[0]!, { state: 'completed', output });
+
+      const status = await service.status(RUN_ID, ALICE);
+
+      expect(status?.state).toBe('failed');
+      expect(status?.reason).toBe('provider-failure');
+      expect(lines).toContain('create_video_job_output_unusable');
+    }
+  );
+
+  it('tolerates a non-string instance error', async () => {
+    // `decodeFailureReason(null)` would throw, so the guard is a `typeof` check rather than an
+    // `undefined` comparison.
+    const jobs = jobPort();
+    const service = new CreateVideoService({
+      jobs: jobs.port,
+      storage: storagePort().port,
+      runs: runRepository().port,
+      jobIdKey: KEY
+    });
+
+    await service.accept(validateCreateVideoRequest(body()), body(), ALICE);
+    jobs.jobs.set(jobs.started[0]!, { state: 'failed', error: null as never });
+
+    const status = await service.status(RUN_ID, ALICE);
+
+    expect(status?.state).toBe('failed');
+    expect(status?.reason).toBe('provider-failure');
+  });
+
   it('reports a completed job with no output as failed', async () => {
     const jobs = jobPort();
     const lines: string[] = [];
@@ -457,7 +515,7 @@ describe('CreateVideoService.status', () => {
     const status = await service.status(RUN_ID, ALICE);
 
     expect(status?.state).toBe('failed');
-    expect(lines).toContain('create_video_job_output_missing');
+    expect(lines).toContain('create_video_job_output_unusable');
   });
 
   it.each(['accepted', 'running'] as const)('reports %s without a video', async (state) => {

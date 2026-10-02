@@ -230,10 +230,12 @@ export class CreateVideoService {
       // `{ name, message }` and would otherwise have discarded it. Decode that classification here;
       // a message this demo did not write is a provider's own text and is reported as a generic
       // provider failure rather than shown.
+      // `typeof` rather than `!== undefined`, for the same reason the output check below is a shape
+      // check: the binding may report `null` here, and `decodeFailureReason(null)` would throw.
       const reason =
-        status.error === undefined
-          ? 'provider-failure'
-          : (decodeFailureReason(status.error) ?? 'provider-failure');
+        typeof status.error === 'string'
+          ? (decodeFailureReason(status.error) ?? 'provider-failure')
+          : 'provider-failure';
 
       // Logged at the panel level so a billing failure is searchable by run id without reading the
       // Workflow's own observability. The reason is a fixed slug, never provider text.
@@ -242,9 +244,22 @@ export class CreateVideoService {
       return { runId, state: 'failed', reason };
     }
 
-    const output = status.output as CreateVideoJobOutput | undefined;
+    // Validated rather than cast. The previous `=== undefined` check let `null` through — which is
+    // what the binding actually returns for an instance with no output — and the very next line
+    // dereferenced it, throwing a `TypeError` that surfaced as a `500` carrying "An unexpected
+    // error occurred". A cast is an assertion about data this code does not own, so the shape is
+    // checked instead of asserted.
+    const output = asJobOutput(status.output);
     if (output === undefined) {
-      this.#logger?.error('create_video_job_output_missing', { runId });
+      this.#logger?.error('create_video_job_output_unusable', {
+        runId,
+        // The shape that arrived, so a changed output contract is diagnosable from one line. Keys
+        // only: a value could carry the prompt.
+        outputType: status.output === null ? 'null' : typeof status.output,
+        ...(typeof status.output === 'object' && status.output !== null
+          ? { outputKeys: Object.keys(status.output as Record<string, unknown>) }
+          : {})
+      });
       return { runId, state: 'failed', reason: 'provider-failure' };
     }
 
@@ -349,6 +364,38 @@ export class CreateVideoService {
     await this.#storage.delete(videoObjectKey(jobId));
     return cancelled;
   }
+}
+
+/**
+ * Narrows a Workflow instance's output to this panel's shape.
+ *
+ * A Workflow's `output` is `unknown` by contract, so it is checked rather than cast. Every field
+ * the receipt reads is verified, because a half-populated output would throw at the point of use
+ * rather than here — which is exactly how the original defect reached production.
+ *
+ * @param value The instance's recorded output.
+ * @returns The output, or `undefined` when it is absent or not the expected shape.
+ */
+function asJobOutput(value: unknown): CreateVideoJobOutput | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+
+  const candidate = value as Partial<CreateVideoJobOutput>;
+  const applied = candidate.applied;
+
+  if (
+    !Array.isArray(candidate.logIds)
+    || typeof candidate.byteLength !== 'number'
+    || typeof candidate.elapsedMs !== 'number'
+    || typeof applied !== 'object'
+    || applied === null
+    || typeof applied.model !== 'string'
+  ) {
+    return undefined;
+  }
+
+  return candidate as CreateVideoJobOutput;
 }
 
 /**
