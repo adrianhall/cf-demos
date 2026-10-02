@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import type { VisionControlSupport } from '../../describe-image';
 import type { ImageControlSupport } from '../../images';
+import type { RemixImageControlSupport } from '../../remix-image';
 import type { TaskId } from '../../tasks';
 
 /**
@@ -58,6 +59,10 @@ export interface CatalogueModel {
    * browser what it will accept rather than the browser assuming.
    */
   visionControls?: VisionControlSupport;
+  /**
+   * Optional controls for a reviewed image-to-image model.
+   */
+  remixImageControls?: RemixImageControlSupport;
 }
 
 /**

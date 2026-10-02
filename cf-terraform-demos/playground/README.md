@@ -4,26 +4,28 @@ A single, authenticated web application for trying out AI model task types on Cl
 image generation and understanding, video, music, speech, translation, classification, structured
 evaluation, embeddings, and tokenization.
 
-Its point is not that it calls models. It is **how** it calls them: every inference request in this
-application is routed through a Terraform-managed AI Gateway, and the cost of each one is read back
-out of the gateway's log and shown to the person who caused it.
+Its point is not that it calls models. It is **how** it calls them: inference routes through a
+Terraform-managed AI Gateway unless a reviewed platform limitation is recorded in the explicit
+exception register. Gateway-reported cost is shown when a Gateway log exists; an exception stays
+visibly uncosted rather than pretending to be free.
 
 ## The rule this demo exists to demonstrate
 
-> Every inference request goes through AI Gateway. Not by default, not by convention — by
-> construction.
+> Every gateway-compatible inference request goes through AI Gateway. A bypass exists only for a
+> registered, documented platform limitation.
 
 Three mechanisms hold that up, because a rule nobody can check is a preference:
 
 1. **One call site.** `src/worker/infrastructure/ai/gateway-inference-client.ts` is the only module
-   that touches the Workers AI binding. It always passes the configured gateway and always asks for
-   a log.
+   that touches the Workers AI binding. It passes the configured gateway and asks for a log unless
+   the exact operation has a checked `NO_AI_GATEWAY` annotation.
 2. **A test that fails the build.** `tests/worker/gateway-isolation.test.ts` scans the source and
    fails if any other module references the binding.
 3. **A three-way register.** A genuine exception must appear in the typed register, as a
    `NO_AI_GATEWAY:` annotation at the call site, and in
    [`AI-GATEWAY-EXCEPTIONS.md`](./AI-GATEWAY-EXCEPTIONS.md). `pnpm check:gateway` fails unless all
-   three agree. **The register is currently empty.**
+   three agree. **The register currently contains the Cloudflare-hosted FLUX.2 multipart-stream
+   exception.**
 
 A gateway that can be skipped is not a control point, so the demo makes skipping it a build failure
 rather than a code review conversation.
@@ -40,7 +42,7 @@ came to use.
 | **Chat**           | **Text generation**          | **Available now** |
 | **Create Image**   | **Text to image**            | **Available now** |
 | **Describe Image** | **Image to text**            | **Available now** |
-| Remix Image        | Image to image               | Phase 6           |
+| **Remix Image**    | **Image to image**           | **Available now** |
 | Classify Image     | Image classification         | Phase 7           |
 | Create Video       | Text to video                | Phase 8           |
 | Animate Image      | Image to video               | Phase 9           |
@@ -333,9 +335,12 @@ now needs a token with `AI Gateway Run` — which is the entire point.
    - **Account**: Workers Scripts — Edit
    - **Account**: Access — Edit
    - **Zone**: DNS — Edit
-5. For third-party catalog models (from Phase 4 onwards), AI Gateway
-   [Unified Billing](https://developers.cloudflare.com/ai-gateway/features/unified-billing/) credit
-   on the account. Workers AI models need the Workers Paid plan.
+5. For third-party catalog models, including Remix Image's P-Image-Edit and Nano Banana 2, prepaid
+   AI Gateway
+   [Unified Billing](https://developers.cloudflare.com/ai-gateway/features/unified-billing/) credits
+   must be loaded on the account. A configured payment method alone is not sufficient: confirm the
+   **Credits Available** card has a positive balance before running the panel. Workers AI models use
+   the account's configured Workers AI billing mode.
 
 There is no `.dev.vars` file and no per-demo `.env`.
 
@@ -473,7 +478,7 @@ since the server determines those from the bytes.
 
 ## Implementation status
 
-Built to **phase 5** of
+Built to **phase 6** of
 [`specs/playground/02-implementation.md`](../../specs/playground/02-implementation.md).
 
 - **Phase 1** delivered the shell, the Terraform lifecycle, Access, the mandatory-gateway
@@ -485,6 +490,11 @@ Built to **phase 5** of
   comparison gallery, and the first binary output.
 - **Phase 5** delivered Describe Image: the first _uploaded_ media, header-level dimension limits,
   and per-model required/optional contracts.
+- **Phase 6** delivered Remix Image: byte-verified reference-image editing with Cloudflare-hosted
+  FLUX.2 Klein 4B by default, FLUX.2 Klein 9B and Dev, plus P-Image-Edit and Nano Banana 2 for
+  cross-provider comparison, preservation-aware example instructions, safe immediate retrieval of
+  provider-hosted result, a keyboard-operable before/after comparison, and the transient Create
+  Image handoff.
 
-Every other panel renders a placeholder stating the phase that delivers it. Remix Image, in phase 6,
-is next.
+Every remaining panel renders a placeholder stating the phase that delivers it. Classify Image, in
+phase 7, is next.

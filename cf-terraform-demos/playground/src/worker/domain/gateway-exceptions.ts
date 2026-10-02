@@ -62,7 +62,28 @@ export interface GatewayException {
  * omitted so that the checker, the UI badge, and the documentation all have something concrete to
  * read, and so adding the first exception is an obvious, reviewable diff.
  */
-export const GATEWAY_EXCEPTIONS: readonly GatewayException[] = [];
+export const GATEWAY_EXCEPTIONS: readonly GatewayException[] = [
+  {
+    id: 'flux-2-workers-ai-multipart-stream',
+    panel: 'Remix Image',
+    route: 'POST /api/remix-image',
+    operation:
+      '@cf/black-forest-labs/flux-2-klein-4b, flux-2-klein-9b, and flux-2-dev reference-image editing',
+    reason:
+      'The Cloudflare-hosted FLUX.2 editing family requires multipart input whose binding body is a '
+      + 'ReadableStream. AI Gateway rejects that binding shape with "AI Gateway does not support '
+      + 'ReadableStreams yet."',
+    observabilityLoss:
+      'No AI Gateway log ID, reported cost, cache state, Gateway duration, or user-attributed '
+      + 'Gateway metadata is available for these Cloudflare-hosted FLUX.2 runs.',
+    userFacingBehaviour:
+      'The model selector and Run Details identify each Cloudflare-hosted FLUX.2 model as a '
+      + 'documented direct Workers AI exception. Its cost is shown as Not applicable rather than zero.',
+    tracking:
+      'No public product-gap issue is linked; the runtime error itself identifies missing AI '
+      + 'Gateway ReadableStream support.'
+  }
+];
 
 /**
  * Looks up a documented exception.

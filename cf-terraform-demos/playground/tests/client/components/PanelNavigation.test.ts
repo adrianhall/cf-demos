@@ -66,10 +66,10 @@ describe('PanelNavigation', () => {
 
   // Panels that are not built yet are still listed, with their phase stated. Hiding them would
   // misrepresent the product; labelling them is what makes the list honest rather than broken.
-  it('labels an unbuilt panel with the phase that delivers it', () => {
+  it('labels the next unbuilt panel with the phase that delivers it', () => {
     const wrapper = mountNavigation();
-    const remixImage = wrapper.find('a[data-task="remix-image"]');
-    expect(remixImage.text()).toContain('Phase 6');
+    const classifyImage = wrapper.find('a[data-task="classify-image"]');
+    expect(classifyImage.text()).toContain('Phase 7');
   });
 
   // A delivered panel carries no phase label. Leaving one behind would make the sidebar read as if

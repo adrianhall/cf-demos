@@ -75,8 +75,9 @@ describe('AI Gateway isolation', () => {
     expect(offenders).toEqual([]);
   });
 
-  // An annotation without a registered exception is the signature of a bypass that skipped review.
-  it('has no call-site exception annotations while the register is empty', async () => {
+  // Every annotation must correspond to the one reviewed exception; a second file would widen the
+  // bypass beyond its approved operation.
+  it('keeps the registered exception annotation at the central call site', async () => {
     const annotated: string[] = [];
 
     for (const file of await listSourceFiles(path.join(demoRoot, 'src'))) {
@@ -86,15 +87,15 @@ describe('AI Gateway isolation', () => {
       }
     }
 
-    expect(GATEWAY_EXCEPTIONS).toHaveLength(0);
-    expect(annotated).toEqual([]);
+    expect(GATEWAY_EXCEPTIONS.map((entry) => entry.id)).toEqual([
+      'flux-2-workers-ai-multipart-stream'
+    ]);
+    expect(annotated).toEqual([CENTRAL_CLIENT]);
   });
 
-  // The register must exist and state its emptiness. A missing document and an empty register look
-  // the same from the outside, and only one of them is a decision.
-  it('documents the empty register explicitly', async () => {
+  it('documents the registered operation explicitly', async () => {
     const document = await readFile(path.join(demoRoot, 'AI-GATEWAY-EXCEPTIONS.md'), 'utf8');
-    expect(document).toMatch(/The register is empty/u);
+    expect(document).toMatch(/### flux-2-workers-ai-multipart-stream/u);
     // View Tokens must stay named as a non-exception. Without that, someone will eventually file
     // it as one, and the register will start describing local computation as a gateway bypass.
     expect(document).toMatch(/View Tokens/u);

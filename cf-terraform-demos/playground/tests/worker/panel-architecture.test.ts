@@ -78,12 +78,13 @@ describe.each(deliveredInferencePanels.map((task) => [task.name, task] as const)
       expect(modelsForTask(task.id).length).toBeGreaterThan(0);
     });
 
-    // A panel that spends money must not become an exception. An exception is an inference call
-    // that *cannot* reach the gateway; every delivered panel's reaches it on every path.
-    it('is not an entry in the gateway exception register', () => {
-      expect(GATEWAY_EXCEPTIONS.some((exception) => exception.panel.includes(task.name))).toBe(
-        false
-      );
+    // A panel may contain a narrowly documented model operation that the Gateway cannot carry. The
+    // exception belongs to that operation, not to every other model in the panel.
+    it('has no broad panel-wide exception', () => {
+      const exceptions = GATEWAY_EXCEPTIONS.filter((entry) => entry.panel.includes(task.name));
+      for (const exception of exceptions) {
+        expect(exception.operation).not.toBe('all inference');
+      }
     });
   }
 );
@@ -94,8 +95,10 @@ describe('the delivered inference panels', () => {
     expect(deliveredInferencePanels.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('leaves the exception register empty', () => {
-    expect(GATEWAY_EXCEPTIONS).toHaveLength(0);
+  it('registers only the reviewed FLUX multipart exception', () => {
+    expect(GATEWAY_EXCEPTIONS.map((exception) => exception.id)).toEqual([
+      'flux-2-workers-ai-multipart-stream'
+    ]);
   });
 
   // A route that constructed its own client would bypass the composition root, and with it the one

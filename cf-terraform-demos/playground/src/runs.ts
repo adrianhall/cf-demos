@@ -114,8 +114,8 @@ export interface RunReceipt {
    */
   model: string;
   /**
-   * Always `true` for an inference run. A documented exception is the only way this can be `false`,
-   * and the UI renders that case differently rather than hiding it.
+   * `true` for gateway-routed inference. A documented exception is the only way this can be
+   * `false`, and the UI renders that case differently rather than hiding it.
    */
   gatewayRouted: boolean;
   /**

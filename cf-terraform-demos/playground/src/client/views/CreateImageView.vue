@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { MAX_NEGATIVE_PROMPT_CHARACTERS, MAX_PROMPT_CHARACTERS } from '../../images';
 import { findTask } from '../../tasks';
 import InfoButton from '../components/InfoButton.vue';
@@ -12,9 +13,12 @@ import { IMAGE_EXAMPLES, type ImageExample } from '../features/create-image/exam
 import ImageGallery from '../features/create-image/ImageGallery.vue';
 import { useCreateImage } from '../features/create-image/useCreateImage';
 import { useCatalogueStore } from '../stores/catalogue';
+import { useHandoffStore } from '../stores/handoff';
 
 const task = computed(() => findTask('create-image'));
 const catalogue = useCatalogueStore();
+const handoff = useHandoffStore();
+const router = useRouter();
 
 /**
  * Reviewed models for this panel, as the server reported them.
@@ -126,6 +130,22 @@ onMounted(() => void catalogue.load());
  */
 function loadExample(example: ImageExample): void {
   prompt.value = example.prompt;
+}
+
+/**
+ * Sends a server-sniffed generated image to Remix Image without placing bytes in a route query.
+ *
+ * @param entry Result selected for transformation.
+ * @returns A promise fulfilled after navigation begins.
+ */
+async function remixGeneratedImage(entry: (typeof gallery.value)[number]): Promise<void> {
+  handoff.offer({
+    base64: entry.image.base64,
+    mediaType: entry.image.mediaType,
+    byteLength: entry.image.byteLength,
+    origin: 'Generated in Create Image'
+  });
+  await router.push('/remix-image');
 }
 </script>
 
@@ -379,7 +399,7 @@ function loadExample(example: ImageExample): void {
               />
             </div>
 
-            <ImageGallery :entries="gallery" />
+            <ImageGallery :entries="gallery" @remix="remixGeneratedImage" />
           </div>
         </template>
       </PanelWorkspace>

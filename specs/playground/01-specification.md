@@ -249,6 +249,98 @@ Minimum shared UI components:
 
 Panel components receive typed props and emit events. They do not import the API client directly. Feature composables own API calls, cancellation, local validation state, and run-status transitions.
 
+#### 5.3.1 Activity-first panel UX for phases 6+
+
+The remaining panels must extend the interaction language established by **Create Image** and
+**Describe Image**, rather than introducing a new layout for every modality. A new panel is not
+complete when its API works; it is complete when a first-time visitor can identify the input, run the
+model, understand the output state, and inspect the run without leaving the activity surface.
+
+Use these rules for **Remix Image, Classify Image, Create Video, Animate Image, Generate Music, Read
+Text, Transcribe Audio, Translate Text, Classify Text, Evaluate Choices, and Semantic Search**:
+
+- **Activity before explanation.** The panel's primary surface starts with the task input and its
+  result workspace. Put technical explanation, model documentation, privacy disclosure, limits, and
+  trade-off discussion behind the shared header information button/About dialog. The header still
+  identifies the panel and its technical task type, but the main flow must not be displaced by a
+  large essay.
+- **Use the shared panel framing.** Build the route with `PanelPage`, the shared title/About
+  affordance, `GatewayStatusBadge`, and the shared run-details presentation. Do not add a second
+  page heading, a nested card containing another copy of the panel title, or a bespoke diagnostics
+  drawer. Chat is the intentional exception: it keeps its conversation layout while using the same
+  title/About and run-details patterns.
+- **Make input and output a `PanelWorkspace`.** Before the first result, centre the input workspace
+  so the visitor has one obvious next action. Once a result, accepted job, or structured answer
+  exists, place input and output side by side on a wide screen and stack them on a narrow screen.
+  The output must remain visible while the visitor adjusts or reruns the input. For text-only or
+  ranking tasks, use the same principle with an input column and result column rather than forcing a
+  media card.
+- **Keep controls close to the action.** The primary run button follows the input and is disabled
+  during invalid or incomplete input. Example prompts/files appear immediately below the relevant
+  prompt or input and above Run/Generate. Reset and cancellation are task-level controls, not
+  competing primary actions. Use native `details`/`summary` for secondary model parameters and
+  keep that section collapsed by default while showing the selected model name.
+- **Treat output as activity, not a gallery of unrelated cards.** Show loading, streaming, polling,
+  cancellation, failure, empty, and completed states in the output workspace. Render the result in
+  the format the task teaches: image, video, audio, transcript, translated text, ranked labels,
+  probabilities, vectors, or structured JSON. Do not make explanatory copy or a historical gallery
+  the dominant content. If multiple outputs are returned, each result needs its own status and
+  metadata, but the current run remains visually primary.
+- **Put diagnostics behind an information control.** After a run is accepted or completed, expose
+  Run Details from the activity surface with the same accessible information button used by the
+  media panels. In a panel modal, use the embedded Run Details presentation: no redundant nested
+  border, card, padding, or duplicate heading. Include the copyable Gateway log identifier, model,
+  elapsed time, cache/usage data, reported cost, and honest pending/unavailable states. Do not make
+  visitors open a separate page to understand the current run.
+- **Use metadata as the download affordance for generated files.** A generated image, video, audio
+  track, or transcript download should identify the format and use the result's File/metadata line
+  as the link where that is the clearest action. Do not add a separate generic gallery note or a
+  speculative cross-panel action merely to fill space. Handoffs between panels are optional, must be
+  explicitly useful to the task, and must never replace Download, Run Details, or the primary result.
+- **Keep media transient.** Preview generated media in the browser and do not add R2 or a retention
+  promise just to support a result gallery. Validate returned URLs and label provider-hosted assets
+  honestly. If an async provider requires persistence, introduce it as an explicit infrastructure
+  decision with expiry, cleanup, tests, and teardown ordering.
+- **Preserve accessible responsive behaviour.** Use real labels, keyboard-operable controls, visible
+  focus, status announcements for asynchronous work, useful alternatives (`alt`, transcript,
+  captions, or structured text), and mobile stacking. Do not rely on colour, hover, alignment, or a
+  media preview alone to communicate state. Test the first-run state, post-result state, mobile
+  layout, invalid input, cancellation, and the run-details dialog.
+
+The implementation phase may share composables and presentational components across related tasks,
+for example video job polling between Create Video and Animate Image, or ranked-result rendering
+between Classify Image and Classify Text. Keep each panel as its own top-level route and feature
+folder: share code, not tabs. Each new phase must add or update the panel's client tests, domain
+validation tests, authorization/route tests, and Workers-runtime integration coverage before it is
+considered delivered.
+
+#### 5.3.2 Phase-specific panel shapes
+
+The activity-first rules above apply to every phase, with these additional shapes and teaching goals.
+They describe the starting point for implementation; the current model catalogue remains authoritative
+for exact model IDs, limits, controls, response formats, and Gateway eligibility.
+
+| Phase | Panel | Start with | After the first run | Important implementation detail |
+| --- | --- | --- | --- | --- |
+| 6 | Remix Image | Validated reference image, a preservation-aware editing instruction, and only the selected model's supported seed control | Before/after image workspace with the source and current output clearly related | Default to Cloudflare-hosted FLUX.2 Klein 4B, with Klein 9B and Dev as hosted quality comparisons; offer P-Image-Edit and Nano Banana 2 as third-party comparisons. Use explicit per-model adapters, enforce FLUX's reference-size limit, retrieve provider-hosted output under a strict origin/size/signature policy, and never simulate whole-image editing with an inpainting mask. |
+| 7 | Classify Image | Image input with a short example/paste affordance and model-specific top-k controls | Original image beside ranked labels, scores, and an expandable structured response | Explain that confidence/scores are model output, not factual certainty. Render labels accessibly without relying on bars or colour alone. |
+| 8 | Create Video | Prompt, examples, model selector, and the smallest meaningful duration/aspect controls | Current video result with poster, progress/job status, duration, download, and Run Details | Treat generation as potentially asynchronous from the start. Use the task-neutral `MediaJob` contract, bounded polling, cancellation, and honest failed/expired states. |
+| 9 | Animate Image | Source image, optional motion instruction, and supported duration/resolution controls | Source still beside the current video result and its job status | Share job polling and video rendering with Create Video, but keep a separate route and task copy. A useful Create Image-to-Animate handoff may be offered only as a secondary action. |
+| 10 | Generate Music | Style/mood prompt, instrumental/lyrics controls, and supported duration/format controls | One current audio track with player, duration, lyrics/transcript when applicable, download, and status | Teach non-token billing with the declared track/audio-second unit. Provider-hosted URLs are untrusted and may expire; do not promise retention. |
+| 11 | Read Text | Text input, examples, voice/language controls, and only supported rate/pitch controls | Current audio player with duration, transcript/text alternative, download, and status | Preserve the source text as an accessible alternative. Treat audio as transient binary/provider output rather than a text card with a play button added later. |
+| 12 | Transcribe Audio | Upload or microphone input with explicit permission, format/size/duration limits, and language hint | Transcript first, with copy/download, timestamps, confidence where available, and audio context | Make recording, upload, processing, cancellation, and failure states distinct. Never expose raw media or transcript in logs or Gateway metadata. |
+| 13 | Translate Text | Source text, source/target language selectors, examples, and a swap action | Source and translated text columns, stacked on mobile, with copy/download | Preserve line breaks and make the target language/result obvious. A Read Text handoff is optional secondary functionality, not part of the primary run path. |
+| 14 | Classify Text | Text input, prepared examples, and a reviewed fixed label/task mode | Ranked label/confidence result with an expandable structured response | Keep this visibly different from Evaluate Choices: fixed model labels here, not caller-defined questions. Do not render arbitrary model prose as the result. |
+| 15 | Evaluate Choices | State editor plus a typed question builder; show the selected model and context usage | Per-question typed visualizations plus inspectable JSON, with answer and confidence separate | Validate the question schema in the domain layer. Do not ask a general chat model for JSON or parse prose; the typed Jev/Clef contract is the feature. |
+| 16 | Semantic Search | Query plus a small editable example collection and embedding model selector | Ranked passages with relative similarity, collection/query cache state, and an expandable vector summary | A search run may contain multiple inference calls. Show aggregate cost and individual Gateway records; similarity is not probability or factual confidence. |
+
+For phases 6–16, do not add a new shell, navigation level, or panel-specific interpretation of session
+cost. A phase is allowed to introduce a new result renderer or a task-specific input control, but it
+must reuse the existing shell, About dialog, `PanelWorkspace`, model-settings pattern, Run Details
+modal, session ledger, error format, and Access posture. If the selected provider cannot satisfy the
+shape through the shared Worker contract, stop and document the contract or Gateway exception before
+building a UI workaround.
+
 ### 5.4 Model catalogue and task descriptors
 
 Use committed, typed model descriptors in `src/worker/domain/models.ts`. They are a reviewed subset of the live unified catalog, not a runtime scrape. Each descriptor includes:

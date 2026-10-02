@@ -75,7 +75,9 @@ describe('GET /api/catalogue', () => {
     };
 
     expect(body.tasks).toHaveLength(TASK_DESCRIPTORS.length);
-    expect(body.gatewayExceptions).toEqual([]);
+    expect(body.gatewayExceptions).toEqual([
+      expect.objectContaining({ id: 'flux-2-workers-ai-multipart-stream', panel: 'Remix Image' })
+    ]);
 
     // A reviewed model is only advertised for a panel that is built, so the catalogue never offers
     // a choice that goes nowhere.

@@ -10,6 +10,7 @@
 
 import type { VisionControlSupport } from '../../describe-image';
 import type { ImageControlSupport } from '../../images';
+import type { RemixImageControlSupport } from '../../remix-image';
 import type { TaskId } from '../../tasks';
 
 /**
@@ -122,6 +123,13 @@ export interface ModelDescriptor {
    */
   visionControls?: VisionControlSupport;
   /**
+   * Controls an image-to-image model explicitly supports.
+   *
+   * Kept separate from text-to-image controls because a source image and mask materially change the
+   * contract. A field absent here is never forwarded to the provider.
+   */
+  remixImageControls?: RemixImageControlSupport;
+  /**
    * The field a vision model puts its answer in.
    *
    * Needed because the reviewed models disagree: LLaVA's output schema declares `description` while
@@ -206,6 +214,93 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       guidance: { min: 0, max: 20, step: 0.5, default: 7.5 }
     },
     stepsParameterName: 'num_steps'
+  },
+  // Default first: FLUX.2 Klein 4B is the fastest and least expensive Cloudflare-hosted member of
+  // this editing family. All three share the multipart stream contract and 512px reference limit.
+  {
+    id: '@cf/black-forest-labs/flux-2-klein-4b',
+    name: 'FLUX.2 [klein] 4B',
+    provider: 'workers-ai',
+    task: 'remix-image',
+    contractVersion: 1,
+    pricingUnit: 'image',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/flux-2-klein-4b/',
+    remixImageControls: {
+      seed: false,
+      inputAdapter: 'flux-multipart',
+      maxInputEdge: 512,
+      outputHosts: []
+    }
+  },
+  {
+    id: '@cf/black-forest-labs/flux-2-klein-9b',
+    name: 'FLUX.2 [klein] 9B',
+    provider: 'workers-ai',
+    task: 'remix-image',
+    contractVersion: 1,
+    pricingUnit: 'image',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/flux-2-klein-9b/',
+    remixImageControls: {
+      seed: false,
+      inputAdapter: 'flux-multipart',
+      maxInputEdge: 512,
+      outputHosts: []
+    }
+  },
+  {
+    id: '@cf/black-forest-labs/flux-2-dev',
+    name: 'FLUX.2 [dev]',
+    provider: 'workers-ai',
+    task: 'remix-image',
+    contractVersion: 1,
+    pricingUnit: 'image',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/flux-2-dev/',
+    remixImageControls: {
+      seed: false,
+      inputAdapter: 'flux-multipart',
+      maxInputEdge: 512,
+      outputHosts: []
+    }
+  },
+  {
+    id: 'pruna/p-image-edit',
+    name: 'P-Image-Edit',
+    provider: 'third-party',
+    task: 'remix-image',
+    contractVersion: 1,
+    pricingUnit: 'image',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/ai/models/pruna/p-image-edit/',
+    remixImageControls: {
+      seed: true,
+      inputAdapter: 'pruna-json',
+      // This provider currently returns an inline data URI, so no network origin is needed.
+      outputHosts: []
+    }
+  },
+  {
+    id: 'google/nano-banana-2',
+    name: 'Nano Banana 2',
+    provider: 'third-party',
+    task: 'remix-image',
+    contractVersion: 1,
+    pricingUnit: 'provider-reported',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/ai/models/google/nano-banana-2/',
+    remixImageControls: {
+      seed: false,
+      inputAdapter: 'nano-banana-json',
+      // The Unified Catalog proxies signed Google output through this reviewed Cloudflare host.
+      outputHosts: [
+        'storage.googleapis.com',
+        'generativelanguage.googleapis.com',
+        'examples.aig.cloudflare.com',
+        'pub-04a6d208d361438ea01b797e6973bd19.r2.dev'
+      ]
+    }
   },
   // The two vision models disagree more sharply than the image pair did, and again that is why
   // they were chosen. One will caption a bare picture and returns its answer in `description`; the

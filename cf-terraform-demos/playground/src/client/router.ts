@@ -11,6 +11,7 @@ import ChatView from './views/ChatView.vue';
 import CreateImageView from './views/CreateImageView.vue';
 import DescribeImageView from './views/DescribeImageView.vue';
 import PlannedPanelView from './views/PlannedPanelView.vue';
+import RemixImageView from './views/RemixImageView.vue';
 import ViewTokensView from './views/ViewTokensView.vue';
 
 /**
@@ -25,6 +26,7 @@ const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
   'chat': ChatView,
   'create-image': CreateImageView,
   'describe-image': DescribeImageView,
+  'remix-image': RemixImageView,
   'view-tokens': ViewTokensView
 };
 

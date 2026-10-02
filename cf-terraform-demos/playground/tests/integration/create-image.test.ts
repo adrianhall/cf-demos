@@ -306,7 +306,9 @@ describe('GET /api/catalogue with Create Image delivered', () => {
 
   // Create Image needed no exception: its single call path is the gateway client, exactly as Chat's
   // is.
-  it('still reports an empty gateway exception register', async () => {
-    expect((await fetchCatalogue()).gatewayExceptions).toEqual([]);
+  it('reports only the documented FLUX multipart exception', async () => {
+    expect((await fetchCatalogue()).gatewayExceptions).toEqual([
+      expect.objectContaining({ id: 'flux-2-workers-ai-multipart-stream' })
+    ]);
   });
 });

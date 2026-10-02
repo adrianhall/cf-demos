@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ModelDescriptor } from '../../../src/worker/domain/models';
+import { modelsForTask, type ModelDescriptor } from '../../../src/worker/domain/models';
 import { GatewayInferenceClient } from '../../../src/worker/infrastructure/ai/gateway-inference-client';
 import { problemWithStatus } from '../support/problem-details';
 
@@ -96,6 +96,20 @@ describe('GatewayInferenceClient', () => {
     const options = run.mock.calls[0]![2] as { gateway: { id: string; collectLog: boolean } };
     expect(options.gateway.id).toBe('playground');
     expect(options.gateway.collectLog).toBe(true);
+  });
+
+  it('uses the documented direct path only for FLUX multipart input', async () => {
+    const { ai, run } = fakeAi({ run: () => ({ image: 'base64' }) });
+    const fluxModel = modelsForTask('remix-image')[0]!;
+    const result = await new GatewayInferenceClient({ ai, gatewayId: 'playground' }).run({
+      ...requestFrom(),
+      task: 'remix-image',
+      model: fluxModel,
+      input: { multipart: { body: new ReadableStream(), contentType: 'multipart/form-data' } }
+    });
+
+    expect(run.mock.calls[0]).toHaveLength(2);
+    expect(result.logId).toBeUndefined();
   });
 
   it('attaches the verified email and panel to the gateway metadata', async () => {
@@ -653,6 +667,31 @@ describe('provider failure diagnostics', () => {
     expect(entries[0]?.level).toBe('error');
     expect(entries[0]?.message).toBe('inference_provider_failed');
   });
+
+  it.each([
+    new Error('2021: Insufficient AI Gateway credits'),
+    new Error('AI credits required'),
+    new Error('request failed', { cause: new Error('Insufficient AI Gateway credits') })
+  ])(
+    'returns an actionable safe error when prepaid Gateway credits are exhausted',
+    async (creditError) => {
+      const { ai } = fakeAi({
+        run: () => {
+          creditError.name = 'AiGatewayError';
+          throw creditError;
+        }
+      });
+      const client = new GatewayInferenceClient({ ai, gatewayId: 'playground' });
+
+      await expect(client.run(requestFrom())).rejects.toMatchObject({
+        problemDetails: {
+          status: 503,
+          title: 'AI Gateway credits are unavailable',
+          detail: expect.stringContaining('Add AI Gateway credits')
+        }
+      });
+    }
+  );
 
   // Logging the provider's message must not change what the browser is told.
   it('still returns a sanitised message to the caller', async () => {

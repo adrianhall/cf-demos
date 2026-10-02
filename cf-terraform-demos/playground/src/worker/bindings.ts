@@ -3,6 +3,7 @@ import type { ChatService } from './application/chat/chat-service';
 import type { CreateImageService } from './application/create-image/create-image-service';
 import type { DescribeImageService } from './application/describe-image/describe-image-service';
 import type { MetricsService } from './application/metrics/metrics-service';
+import type { RemixImageService } from './application/remix-image/remix-image-service';
 
 /**
  * Hono context variables added by this Worker: the toolkit's `Cloudflare_Access_Identity` and
@@ -25,6 +26,10 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * The Describe Image use case, sharing this request's gateway client and run store.
    */
   DESCRIBE_IMAGE_SERVICE: DescribeImageService;
+  /**
+   * The Remix Image use case, sharing this request's gateway client and run store.
+   */
+  REMIX_IMAGE_SERVICE: RemixImageService;
   /**
    * The run-metrics use case, sharing this request's gateway client and run store.
    */

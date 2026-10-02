@@ -257,15 +257,16 @@ Deliver **Remix Image** for image-to-image transformation.
 
 ### Deliverables
 
-- Add image-to-image descriptors and controls only where declared (instruction, strength, mask, seed, output size).
+- Add reviewed whole-image reference-editing descriptors for Cloudflare-hosted FLUX.2 Klein 4B (the default), Klein 9B, and Dev, plus P-Image-Edit and Nano Banana 2, with explicit per-model request/output adapters and only declared controls. Do not approximate this task with an inpainting model and a generated full-image mask.
 - Reuse validated image intake without coupling feature presentation components.
+- Retrieve provider-hosted output immediately through a strict HTTPS origin, redirect, byte-limit, and signature policy; keep the returned media transient.
 - Render source/result with accessible before/after comparison that also works without drag gestures.
 - Offer Create Image → Remix Image handoff.
 
 ### Tests introduced
 
-- Input/mask/strength validation and descriptor-specific control restriction.
-- Worker task routing and media response normalisation.
+- Input/instruction/seed validation, retired-inpainting-field rejection, and descriptor-specific control restriction.
+- Worker task routing, FLUX reference-image request mapping, and safe provider-URL media normalisation.
 - Client before/after keyboard controls, fallback two-image layout, and handoff flow.
 
 ### Exit criteria

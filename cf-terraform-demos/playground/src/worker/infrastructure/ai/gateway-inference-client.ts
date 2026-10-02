@@ -226,6 +226,31 @@ function describeUnknown(value: unknown): string {
 }
 
 /**
+ * Detects AI Gateway's stable insufficient-credit error code without exposing its message.
+ *
+ * @param cause Value thrown by the Workers AI binding.
+ * @returns `true` only for Gateway error 2021.
+ */
+function isInsufficientGatewayCredit(cause: unknown): boolean {
+  if (!(cause instanceof Error)) {
+    return false;
+  }
+
+  // Cloudflare binding errors have exposed this condition in several equivalent forms: Gateway code
+  // 2021, "Insufficient AI Gateway credits", and "AI credits required". Match only these stable,
+  // content-free billing phrases; never send an arbitrary provider message to the browser.
+  if (
+    /^2021:\s/u.test(cause.message)
+    || /\binsufficient AI (?:Gateway )?credits\b/iu.test(cause.message)
+    || /\bAI credits (?:are )?required\b/iu.test(cause.message)
+  ) {
+    return true;
+  }
+
+  return cause.cause instanceof Error && isInsufficientGatewayCredit(cause.cause);
+}
+
+/**
  * Runs Workers AI and catalog models through this demo's AI Gateway.
  *
  * Construct it once per request in the Worker's composition root and inject it into application
@@ -279,10 +304,25 @@ export class GatewayInferenceClient implements InferencePort {
    *   details, neither of which belongs in a response to a browser.
    */
   async run<TInput, TOutput>(request: InferenceRequest<TInput>): Promise<InferenceResult<TOutput>> {
-    const options = this.#optionsFor(request);
+    if (request.actor.email.trim() === '') {
+      throw new Error('Inference requires a verified user email for attribution.');
+    }
 
     const startedAt = Date.now();
     try {
+      if (request.model.remixImageControls?.inputAdapter === 'flux-multipart') {
+        // NO_AI_GATEWAY: flux-2-workers-ai-multipart-stream
+        // The binding requires a multipart ReadableStream and AI Gateway rejects that shape before
+        // inference. This exact operation is registered and documented; no other model reaches this
+        // direct call. It intentionally has no Gateway log ID or Gateway-derived cost.
+        const output = (await this.#ai.run(
+          request.model.id,
+          request.input as Record<string, unknown>
+        )) as TOutput;
+        return { output, elapsedMs: Date.now() - startedAt };
+      }
+
+      const options = this.#optionsFor(request);
       const output = (await this.#ai.run(
         request.model.id,
         request.input as Record<string, unknown>,
@@ -461,6 +501,20 @@ export class GatewayInferenceClient implements InferencePort {
       ...describeParameters(request.input),
       ...describeCause(cause)
     });
+
+    // Unified Catalog models are paid from prepaid AI Gateway credits. This gateway error contains
+    // no visitor content and has one actionable resolution, so preserve the category while still
+    // withholding every provider detail. Treat it as unavailable capacity (`503`), not a malformed
+    // upstream response (`502`): retrying the same request cannot work until the account is topped up.
+    if (isInsufficientGatewayCredit(cause)) {
+      return new ProblemDetailsError({
+        status: 503,
+        title: 'AI Gateway credits are unavailable',
+        detail:
+          'This model uses prepaid AI Gateway credits, and this account does not have enough '
+          + 'credit for the request. Add AI Gateway credits, then try again.'
+      });
+    }
 
     return new ProblemDetailsError({
       status: 502,

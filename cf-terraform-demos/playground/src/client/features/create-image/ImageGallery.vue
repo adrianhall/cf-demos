@@ -14,6 +14,13 @@ defineProps<{
    */
   entries: GalleryEntry[];
 }>();
+
+const emit = defineEmits<{
+  /**
+   * Visitor wants to use this server-verified result as a Remix Image source.
+   */
+  remix: [entry: GalleryEntry];
+}>();
 </script>
 
 <template>
@@ -88,6 +95,9 @@ defineProps<{
               </dd>
             </div>
           </dl>
+          <button type="button" class="remix-action" @click="emit('remix', entry)">
+            Remix this image
+          </button>
         </div>
       </li>
     </ol>
@@ -184,6 +194,22 @@ defineProps<{
 }
 
 .file-download:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+
+.remix-action {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid rgb(var(--v-theme-outline));
+  border-radius: 0.35rem;
+  color: rgb(var(--v-theme-on-surface));
+  cursor: pointer;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.remix-action:focus-visible {
   outline: 2px solid rgb(var(--v-theme-primary));
   outline-offset: 2px;
 }

@@ -43,7 +43,9 @@ describe('GET /api/catalogue', () => {
   it('returns the reviewed model list and the exception register', async () => {
     const { body } = await fetchCatalogue();
     expect(Array.isArray(body.models)).toBe(true);
-    expect(body.gatewayExceptions).toEqual([]);
+    expect(body.gatewayExceptions).toEqual([
+      expect.objectContaining({ id: 'flux-2-workers-ai-multipart-stream', panel: 'Remix Image' })
+    ]);
   });
 
   // The endpoint sits behind Access, but it is also the response most likely to be copied into a

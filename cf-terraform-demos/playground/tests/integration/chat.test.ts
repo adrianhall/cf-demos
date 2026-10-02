@@ -296,7 +296,7 @@ describe('GET /api/catalogue with Chat delivered', () => {
 
   // The register is still empty, and the catalogue is where the UI reads that from. Chat being
   // delivered must not have introduced an exception.
-  it('still reports an empty gateway exception register', async () => {
+  it('reports only the documented FLUX multipart exception', async () => {
     const token = await signDevJwt('alice@example.com', { audience: AUD });
     const response = await send(
       new Request('https://playground.example/api/catalogue', {
@@ -305,6 +305,8 @@ describe('GET /api/catalogue with Chat delivered', () => {
     );
 
     const catalogue = (await response.json()) as { gatewayExceptions: unknown[] };
-    expect(catalogue.gatewayExceptions).toEqual([]);
+    expect(catalogue.gatewayExceptions).toEqual([
+      expect.objectContaining({ id: 'flux-2-workers-ai-multipart-stream' })
+    ]);
   });
 });

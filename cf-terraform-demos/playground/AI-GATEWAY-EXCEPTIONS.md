@@ -1,6 +1,7 @@
 # AI Gateway exceptions
 
-**The register is empty. Every inference request in this application is routed through AI Gateway.**
+**One reviewed inference operation bypasses AI Gateway because the Gateway rejects the model's
+required binding input shape.**
 
 ## Why this file exists even when empty
 
@@ -46,7 +47,24 @@ alternative badge, not the standard one.
 
 ## Registered exceptions
 
-None.
+### flux-2-workers-ai-multipart-stream
+
+- **Panel and route:** Remix Image — `POST /api/remix-image`
+- **Operation:** Reference-image editing with `@cf/black-forest-labs/flux-2-klein-4b`,
+  `@cf/black-forest-labs/flux-2-klein-9b`, or `@cf/black-forest-labs/flux-2-dev`
+- **Platform limitation:** This Cloudflare-hosted FLUX.2 family uses the same Workers AI multipart
+  binding contract with a `ReadableStream` body. Sending it through the named Gateway fails before
+  inference with `AI Gateway does not support ReadableStreams yet.` The same binding call works only
+  when gateway options are omitted.
+- **Observability lost:** There is no AI Gateway log identifier, Gateway-reported cost, cache state,
+  Gateway duration, or user-attributed Gateway metadata for these calls. Worker diagnostics still
+  record the task, model, run ID, input shape, elapsed time, and outcome without content or email.
+- **User-facing behaviour:** The model selector and Run Details identify these FLUX.2 models as a
+  documented direct Workers AI exception. Cost is `Not applicable`, never `$0.00`. Third-party
+  models in the same panel remain Gateway-routed and require prepaid Gateway credits.
+- **Tracking:** No public product-gap issue is linked. The runtime error precisely identifies the
+  missing Gateway capability; this exception should be removed as soon as Gateway supports the
+  binding's multipart `ReadableStream` shape.
 
 Chat, delivered in phase 3, is the first panel to perform real inference, and it needed no
 exception: `runStream` assembles its gateway options in the same single place the synchronous path

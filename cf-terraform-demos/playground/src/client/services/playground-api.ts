@@ -7,6 +7,7 @@
 import type { ChatRequest, ChatStreamEvent } from '../../chat';
 import type { DescribeImageRequest, DescribeImageResponse } from '../../describe-image';
 import type { CreateImageRequest, CreateImageResponse } from '../../images';
+import type { RemixImageRequest, RemixImageResponse } from '../../remix-image';
 import type { RunMetrics } from '../../runs';
 import { parseSseBuffer } from '../../sse';
 
@@ -207,6 +208,31 @@ export async function describeImage(
   }
 
   return (await response.json()) as DescribeImageResponse;
+}
+
+/**
+ * Transforms one image through the Remix Image endpoint.
+ *
+ * @param request Validated-by-UI image transformation request.
+ * @param signal Abort signal that stops the browser waiting for the response.
+ * @returns The transformed image, verified source facts, receipt, and applied controls.
+ * @throws {ApiError} When the request is invalid, unauthorized, too large, or the provider returns
+ *   an unusable image.
+ */
+export async function remixImage(
+  request: RemixImageRequest,
+  signal?: AbortSignal
+): Promise<RemixImageResponse> {
+  const response = await fetch('/api/remix-image', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+  return (await response.json()) as RemixImageResponse;
 }
 
 /**
