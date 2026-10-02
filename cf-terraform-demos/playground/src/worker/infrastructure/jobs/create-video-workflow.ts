@@ -20,6 +20,7 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers';
 import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-details';
 import type { AppliedVideoControls } from '../../../shared/create-video';
+import type { DiagnosticLogger } from '../../application/ports/diagnostic-logger-port';
 import {
   buildCreateVideoInput,
   describeAppliedVideoControls,
@@ -155,7 +156,12 @@ export class CreateVideoWorkflow extends WorkflowEntrypoint<
       async () => {
         const inference = new GatewayInferenceClient({
           ai: this.env.AI,
-          gatewayId: this.env.AI_GATEWAY_ID
+          gatewayId: this.env.AI_GATEWAY_ID,
+          // A Workflow has no request-scoped logger, so one is built here. Omitting it was a real
+          // defect: the client logs the provider's own message and this step logs only a
+          // classification, so with no logger the actual cause of a failed render was recorded
+          // nowhere at all — leaving a `create-video` failure diagnosable only as "it failed".
+          logger: workflowLogger()
         });
 
         try {
@@ -210,6 +216,33 @@ export class CreateVideoWorkflow extends WorkflowEntrypoint<
       applied: describeAppliedVideoControls(validated)
     };
   }
+}
+
+/**
+ * Builds a logger for use inside a Workflow step.
+ *
+ * A Workflow is not a request, so there is no `c.var.LOGGER` to inject. `console` is the transport
+ * the Workers runtime captures into the same observability stream the request path writes to, which
+ * is what keeps a run id searchable across both.
+ *
+ * @returns A {@link DiagnosticLogger} writing structured JSON.
+ */
+function workflowLogger(): DiagnosticLogger {
+  /**
+   * Emits one structured line.
+   *
+   * @param level Severity label.
+   * @returns A logging function for that level.
+   */
+  const write =
+    (level: 'warn' | 'error') =>
+    (message: string, context?: Record<string, unknown>): void => {
+      // Serialised as one JSON object so the fields are queryable, matching the shape the toolkit's
+      // request logger produces.
+      console.log(JSON.stringify({ level, message, source: 'workflow', ...context }));
+    };
+
+  return { warn: write('warn'), error: write('error') };
 }
 
 /**

@@ -27,6 +27,35 @@ describe('isInsufficientGatewayCredit', () => {
     expect(isInsufficientGatewayCredit(new Error(message))).toBe(true);
   });
 
+  // These are the forms that actually occurred in production and that the first version of this
+  // predicate missed. The deployed gateway logs showed every third-party call answering HTTP 402 at
+  // zero cost while every Cloudflare-hosted call answered 200 — and none of the phrases above
+  // appeared anywhere, so a plainly-billing failure was classified as a generic provider fault.
+  it.each([
+    ['a bare status prefix', '402: Payment Required'],
+    ['the status in a sentence', 'AI request failed with status 402'],
+    ['the reason phrase alone', 'Upstream returned Payment Required'],
+    ['a JSON-ish body', 'pixverse/v6 failed: {"status":402,"error":"insufficient balance"}']
+  ])('recognises HTTP 402 as a billing failure: %s', (_label, message) => {
+    expect(isInsufficientGatewayCredit(new Error(message))).toBe(true);
+  });
+
+  it('does not read a number that merely contains 402 as a status', () => {
+    // Guards the widened matcher: telling someone to top up a funded account over an unrelated
+    // fault is worse than the generic message.
+    expect(isInsufficientGatewayCredit(new Error('request 1402953 failed'))).toBe(false);
+    expect(isInsufficientGatewayCredit(new Error('took 4021ms and timed out'))).toBe(false);
+  });
+
+  it.each([
+    ['forbidden', '403: Forbidden'],
+    ['rate limited', '429: Too Many Requests'],
+    ['server error', '500: Internal Server Error']
+  ])('does not treat %s as a billing failure', (_label, message) => {
+    // Only 402 has an unambiguous payment meaning. The others have several possible causes.
+    expect(isInsufficientGatewayCredit(new Error(message))).toBe(false);
+  });
+
   it('recognises the condition one level down a cause chain', () => {
     // The binding wraps provider errors, so the billing condition is frequently not the outermost
     // message.

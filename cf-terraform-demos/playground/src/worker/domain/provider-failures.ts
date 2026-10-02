@@ -60,6 +60,25 @@ export function isInsufficientGatewayCredit(cause: unknown): boolean {
     return true;
   }
 
+  // HTTP 402 Payment Required, which is how the gateway actually reports an unfunded account for a
+  // third-party model — and the form this demo originally missed. Deployed gateway logs showed every
+  // third-party call answering `402` at zero cost while every Cloudflare-hosted call answered `200`,
+  // with none of the phrases above appearing anywhere. A phrase-only predicate therefore classified
+  // a plainly-billing failure as a generic provider fault.
+  //
+  // `402` is singled out because it is the one HTTP status whose entire meaning is "this did not
+  // happen for payment reasons". No other status is read this way: a `403` or `429` has several
+  // possible causes, and guessing would risk telling someone to top up a funded account over a
+  // transient fault — a worse outcome than the generic message.
+  //
+  // The runtime's `InferenceUpstreamError` carries no status field, so the status has to be read
+  // from the message. Several surrounding shapes are accepted rather than one exact phrasing,
+  // because the precise wording is not a contract and matching it too narrowly is what caused the
+  // original miss.
+  if (/(?:^|\D)402(?:\D|$)/u.test(cause.message) || /\bpayment required\b/iu.test(cause.message)) {
+    return true;
+  }
+
   return cause.cause instanceof Error && isInsufficientGatewayCredit(cause.cause);
 }
 

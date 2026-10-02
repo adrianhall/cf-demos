@@ -79,7 +79,7 @@ app.use('/api/*', async (context, next) => {
   context.set(
     'CREATE_VIDEO_SERVICE',
     new CreateVideoService({
-      jobs: new WorkflowMediaJobs(context.env.VIDEO_JOBS),
+      jobs: new WorkflowMediaJobs(context.env.VIDEO_JOBS, context.var.LOGGER),
       storage: new R2VideoStorage(context.env.VIDEO_BUCKET),
       runs,
       // The Access audience tag keys the job-identifier derivation. It is already bound, already
