@@ -311,28 +311,207 @@ Deliver **Classify Image** with structured top-k results.
 
 ### Goal
 
-Deliver **Create Video** with a task-neutral async media-job contract.
+Deliver **Create Video** with a task-neutral async media-job contract, and introduce the first
+storage product in the demo — R2 — as a deliberate, Terraform-owned infrastructure decision rather
+than a convenience.
+
+### Infrastructure analysis (completed; conclusions are binding on this phase)
+
+Phase 8 was always going to be the phase that tested the "keep media transient" rule, so the
+analysis required by [§5.5](./01-specification.md) and [§5.6](./01-specification.md) was done up
+front. These are findings, not assumptions, and each one changes a deliverable below. Every model
+contract must still be re-confirmed at implementation time; what follows is the shape of the
+problem, not a pinned descriptor.
+
+**Finding 1 — the provider returns a URL, not bytes.** Every text-to-video model found in the
+unified catalogue (Alibaba `hh1-t2v` and `hh1.1-t2v`, PixVerse `v5.6` and `v6`, Vidu `q3-pro`)
+declares an output schema of `{ video: string }` with `format: uri`, and the documented response
+envelope is `{ state: "Completed", result: { video: "https://…" } }`. This panel therefore does not
+receive media from the model at all; it receives a short-lived, cross-origin link to media held on
+the provider's infrastructure. That single fact drives most of what follows.
+
+**Finding 2 — `state` is an envelope field, not a job handle.** The envelope carries a `state`, but
+the only documented value is `Completed`, and the call resolves when generation has finished. There
+is no provider-issued job identifier to poll and no `Queued`/`InProgress` response to observe. **The
+Phase 8 job state machine is therefore ours, not the provider's.** Do not design a polling adapter
+around a provider job ID that does not exist. Confirm this again before implementation: if a
+`Queued` envelope has appeared by then, prefer the provider's own handle over the design below.
+
+**Finding 3 — the generation outlives the browser, not the Worker.** An HTTP-triggered Worker has
+**no wall-clock duration limit** while the client stays connected, so a multi-minute inference call
+fits inside a request. The constraint is the other end: when the client disconnects, tasks
+associated with that request may be cancelled, and `ctx.waitUntil()` extends execution by only
+about 30 seconds. A visitor who closes the tab during a two-minute render would be **billed for a
+video that is then discarded** — and a panel whose whole purpose is teaching honest cost cannot
+have that failure mode. This, and not a Worker timeout, is the justification for durable execution.
+
+**Finding 4 — video needs ranged reads, and base64-in-JSON cannot provide them.** Every earlier
+panel returns media as base64 inside a JSON body, which works because an image is displayed all at
+once. A `<video>` element instead issues `Range` requests to show a poster, seek, and play without
+downloading the whole file. A base64 string in a JSON response cannot answer a `Range` request, so
+reusing the Create Image transport would produce a player that cannot seek. R2 answers ranged reads
+natively, and `R2Bucket.put()` accepts a `ReadableStream`, so provider bytes can be piped into
+storage without ever being buffered whole in a 128 MB isolate. Memory headroom is the secondary
+argument here; **seeking is the one that makes R2 non-negotiable.**
+
+**Finding 5 — a provider link is not a result we can show.** The URL is cross-origin and
+short-lived, so rendering it directly would make the panel's primary result depend on an external
+host's retention policy, would leak the visitor's IP to that host, and would break for a run opened
+from history minutes later. Copying the bytes into R2 once, immediately, and serving them from our
+own authenticated route is what makes the result ours to describe truthfully.
+
+**Finding 6 — Workflows makes D1 and KV unnecessary.** A Workflow instance already is a durable,
+queryable job record: `instance.status()` reports `queued`/`running`/`complete`/`errored`/
+`terminated`, `output` carries the finished result, and completed state is retained for days. Adding
+D1 or KV alongside it would mean **two sources of truth for one job status**, and the usual
+consequence is a job that one store calls finished and the other calls running. **Do not add D1 or
+KV in this phase.** If a later phase needs a durable session ledger across devices, that is its own
+decision with its own justification.
+
+**Finding 7 — ownership can be proven without a job table.** The status route still has to refuse
+another visitor's job, which normally argues for storing an owner alongside the job. Instead, derive
+the Workflow instance ID from a keyed hash of the verified email and the browser-generated run ID.
+The status route recomputes the ID from the *current* verified identity and the requested run ID, so
+a different identity necessarily computes a different ID and sees a `404`. Ownership becomes
+unforgeable and unenumerable with no stored mapping, which is what keeps Finding 6 true.
+
+**Finding 8 — retrying an inference step re-bills it.** Workflow steps retry by default, and that is
+usually the point of them. Here, the inference step can cost several dollars, so a default retry
+policy would silently multiply the charge for a transient provider fault. **The gateway inference
+step must be configured with no retries;** only the subsequent fetch-and-store step, which is cheap
+and idempotent, may retry.
+
+**Finding 9 — this panel can bill several dollars per click.** Pricing is per second of output and
+varies sharply by resolution: `hh1-t2v` is $0.28/s at 1080p, so a 15-second render is **$4.20**,
+while PixVerse `v6` is $0.025/s at 360p, or about $0.13 for five seconds. The defaults must be the
+cheap end of that range, and the panel must show an estimated cost **before** the request, not only
+a reported cost after it. Every candidate model is third-party, so this panel also inherits the
+prepaid AI Gateway credit prerequisite already disclosed by Remix Image.
+
+**Finding 10 — R2 does not help Phases 2–7, and must not be retrofitted into them.** This was
+examined directly, because an image-upload path that shares the video storage would be an appealing
+simplification. It is a false economy. The 1 MB image-input cap is a consequence of base64-in-JSON,
+not of missing storage, and it can be raised without R2 if that is wanted. Routing an upload through
+R2 would not save memory either, because the vision and classification models take the image *in the
+request*, so the Worker would have to read every byte back out of storage to make the call — the
+bottleneck moves, it does not disappear. Download is unaffected, since the image is already in the
+browser. What R2 *would* add to those panels is a retention surface, a cleanup obligation, and a
+privacy claim the demo currently does not have to make. **Images stay transient; the R2 bucket is
+for generated video only,** and the prefix policy below keeps that boundary enforceable rather than
+merely intended.
+
+### Decision
+
+Introduce **R2 and Workflows**, and **no D1 and no KV**:
+
+- **R2** holds generated video, because the result must support ranged reads and must not depend on
+  a provider host. Terraform owns the bucket; the key prefix is `generated-video/`, and nothing else
+  is ever written to it. Ongoing cleanup is a separate concern from storage and is deferred to the
+  scheduled reaper in Phase 18, so this phase ships no expiry policy and makes no retention claim.
+- **Workflows** owns the job, because the generation must survive the visitor's connection and its
+  status must remain answerable afterwards. It replaces, rather than supplements, a job table.
+- The `MediaJob` contract, the authenticated polling route, and the browser's polling behaviour stay
+  exactly as [§5.6](./01-specification.md) specifies. The API shape does not change because the
+  execution owner did.
+
+Because this adds the first storage product, reconcile [§5.5](./01-specification.md) and
+[§5.6](./01-specification.md) with the decision as part of this phase, quoting Findings 3, 4, and 6
+as the platform constraints that justify it. Note honestly that the trigger was **client
+disconnection**, not a Worker duration limit, so the rule stays accurate for later panels.
+
+§5.5 currently requires that R2, when introduced, arrives with "Terraform ownership, expiry/lifecycle
+policy, content cleanup, and teardown ordering". This phase delivers ownership and teardown ordering
+and **defers expiry and ongoing cleanup to Phase 18**, so record that split in the specification
+rather than leaving the text describing something the code does not do. The deferral is sound because
+teardown already guarantees the account ends clean — the obligation Phase 18 adds is keeping a
+*running* demo clean, which is a different and lesser one. It is only sound while it stays written
+down: an undocumented gap here is indistinguishable from having forgotten.
 
 ### Deliverables
 
-1. Confirm selected text-to-video model’s current AI Gateway support before implementation.
-2. If gateway routing works, implement it through `InferencePort`; otherwise create the first reviewed, documented exception before code lands.
-3. Add `MediaJob` application port/state machine, accepted-job receipt, authenticated polling status route, bounded polling, cancellation capability, and video player/download UI.
-4. Add prompt, supported duration/aspect controls, progress/failure/expiry messaging, poster frame, and clear cost-pending state.
-5. If model/provider requires persistent callbacks or asset storage, stop and add a dedicated infrastructure design phase before implementation; do not quietly introduce R2 or a Workflow.
+1. Re-confirm the selected text-to-video model's current input/output contract, envelope states,
+   pricing, and AI Gateway support before pinning a descriptor. Keep it gateway-routed through
+   `InferencePort`; only create a reviewed exception-register entry if routing genuinely cannot
+   work, and do so before code lands.
+2. Add Terraform for the R2 bucket, with a scalar bucket-name output and an explicit `depends_on`
+   from the Worker so teardown orders correctly. Wire `empty-r2-bucket` into `pnpm teardown` before
+   the Terraform destroy, because a non-empty bucket cannot be deleted. Bind the bucket in
+   `cloudflare.config.ts` in both modes.
+   **Deliberately no expiry policy in this phase.** Ongoing cleanup is deferred to the scheduled
+   reaper in [Phase 18](#phase-18--cross-panel-hardening-documentation-and-presentation-readiness),
+   so this phase does not have to choose a retention window, state one in the UI, or build a
+   deletion path it would then replace. The consequence is accepted and bounded: between Phase 8 and
+   Phase 18 the bucket grows monotonically in a demo account, and `pnpm teardown` is what keeps that
+   account clean. The one thing this phase must **not** do is compensate with an informal cleanup —
+   no deletion on a later poll, and no "delete the previous object when a new run starts". Either
+   would become a second owner of object lifetime that Phase 18 then has to unpick.
+3. Add the Workflow that performs the generation: one step calling the gateway **with retries
+   disabled** (Finding 8), then one retryable step that fetches the provider URL under the existing
+   strict origin/redirect/size policy and **streams it into R2 without buffering it whole**. The
+   step return value carries the R2 key and byte count only — never the media, which would breach
+   the 1 MiB step-result limit.
+4. Derive the Workflow instance ID from a keyed hash of the verified identity and the run ID
+   (Finding 7), in **one named function** with its own unit tests, so the derivation used when
+   starting a job and when reading its status cannot drift apart.
+5. Add the `MediaJob` application port and state machine, mapping Workflow instance status onto
+   `accepted`/`running`/`completed`/`failed`/`cancelled`. The provider's envelope must not reach a
+   route or the browser.
+6. Add the authenticated status route and an authenticated, ranged-read video route that streams
+   from R2, sets the sniffed content type, and never redirects to the provider. Validate the stored
+   bytes are an expected container before the first byte is served, byte-authoritatively, exactly as
+   the image panels do.
+7. Add cancellation that terminates the Workflow instance and deletes any stored object, so a
+   cancelled job leaves nothing behind.
+8. Add prompt, duration, resolution, and aspect controls restricted to the descriptor's declared
+   enums; an **estimated cost shown before the request** (Finding 9); truthful progress, failure,
+   and cost-pending messaging; a poster frame; and the third-party credit disclosure. Expiry
+   messaging arrives with the reaper in Phase 18, not here — see deliverable 9.
+9. Say plainly that the video is **stored**, because this is the first panel where "transient"
+   stops being literally true. Until Phase 18 adds the reaper there is no expiry, so the UI must not
+   claim one: no countdown, no "available for 24 hours", no wording a visitor could read as a
+   deletion promise. An honest "stored in this demo's bucket" is correct now and stays correct after
+   the reaper lands; a retention claim invented here would be false in both directions — unenforced
+   before Phase 18, and a different number after it.
 
 ### Tests introduced
 
-- Job state machine, transition/error/retry/cancel rules, and route ownership tests.
-- Client polling/backoff/cancel/late-poll suppression and video-player accessibility.
-- Gateway route test or exception-register triad test if the gateway cannot carry the operation.
-- Integration test for job status authorization and finite polling timeout.
+- Job state machine: every transition, including error, cancellation, and a late poll after a
+  terminal state; and a mapping test from each Workflow `InstanceStatus` to its `MediaJob` state,
+  driven from the full status list so an unmapped future status fails rather than defaulting.
+- Instance-ID derivation: the same identity and run ID derive one stable ID; a different identity
+  derives a different one; and the status route answers `404` — never another visitor's job — for an
+  ID derived from a different identity.
+- A regression test asserting the **inference step is configured with no retries**, because
+  Finding 8 is a cost defect that no functional test would reveal.
+- Storage: the provider body is streamed into R2 rather than buffered; an oversized or wrong-typed
+  body is refused before storage; a ranged read returns the requested bytes and correct headers; and
+  cancellation deletes the object.
+- A guard asserting that the only R2 keys this demo writes are under `generated-video/`, so
+  Finding 10 stays true as later phases are added.
+- Client polling, bounded backoff, cancellation, late-poll suppression, estimated-cost display, and
+  video-player keyboard accessibility including captions/alternative affordances.
+- Integration coverage for status-route authorization, the audience check, a finite polling timeout,
+  and problem-details shape.
+- Terraform/config contract test covering the bucket-name output, the binding name, and the
+  Worker's `depends_on`.
+- A test asserting the only deletion path in this phase is **cancellation**, so the informal cleanup
+  ruled out in deliverable 2 cannot be added quietly before Phase 18 owns it.
 
 ### Exit criteria
 
-- A user sees truthful progress, failure, and cancellation state instead of a frozen request.
-- Gateway cost is shown when available; a documented exception displays uncosted status clearly if unavoidable.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- A visitor sees truthful progress, failure, and cancellation state instead of a frozen request, and
+  **closing the tab mid-render does not lose a video that was paid for**.
+- The result plays and **seeks** from our own authenticated route, with no request made to the
+  provider's host by the browser.
+- Estimated cost is visible before the request; reported gateway cost is shown when available.
+- A cancelled job leaves no object behind, and `pnpm teardown` empties the bucket before destroying
+  it, leaving the account clean. Objects from completed runs are expected to accumulate until
+  Phase 18; that is a scheduled deliverable, not an outstanding defect in this phase.
+- No part of the UI promises an expiry that nothing yet enforces.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
+  own cause on failure, correlates every line by run ID across the Worker *and* the Workflow, and
+  logs neither prompt content nor the verified email. Verified with one real deployed request per
+  new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -346,7 +525,7 @@ Deliver **Animate Image** as its own top-level panel while sharing the Phase 8 m
 ### Deliverables
 
 - Add image-to-video descriptors, validated source image intake, optional motion prompt, and supported duration/resolution controls.
-- Reuse `MediaJob` and player infrastructure, not Create Video’s UI route or a mode switch.
+- Reuse `MediaJob` and player infrastructure, not Create Video’s UI route or a mode switch. That now includes Phase 8's R2 bucket, Workflow, and derived-instance-ID ownership scheme: reuse them rather than adding a second storage product or a parallel job mechanism. The source image still travels in the request and is still not persisted — Phase 8's Finding 10 applies unchanged.
 - Implement side-by-side image/video result layout and Create Image → Animate Image handoff.
 
 ### Tests introduced
@@ -619,6 +798,16 @@ Turn the completed panels into a polished reference demo without changing the ma
 6. Verify clean-checkout developer journey with repository-root `.env` only: install, local Access, `pnpm start`, and no `.dev.vars` dependence.
 7. Perform an actual deploy/teardown smoke run in a deliberately approved account, checking that the account is clean afterwards. This is manual verification, not an offline test.
 8. Audit observability across every panel against [Cross-phase observability requirements](#cross-phase-observability-requirements). Per-phase compliance does not guarantee consistency: confirm that event names follow one `<task>_run_started` / `<task>_run_failed` convention, that every panel correlates on the same run-ID field name, that no panel logs prompt content or the verified email, and that a single run ID search returns a complete story for each one. Inconsistent field names are the failure mode here — they make a cross-panel log search impossible while every individual panel looks correct.
+9. Add the **scheduled R2 reaper** that Phase 8 deferred, so generated video stops accumulating without that phase having to commit to a retention window. Add a `triggers.scheduled(...)` cron trigger and a `scheduled()` handler that lists the `generated-video/` prefix and deletes objects older than a documented age, using each object's `uploaded` timestamp as the authority rather than anything encoded in its key. Own the retention age in one exported constant, assert it in a test, and state it in the README and in the panel so the UI's wording and the reaper's behaviour cannot drift apart. This is also the point at which the panel may finally describe an expiry, because one now exists.
+
+   Four details decide whether this is correct rather than merely present:
+
+   - **Deletion must be driven by what is in the bucket, not by what the application remembers.** A Workflow instance whose state has already aged out, or a run abandoned before it recorded anything, is exactly the object that most needs collecting. A reaper that only deletes objects it can still find a job for would leave precisely the orphans behind.
+   - **Bound the work per invocation.** `list()` returns at most 1000 keys and `delete()` accepts at most 1000 per call, so page with the returned cursor and stop at a fixed budget rather than looping until the prefix is exhausted. A cron invocation has a 15-minute wall-clock limit, and a reaper that tries to drain an arbitrarily large backlog in one firing fails at the worst possible moment — when there is most to clean up. Falling behind is recoverable; a handler that always times out is not.
+   - **Confine it to the prefix.** The reaper must refuse to operate outside `generated-video/`, so a future bucket user cannot have its objects collected by a job that predates it. Pair this with the Phase 8 write-prefix guard: one test proves nothing else is written there, the other proves nothing else is deleted.
+   - **Log a summary, never a key.** An object key is derived from a verified identity and a run ID, so keys are identifying and belong under the same rule as the email. Log counts, the oldest age collected, and whether the budget was hit — the last of these is the signal that the schedule is too slow, and without it the reaper fails silently by simply never catching up.
+
+   Verify it against the real deployed bucket during the smoke run in deliverable 7, with one object old enough to collect and one young enough to keep. A reaper only ever exercised against a fake is unverified in the same way Phase 4's logging was.
 
 ### Tests introduced
 
@@ -627,11 +816,13 @@ Turn the completed panels into a polished reference demo without changing the ma
 - Privacy regression scan/assertions for absent prompt/media payloads from structured logs and metadata builders, and for the email appearing in gateway metadata but never in Worker structured logs.
 - A cross-panel observability test, driven from the task catalogue so a later panel is covered automatically, asserting that every delivered inference panel emits a start line before its model call, logs a bound cause on failure, and uses the shared run-ID field name.
 - A metadata-contract test that runs across every delivered inference task, so a panel added later cannot omit the verified email.
-- Terraform/config contract test confirming gateway lifecycle and Access audience output remain wired correctly.
+- Terraform/config contract test confirming gateway lifecycle and Access audience output remain wired correctly, and that the cron trigger is declared with the intended schedule.
+- Reaper tests: an object past the retention age is deleted and one within it is kept; the boundary case is decided by the constant rather than by a hard-coded duplicate of it; paging follows the returned cursor; the per-invocation budget is honoured and reported; a key outside `generated-video/` is refused even when it is old; and no log line contains an object key. Drive the age cases from an injected clock so the suite stays offline and instant.
 
 ### Exit criteria
 
 - Every panel has its declared task type, safe validation, gateway/cost behaviour, help text, and test coverage.
 - Every inference task attributes its gateway metadata to the verified signed-in user, and the UI and README disclose that attribution.
 - `AI-GATEWAY-EXCEPTIONS.md` is accurate and explicitly empty or complete.
+- Generated video is collected on a schedule, the retention age stated in the UI and README is the one the reaper enforces, and the deployed smoke run confirms it deletes an aged object while keeping a recent one.
 - `pnpm check`, `pnpm test`, `pnpm start`, `pnpm deploy`, and `pnpm teardown` satisfy the repository definition of done.
