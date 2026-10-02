@@ -478,6 +478,64 @@ describe('CreateVideoService.status', () => {
     }
   );
 
+  it('never logs an unclassified instance error, only its length', async () => {
+    // The usual recorded message is one of this demo's own slugs and safe to log. But an unhandled
+    // throw inside the Workflow records the raw thrown message, which could be provider text — the
+    // very thing the request path sanitises. A diagnostic must not reintroduce the disclosure it
+    // was added to prevent.
+    const lines: { message: string; context?: Record<string, unknown> }[] = [];
+    const jobs = jobPort();
+    const service = new CreateVideoService({
+      jobs: jobs.port,
+      storage: storagePort().port,
+      runs: runRepository().port,
+      jobIdKey: KEY,
+      logger: {
+        warn: (message, context) => lines.push({ message, context }),
+        error: (message, context) => lines.push({ message, context })
+      }
+    });
+
+    await service.accept(validateCreateVideoRequest(body()), body(), ALICE);
+    jobs.jobs.set(jobs.started[0]!, {
+      state: 'failed',
+      error: 'TypeError: cannot read x of undefined at internal-host-7.provider.local'
+    });
+
+    await service.status(RUN_ID, ALICE);
+
+    const decoded = lines.find((l) => l.message === 'create_video_instance_error_decoded');
+    expect(decoded?.context?.['recordedError']).toBe(undefined);
+    expect(decoded?.context?.['unclassifiedErrorLength']).toBeGreaterThan(0);
+    expect(JSON.stringify(lines)).not.toContain('internal-host-7');
+  });
+
+  it('logs a recognised marker in full, since it carries no provider text', async () => {
+    const lines: { message: string; context?: Record<string, unknown> }[] = [];
+    const jobs = jobPort();
+    const service = new CreateVideoService({
+      jobs: jobs.port,
+      storage: storagePort().port,
+      runs: runRepository().port,
+      jobIdKey: KEY,
+      logger: {
+        warn: (message, context) => lines.push({ message, context }),
+        error: (message, context) => lines.push({ message, context })
+      }
+    });
+
+    await service.accept(validateCreateVideoRequest(body()), body(), ALICE);
+    jobs.jobs.set(jobs.started[0]!, {
+      state: 'failed',
+      error: encodeFailureReason('insufficient-credit')
+    });
+
+    await service.status(RUN_ID, ALICE);
+
+    const decoded = lines.find((l) => l.message === 'create_video_instance_error_decoded');
+    expect(decoded?.context?.['recordedError']).toBe('playground-failure:insufficient-credit');
+  });
+
   it('tolerates a non-string instance error', async () => {
     // `decodeFailureReason(null)` would throw, so the guard is a `typeof` check rather than an
     // `undefined` comparison.

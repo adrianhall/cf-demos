@@ -269,7 +269,20 @@ export class CreateVideoService {
         runId,
         reason,
         recordedErrorType: status.error === null ? 'null' : typeof status.error,
-        recordedError: typeof status.error === 'string' ? status.error : undefined
+        // Logged only when it decodes to one of this demo's own markers. The usual case is a fixed
+        // slug and safe, but an *unhandled* throw inside the Workflow records the raw thrown
+        // message here — which could be a provider's text, and provider text is exactly what the
+        // request path sanitises. Echoing it into a log merely because the common case is harmless
+        // would reintroduce the disclosure through the diagnostic added to prevent one.
+        recordedError:
+          typeof status.error === 'string' && decodeFailureReason(status.error) !== undefined
+            ? status.error
+            : undefined,
+        // When it does not decode, record only its length. Enough to tell an empty message from a
+        // stack trace without retaining either.
+        ...(typeof status.error === 'string' && decodeFailureReason(status.error) === undefined
+          ? { unclassifiedErrorLength: status.error.length }
+          : {})
       });
 
       // Logged at the panel level so a billing failure is searchable by run id without reading the

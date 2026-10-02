@@ -652,6 +652,27 @@ credit every retry fails identically.
 
 Any later phase that puts an inference call inside a Workflow inherits this constraint.
 
+Two further things were learned by reading the deployed logs, and both are worth copying.
+
+**The toolkit's error handler logs nothing.** `problemDetailsErrorHandler` converts any error that
+is not a `ProblemDetailsError` into a `500` carrying "An unexpected error occurred" — and discards
+the error. That makes the one class of failure nobody anticipated the one class that leaves no
+record, which is the worst possible trade. The composition root therefore wraps it and logs the
+name, message, stack, and wrapped cause first (`unhandled_request_error`). An expected
+`ProblemDetailsError` is deliberately _not_ logged there: those are already described by their
+status, and logging them would bury the unexpected ones.
+
+**The platform logs the derived instance ID.** Every Workflow log line carries
+`$workers.instanceId`, and for this panel that value _is_ the keyed HMAC of the verified email. This
+application's own log fields contain no email, prompt, or object key — that is asserted by tests —
+but the platform's metadata is not something application code can suppress. The digest is keyed by a
+secret a visitor cannot read, so it is not reversible to an email, and anyone who can read these
+logs can already read the account's AI Gateway metadata where the email is recorded on purpose. It
+is still a stable per-visitor identifier in the Worker log, so the claim this demo makes is the
+narrower and accurate one: **this application logs no identifying field**, rather than the log as a
+whole containing none. Whether to keep the derivation or move to an opaque instance ID with a stored
+ownership mapping is left as an explicit decision for the hardening phase.
+
 ### Two cost traps this panel had to avoid
 
 **Workflow steps retry by default.** That is normally their whole value, but the inference step here

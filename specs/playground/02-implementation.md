@@ -391,6 +391,22 @@ cannot act on. **Classify the cause inside the step, before it crosses the bound
 classification as a fixed, content-free marker token; a route must never infer a cause from a
 provider's own message. Any later phase putting an inference call inside a Workflow inherits this.
 
+**Finding 7a — the platform logs the derived instance ID, so the derivation is also a privacy
+decision.** Confirmed in deployed logs after implementation. Every Workflow log line carries
+`$workers.instanceId` automatically, and that value *is* the keyed HMAC of the verified email. This
+demo's own log fields are clean — no email, prompt, or object key — but the platform's metadata
+is not, and no application code can suppress it.
+
+The exposure is small and worth stating precisely rather than overstating: the digest is keyed by a
+secret the visitor cannot read, so it is not reversible to an email, and anyone able to read Worker
+logs can already read the account's AI Gateway metadata, where the email is recorded deliberately.
+It is nonetheless a *stable per-visitor-per-run identifier* in a retention domain the demo claims
+holds nothing identifying, so the README's claim must be narrowed to "this application logs no
+identifying field" rather than implying the log as a whole contains none. **Phase 18 should decide
+whether to keep the derivation as the instance ID or move to an opaque random ID with the ownership
+mapping stored** — the latter trades Finding 6's no-second-store property for a cleaner log, which
+is a real trade rather than an obvious improvement.
+
 **Finding 9 — this panel can bill several dollars per click.** Pricing is per second of output and
 varies sharply by resolution: `hh1-t2v` is $0.28/s at 1080p, so a 15-second render is **$4.20**,
 while PixVerse `v6` is $0.025/s at 360p, or about $0.13 for five seconds. The defaults must be the
@@ -815,8 +831,9 @@ Turn the completed panels into a polished reference demo without changing the ma
 5. Reconcile every model descriptor against the current catalog; remove unavailable models rather than leaving dead selectors.
 6. Verify clean-checkout developer journey with repository-root `.env` only: install, local Access, `pnpm start`, and no `.dev.vars` dependence.
 7. Perform an actual deploy/teardown smoke run in a deliberately approved account, checking that the account is clean afterwards. This is manual verification, not an offline test.
-8. Audit observability across every panel against [Cross-phase observability requirements](#cross-phase-observability-requirements). Per-phase compliance does not guarantee consistency: confirm that event names follow one `<task>_run_started` / `<task>_run_failed` convention, that every panel correlates on the same run-ID field name, that no panel logs prompt content or the verified email, and that a single run ID search returns a complete story for each one. Inconsistent field names are the failure mode here — they make a cross-panel log search impossible while every individual panel looks correct.
-9. Add the **scheduled R2 reaper** that Phase 8 deferred, so generated video stops accumulating without that phase having to commit to a retention window. Add a `triggers.scheduled(...)` cron trigger and a `scheduled()` handler that lists the `generated-video/` prefix and deletes objects older than a documented age, using each object's `uploaded` timestamp as the authority rather than anything encoded in its key. Own the retention age in one exported constant, assert it in a test, and state it in the README and in the panel so the UI's wording and the reaper's behaviour cannot drift apart. This is also the point at which the panel may finally describe an expiry, because one now exists.
+8. Resolve [Finding 7a](#phase-8--create-video): decide whether the derived HMAC stays as the Workflow instance ID, given that the platform writes it into every log line automatically. Either keep it and narrow the README's privacy claim to "this application logs no identifying field", or switch to an opaque random instance ID and store the ownership mapping — which costs Finding 6's single-source-of-truth property. Also review whether the toolkit's `problemDetailsErrorHandler` should log unexpected errors itself rather than each demo wrapping it, and raise it upstream if so.
+9. Audit observability across every panel against [Cross-phase observability requirements](#cross-phase-observability-requirements). Per-phase compliance does not guarantee consistency: confirm that event names follow one `<task>_run_started` / `<task>_run_failed` convention, that every panel correlates on the same run-ID field name, that no panel logs prompt content or the verified email, and that a single run ID search returns a complete story for each one. Inconsistent field names are the failure mode here — they make a cross-panel log search impossible while every individual panel looks correct.
+10. Add the **scheduled R2 reaper** that Phase 8 deferred, so generated video stops accumulating without that phase having to commit to a retention window. Add a `triggers.scheduled(...)` cron trigger and a `scheduled()` handler that lists the `generated-video/` prefix and deletes objects older than a documented age, using each object's `uploaded` timestamp as the authority rather than anything encoded in its key. Own the retention age in one exported constant, assert it in a test, and state it in the README and in the panel so the UI's wording and the reaper's behaviour cannot drift apart. This is also the point at which the panel may finally describe an expiry, because one now exists.
 
    Four details decide whether this is correct rather than merely present:
 
