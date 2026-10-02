@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { MAX_INSTRUCTION_CHARACTERS } from '../../describe-image';
-import { findTask } from '../../tasks';
+import { MAX_INSTRUCTION_CHARACTERS } from '../../shared/describe-image';
+import { findTask } from '../../shared/tasks';
 import InfoButton from '../components/InfoButton.vue';
 import InfoDialog from '../components/InfoDialog.vue';
+import { formatBytes } from '../components/media/image-input';
+import SourceImagePicker from '../components/media/SourceImagePicker.vue';
 import ModelSettingsPanel from '../components/ModelSettingsPanel.vue';
 import PanelPage from '../components/PanelPage.vue';
 import PanelWorkspace from '../components/PanelWorkspace.vue';
 import RunDetails from '../components/runs/RunDetails.vue';
 import { VISION_EXAMPLES, type VisionExample } from '../features/describe-image/examples';
-import { formatBytes } from '../features/describe-image/image-input';
-import ImagePicker from '../features/describe-image/ImagePicker.vue';
 import { useDescribeImage } from '../features/describe-image/useDescribeImage';
 import { useCatalogueStore } from '../stores/catalogue';
 import { useHandoffStore } from '../stores/handoff';
@@ -164,7 +164,8 @@ function loadExample(example: VisionExample): void {
           <section class="composer" aria-labelledby="composer-heading">
             <h2 id="composer-heading" class="section-heading">Ask about a picture</h2>
 
-            <ImagePicker
+            <SourceImagePicker
+              label="Picture to describe"
               :image="image"
               :busy="describing"
               @selected="selectFile"

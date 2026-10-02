@@ -8,7 +8,7 @@
  * the next message will use without introducing a separate settings section above the chat.
  */
 import { nextTick, useTemplateRef, watch } from 'vue';
-import { MAX_MESSAGE_CHARACTERS, MAX_TEMPERATURE, MIN_TEMPERATURE } from '../../../chat';
+import { MAX_MESSAGE_CHARACTERS, MAX_TEMPERATURE, MIN_TEMPERATURE } from '../../../shared/chat';
 import InfoButton from '../../components/InfoButton.vue';
 import type { CatalogueModel } from '../../stores/catalogue';
 

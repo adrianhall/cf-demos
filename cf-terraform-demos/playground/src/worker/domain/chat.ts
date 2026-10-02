@@ -18,7 +18,7 @@ import {
   MIN_TEMPERATURE,
   type ChatMessage,
   type ChatRole
-} from '../../chat';
+} from '../../shared/chat';
 import { findModelForTask, type ModelDescriptor } from './models';
 
 /**
@@ -34,9 +34,10 @@ export const CHAT_SYSTEM_PROMPT =
 /**
  * A Chat request that has passed validation.
  *
- * Distinct from `ChatRequest` in `src/chat.ts` on purpose. That is the untrusted shape that arrived
- * in a request body; this is the trusted result, with the model resolved to a reviewed descriptor
- * rather than left as a string. A function taking this type cannot be handed unvalidated input.
+ * Distinct from `ChatRequest` in `src/shared/chat.ts` on purpose. That is the untrusted shape that
+ * arrived in a request body; this is the trusted result, with the model resolved to a reviewed
+ * descriptor rather than left as a string. A function taking this type cannot be handed unvalidated
+ * input.
  */
 export interface ValidatedChatRequest {
   /**

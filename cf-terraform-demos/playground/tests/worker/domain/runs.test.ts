@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emptySessionCostLedger } from '../../../src/runs';
+import { emptySessionCostLedger } from '../../../src/shared/runs';
 
 describe('emptySessionCostLedger', () => {
   it('starts every counter at zero', () => {

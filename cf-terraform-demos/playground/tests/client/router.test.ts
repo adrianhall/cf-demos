@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
 import { buildRoutes, createAppRouter } from '../../src/client/router';
 import PlannedPanelView from '../../src/client/views/PlannedPanelView.vue';
-import { TASK_DESCRIPTORS } from '../../src/tasks';
+import { TASK_DESCRIPTORS } from '../../src/shared/tasks';
 
 describe('buildRoutes', () => {
   it('creates a route for every panel', () => {

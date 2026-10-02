@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-details';
 import { currentIdentity, jsonBodyLimit, readJsonBody } from '@demos/worker-common';
-import type { ChatCompletedEvent, ChatProblemEvent, ChatStreamEvent } from '../../chat';
+import type { ChatCompletedEvent, ChatProblemEvent, ChatStreamEvent } from '../../shared/chat';
 import type { AppBindings } from '../bindings';
 import { validateChatRequest } from '../domain/chat';
 

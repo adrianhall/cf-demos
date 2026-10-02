@@ -1,7 +1,7 @@
 /**
  * Browser-side preparation for models with a smaller reference-image ceiling.
  */
-import { encodeBase64, type PreparedImage } from '../describe-image/image-input';
+import { encodeBase64, type PreparedImage } from '../../components/media/image-input';
 
 /**
  * Downscales a source for a model while retaining the original preview for comparison.

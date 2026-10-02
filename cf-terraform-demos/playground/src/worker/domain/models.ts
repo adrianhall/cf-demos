@@ -8,10 +8,14 @@
  *   in a reviewed form rather than inventing one.
  */
 
-import type { VisionControlSupport } from '../../describe-image';
-import type { ImageControlSupport } from '../../images';
-import type { RemixImageControlSupport } from '../../remix-image';
-import type { TaskId } from '../../tasks';
+import {
+  MAX_CLASSIFICATION_LABELS,
+  type ClassificationControlSupport
+} from '../../shared/classify-image';
+import type { VisionControlSupport } from '../../shared/describe-image';
+import type { ImageControlSupport } from '../../shared/images';
+import type { RemixImageControlSupport } from '../../shared/remix-image';
+import type { TaskId } from '../../shared/tasks';
 
 /**
  * Who runs the model behind a descriptor.
@@ -129,6 +133,15 @@ export interface ModelDescriptor {
    * contract. A field absent here is never forwarded to the provider.
    */
   remixImageControls?: RemixImageControlSupport;
+  /**
+   * Result controls a classifier exposes, and whether the model or this application applies them.
+   *
+   * Present only for an image-classification descriptor. The reviewed classifier's request schema
+   * accepts nothing but the image, so its controls are declared as `appliedBy: 'playground'` and
+   * are applied to the response. Recording that in the descriptor is what lets the UI describe the
+   * controls truthfully instead of implying the model was asked to rank.
+   */
+  classificationControls?: ClassificationControlSupport;
   /**
    * The field a vision model puts its answer in.
    *
@@ -344,6 +357,41 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       maxTokens: { min: 32, max: 2_048, step: 32, default: 256 }
     },
     descriptionField: 'response'
+  },
+  // The catalogue currently lists exactly one Cloudflare-hosted image classifier, so this panel has
+  // one reviewed model rather than a pair to compare. That is the catalogue's state, not an
+  // oversight: adding a text-to-image model here to make the selector look fuller would offer a
+  // model that cannot perform the task.
+  //
+  // Its contract is the narrowest in the demo. The schema is `{ image: number[] }` and nothing
+  // else — no top-k, no threshold, no label-set selection — and the output is a bare array of
+  // `{ label, score }`. Both facts are pinned here because they decide the shape of the whole
+  // panel: the result controls are applied to the response, and the output normaliser expects an
+  // array rather than an envelope.
+  {
+    id: '@cf/microsoft/resnet-50',
+    name: 'ResNet-50',
+    provider: 'workers-ai',
+    task: 'classify-image',
+    contractVersion: 1,
+    // Billed per inference request rather than per token or per image produced: $0.00000251 a
+    // call at review time. The label is what keeps the figure from being read as comparable to a
+    // per-token Chat cost; the figure itself always comes from the gateway log.
+    pricingUnit: 'provider-reported',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/resnet-50/',
+    classificationControls: {
+      // ImageNet gives this model 1,000 categories, and it scores a long tail of them. Five is
+      // enough to show the shape of a ranking — including the near-miss second place that makes
+      // the scores worth looking at — without turning the output column into a wall of noise.
+      topK: { min: 1, max: MAX_CLASSIFICATION_LABELS, step: 1, default: 5 },
+      // Zero by default, so nothing is hidden until a visitor chooses to hide it. A default floor
+      // would quietly suppress the low-confidence guesses that are the most instructive part of a
+      // classifier's output.
+      minimumConfidence: { min: 0, max: 1, step: 0.01, default: 0 },
+      // The model's schema has no ranking fields at all, so these are applied to its response.
+      appliedBy: 'playground'
+    }
   }
 ];
 

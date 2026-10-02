@@ -1,5 +1,6 @@
 import type { CloudflareToolkitVariables } from '@adrianhall/cloudflare-toolkit/hono';
 import type { ChatService } from './application/chat/chat-service';
+import type { ClassifyImageService } from './application/classify-image/classify-image-service';
 import type { CreateImageService } from './application/create-image/create-image-service';
 import type { DescribeImageService } from './application/describe-image/describe-image-service';
 import type { MetricsService } from './application/metrics/metrics-service';
@@ -30,6 +31,10 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * The Remix Image use case, sharing this request's gateway client and run store.
    */
   REMIX_IMAGE_SERVICE: RemixImageService;
+  /**
+   * The Classify Image use case, sharing this request's gateway client and run store.
+   */
+  CLASSIFY_IMAGE_SERVICE: ClassifyImageService;
   /**
    * The run-metrics use case, sharing this request's gateway client and run store.
    */

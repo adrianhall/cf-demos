@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GatewayRequestMetric } from '../../../src/runs';
+import type { GatewayRequestMetric } from '../../../src/shared/runs';
 import {
   aggregateRunMetrics,
   COST_RESOLUTION_BUDGET_MS,

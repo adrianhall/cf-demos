@@ -15,8 +15,8 @@ import {
   isAcceptedUploadType,
   prepareImage,
   UPLOAD_ACCEPT_ATTRIBUTE
-} from '../../../src/client/features/describe-image/image-input';
-import { MAX_INPUT_IMAGE_BYTES } from '../../../src/describe-image';
+} from '../../../src/client/components/media/image-input';
+import { MAX_INPUT_IMAGE_BYTES } from '../../../src/shared/describe-image';
 
 /**
  * Builds a `File` with the given bytes and declared type.

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { currentIdentity, jsonBodyLimit, readJsonBody } from '@demos/worker-common';
-import type { CreateImageResponse } from '../../images';
+import type { CreateImageResponse } from '../../shared/images';
 import type { AppBindings } from '../bindings';
 import {
   validateCreateImageRequest,

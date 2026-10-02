@@ -3,7 +3,7 @@ import { createTestingPinia } from '@pinia/testing';
 import { mount } from '@vue/test-utils';
 import SessionCostMeter from '../../../src/client/components/shell/SessionCostMeter.vue';
 import { useLedgerStore } from '../../../src/client/stores/ledger';
-import type { SessionCostLedger } from '../../../src/runs';
+import type { SessionCostLedger } from '../../../src/shared/runs';
 
 /**
  * Mount the cost meter with a ledger in a chosen state.

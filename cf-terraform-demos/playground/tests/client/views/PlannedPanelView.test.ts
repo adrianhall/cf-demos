@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import PlannedPanelView from '../../../src/client/views/PlannedPanelView.vue';
-import type { TaskId } from '../../../src/tasks';
+import type { TaskId } from '../../../src/shared/tasks';
 import {
   clickTeleported,
   createPanelTitleTarget,

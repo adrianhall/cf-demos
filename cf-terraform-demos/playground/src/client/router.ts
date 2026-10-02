@@ -5,9 +5,10 @@ import {
   type Router,
   type RouterHistory
 } from 'vue-router';
-import { TASK_DESCRIPTORS, type TaskId } from '../tasks';
+import { TASK_DESCRIPTORS, type TaskId } from '../shared/tasks';
 import ActivityView from './views/ActivityView.vue';
 import ChatView from './views/ChatView.vue';
+import ClassifyImageView from './views/ClassifyImageView.vue';
 import CreateImageView from './views/CreateImageView.vue';
 import DescribeImageView from './views/DescribeImageView.vue';
 import PlannedPanelView from './views/PlannedPanelView.vue';
@@ -24,6 +25,7 @@ import ViewTokensView from './views/ViewTokensView.vue';
  */
 const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
   'chat': ChatView,
+  'classify-image': ClassifyImageView,
   'create-image': CreateImageView,
   'describe-image': DescribeImageView,
   'remix-image': RemixImageView,
@@ -72,7 +74,7 @@ export function buildRoutes(): RouteRecordRaw[] {
 export function createAppRouter(history: RouterHistory = createWebHistory()): Router {
   const router = createRouter({ history, routes: buildRoutes() });
 
-  // A browser tab labelled only "Playground" gives no clue which of the fifteen panels it holds,
+  // A browser tab labelled only "Playground" gives no clue which of the sixteen panels it holds,
   // and it is the title a screen reader announces during navigation. Read the task identifier from
   // the route metadata generated above rather than deriving a name from the URL, so the document
   // title uses the same reviewed panel name as the sidebar and the visible h1.

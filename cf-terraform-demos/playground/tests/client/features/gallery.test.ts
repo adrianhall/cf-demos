@@ -9,7 +9,7 @@ import {
   toDataUri,
   type GalleryEntry
 } from '../../../src/client/features/create-image/gallery';
-import type { ImageMediaType } from '../../../src/images';
+import type { ImageMediaType } from '../../../src/shared/images';
 
 /**
  * Builds a gallery entry.

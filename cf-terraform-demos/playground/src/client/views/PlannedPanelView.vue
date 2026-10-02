@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { findTask, type TaskId } from '../../tasks';
+import { findTask, type TaskId } from '../../shared/tasks';
 import PanelPage from '../components/PanelPage.vue';
 
 const props = defineProps<{

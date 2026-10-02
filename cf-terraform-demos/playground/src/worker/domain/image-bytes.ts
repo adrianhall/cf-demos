@@ -10,7 +10,7 @@
  *   something that genuinely is one of three raster formats.
  */
 
-import { isRenderableImageMediaType, type ImageMediaType } from '../../images';
+import { isRenderableImageMediaType, type ImageMediaType } from '../../shared/images';
 
 /**
  * One format's magic-number signature.

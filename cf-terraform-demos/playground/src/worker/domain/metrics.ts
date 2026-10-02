@@ -8,7 +8,7 @@
  *   - a total is the sum of what the gateway reported and is never computed from token counts.
  */
 
-import type { CostStatus, GatewayRequestMetric, RunMetrics } from '../../runs';
+import type { CostStatus, GatewayRequestMetric, RunMetrics } from '../../shared/runs';
 
 /**
  * How long to keep polling a run's gateway logs before giving up.

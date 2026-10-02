@@ -5,7 +5,7 @@ import { badRequest } from '@adrianhall/cloudflare-toolkit/errors';
 import {
   MAX_REMIX_INSTRUCTION_CHARACTERS,
   type AppliedRemixImageControls
-} from '../../remix-image';
+} from '../../shared/remix-image';
 import { isPlausibleRunId } from './chat';
 import { MAX_SEED } from './create-image';
 import { encodeBase64 } from './image-bytes';

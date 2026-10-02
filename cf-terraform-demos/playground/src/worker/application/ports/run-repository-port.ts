@@ -2,8 +2,8 @@
  * @file Storage contract for in-flight runs.
  */
 
-import type { RunStatus } from '../../../runs';
-import type { TaskId } from '../../../tasks';
+import type { RunStatus } from '../../../shared/runs';
+import type { TaskId } from '../../../shared/tasks';
 
 /**
  * A run as the server remembers it between the inference response and the later metrics request.

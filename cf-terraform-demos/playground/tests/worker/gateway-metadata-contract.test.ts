@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { TASK_DESCRIPTORS, type TaskDescriptor } from '../../src/tasks';
+import { TASK_DESCRIPTORS, type TaskDescriptor } from '../../src/shared/tasks';
 import { modelsForTask } from '../../src/worker/domain/models';
 import { buildGatewayMetadata } from '../../src/worker/infrastructure/ai/gateway-metadata';
 

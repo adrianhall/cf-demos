@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import PanelNavigation from '../../../src/client/components/shell/PanelNavigation.vue';
-import { TASK_DESCRIPTORS } from '../../../src/tasks';
+import { TASK_DESCRIPTORS } from '../../../src/shared/tasks';
 
 /**
  * Mount the sidebar navigation with router links stubbed to anchors.
@@ -68,8 +68,8 @@ describe('PanelNavigation', () => {
   // misrepresent the product; labelling them is what makes the list honest rather than broken.
   it('labels the next unbuilt panel with the phase that delivers it', () => {
     const wrapper = mountNavigation();
-    const classifyImage = wrapper.find('a[data-task="classify-image"]');
-    expect(classifyImage.text()).toContain('Phase 7');
+    const createVideo = wrapper.find('a[data-task="create-video"]');
+    expect(createVideo.text()).toContain('Phase 8');
   });
 
   // A delivered panel carries no phase label. Leaving one behind would make the sidebar read as if

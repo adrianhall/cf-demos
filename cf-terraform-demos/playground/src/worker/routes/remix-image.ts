@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { currentIdentity, jsonBodyLimit, readJsonBody } from '@demos/worker-common';
-import { MAX_INPUT_IMAGE_BYTES } from '../../describe-image';
-import type { RemixImageResponse } from '../../remix-image';
+import { MAX_INPUT_IMAGE_BYTES } from '../../shared/describe-image';
+import type { RemixImageResponse } from '../../shared/remix-image';
 import type { AppBindings } from '../bindings';
 import { validateRemixImageRequest, type ValidatedRemixImageRequest } from '../domain/remix-image';
 

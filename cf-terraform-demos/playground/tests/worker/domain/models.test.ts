@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTaskId, TASK_DESCRIPTORS } from '../../../src/tasks';
+import { isTaskId, TASK_DESCRIPTORS } from '../../../src/shared/tasks';
 import {
   defaultModelForTask,
   findModelForTask,

@@ -7,7 +7,7 @@
  *   a request body.
  */
 
-import type { GatewayRequestMetric } from '../../../src/runs';
+import type { GatewayRequestMetric } from '../../../src/shared/runs';
 import type {
   InferencePort,
   InferenceRequest,

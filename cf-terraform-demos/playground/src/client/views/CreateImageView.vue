@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { MAX_NEGATIVE_PROMPT_CHARACTERS, MAX_PROMPT_CHARACTERS } from '../../images';
-import { findTask } from '../../tasks';
+import { MAX_NEGATIVE_PROMPT_CHARACTERS, MAX_PROMPT_CHARACTERS } from '../../shared/images';
+import { findTask } from '../../shared/tasks';
 import InfoButton from '../components/InfoButton.vue';
 import InfoDialog from '../components/InfoDialog.vue';
 import ModelSettingsPanel from '../components/ModelSettingsPanel.vue';

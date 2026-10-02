@@ -10,8 +10,8 @@
  */
 
 import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-details';
-import type { AppliedVisionControls, VerifiedImageFacts } from '../../../describe-image';
-import type { RunReceipt } from '../../../runs';
+import type { AppliedVisionControls, VerifiedImageFacts } from '../../../shared/describe-image';
+import type { RunReceipt } from '../../../shared/runs';
 import {
   buildDescribeImageInput,
   describeAppliedVisionControls,

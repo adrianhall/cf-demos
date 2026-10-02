@@ -13,12 +13,16 @@ import {
   MAX_INSTRUCTION_CHARACTERS,
   type DescribeImageRequest,
   type VerifiedImageFacts
-} from '../../../describe-image';
-import type { RunMetrics, RunReceipt } from '../../../runs';
+} from '../../../shared/describe-image';
+import type { RunMetrics, RunReceipt } from '../../../shared/runs';
+import {
+  isAcceptedUploadType,
+  prepareImage,
+  type PreparedImage
+} from '../../components/media/image-input';
 import { useRun, type UseRunOptions } from '../../composables/useRun';
 import { ApiError, describeImage } from '../../services/playground-api';
 import type { CatalogueModel } from '../../stores/catalogue';
-import { isAcceptedUploadType, prepareImage, type PreparedImage } from './image-input';
 
 /**
  * Options for {@link useDescribeImage}.

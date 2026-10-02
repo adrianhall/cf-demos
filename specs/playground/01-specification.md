@@ -27,16 +27,17 @@ Playground is one authenticated, web-based application for experimenting with AI
 3. Describe Image
 4. Remix Image
 5. Classify Image
-6. Create Video
-7. Animate Image
-8. Generate Music
-9. Read Text
-10. Transcribe Audio
-11. Translate Text
-12. Classify Text
-13. Evaluate Choices
-14. Semantic Search
-15. View Tokens
+6. Detect Objects
+7. Create Video
+8. Animate Image
+9. Generate Music
+10. Read Text
+11. Transcribe Audio
+12. Translate Text
+13. Classify Text
+14. Evaluate Choices
+15. Semantic Search
+16. View Tokens
 
 The technical task type is shown as a subtitle and in request details. Visual group headings are permitted in the sidebar, but are labels only: not routes, controls, or nested navigation.
 
@@ -323,7 +324,7 @@ for exact model IDs, limits, controls, response formats, and Gateway eligibility
 | Phase | Panel | Start with | After the first run | Important implementation detail |
 | --- | --- | --- | --- | --- |
 | 6 | Remix Image | Validated reference image, a preservation-aware editing instruction, and only the selected model's supported seed control | Before/after image workspace with the source and current output clearly related | Default to Cloudflare-hosted FLUX.2 Klein 4B, with Klein 9B and Dev as hosted quality comparisons; offer P-Image-Edit and Nano Banana 2 as third-party comparisons. Use explicit per-model adapters, enforce FLUX's reference-size limit, retrieve provider-hosted output under a strict origin/size/signature policy, and never simulate whole-image editing with an inpainting mask. |
-| 7 | Classify Image | Image input with a short example/paste affordance and model-specific top-k controls | Original image beside ranked labels, scores, and an expandable structured response | Explain that confidence/scores are model output, not factual certainty. Render labels accessibly without relying on bars or colour alone. |
+| 7 | Classify Image | Image input with a short example/paste affordance and model-specific top-k controls | Original image beside ranked labels, scores, and an expandable structured response | Use Cloudflare-hosted ResNet-50, whose schema accepts only the image: apply top-k and the confidence floor to the response, declare that in the descriptor, and say so in the UI rather than implying the model was asked to rank. Explain that scores are model output describing resemblance to training data, not factual certainty. Render labels as a table whose scores are text, with bars as `aria-hidden` decoration, so nothing depends on bar length or colour. |
 | 8 | Create Video | Prompt, examples, model selector, and the smallest meaningful duration/aspect controls | Current video result with poster, progress/job status, duration, download, and Run Details | Treat generation as potentially asynchronous from the start. Use the task-neutral `MediaJob` contract, bounded polling, cancellation, and honest failed/expired states. |
 | 9 | Animate Image | Source image, optional motion instruction, and supported duration/resolution controls | Source still beside the current video result and its job status | Share job polling and video rendering with Create Video, but keep a separate route and task copy. A useful Create Image-to-Animate handoff may be offered only as a secondary action. |
 | 10 | Generate Music | Style/mood prompt, instrumental/lyrics controls, and supported duration/format controls | One current audio track with player, duration, lyrics/transcript when applicable, download, and status | Teach non-token billing with the declared track/audio-second unit. Provider-hosted URLs are untrusted and may expire; do not promise retention. |
@@ -333,8 +334,9 @@ for exact model IDs, limits, controls, response formats, and Gateway eligibility
 | 14 | Classify Text | Text input, prepared examples, and a reviewed fixed label/task mode | Ranked label/confidence result with an expandable structured response | Keep this visibly different from Evaluate Choices: fixed model labels here, not caller-defined questions. Do not render arbitrary model prose as the result. |
 | 15 | Evaluate Choices | State editor plus a typed question builder; show the selected model and context usage | Per-question typed visualizations plus inspectable JSON, with answer and confidence separate | Validate the question schema in the domain layer. Do not ask a general chat model for JSON or parse prose; the typed Jev/Clef contract is the feature. |
 | 16 | Semantic Search | Query plus a small editable example collection and embedding model selector | Ranked passages with relative similarity, collection/query cache state, and an expandable vector summary | A search run may contain multiple inference calls. Show aggregate cost and individual Gateway records; similarity is not probability or factual confidence. |
+| 17 | Detect Objects | Image input with the shared picker and a model-specific score floor | Source image with labelled boxes overlaid, beside the same ranked table Classify Image uses | Answers *where*, not *what*. Validate every box's geometry before rendering it and clamp it to the image. The overlay is an enhancement: the table and its described regions must be a complete result on their own. Link a row and its box in both directions on hover and focus. |
 
-For phases 6–16, do not add a new shell, navigation level, or panel-specific interpretation of session
+For phases 6–17, do not add a new shell, navigation level, or panel-specific interpretation of session
 cost. A phase is allowed to introduce a new result renderer or a task-specific input control, but it
 must reuse the existing shell, About dialog, `PanelWorkspace`, model-settings pattern, Run Details
 modal, session ledger, error format, and Access posture. If the selected provider cannot satisfy the

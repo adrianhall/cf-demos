@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatSseFrame, parseSseBuffer } from '../../src/sse';
+import { formatSseFrame, parseSseBuffer } from '../../src/shared/sse';
 
 describe('parseSseBuffer', () => {
   it('parses one complete frame', () => {

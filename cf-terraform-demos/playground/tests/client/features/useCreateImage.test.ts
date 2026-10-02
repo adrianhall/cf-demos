@@ -5,8 +5,8 @@ import { useCreateImage } from '../../../src/client/features/create-image/useCre
 import { ApiError } from '../../../src/client/services/playground-api';
 import type { CatalogueModel } from '../../../src/client/stores/catalogue';
 import { useLedgerStore } from '../../../src/client/stores/ledger';
-import { MAX_PROMPT_CHARACTERS, type CreateImageRequest } from '../../../src/images';
-import type { RunReceipt } from '../../../src/runs';
+import { MAX_PROMPT_CHARACTERS, type CreateImageRequest } from '../../../src/shared/images';
+import type { RunReceipt } from '../../../src/shared/runs';
 
 /**
  * A catalogue model exposing the full control set, mirroring Stable Diffusion XL.

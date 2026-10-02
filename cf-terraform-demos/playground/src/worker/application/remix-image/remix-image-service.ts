@@ -3,10 +3,10 @@
  *   short-lived generated-image URL.
  */
 import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-details';
-import type { VerifiedImageFacts } from '../../../describe-image';
-import type { GeneratedImage } from '../../../images';
-import type { AppliedRemixImageControls } from '../../../remix-image';
-import type { RunReceipt } from '../../../runs';
+import type { VerifiedImageFacts } from '../../../shared/describe-image';
+import type { GeneratedImage } from '../../../shared/images';
+import type { AppliedRemixImageControls } from '../../../shared/remix-image';
+import type { RunReceipt } from '../../../shared/runs';
 import { initialCostStatus } from '../../domain/metrics';
 import {
   buildRemixImageInput,

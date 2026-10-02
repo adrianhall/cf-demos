@@ -5,7 +5,7 @@ import {
   MAX_INSTRUCTION_CHARACTERS,
   MIN_IMAGE_EDGE_PIXELS,
   VISION_CONTROL_NAMES
-} from '../../../src/describe-image';
+} from '../../../src/shared/describe-image';
 import {
   buildDescribeImageInput,
   describeAppliedVisionControls,

@@ -15,7 +15,7 @@
  * `tests/client/privacy-claims.test.ts` guard holds it to that.
  */
 import { ref } from 'vue';
-import type { TaskDescriptor } from '../../tasks';
+import type { TaskDescriptor } from '../../shared/tasks';
 import InfoButton from './InfoButton.vue';
 import InfoDialog from './InfoDialog.vue';
 

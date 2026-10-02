@@ -2,19 +2,19 @@
  * Stateful client orchestration for FLUX.2 reference-image editing.
  */
 import { computed, ref, shallowRef, watch, type Ref } from 'vue';
-import type { VerifiedImageFacts } from '../../../describe-image';
-import type { GeneratedImage } from '../../../images';
-import type { AppliedRemixImageControls, RemixImageRequest } from '../../../remix-image';
-import type { RunMetrics, RunReceipt } from '../../../runs';
-import { useRun, type UseRunOptions } from '../../composables/useRun';
-import { ApiError, remixImage } from '../../services/playground-api';
-import type { CatalogueModel } from '../../stores/catalogue';
-import type { HandoffImage } from '../../stores/handoff';
+import type { VerifiedImageFacts } from '../../../shared/describe-image';
+import type { GeneratedImage } from '../../../shared/images';
+import type { AppliedRemixImageControls, RemixImageRequest } from '../../../shared/remix-image';
+import type { RunMetrics, RunReceipt } from '../../../shared/runs';
 import {
   isAcceptedUploadType,
   prepareImage,
   type PreparedImage
-} from '../describe-image/image-input';
+} from '../../components/media/image-input';
+import { useRun, type UseRunOptions } from '../../composables/useRun';
+import { ApiError, remixImage } from '../../services/playground-api';
+import type { CatalogueModel } from '../../stores/catalogue';
+import type { HandoffImage } from '../../stores/handoff';
 import { referenceImageBase64 } from './reference-image';
 
 /**

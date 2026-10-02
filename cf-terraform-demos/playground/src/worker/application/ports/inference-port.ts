@@ -5,8 +5,8 @@
  *   and cost-aggregation logic without a network or an account.
  */
 
-import type { GatewayRequestMetric } from '../../../runs';
-import type { TaskId } from '../../../tasks';
+import type { GatewayRequestMetric } from '../../../shared/runs';
+import type { TaskId } from '../../../shared/tasks';
 import type { ModelDescriptor } from '../../domain/models';
 
 /**

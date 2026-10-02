@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findTask, TASK_DESCRIPTORS } from '../../src/tasks';
+import { findTask, TASK_DESCRIPTORS } from '../../src/shared/tasks';
 import { GATEWAY_EXCEPTIONS } from '../../src/worker/domain/gateway-exceptions';
 import { modelsForTask } from '../../src/worker/domain/models';
 

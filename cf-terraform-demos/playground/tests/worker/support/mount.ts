@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import type { CloudflareAccessIdentity } from '@adrianhall/cloudflare-toolkit/hono';
 import type { Logger } from '@adrianhall/cloudflare-toolkit/logging';
 import type { ChatService } from '../../../src/worker/application/chat/chat-service';
+import type { ClassifyImageService } from '../../../src/worker/application/classify-image/classify-image-service';
 import type { CreateImageService } from '../../../src/worker/application/create-image/create-image-service';
 import type { DescribeImageService } from '../../../src/worker/application/describe-image/describe-image-service';
 import type { MetricsService } from '../../../src/worker/application/metrics/metrics-service';
@@ -57,6 +58,10 @@ export interface MountOptions {
    * Describe Image service the route should use.
    */
   describeImageService?: DescribeImageService;
+  /**
+   * Classify Image service the route should use.
+   */
+  classifyImageService?: ClassifyImageService;
   /**
    * Logger to place on the context, so a caller can share one recorder between the route and the
    * services it calls — which is how the composition root wires them. Defaults to a fresh one.
@@ -141,6 +146,9 @@ export function mountRoute(
     }
     if (options.describeImageService !== undefined) {
       context.set('DESCRIBE_IMAGE_SERVICE', options.describeImageService);
+    }
+    if (options.classifyImageService !== undefined) {
+      context.set('CLASSIFY_IMAGE_SERVICE', options.classifyImageService);
     }
     await next();
   });

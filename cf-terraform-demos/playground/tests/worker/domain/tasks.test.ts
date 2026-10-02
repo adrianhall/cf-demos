@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { findTask, isTaskId, TASK_DESCRIPTORS } from '../../../src/tasks';
+import { findTask, isTaskId, TASK_DESCRIPTORS } from '../../../src/shared/tasks';
 
 describe('TASK_DESCRIPTORS', () => {
-  // Fifteen panels is the agreed product scope. Asserting the count catches a panel being dropped
+  // Sixteen panels is the agreed product scope. Asserting the count catches a panel being dropped
   // in a refactor as well as one being added without a specification change.
-  it('declares all fifteen panels', () => {
-    expect(TASK_DESCRIPTORS).toHaveLength(15);
+  it('declares all sixteen panels', () => {
+    expect(TASK_DESCRIPTORS).toHaveLength(16);
   });
 
   // The identifier doubles as the route segment and the API task parameter, so a duplicate would
@@ -55,6 +55,7 @@ describe('TASK_DESCRIPTORS', () => {
     const available = TASK_DESCRIPTORS.filter((task) => task.availability === 'available');
     expect(available.map((task) => task.id).sort()).toEqual([
       'chat',
+      'classify-image',
       'create-image',
       'describe-image',
       'remix-image',
@@ -65,7 +66,7 @@ describe('TASK_DESCRIPTORS', () => {
   // The phase number is quoted in the placeholder, so a panel still marked planned for a phase
   // already delivered would tell a visitor to wait for something that exists.
   it('marks every panel from a delivered phase as available', () => {
-    const deliveredThroughPhase = 6;
+    const deliveredThroughPhase = 7;
     for (const task of TASK_DESCRIPTORS) {
       if (task.phase <= deliveredThroughPhase) {
         expect(task.availability, `${task.name} is in a delivered phase`).toBe('available');

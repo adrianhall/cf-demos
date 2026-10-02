@@ -2,7 +2,7 @@
  * @file Safe normalisation of inline or short-lived provider generated images.
  */
 import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-details';
-import { MAX_IMAGE_BYTES, type GeneratedImage } from '../../../images';
+import { MAX_IMAGE_BYTES, type GeneratedImage } from '../../../shared/images';
 import type { GeneratedMediaPort } from '../../application/ports/generated-media-port';
 import { decodeBase64, encodeBase64, sniffImageMediaType } from '../../domain/image-bytes';
 

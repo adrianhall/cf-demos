@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import RunDetails from '../../../src/client/components/runs/RunDetails.vue';
-import type { RunMetrics, RunReceipt } from '../../../src/runs';
+import type { RunMetrics, RunReceipt } from '../../../src/shared/runs';
 
 /**
  * Builds a receipt.

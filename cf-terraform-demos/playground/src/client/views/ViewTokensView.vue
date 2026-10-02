@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { findTask } from '../../tasks';
+import { findTask } from '../../shared/tasks';
 import PanelPage from '../components/PanelPage.vue';
 import { TOKEN_EXAMPLES, type TokenExample } from '../features/view-tokens/examples';
 import { contextWindowUsage, MAX_INPUT_CHARACTERS } from '../features/view-tokens/tokenization';

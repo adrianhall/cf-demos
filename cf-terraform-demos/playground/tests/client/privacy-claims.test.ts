@@ -13,7 +13,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { TASK_DESCRIPTORS } from '../../src/tasks';
+import { TASK_DESCRIPTORS } from '../../src/shared/tasks';
 
 /**
  * Demo root, resolved from this test file.

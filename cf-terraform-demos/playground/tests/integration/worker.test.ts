@@ -1,7 +1,7 @@
 import { exports } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { JWT_HEADER, signDevJwt } from '@adrianhall/cloudflare-toolkit/testing';
-import { TASK_DESCRIPTORS } from '../../src/tasks';
+import { TASK_DESCRIPTORS } from '../../src/shared/tasks';
 
 /**
  * Audience the Worker is configured to accept, matching `ACCESS_AUD` in `./vitest.config.ts`.

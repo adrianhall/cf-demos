@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { MAX_IMAGE_BYTES } from '../../../src/images';
+import { MAX_IMAGE_BYTES } from '../../../src/shared/images';
 import { ProviderImageClient } from '../../../src/worker/infrastructure/media/provider-image-client';
 import { pngBytes } from '../support/image-fixtures';
 import { problemWithStatus } from '../support/problem-details';

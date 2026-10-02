@@ -43,7 +43,8 @@ came to use.
 | **Create Image**   | **Text to image**            | **Available now** |
 | **Describe Image** | **Image to text**            | **Available now** |
 | **Remix Image**    | **Image to image**           | **Available now** |
-| Classify Image     | Image classification         | Phase 7           |
+| **Classify Image** | **Image classification**     | **Available now** |
+| Detect Objects     | Object detection             | Phase 17          |
 | Create Video       | Text to video                | Phase 8           |
 | Animate Image      | Image to video               | Phase 9           |
 | Generate Music     | Text to music                | Phase 10          |
@@ -219,6 +220,74 @@ and GIF is excluded too: the list is an allowlist, not an "is it an image" check
 Three routes — a file picker, drag-and-drop, and **paste** — all converging on one validation path.
 Paste earns its place because a screenshot is the likeliest thing someone wants described, and
 making them save it to disk first would be the slowest path to the thing the panel exists to do.
+
+## Classify Image
+
+The first panel whose model is not generative. A classifier does not write a sentence about a
+picture; it scores it against the fixed list of categories it was trained on and returns a number
+for each. The reviewed model is **ResNet-50**, the catalogue's only Cloudflare-hosted image
+classifier, and its contract is the narrowest in the demo: its schema is `{ image: number[] }` and
+nothing else, and its output is a bare array of `{ label, score }`.
+
+Three things follow from that, and the panel is shaped around them.
+
+### The controls are applied to the answer, not sent with the question
+
+The model accepts no top-k and no confidence threshold, so those two controls act on the response
+after it arrives. The panel says so — "this model takes no ranking parameters" — rather than letting
+a slider imply the model was asked to filter. The distinction is recorded in the model descriptor as
+`appliedBy: 'playground'`, so a model that _does_ accept ranking fields would describe itself
+differently instead of inheriting the wrong sentence.
+
+It also changes what the result heading can honestly say. "Showing 3 of the 5 labels this model
+returned" is true; "top 3" would imply a request that was never made. Forwarding the controls anyway
+would send the provider fields its schema does not declare, which is the most common integration
+failure there is.
+
+Ordering, the confidence floor, and the truncation therefore live in the **domain** layer rather
+than in a Vue component, so every transport gets the same behaviour. Two details there are decided
+rather than incidental: the floor is applied **before** the limit, so "top 5 above 0.1" means the
+five best labels that clear the floor; and ties are broken by label name, because a classifier
+returning two identical scores is ordinary and an unstable order would make the same picture rank
+differently between runs.
+
+Nothing is rescaled after filtering. A set of scores that no longer sums to anything meaningful is
+the honest consequence of hiding some, and renormalising would invent output the model never
+produced.
+
+### A score is not a probability of being correct
+
+A confidence bar is extremely good at implying otherwise, so the panel states what the number is in
+three places: in the **About** dialog, beside the controls, and immediately above the ranking. The
+score means the picture resembles that category's training data. It is not the chance the label is
+right, and it says nothing at all about whether the correct category is even in the model's label
+set — a picture of something ImageNet has no category for still produces a confident-looking
+ranking. One of the prepared examples exists specifically to show that.
+
+An architecture test enforces the claim rather than leaving it to review: no panel may say a score
+is the probability a label is correct, and a panel that renders scores must say what they actually
+are. The guard is written against every panel, because Classify Text and Semantic Search render the
+same shape in later phases and will face the same temptation.
+
+### The ranking is readable without the bars
+
+The result is a real `table` — rank, label, score — rather than a list of styled divs. The data is
+genuinely tabular, and a table gives a screen-reader user row and column context and a row count for
+free. The label is the row header, so a score is announced with the label it belongs to instead of
+as a bare percentage.
+
+Each bar lives _inside_ the score cell beside the number rather than replacing it, and is
+`aria-hidden`: it repeats a value that is already there as text, so announcing it would read the
+same number twice. The test for this deletes every bar from the rendered output and asserts that
+nothing was lost. In forced-colours mode the bars keep a visible border and use the system highlight
+colour, so the comparison survives a theme that discards the palette.
+
+The full-precision scores stay available in a collapsed **Structured response** disclosure, so the
+table is the result and the raw JSON is reference material rather than the dominant content.
+
+An empty ranking is treated as a real outcome of a successful run — the model answered and the
+visitor's floor hid all of it — and the panel says which, rather than rendering the same emptiness
+as "no result yet".
 
 ## View Tokens
 
@@ -435,11 +504,11 @@ obvious and stops browser code importing Worker-only bindings. `src/worker/index
 composition root and the only module allowed to depend on every tier — composing them is its single
 responsibility.
 
-`tasks.ts`, `runs.ts`, `chat.ts`, `sse.ts`, and `images.ts` sit at `src/` because they are genuinely
-shared wire contracts. They contain types and constants only: no bindings, no secrets, no model
-contracts. Model descriptors stay in the Worker's domain tier and reach the browser only through
-`/api/catalogue` — which is how the browser learns each image model's control capabilities without
-being able to decide them.
+`tasks.ts`, `runs.ts`, `chat.ts`, `sse.ts`, `images.ts`, `describe-image.ts`, `remix-image.ts`, and
+`classify-image.ts` sit at `src/` because they are genuinely shared wire contracts. They contain
+types and constants only: no bindings, no secrets, no model contracts. Model descriptors stay in the
+Worker's domain tier and reach the browser only through `/api/catalogue` — which is how the browser
+learns each image model's control capabilities without being able to decide them.
 
 ## API
 
@@ -450,6 +519,8 @@ being able to decide them.
 | `POST /api/chat/stream`        | Chat as server-sent events: `start`, `delta`, then `completed` or `problem`.  |
 | `POST /api/create-image`       | Generates one image and returns it with its run receipt and applied controls. |
 | `POST /api/describe-image`     | Describe a picture with a reviewed vision model.                              |
+| `POST /api/remix-image`        | Edit a picture with a reviewed reference-image model.                         |
+| `POST /api/classify-image`     | Rank a picture against a reviewed classifier's fixed label set.               |
 | `GET /api/runs/:runId/metrics` | Resolved or pending gateway cost for one of your own runs.                    |
 
 Every route is behind Access, derives identity only from the verified JWT, and returns RFC 9457
@@ -470,15 +541,20 @@ written separately, so the two cannot drift into a state where a picture the pan
 refused by the transport. Both reviewed models can stream, but the answer is a short paragraph about
 a picture already on screen.
 
+Classify Image shares that body-limit derivation and that plain-JSON shape, and adds one refusal of
+its own: a body carrying `instruction`, `prompt`, or `question` is rejected with a message saying a
+classifier scores a picture against a fixed label set and has nothing to be asked. Ignoring the
+field would let a caller who misunderstood the panel keep believing it was honoured.
+
 A request body may not carry `user`, `email`, `actor`, `sub`, or `system`. Such a body is
 **rejected** rather than having the field stripped, because stripping is a silent correction that
-makes an attempt look like success and leaves nothing for a test to assert on. Describe Image
-extends the same rule to fields that would describe its picture — `mediaType`, `width`, `fileName` —
-since the server determines those from the bytes.
+makes an attempt look like success and leaves nothing for a test to assert on. Describe Image and
+Classify Image extend the same rule to fields that would describe their picture — `mediaType`,
+`width`, `fileName` — since the server determines those from the bytes.
 
 ## Implementation status
 
-Built to **phase 6** of
+Built to **phase 7** of
 [`specs/playground/02-implementation.md`](../../specs/playground/02-implementation.md).
 
 - **Phase 1** delivered the shell, the Terraform lifecycle, Access, the mandatory-gateway
@@ -495,6 +571,13 @@ Built to **phase 6** of
   cross-provider comparison, preservation-aware example instructions, safe immediate retrieval of
   provider-hosted result, a keyboard-operable before/after comparison, and the transient Create
   Image handoff.
+- **Phase 7** delivered Classify Image: the first non-generative model, a ranked structured result
+  rendered as an accessible table rather than a wall of bars, result controls applied to the
+  response because the reviewed classifier's schema accepts none, and explicit copy about what a
+  confidence score is and is not.
 
-Every remaining panel renders a placeholder stating the phase that delivers it. Classify Image, in
-phase 7, is next.
+Every remaining panel renders a placeholder stating the phase that delivers it. Create Video, in
+phase 8, is next. **Detect Objects** was added to the plan as phase 17 — the last panel phase,
+before the cross-panel hardening pass — because the catalogue's object-detection model answers a
+genuinely different question from Classify Image: _where_ something is rather than _what_ the
+picture is of. It reuses this panel's ranked table and adds a validated overlay on top of it.

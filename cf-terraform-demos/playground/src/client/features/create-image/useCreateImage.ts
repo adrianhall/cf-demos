@@ -9,8 +9,8 @@
  */
 
 import { computed, ref, shallowRef, watch, type Ref } from 'vue';
-import { MAX_PROMPT_CHARACTERS, type CreateImageRequest } from '../../../images';
-import type { RunMetrics, RunReceipt } from '../../../runs';
+import { MAX_PROMPT_CHARACTERS, type CreateImageRequest } from '../../../shared/images';
+import type { RunMetrics, RunReceipt } from '../../../shared/runs';
 import { useRun, type UseRunOptions } from '../../composables/useRun';
 import { ApiError, createImage } from '../../services/playground-api';
 import type { CatalogueModel } from '../../stores/catalogue';

@@ -23,6 +23,7 @@ export type TaskId =
   | 'describe-image'
   | 'remix-image'
   | 'classify-image'
+  | 'detect-objects'
   | 'create-video'
   | 'animate-image'
   | 'generate-music'
@@ -159,8 +160,18 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Sort a picture into labels the model already knows, with confidence scores.',
     group: 'Understand',
     gateway: 'required',
-    availability: 'planned',
+    availability: 'available',
     phase: 7
+  },
+  {
+    id: 'detect-objects',
+    name: 'Detect Objects',
+    taskType: 'Object detection',
+    summary: 'Find where things are in a picture, not just what the picture is of.',
+    group: 'Understand',
+    gateway: 'required',
+    availability: 'planned',
+    phase: 17
   },
   {
     id: 'create-video',

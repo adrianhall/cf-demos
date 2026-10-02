@@ -4,8 +4,12 @@
  */
 
 import { computed, ref, shallowRef, type Ref } from 'vue';
-import { MAX_MESSAGE_CHARACTERS, type ChatMessage, type ChatStreamEvent } from '../../../chat';
-import type { RunMetrics, RunReceipt } from '../../../runs';
+import {
+  MAX_MESSAGE_CHARACTERS,
+  type ChatMessage,
+  type ChatStreamEvent
+} from '../../../shared/chat';
+import type { RunMetrics, RunReceipt } from '../../../shared/runs';
 import { useRun, type UseRunOptions } from '../../composables/useRun';
 import { ApiError, streamChat } from '../../services/playground-api';
 import { newRunId, toRequestMessages, type ConversationTurn } from './conversation';

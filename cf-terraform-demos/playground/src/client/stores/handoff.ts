@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import type { ImageMediaType } from '../../images';
+import type { ImageMediaType } from '../../shared/images';
 
 /**
  * A picture handed from one panel to another.

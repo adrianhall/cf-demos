@@ -1,10 +1,14 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MAX_MESSAGE_CHARACTERS, type ChatRequest, type ChatStreamEvent } from '../../../src/chat';
 import { useChat } from '../../../src/client/features/chat/useChat';
 import { ApiError } from '../../../src/client/services/playground-api';
 import { useLedgerStore } from '../../../src/client/stores/ledger';
-import type { RunReceipt } from '../../../src/runs';
+import {
+  MAX_MESSAGE_CHARACTERS,
+  type ChatRequest,
+  type ChatStreamEvent
+} from '../../../src/shared/chat';
+import type { RunReceipt } from '../../../src/shared/runs';
 
 /**
  * A completed run receipt with no gateway log, so tests do not poll for a cost unless they mean to.

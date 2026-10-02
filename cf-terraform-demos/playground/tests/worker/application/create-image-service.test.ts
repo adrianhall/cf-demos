@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { MAX_IMAGE_BYTES } from '../../../src/images';
+import { MAX_IMAGE_BYTES } from '../../../src/shared/images';
 import { CreateImageService } from '../../../src/worker/application/create-image/create-image-service';
 import { validateCreateImageRequest } from '../../../src/worker/domain/create-image';
 import { encodeBase64 } from '../../../src/worker/domain/image-bytes';

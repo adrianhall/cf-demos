@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { problemDetailsErrorHandler } from '@adrianhall/cloudflare-toolkit/hono';
-import type { RunMetrics } from '../../../src/runs';
+import type { RunMetrics } from '../../../src/shared/runs';
 import { MetricsService } from '../../../src/worker/application/metrics/metrics-service';
 import type { RunRecord } from '../../../src/worker/application/ports/run-repository-port';
 import { COST_RESOLUTION_BUDGET_MS } from '../../../src/worker/domain/metrics';

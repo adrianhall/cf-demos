@@ -8,8 +8,8 @@
  */
 
 import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-details';
-import type { GatewayRequestMetric } from '../../../runs';
-import { parseSseBuffer } from '../../../sse';
+import type { GatewayRequestMetric } from '../../../shared/runs';
+import { parseSseBuffer } from '../../../shared/sse';
 import type { DiagnosticLogger } from '../../application/ports/diagnostic-logger-port';
 import type {
   InferencePort,

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { TASK_DESCRIPTORS } from '../../tasks';
+import { TASK_DESCRIPTORS } from '../../shared/tasks';
 import type { AppBindings } from '../bindings';
 import { GATEWAY_EXCEPTIONS } from '../domain/gateway-exceptions';
 import { MODEL_DESCRIPTORS } from '../domain/models';

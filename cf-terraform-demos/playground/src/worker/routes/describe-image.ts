@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { currentIdentity, jsonBodyLimit, readJsonBody } from '@demos/worker-common';
-import type { DescribeImageResponse } from '../../describe-image';
-import { MAX_INPUT_IMAGE_BYTES } from '../../describe-image';
+import type { DescribeImageResponse } from '../../shared/describe-image';
+import { MAX_INPUT_IMAGE_BYTES } from '../../shared/describe-image';
 import type { AppBindings } from '../bindings';
 import {
   validateDescribeImageRequest,

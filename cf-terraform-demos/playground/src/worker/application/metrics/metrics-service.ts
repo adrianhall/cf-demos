@@ -5,7 +5,7 @@
  */
 
 import { forbidden, notFound } from '@adrianhall/cloudflare-toolkit/errors';
-import type { GatewayRequestMetric, RunMetrics } from '../../../runs';
+import type { GatewayRequestMetric, RunMetrics } from '../../../shared/runs';
 import { aggregateRunMetrics } from '../../domain/metrics';
 import type { InferencePort, VerifiedActor } from '../ports/inference-port';
 import type { RunRepositoryPort } from '../ports/run-repository-port';

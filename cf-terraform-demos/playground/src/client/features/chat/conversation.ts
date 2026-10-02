@@ -5,7 +5,7 @@
  *   wrapper around them.
  */
 
-import { MAX_MESSAGES, type ChatMessage } from '../../../chat';
+import { MAX_MESSAGES, type ChatMessage } from '../../../shared/chat';
 
 /**
  * One turn as the panel displays it.

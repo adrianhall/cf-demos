@@ -22,7 +22,7 @@ import {
   type NumericVisionRange,
   type VerifiedImageFacts,
   type VisionControlName
-} from '../../describe-image';
+} from '../../shared/describe-image';
 import { isPlausibleRunId } from './chat';
 import { decodeBase64, readImageDimensions, sniffImageMediaType } from './image-bytes';
 import { findModelForTask, type ModelDescriptor } from './models';

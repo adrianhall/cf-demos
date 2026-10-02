@@ -3,18 +3,18 @@
  * Route composition for the phase-six Remix Image activity-first panel.
  */
 import { computed, onMounted, ref } from 'vue';
-import { IMAGE_FILE_EXTENSIONS } from '../../images';
-import { MAX_REMIX_INSTRUCTION_CHARACTERS } from '../../remix-image';
-import { findTask } from '../../tasks';
+import { IMAGE_FILE_EXTENSIONS } from '../../shared/images';
+import { MAX_REMIX_INSTRUCTION_CHARACTERS } from '../../shared/remix-image';
+import { findTask } from '../../shared/tasks';
 import InfoButton from '../components/InfoButton.vue';
 import InfoDialog from '../components/InfoDialog.vue';
+import SourceImagePicker from '../components/media/SourceImagePicker.vue';
 import ModelSettingsPanel from '../components/ModelSettingsPanel.vue';
 import PanelPage from '../components/PanelPage.vue';
 import PanelWorkspace from '../components/PanelWorkspace.vue';
 import RunDetails from '../components/runs/RunDetails.vue';
 import BeforeAfterComparison from '../features/remix-image/BeforeAfterComparison.vue';
 import { REMIX_EXAMPLES, type RemixExample } from '../features/remix-image/examples';
-import RemixImagePicker from '../features/remix-image/RemixImagePicker.vue';
 import { useRemixImage } from '../features/remix-image/useRemixImage';
 import { useCatalogueStore } from '../stores/catalogue';
 import { useHandoffStore } from '../stores/handoff';
@@ -79,7 +79,7 @@ function loadExample(example: RemixExample): void {
         <template #input>
           <section class="composer" aria-labelledby="remix-input-heading">
             <h2 id="remix-input-heading" class="heading">Transform a picture</h2>
-            <RemixImagePicker
+            <SourceImagePicker
               label="Source image"
               :image="source"
               :busy="remixing"

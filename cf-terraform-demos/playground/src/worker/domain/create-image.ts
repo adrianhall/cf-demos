@@ -17,7 +17,7 @@ import {
   type AppliedImageControls,
   type ImageControlName,
   type NumericControlRange
-} from '../../images';
+} from '../../shared/images';
 import { isPlausibleRunId } from './chat';
 import { findModelForTask, type ModelDescriptor } from './models';
 

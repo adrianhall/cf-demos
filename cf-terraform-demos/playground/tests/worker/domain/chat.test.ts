@@ -4,7 +4,7 @@ import {
   MAX_MESSAGES,
   MAX_TEMPERATURE,
   MIN_MAX_TOKENS
-} from '../../../src/chat';
+} from '../../../src/shared/chat';
 import {
   buildChatInput,
   CHAT_SYSTEM_PROMPT,

@@ -4,12 +4,13 @@
  *   response parsing, and there is one place to look when asking what the client actually sends.
  */
 
-import type { ChatRequest, ChatStreamEvent } from '../../chat';
-import type { DescribeImageRequest, DescribeImageResponse } from '../../describe-image';
-import type { CreateImageRequest, CreateImageResponse } from '../../images';
-import type { RemixImageRequest, RemixImageResponse } from '../../remix-image';
-import type { RunMetrics } from '../../runs';
-import { parseSseBuffer } from '../../sse';
+import type { ChatRequest, ChatStreamEvent } from '../../shared/chat';
+import type { ClassifyImageRequest, ClassifyImageResponse } from '../../shared/classify-image';
+import type { DescribeImageRequest, DescribeImageResponse } from '../../shared/describe-image';
+import type { CreateImageRequest, CreateImageResponse } from '../../shared/images';
+import type { RemixImageRequest, RemixImageResponse } from '../../shared/remix-image';
+import type { RunMetrics } from '../../shared/runs';
+import { parseSseBuffer } from '../../shared/sse';
 
 /**
  * Thrown when the API answers a non-streaming request with a failure.
@@ -233,6 +234,37 @@ export async function remixImage(
     throw new ApiError(response.status, await failureMessage(response));
   }
   return (await response.json()) as RemixImageResponse;
+}
+
+/**
+ * Classifies one picture.
+ *
+ * @param request The classification request to send, carrying the base64 picture and the result
+ *   controls.
+ * @param signal Abort signal, so the caller's Cancel button aborts the HTTP request itself rather
+ *   than merely ignoring the result.
+ * @returns The ranked labels, how many the model returned, the facts the server verified about the
+ *   picture, its run receipt, and the controls the server applied.
+ * @throws {ApiError} When the server rejects the request (`400` for an unsupported or out-of-range
+ *   control, a generative field, or a picture that is not an accepted format; `401` for an expired
+ *   Access session) or when the provider fails or returns no usable labels (`502`).
+ */
+export async function classifyImage(
+  request: ClassifyImageRequest,
+  signal?: AbortSignal
+): Promise<ClassifyImageResponse> {
+  const response = await fetch('/api/classify-image', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+
+  return (await response.json()) as ClassifyImageResponse;
 }
 
 /**

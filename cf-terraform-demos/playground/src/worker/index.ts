@@ -6,6 +6,7 @@ import {
 } from '@adrianhall/cloudflare-toolkit/hono';
 import { createMeRouter } from '@demos/worker-common';
 import { ChatService } from './application/chat/chat-service';
+import { ClassifyImageService } from './application/classify-image/classify-image-service';
 import { CreateImageService } from './application/create-image/create-image-service';
 import { DescribeImageService } from './application/describe-image/describe-image-service';
 import { MetricsService } from './application/metrics/metrics-service';
@@ -17,6 +18,7 @@ import { createMemoryRunRepository } from './infrastructure/runs/memory-run-repo
 import { accessMiddleware } from './middleware/access';
 import { catalogueRouter } from './routes/catalogue';
 import { chatRouter } from './routes/chat';
+import { classifyImageRouter } from './routes/classify-image';
 import { createImageRouter } from './routes/create-image';
 import { describeImageRouter } from './routes/describe-image';
 import { remixImageRouter } from './routes/remix-image';
@@ -78,6 +80,10 @@ app.use('/api/*', async (context, next) => {
     'REMIX_IMAGE_SERVICE',
     new RemixImageService({ inference, runs, media, logger: context.var.LOGGER })
   );
+  context.set(
+    'CLASSIFY_IMAGE_SERVICE',
+    new ClassifyImageService({ inference, runs, logger: context.var.LOGGER })
+  );
   context.set('METRICS_SERVICE', new MetricsService({ inference, runs }));
 
   await next();
@@ -86,6 +92,7 @@ app.use('/api/*', async (context, next) => {
 app.route('/api/me', createMeRouter<AppBindings>());
 app.route('/api/catalogue', catalogueRouter);
 app.route('/api/chat', chatRouter);
+app.route('/api/classify-image', classifyImageRouter);
 app.route('/api/create-image', createImageRouter);
 app.route('/api/describe-image', describeImageRouter);
 app.route('/api/remix-image', remixImageRouter);

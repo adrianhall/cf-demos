@@ -7,7 +7,7 @@ import {
   MAX_INPUT_IMAGE_BYTES,
   MIN_IMAGE_EDGE_PIXELS,
   type VerifiedImageFacts
-} from '../../describe-image';
+} from '../../shared/describe-image';
 import { decodeBase64, readImageDimensions, sniffImageMediaType } from './image-bytes';
 
 /**

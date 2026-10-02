@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { TASK_DESCRIPTORS, type TaskDescriptor, type TaskGroup } from '../../../tasks';
+import { TASK_DESCRIPTORS, type TaskDescriptor, type TaskGroup } from '../../../shared/tasks';
 
 /**
  * Panels bucketed by their visual group, in catalogue order.

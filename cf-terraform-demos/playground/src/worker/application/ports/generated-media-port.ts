@@ -3,7 +3,7 @@
  *   expires. Keeping fetch in infrastructure lets the use case receive verified bytes without
  *   gaining arbitrary network access.
  */
-import type { GeneratedImage } from '../../../images';
+import type { GeneratedImage } from '../../../shared/images';
 
 /**
  * Retrieves and verifies generated media from an approved provider origin.

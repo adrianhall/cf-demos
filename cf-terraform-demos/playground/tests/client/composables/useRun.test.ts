@@ -2,7 +2,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { METRICS_POLL_BUDGET_MS, useRun } from '../../../src/client/composables/useRun';
 import { useLedgerStore } from '../../../src/client/stores/ledger';
-import type { RunMetrics, RunReceipt } from '../../../src/runs';
+import type { RunMetrics, RunReceipt } from '../../../src/shared/runs';
 
 /**
  * Builds a run receipt.

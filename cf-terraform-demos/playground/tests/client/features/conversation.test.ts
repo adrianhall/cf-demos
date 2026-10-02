@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_MESSAGES } from '../../../src/chat';
 import {
   newRunId,
   toRequestMessages,
   type ConversationTurn
 } from '../../../src/client/features/chat/conversation';
+import { MAX_MESSAGES } from '../../../src/shared/chat';
 
 /**
  * Builds a conversation turn.

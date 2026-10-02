@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { problemDetailsErrorHandler } from '@adrianhall/cloudflare-toolkit/hono';
 import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-details';
-import { MAX_INPUT_IMAGE_BYTES, type DescribeImageResponse } from '../../../src/describe-image';
+import {
+  MAX_INPUT_IMAGE_BYTES,
+  type DescribeImageResponse
+} from '../../../src/shared/describe-image';
 import { DescribeImageService } from '../../../src/worker/application/describe-image/describe-image-service';
 import { modelsForTask } from '../../../src/worker/domain/models';
 import {

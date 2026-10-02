@@ -11,8 +11,12 @@
  */
 
 import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-details';
-import { MAX_IMAGE_BYTES, type AppliedImageControls, type GeneratedImage } from '../../../images';
-import type { RunReceipt } from '../../../runs';
+import {
+  MAX_IMAGE_BYTES,
+  type AppliedImageControls,
+  type GeneratedImage
+} from '../../../shared/images';
+import type { RunReceipt } from '../../../shared/runs';
 import {
   buildCreateImageInput,
   describeAppliedControls,

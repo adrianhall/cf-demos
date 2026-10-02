@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { findTask } from '../../../src/tasks';
+import { findTask } from '../../../src/shared/tasks';
 
 /**
  * Demo root, resolved from this test file.

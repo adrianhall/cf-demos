@@ -5,7 +5,7 @@
  */
 
 import { ref, type Ref } from 'vue';
-import type { RunMetrics, RunReceipt } from '../../runs';
+import type { RunMetrics, RunReceipt } from '../../shared/runs';
 import { ApiError, fetchRunMetrics } from '../services/playground-api';
 import { useLedgerStore } from '../stores/ledger';
 

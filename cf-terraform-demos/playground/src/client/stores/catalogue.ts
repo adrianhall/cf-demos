@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia';
-import type { VisionControlSupport } from '../../describe-image';
-import type { ImageControlSupport } from '../../images';
-import type { RemixImageControlSupport } from '../../remix-image';
-import type { TaskId } from '../../tasks';
+import type { ClassificationControlSupport } from '../../shared/classify-image';
+import type { VisionControlSupport } from '../../shared/describe-image';
+import type { ImageControlSupport } from '../../shared/images';
+import type { RemixImageControlSupport } from '../../shared/remix-image';
+import type { TaskId } from '../../shared/tasks';
 
 /**
  * A reviewed model as the catalogue endpoint reports it.
@@ -63,6 +64,14 @@ export interface CatalogueModel {
    * Optional controls for a reviewed image-to-image model.
    */
   remixImageControls?: RemixImageControlSupport;
+  /**
+   * Result controls for a reviewed image-classification model.
+   *
+   * Present only for a classifier. `appliedBy` is the field the UI reads to describe the controls
+   * honestly: the reviewed model takes no ranking parameters, so the panel says the filtering
+   * happens after the model answers rather than letting a slider imply the model was asked.
+   */
+  classificationControls?: ClassificationControlSupport;
 }
 
 /**

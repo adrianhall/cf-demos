@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ChatRequest, ChatStreamEvent } from '../../../src/chat';
 import {
   ApiError,
   createImage,
   fetchRunMetrics,
   streamChat
 } from '../../../src/client/services/playground-api';
-import type { CreateImageRequest } from '../../../src/images';
-import { formatSseFrame } from '../../../src/sse';
+import type { ChatRequest, ChatStreamEvent } from '../../../src/shared/chat';
+import type { CreateImageRequest } from '../../../src/shared/images';
+import { formatSseFrame } from '../../../src/shared/sse';
 
 /**
  * A valid Chat request.

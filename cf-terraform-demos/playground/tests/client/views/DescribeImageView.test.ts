@@ -5,7 +5,7 @@ import type { CatalogueModel } from '../../../src/client/stores/catalogue';
 import { useCatalogueStore } from '../../../src/client/stores/catalogue';
 import { useHandoffStore } from '../../../src/client/stores/handoff';
 import DescribeImageView from '../../../src/client/views/DescribeImageView.vue';
-import type { ImageMediaType } from '../../../src/images';
+import type { ImageMediaType } from '../../../src/shared/images';
 import {
   clickTeleported,
   isDialogOpen,
@@ -265,7 +265,7 @@ describe('a picture handed over from Create Image', () => {
       origin: 'Generated in Create Image'
     });
 
-    expect(wrapper.find('.preview').attributes('alt')).toBe('The picture you chose to describe');
+    expect(wrapper.find('.preview').attributes('alt')).toBe('Picture to describe preview');
   });
 });
 

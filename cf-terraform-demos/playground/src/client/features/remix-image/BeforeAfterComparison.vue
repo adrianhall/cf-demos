@@ -3,8 +3,8 @@
  * Accessible source/result comparison with a keyboard range enhancement and two-image fallback.
  */
 import { computed, shallowRef } from 'vue';
-import type { GeneratedImage } from '../../../images';
-import type { PreparedImage } from '../describe-image/image-input';
+import type { GeneratedImage } from '../../../shared/images';
+import type { PreparedImage } from '../../components/media/image-input';
 
 const props = defineProps<{
   /**

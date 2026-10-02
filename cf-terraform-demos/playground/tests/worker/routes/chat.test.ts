@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { problemDetailsErrorHandler } from '@adrianhall/cloudflare-toolkit/hono';
-import type { ChatStreamEvent } from '../../../src/chat';
-import { parseSseBuffer } from '../../../src/sse';
+import type { ChatStreamEvent } from '../../../src/shared/chat';
+import { parseSseBuffer } from '../../../src/shared/sse';
 import { ChatService } from '../../../src/worker/application/chat/chat-service';
 import { MODEL_DESCRIPTORS } from '../../../src/worker/domain/models';
 import {

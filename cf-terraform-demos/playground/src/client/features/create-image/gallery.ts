@@ -9,7 +9,7 @@ import {
   isRenderableImageMediaType,
   type AppliedImageControls,
   type GeneratedImage
-} from '../../../images';
+} from '../../../shared/images';
 
 /**
  * Most results kept in the gallery at once.

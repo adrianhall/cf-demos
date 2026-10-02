@@ -11,7 +11,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { findTask, TASK_DESCRIPTORS } from '../../src/tasks';
+import { findTask, TASK_DESCRIPTORS } from '../../src/shared/tasks';
 import { GATEWAY_EXCEPTIONS } from '../../src/worker/domain/gateway-exceptions';
 import { modelsForTask } from '../../src/worker/domain/models';
 
@@ -273,6 +273,73 @@ describe('failure diagnostics', () => {
     }
 
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('claims about model confidence', () => {
+  /**
+   * Strips HTML and CSS comments so an explanation of the rule is not mistaken for a breach of it.
+   *
+   * @param source File contents.
+   * @returns The same text with comments removed.
+   */
+  function stripProseComments(source: string): string {
+    return source.replaceAll(/<!--[\s\S]*?-->/gu, '');
+  }
+
+  // A confidence bar is extremely good at implying that a score is the probability a label is
+  // correct. It is not: it is the model's own output, and a classifier scores a picture against
+  // its fixed label set whether or not the right category is in that set. This guard is written
+  // against every panel rather than the one that exists today, because Classify Text and Semantic
+  // Search in later phases render the same shape and will face the same temptation.
+  it('no panel calls a score a probability of being correct', async () => {
+    const offenders: string[] = [];
+
+    for (const file of await listSourceFiles(path.join(demoRoot, 'src/client'))) {
+      if (!file.endsWith('.vue')) {
+        continue;
+      }
+      const contents = stripProseComments(
+        await readFile(path.join(demoRoot, file), 'utf8')
+      ).replaceAll(/\s+/gu, ' ');
+
+      // "the probability that this is", "certain that it is", "how likely the label is to be
+      // correct" — three ways the claim gets written. Each asserts something about the world that
+      // a score about training-data resemblance cannot support.
+      //
+      // The negated prefix matters as much as the patterns do: the honest version of each
+      // sentence is the same words with a "not" shortly before them, and a guard that could not
+      // tell the denial from the assertion would ban the very prose it exists to require. The
+      // window is bounded rather than open-ended so a "not" in a previous clause cannot excuse a
+      // claim made later in the same sentence.
+      const claims = [
+        String.raw`\b(?:a|the) (?:likelihood|probability) that (?:this|the|it)\b`,
+        String.raw`\b(?:certain|confident) that (?:this|the|it) is\b`,
+        String.raw`\bhow likely the label is (?:to be )?correct\b`
+      ];
+
+      if (
+        claims.some((claim) =>
+          new RegExp(String.raw`(?<!\bnot\b[^.]{0,24})${claim}`, 'iu').test(contents)
+        )
+      ) {
+        offenders.push(file);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  // The positive half of the rule. A panel that renders a score has to say what the number is, or
+  // the bar is the only explanation a visitor gets — and a bar explains nothing.
+  it('a panel rendering scores states that they are model output', async () => {
+    const view = 'src/client/views/ClassifyImageView.vue';
+    const contents = stripProseComments(
+      await readFile(path.join(demoRoot, view), 'utf8')
+    ).replaceAll(/\s+/gu, ' ');
+
+    expect(contents).toMatch(/the model's own output/iu);
+    expect(contents).toMatch(/not a probability that the label is correct/iu);
   });
 });
 

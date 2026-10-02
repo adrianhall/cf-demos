@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { problemDetailsErrorHandler } from '@adrianhall/cloudflare-toolkit/hono';
-import type { CreateImageResponse } from '../../../src/images';
+import type { CreateImageResponse } from '../../../src/shared/images';
 import { CreateImageService } from '../../../src/worker/application/create-image/create-image-service';
 import { encodeBase64 } from '../../../src/worker/domain/image-bytes';
 import { modelsForTask } from '../../../src/worker/domain/models';

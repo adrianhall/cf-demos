@@ -285,15 +285,19 @@ Deliver **Classify Image** with structured top-k results.
 
 ### Deliverables
 
-- Add image-classification descriptor(s), top-k and threshold request validation.
-- Render ranked labels and confidence bars next to the original image.
-- Clearly explain that confidence is model output, not a guarantee, and distinguish it from generative answers.
+- Add a reviewed image-classification descriptor for Cloudflare-hosted ResNet-50, with top-k and confidence-threshold validation. Because its schema accepts the image and nothing else, declare the result controls as applied by the application rather than by the model, and never forward them as request fields.
+- Rank, filter, and truncate the response in the domain layer so every transport applies the same rules; apply the floor before the limit and break score ties deterministically. Do not rescale the surviving scores.
+- Render ranked labels as an accessible table with the score present as text and the bar as `aria-hidden` decoration, beside the original image, with the structured response behind a collapsed disclosure.
+- Clearly explain that a score is model output describing resemblance to training data — not the probability a label is correct, and not evidence that the right category exists in the model's label set — and distinguish it from a generative answer. Reject a generative request field rather than ignoring it.
+- Treat an empty ranking as a successful run whose floor hid everything, and say so.
+- Promote the shared image picker and prepared-image helpers out of the Describe Image feature folder so a third panel can reuse them without importing another panel's presentation.
 
 ### Tests introduced
 
-- Structured classifier response normalization and ordering/threshold edge cases.
-- Client confidence-bar semantics, table alternative, and keyboard-readable output.
-- Worker rejects classification options unsupported by the selected model.
+- Structured classifier response normalization, including a non-array output, a malformed element, and a score outside 0–1; and ordering/threshold edge cases, including ties, an inclusive floor, floor-before-limit, and an empty ranking.
+- Client confidence-bar semantics, the table alternative, and a guard asserting that removing every bar loses no information.
+- Worker rejects classification options unsupported by the selected model, and rejects a generative field with an explanation.
+- An architecture guard failing the build if any panel describes a score as the probability that a label is correct.
 
 ### Exit criteria
 
@@ -554,7 +558,44 @@ Deliver **Semantic Search** using gateway-routed embeddings and local vector com
 
 ---
 
-## Phase 17 — Cross-panel hardening, documentation, and presentation readiness
+## Phase 17 — Detect Objects
+
+### Goal
+
+Deliver **Detect Objects**, which answers *where* rather than *what*. Classify Image scores a whole picture against a fixed label set; this panel returns a set of located regions, each with its own label and score. It is the first panel whose result is spatial, and the first whose primary rendering is an overlay on the visitor's own image.
+
+### Deliverables
+
+- Add a reviewed object-detection descriptor for Cloudflare-hosted `@cf/facebook/detr-resnet-50` (Beta, COCO 2017, 80 categories). Confirm its current input and output contract against the model page before pinning it: at review time the catalogue page was not reachable at the usual `/workers-ai/models/detr-resnet-50/` path, so the contract must be re-read rather than assumed from ResNet-50's.
+- Validate the picture with the shared byte-authoritative input rules, and reject a generative field exactly as Classify Image does.
+- Apply the score floor and any result limit to the response, declaring where they are applied with the same `appliedBy` convention Classify Image established. Do not forward a control the model's schema does not declare.
+- **Validate every returned box before it is rendered.** A detection carries geometry as well as a label, so the normaliser has to reject a box with a non-finite coordinate, a negative width or height, or bounds outside the image. An unchecked box paints outside its container and reads as a layout bug rather than as provider output.
+- Render the detections as an overlay on the source image **and** as the same accessible ranked table Classify Image uses, with each row naming the label, the score, and the region in words. The overlay is an enhancement on a result that is already complete without it.
+- Let a visitor focus or hover a table row to highlight its box, and the reverse, so the two representations are visibly one result rather than two.
+- Treat "no objects detected" as a successful run and say so, distinguishing it from a run that has not happened and from a floor that hid everything.
+- Reuse the shared source-image picker, the ranked-result table, the model-settings pattern, Run Details, and the session ledger. Share code, not tabs: this is a separate route from Classify Image.
+- Offer a Create Image → Detect Objects handoff only if it is genuinely useful; it is secondary and must not displace the primary result.
+
+### Tests introduced
+
+- Detection-response normalization: a non-array output, an element missing a label or a box, a non-finite or negative coordinate, a box extending past the image bounds, and a score outside 0–1.
+- Ordering and threshold edge cases, including ties, an inclusive floor, and an empty detection set.
+- Client overlay geometry: a box is positioned from the model's coordinates, is clamped to the image, and scales with a responsive preview rather than being pinned to the natural pixel size.
+- A guard asserting that removing every overlay box loses no information, matching the equivalent Classify Image guard: the table and its described regions remain the complete result.
+- Worker rejects a control unsupported by the selected model, and rejects a generative field with an explanation.
+- Integration coverage for authentication, the audience check, the body limit, identity refusal in body and header, and problem-details shape.
+
+### Exit criteria
+
+- A visitor can upload a picture and see located, labelled, scored regions, understandable without the overlay and without relying on colour.
+- Boxes are provably inside the image, and a malformed detection is refused with a logged reason rather than rendered.
+- Runs show gateway metrics and cost; nothing about this panel is exempt from the gateway rule.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither the picture, a detected label, nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- `pnpm check` and `pnpm test` pass.
+
+---
+
+## Phase 18 — Cross-panel hardening, documentation, and presentation readiness
 
 ### Goal
 

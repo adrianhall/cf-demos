@@ -7,7 +7,7 @@
  *   authoritative is how people end up trusting it.
  */
 
-import { MAX_INPUT_IMAGE_BYTES } from '../../../describe-image';
+import { MAX_INPUT_IMAGE_BYTES } from '../../../shared/describe-image';
 
 /**
  * Media types the file picker will offer and the panel will preview.

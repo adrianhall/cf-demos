@@ -13,8 +13,8 @@ import {
   IMAGE_CONTROL_NAMES,
   type ImageControlSupport,
   type NumericControlRange
-} from '../../../src/images';
-import { TASK_DESCRIPTORS } from '../../../src/tasks';
+} from '../../../src/shared/images';
+import { TASK_DESCRIPTORS } from '../../../src/shared/tasks';
 import {
   buildCreateImageInput,
   validateCreateImageRequest

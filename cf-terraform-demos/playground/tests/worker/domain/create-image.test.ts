@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IMAGE_CONTROL_NAMES, MAX_PROMPT_CHARACTERS } from '../../../src/images';
+import { IMAGE_CONTROL_NAMES, MAX_PROMPT_CHARACTERS } from '../../../src/shared/images';
 import {
   buildCreateImageInput,
   describeAppliedControls,

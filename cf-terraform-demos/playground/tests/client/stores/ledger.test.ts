@@ -1,7 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useLedgerStore } from '../../../src/client/stores/ledger';
-import type { RunMetrics } from '../../../src/runs';
+import type { RunMetrics } from '../../../src/shared/runs';
 
 /**
  * Builds a metrics document.

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { emptySessionCostLedger, type RunMetrics, type SessionCostLedger } from '../../runs';
+import { emptySessionCostLedger, type RunMetrics, type SessionCostLedger } from '../../shared/runs';
 
 /**
  * Per-run state the ledger needs in order to correct its own totals.

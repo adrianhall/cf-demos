@@ -6,7 +6,7 @@
  *   isolating and asserting on its own.
  */
 
-import type { TaskId } from '../../../tasks';
+import type { TaskId } from '../../../shared/tasks';
 import type { VerifiedActor } from '../../application/ports/inference-port';
 
 /**

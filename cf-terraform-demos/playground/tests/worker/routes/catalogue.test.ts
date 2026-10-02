@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { TASK_DESCRIPTORS } from '../../../src/tasks';
+import { TASK_DESCRIPTORS } from '../../../src/shared/tasks';
 import { catalogueRouter } from '../../../src/worker/routes/catalogue';
 
 /**

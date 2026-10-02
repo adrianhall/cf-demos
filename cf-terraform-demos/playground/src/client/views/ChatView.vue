@@ -11,7 +11,7 @@
  * modal state, and the scroll side effect that follows a streaming answer.
  */
 import { computed, nextTick, onMounted, shallowRef, useTemplateRef, watch } from 'vue';
-import { findTask } from '../../tasks';
+import { findTask } from '../../shared/tasks';
 import InfoDialog from '../components/InfoDialog.vue';
 import PanelPage from '../components/PanelPage.vue';
 import RunDetails from '../components/runs/RunDetails.vue';

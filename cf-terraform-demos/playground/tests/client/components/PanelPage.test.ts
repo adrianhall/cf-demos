@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { nextTick } from 'vue';
 import { mount } from '@vue/test-utils';
 import PanelPage from '../../../src/client/components/PanelPage.vue';
-import { findTask, type TaskId } from '../../../src/tasks';
+import { findTask, type TaskId } from '../../../src/shared/tasks';
 import {
   clickTeleported,
   createPanelTitleTarget,

@@ -5,7 +5,10 @@ import { createTestingPinia } from '@pinia/testing';
 import { useDescribeImage } from '../../../src/client/features/describe-image/useDescribeImage';
 import { ApiError } from '../../../src/client/services/playground-api';
 import type { CatalogueModel } from '../../../src/client/stores/catalogue';
-import type { DescribeImageRequest, DescribeImageResponse } from '../../../src/describe-image';
+import type {
+  DescribeImageRequest,
+  DescribeImageResponse
+} from '../../../src/shared/describe-image';
 
 /**
  * A model that will caption a picture unasked.

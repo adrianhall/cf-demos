@@ -7,7 +7,7 @@
  *   concrete store, so every test in this phase exercises the real sequencing offline.
  */
 
-import type { RunReceipt } from '../../../runs';
+import type { RunReceipt } from '../../../shared/runs';
 import type { ValidatedChatRequest } from '../../domain/chat';
 import { buildChatInput } from '../../domain/chat';
 import { initialCostStatus } from '../../domain/metrics';
