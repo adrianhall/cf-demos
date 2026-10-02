@@ -149,7 +149,7 @@ createVideoRouter.get('/:runId/status', async (context) => {
     ...(status.video === undefined ? {} : { video: status.video }),
     ...(status.receipt === undefined ? {} : { receipt: status.receipt }),
     ...(status.applied === undefined ? {} : { applied: status.applied }),
-    ...(status.error === undefined ? {} : { error: status.error })
+    ...(status.reason === undefined ? {} : { reason: status.reason })
   };
   return context.json(response);
 });

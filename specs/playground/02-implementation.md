@@ -381,6 +381,16 @@ policy would silently multiply the charge for a transient provider fault. **The 
 step must be configured with no retries;** only the subsequent fetch-and-store step, which is cheap
 and idempotent, may retry.
 
+**Finding 8a — a Workflow boundary destroys a `ProblemDetailsError`.** Found during
+implementation, and worth recording because it silently defeats the error handling every earlier
+panel relies on. A Workflow records a thrown error as `{ name, message }` only, so the
+`problemDetails` payload — the status and the visitor-facing detail — is dropped on the way out of a
+step. The first symptom was an account with no AI Gateway credit producing an unexplained "unexpected
+error" in the UI: the one failure a visitor can actually resolve, reported as the one thing they
+cannot act on. **Classify the cause inside the step, before it crosses the boundary,** and carry the
+classification as a fixed, content-free marker token; a route must never infer a cause from a
+provider's own message. Any later phase putting an inference call inside a Workflow inherits this.
+
 **Finding 9 — this panel can bill several dollars per click.** Pricing is per second of output and
 varies sharply by resolution: `hh1-t2v` is $0.28/s at 1080p, so a 15-second render is **$4.20**,
 while PixVerse `v6` is $0.025/s at 360p, or about $0.13 for five seconds. The defaults must be the
@@ -449,7 +459,10 @@ down: an undocumented gap here is indistinguishable from having forgotten.
    disabled** (Finding 8), then one retryable step that fetches the provider URL under the existing
    strict origin/redirect/size policy and **streams it into R2 without buffering it whole**. The
    step return value carries the R2 key and byte count only — never the media, which would breach
-   the 1 MiB step-result limit.
+   the 1 MiB step-result limit. Classify a failed inference inside the step and re-throw a
+   content-free marker (Finding 8a), so the status route can distinguish an out-of-credit account
+   from a provider fault; surface the former in the UI as an actionable notice naming prepaid AI
+   Gateway credit, not as a generic error.
 4. Derive the Workflow instance ID from a keyed hash of the verified identity and the run ID
    (Finding 7), in **one named function** with its own unit tests, so the derivation used when
    starting a job and when reading its status cannot drift apart.
@@ -483,6 +496,11 @@ down: an undocumented gap here is indistinguishable from having forgotten.
   ID derived from a different identity.
 - A regression test asserting the **inference step is configured with no retries**, because
   Finding 8 is a cost defect that no functional test would reveal.
+- Failure-classification tests: the billing condition is recognised in each documented phrasing and
+  one level down a `cause` chain, an unrelated error is *not* claimed to be a billing failure, the
+  classification survives the Workflow boundary round trip, and the encoding carries no provider
+  text — so fixing Finding 8a cannot become a disclosure. Assert the panel tells a visitor with no
+  credit that retrying will not help.
 - Storage: the provider body is streamed into R2 rather than buffered; an oversized or wrong-typed
   body is refused before storage; a ranged read returns the requested bytes and correct headers; and
   cancellation deletes the object.

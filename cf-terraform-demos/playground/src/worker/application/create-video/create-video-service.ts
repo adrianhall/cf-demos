@@ -14,7 +14,8 @@ import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-deta
 import type {
   AppliedVideoControls,
   MediaJobState,
-  StoredVideo
+  StoredVideo,
+  VideoFailureReason
 } from '../../../shared/create-video';
 import type { RunReceipt } from '../../../shared/runs';
 import {
@@ -23,6 +24,7 @@ import {
 } from '../../domain/create-video';
 import { deriveMediaJobId, videoObjectKey } from '../../domain/media-job-identity';
 import { initialCostStatus } from '../../domain/metrics';
+import { decodeFailureReason } from '../../domain/provider-failures';
 import { playableVideoMediaType } from '../../domain/video-bytes';
 import { VIDEO_SNIFF_BYTES } from '../../domain/video-bytes';
 import type { CreateVideoJobOutput } from '../../infrastructure/jobs/create-video-workflow';
@@ -79,9 +81,9 @@ export interface VideoJobStatus {
    */
   applied?: AppliedVideoControls;
   /**
-   * Visitor-facing failure explanation.
+   * Why the job failed, as a classification rather than a message.
    */
-  error?: string;
+  reason?: VideoFailureReason;
 }
 
 /**
@@ -220,25 +222,30 @@ export class CreateVideoService {
     }
 
     if (status.state !== 'completed') {
-      return {
-        runId,
-        state: status.state,
-        // A provider's own error text can name internal hosts and request identifiers, so the
-        // visitor sees a fixed explanation. The instance's recorded error is still available in the
-        // Workflow's own observability for whoever is diagnosing it.
-        ...(status.state === 'failed'
-          ? {
-              error:
-                'The video could not be generated. The model or the provider reported a failure; nothing was charged for a video you did not receive unless the model had already completed it.'
-            }
-          : {})
-      };
+      if (status.state !== 'failed') {
+        return { runId, state: status.state };
+      }
+
+      // The Workflow classified the cause before throwing, because the boundary records only
+      // `{ name, message }` and would otherwise have discarded it. Decode that classification here;
+      // a message this demo did not write is a provider's own text and is reported as a generic
+      // provider failure rather than shown.
+      const reason =
+        status.error === undefined
+          ? 'provider-failure'
+          : (decodeFailureReason(status.error) ?? 'provider-failure');
+
+      // Logged at the panel level so a billing failure is searchable by run id without reading the
+      // Workflow's own observability. The reason is a fixed slug, never provider text.
+      this.#logger?.warn('create_video_run_failed', { runId, reason });
+
+      return { runId, state: 'failed', reason };
     }
 
     const output = status.output as CreateVideoJobOutput | undefined;
     if (output === undefined) {
       this.#logger?.error('create_video_job_output_missing', { runId });
-      return { runId, state: 'failed', error: 'The finished video could not be located.' };
+      return { runId, state: 'failed', reason: 'provider-failure' };
     }
 
     const logIds = output.logIds;

@@ -21,7 +21,8 @@ import type {
   AppliedVideoControls,
   CreateVideoRequest,
   MediaJobState,
-  StoredVideo
+  StoredVideo,
+  VideoFailureReason
 } from '../../../shared/create-video';
 import { isTerminalMediaJobState, MAX_VIDEO_PROMPT_CHARACTERS } from '../../../shared/create-video';
 import type { RunMetrics, RunReceipt } from '../../../shared/runs';
@@ -155,6 +156,14 @@ export interface UseCreateVideoResult {
    */
   error: Ref<string | null>;
   /**
+   * Why the most recent job failed, or `undefined`.
+   *
+   * Exposed separately from {@link UseCreateVideoResult.error} so the panel can present a billing
+   * failure as the actionable thing it is — an account that needs credit — rather than as one more
+   * red box inviting a retry that cannot succeed.
+   */
+  failureReason: Ref<VideoFailureReason | undefined>;
+  /**
    * The finished video's metadata, or `undefined` until a job completes.
    */
   video: Ref<StoredVideo | undefined>;
@@ -198,6 +207,26 @@ export interface UseCreateVideoResult {
 }
 
 /**
+ * Builds the visitor-facing explanation for a failure classification.
+ *
+ * The billing case is deliberately the most specific message in this panel. It is the one failure a
+ * visitor can actually resolve, and the generic "try again" wording is actively misleading for it —
+ * retrying without credit fails identically every time.
+ *
+ * @param reason Why the job failed.
+ * @returns The sentence to show.
+ */
+export function failureMessage(reason: VideoFailureReason): string {
+  return reason === 'insufficient-credit'
+    ? 'This account has no prepaid AI Gateway credit, so the video could not be generated. '
+        + 'Every video model in this panel is third-party and bills against AI Gateway credits. '
+        + 'Add credit to the account, then try again — retrying before then will fail the same way. '
+        + 'Nothing was charged for this request.'
+    : 'The video could not be generated. The model or the provider reported a failure; nothing was '
+        + 'charged for a video you did not receive unless the model had already completed it.';
+}
+
+/**
  * Sleeps for a duration.
  *
  * @param ms Milliseconds to wait.
@@ -232,6 +261,7 @@ export function useCreateVideo(options: UseCreateVideoOptions): UseCreateVideoRe
 
   const state = ref<MediaJobState | undefined>(undefined);
   const error = ref<string | null>(null);
+  const failureReason = ref<VideoFailureReason | undefined>(undefined);
   const video = shallowRef<StoredVideo | undefined>(undefined);
   const source = ref<string | undefined>(undefined);
   const applied = shallowRef<AppliedVideoControls | undefined>(undefined);
@@ -389,7 +419,8 @@ export function useCreateVideo(options: UseCreateVideoOptions): UseCreateVideoRe
       }
 
       if (status.state === 'failed') {
-        error.value = status.error ?? 'The video could not be generated.';
+        failureReason.value = status.reason ?? 'provider-failure';
+        error.value = failureMessage(failureReason.value);
         return;
       }
 
@@ -423,6 +454,7 @@ export function useCreateVideo(options: UseCreateVideoOptions): UseCreateVideoRe
     state,
     generating,
     error,
+    failureReason,
     video,
     source,
     receipt,
@@ -440,6 +472,7 @@ export function useCreateVideo(options: UseCreateVideoOptions): UseCreateVideoRe
       activeRunId.value = runId;
 
       error.value = null;
+      failureReason.value = undefined;
       video.value = undefined;
       source.value = undefined;
       applied.value = undefined;

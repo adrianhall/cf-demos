@@ -280,14 +280,48 @@ describe('useCreateVideo', () => {
 
   it('surfaces a failed job’s explanation', async () => {
     const { composable } = harness({
-      statuses: [{ runId: 'r', state: 'failed', error: 'The video could not be generated.' }]
+      statuses: [{ runId: 'r', state: 'failed', reason: 'provider-failure' }]
     });
 
     composable.prompt.value = 'A dog running';
     await composable.generate();
 
     expect(composable.state.value).toBe('failed');
-    expect(composable.error.value).toBe('The video could not be generated.');
+    expect(composable.failureReason.value).toBe('provider-failure');
+    expect(composable.error.value).toMatch(/could not be generated/iu);
+  });
+
+  // The user-visible half of the out-of-credit fix. The panel has to say the account needs credit
+  // and that retrying will not help, because "try again" is actively misleading here: without
+  // credit, every retry fails identically.
+  it('explains an out-of-credit failure and says retrying will not help', async () => {
+    const { composable } = harness({
+      statuses: [{ runId: 'r', state: 'failed', reason: 'insufficient-credit' }]
+    });
+
+    composable.prompt.value = 'A dog running';
+    await composable.generate();
+
+    expect(composable.failureReason.value).toBe('insufficient-credit');
+    expect(composable.error.value).toMatch(/credit/iu);
+    expect(composable.error.value).toMatch(/fail the same way|retrying before then/iu);
+  });
+
+  it('clears a previous failure reason when a new run starts', async () => {
+    const { composable } = harness({
+      statuses: [{ runId: 'r', state: 'failed', reason: 'insufficient-credit' }]
+    });
+
+    composable.prompt.value = 'A dog running';
+    await composable.generate();
+    expect(composable.failureReason.value).toBe('insufficient-credit');
+
+    const second = harness({ statuses: [{ runId: 'r', state: 'running' }] });
+    second.composable.prompt.value = 'Another';
+    const running = second.composable.generate();
+    await Promise.resolve();
+    expect(second.composable.failureReason.value).toBe(undefined);
+    await running;
   });
 
   it('reports a failed start without polling', async () => {

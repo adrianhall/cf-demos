@@ -26,6 +26,7 @@ import {
   validateCreateVideoRequest
 } from '../../domain/create-video';
 import { VIDEO_INFERENCE_STEP_POLICY, VIDEO_STORAGE_STEP_POLICY } from '../../domain/media-job';
+import { classifyProviderFailure, encodeFailureReason } from '../../domain/provider-failures';
 import { GatewayInferenceClient } from '../ai/gateway-inference-client';
 import { ProviderVideoClient } from '../media/provider-video-client';
 import { R2VideoStorage } from '../media/r2-video-storage';
@@ -157,19 +158,32 @@ export class CreateVideoWorkflow extends WorkflowEntrypoint<
           gatewayId: this.env.AI_GATEWAY_ID
         });
 
-        const result = await inference.run<Record<string, unknown>, unknown>({
-          task: 'create-video',
-          model: validated.model,
-          runId: validated.runId,
-          actor,
-          input: buildCreateVideoInput(validated)
-        });
+        try {
+          const result = await inference.run<Record<string, unknown>, unknown>({
+            task: 'create-video',
+            model: validated.model,
+            runId: validated.runId,
+            actor,
+            input: buildCreateVideoInput(validated)
+          });
 
-        return {
-          videoUrl: extractVideoUrl(result.output),
-          logIds: result.logId === undefined ? [] : [result.logId],
-          elapsedMs: result.elapsedMs
-        };
+          return {
+            videoUrl: extractVideoUrl(result.output),
+            logIds: result.logId === undefined ? [] : [result.logId],
+            elapsedMs: result.elapsedMs
+          };
+        } catch (cause) {
+          // The cause is classified *here*, before it leaves the step, because a Workflow records a
+          // thrown error as `{ name, message }` only: a `ProblemDetailsError`'s status and
+          // visitor-facing detail are dropped on the way out. Without this, "the account is out of
+          // AI Gateway credit" and "the provider broke" arrive at the status route
+          // indistinguishable — and the first is the one a visitor can actually fix.
+          //
+          // The re-thrown message is a fixed slug carrying no provider text, so using the error
+          // message as the channel does not leak anything the request path would have sanitised.
+          // The client has already logged the provider's real message against this run id.
+          throw new Error(encodeFailureReason(classifyProviderFailure(cause)), { cause });
+        }
       }
     );
 

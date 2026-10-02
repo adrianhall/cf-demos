@@ -49,6 +49,7 @@ const {
   state,
   generating,
   error,
+  failureReason,
   video,
   source,
   receipt,
@@ -191,7 +192,33 @@ function loadExample(example: VideoExample): void {
     </template>
 
     <div class="create-video">
-      <p v-if="error" class="error" role="alert">{{ error }}</p>
+      <!--
+        The billing failure gets its own treatment rather than sharing the generic error box. It is
+        the only failure in this panel a visitor can resolve, and it needs a different verb from
+        every other error: top up an account, not try again. Rendering it as one more red box — with
+        the usual implicit "retry" — would be telling someone to repeat an action that fails
+        identically every time.
+      -->
+      <section
+        v-if="failureReason === 'insufficient-credit'"
+        class="credit-notice"
+        role="alert"
+        aria-labelledby="credit-heading"
+      >
+        <h2 id="credit-heading" class="credit-heading">AI Gateway credit is required</h2>
+        <p class="credit-detail">{{ error }}</p>
+        <p class="credit-actions">
+          <a
+            href="https://developers.cloudflare.com/ai-gateway/features/unified-billing/"
+            rel="noreferrer"
+            target="_blank"
+          >
+            How prepaid AI Gateway credits work
+          </a>
+        </p>
+      </section>
+
+      <p v-else-if="error" class="error" role="alert">{{ error }}</p>
 
       <PanelWorkspace :has-output="hasOutput">
         <template #input>
@@ -398,6 +425,19 @@ function loadExample(example: VideoExample): void {
               Cancelled. The job was stopped and anything it had stored has been deleted.
             </p>
 
+            <!--
+              The output column states the outcome too, so a visitor who has scrolled past the
+              notice above is not left with an empty panel and no explanation.
+            -->
+            <p v-else-if="state === 'failed'" class="empty-result">
+              <template v-if="failureReason === 'insufficient-credit'">
+                No video was generated: this account needs prepaid AI Gateway credit.
+              </template>
+              <template v-else>
+                No video was generated. The model or provider reported a failure.
+              </template>
+            </p>
+
             <template v-else-if="state === 'completed' && source">
               <!--
                 `controls` gives keyboard operation, play/pause, seeking, and volume without this
@@ -573,6 +613,27 @@ function loadExample(example: VideoExample): void {
   font-size: 0.875rem;
   margin: 0;
   min-height: 1.25rem;
+}
+
+.credit-notice {
+  background: rgba(var(--v-theme-warning), 0.1);
+  border-left: 3px solid rgb(var(--v-theme-warning));
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 0.875rem;
+}
+
+.credit-heading {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.credit-detail,
+.credit-actions {
+  font-size: 0.875rem;
+  margin: 0;
 }
 
 .error {

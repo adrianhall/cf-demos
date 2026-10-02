@@ -79,6 +79,20 @@ export const VIDEO_FILE_EXTENSIONS: Readonly<Record<VideoMediaType, string>> = {
 };
 
 /**
+ * Why a job failed, in terms a visitor can act on.
+ *
+ * Two values rather than a free-form string, because a visitor can act on exactly two distinctions:
+ * whether the account needs credit, and whether retrying could plausibly help. The panel chooses
+ * its wording from this rather than rendering a message the server composed, so the distinction is
+ * structural and cannot be lost in a string.
+ *
+ * - `insufficient-credit` — the account has no prepaid AI Gateway credit. Retrying cannot help until
+ *   it is topped up, and the panel says so rather than inviting a pointless second attempt.
+ * - `provider-failure` — the model or provider failed for some other reason. Retrying may work.
+ */
+export type VideoFailureReason = 'insufficient-credit' | 'provider-failure';
+
+/**
  * Lifecycle of one video generation, as the browser sees it.
  *
  * Task-neutral by design: Animate Image in phase 9 reuses these states rather than inventing its
@@ -416,8 +430,11 @@ export interface CreateVideoStatusResponse {
    */
   applied?: AppliedVideoControls;
   /**
-   * Why the job failed, in terms a visitor can act on. Present only in the `failed` state, and
-   * never carrying a provider's raw error text.
+   * Why the job failed. Present only in the `failed` state.
+   *
+   * A classification rather than a message, so the panel can present a billing failure differently
+   * from a provider failure — the first needs an account topped up and the second needs another
+   * attempt. A provider's own error text never reaches this field.
    */
-  error?: string;
+  reason?: VideoFailureReason;
 }

@@ -632,6 +632,26 @@ a `404` — not a "forbidden", which would itself confirm the job exists. Owners
 unforgeable because it is not stored anywhere to be tampered with. See
 `src/worker/domain/media-job-identity.ts`.
 
+### A failure a Workflow boundary silently erased
+
+Within a request, a failed inference call becomes a `ProblemDetailsError` and the Hono handler
+renders its status and message. A Workflow step cannot do that: a thrown error is recorded on the
+instance as `{ name, message }`, so the `problemDetails` payload is **dropped on the way out**.
+
+The first symptom was the worst possible one. An account with no prepaid AI Gateway credit produced
+`An unexpected error occurred` — the single failure a visitor can actually resolve, reported as the
+one thing they cannot act on. The inference client's credit detection was working correctly the
+whole time; the classification was being thrown away one layer later.
+
+So the cause is now classified _inside_ the step, before it crosses the boundary, and re-thrown
+carrying a fixed marker token (`src/worker/domain/provider-failures.ts`). The marker is one of a
+closed set of slugs, so using the error message as the channel leaks nothing a provider wrote — the
+same guarantee the request path makes by sanitising. The panel then renders the billing case as its
+own notice naming prepaid credit, and says plainly that retrying will not help, because without
+credit every retry fails identically.
+
+Any later phase that puts an inference call inside a Workflow inherits this constraint.
+
 ### Two cost traps this panel had to avoid
 
 **Workflow steps retry by default.** That is normally their whole value, but the inference step here

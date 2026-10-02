@@ -15,6 +15,7 @@ import type {
 } from '../../../src/worker/application/ports/media-job-port';
 import type { VideoStoragePort } from '../../../src/worker/application/ports/video-storage-port';
 import { validateCreateVideoRequest } from '../../../src/worker/domain/create-video';
+import { encodeFailureReason } from '../../../src/worker/domain/provider-failures';
 
 /**
  * A run identifier of the shape the browser generates.
@@ -359,7 +360,7 @@ describe('CreateVideoService.status', () => {
     expect(runs.records.get(RUN_ID)).toMatchObject({ logIds: ['log-1'], status: 'completed' });
   });
 
-  it('replaces a provider’s failure text with a fixed explanation', async () => {
+  it('never lets a provider’s failure text reach the browser', async () => {
     const jobs = jobPort();
     const service = new CreateVideoService({
       jobs: jobs.port,
@@ -376,11 +377,67 @@ describe('CreateVideoService.status', () => {
 
     const status = await service.status(RUN_ID, ALICE);
 
-    // A provider's own text can name internal hosts and request identifiers, so it does not reach
-    // the browser. It remains in the Workflow's own observability for whoever is diagnosing it.
+    // A message this demo did not write is a provider's own text, which can name internal hosts and
+    // request identifiers. It is reported as a generic provider failure rather than shown.
     expect(status?.state).toBe('failed');
-    expect(status?.error).not.toContain('internal-host-7');
-    expect(status?.error).not.toContain('0xdeadbeef');
+    expect(status?.reason).toBe('provider-failure');
+    expect(JSON.stringify(status)).not.toContain('internal-host-7');
+    expect(JSON.stringify(status)).not.toContain('0xdeadbeef');
+  });
+
+  // The regression test for the defect this classification exists to fix. A Workflow records a
+  // thrown error as `{ name, message }`, so a `ProblemDetailsError`'s status and actionable detail
+  // are dropped at the boundary. Before the Workflow classified the cause itself, an account with
+  // no AI Gateway credit produced an unexplained "unexpected error" in the UI — the one failure a
+  // visitor can actually fix, reported as the one thing they cannot act on.
+  it('surfaces an out-of-credit failure as its own actionable reason', async () => {
+    const jobs = jobPort();
+    const service = new CreateVideoService({
+      jobs: jobs.port,
+      storage: storagePort().port,
+      runs: runRepository().port,
+      jobIdKey: KEY
+    });
+
+    await service.accept(validateCreateVideoRequest(body()), body(), ALICE);
+    jobs.jobs.set(jobs.started[0]!, {
+      state: 'failed',
+      error: encodeFailureReason('insufficient-credit')
+    });
+
+    const status = await service.status(RUN_ID, ALICE);
+
+    expect(status?.state).toBe('failed');
+    expect(status?.reason).toBe('insufficient-credit');
+  });
+
+  it('logs a failure reason against the run id', async () => {
+    // So a billing failure is searchable by run id without reading the Workflow's own
+    // observability, and without the reason ever being provider text.
+    const lines: { message: string; context?: Record<string, unknown> }[] = [];
+    const jobs = jobPort();
+    const service = new CreateVideoService({
+      jobs: jobs.port,
+      storage: storagePort().port,
+      runs: runRepository().port,
+      jobIdKey: KEY,
+      logger: {
+        warn: (message, context) => lines.push({ message, context }),
+        error: (message, context) => lines.push({ message, context })
+      }
+    });
+
+    await service.accept(validateCreateVideoRequest(body()), body(), ALICE);
+    jobs.jobs.set(jobs.started[0]!, {
+      state: 'failed',
+      error: encodeFailureReason('insufficient-credit')
+    });
+
+    await service.status(RUN_ID, ALICE);
+
+    const failed = lines.find((line) => line.message === 'create_video_run_failed');
+    expect(failed?.context?.['reason']).toBe('insufficient-credit');
+    expect(failed?.context?.['runId']).toBe(RUN_ID);
   });
 
   it('reports a completed job with no output as failed', async () => {

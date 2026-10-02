@@ -17,6 +17,7 @@ import type {
   InferenceResult,
   InferenceStream
 } from '../../application/ports/inference-port';
+import { isInsufficientGatewayCredit } from '../../domain/provider-failures';
 import { buildGatewayMetadata } from './gateway-metadata';
 
 /**
@@ -223,31 +224,6 @@ function describeUnknown(value: unknown): string {
   }
 
   return typeof value === 'string' ? value : (JSON.stringify(value) ?? typeof value);
-}
-
-/**
- * Detects AI Gateway's stable insufficient-credit error code without exposing its message.
- *
- * @param cause Value thrown by the Workers AI binding.
- * @returns `true` only for Gateway error 2021.
- */
-function isInsufficientGatewayCredit(cause: unknown): boolean {
-  if (!(cause instanceof Error)) {
-    return false;
-  }
-
-  // Cloudflare binding errors have exposed this condition in several equivalent forms: Gateway code
-  // 2021, "Insufficient AI Gateway credits", and "AI credits required". Match only these stable,
-  // content-free billing phrases; never send an arbitrary provider message to the browser.
-  if (
-    /^2021:\s/u.test(cause.message)
-    || /\binsufficient AI (?:Gateway )?credits\b/iu.test(cause.message)
-    || /\bAI credits (?:are )?required\b/iu.test(cause.message)
-  ) {
-    return true;
-  }
-
-  return cause.cause instanceof Error && isInsufficientGatewayCredit(cause.cause);
 }
 
 /**
