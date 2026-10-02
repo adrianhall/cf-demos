@@ -14,6 +14,7 @@ import type { CreateImageService } from '../../../src/worker/application/create-
 import type { CreateVideoService } from '../../../src/worker/application/create-video/create-video-service';
 import type { DescribeImageService } from '../../../src/worker/application/describe-image/describe-image-service';
 import type { MetricsService } from '../../../src/worker/application/metrics/metrics-service';
+import type { ReadTextService } from '../../../src/worker/application/read-text/read-text-service';
 import type { AppBindings } from '../../../src/worker/bindings';
 
 /**
@@ -67,6 +68,10 @@ export interface MountOptions {
    * Classify Image service the route should use.
    */
   classifyImageService?: ClassifyImageService;
+  /**
+   * Read Text service the route should use.
+   */
+  readTextService?: ReadTextService;
   /**
    * Logger to place on the context, so a caller can share one recorder between the route and the
    * services it calls — which is how the composition root wires them. Defaults to a fresh one.
@@ -157,6 +162,9 @@ export function mountRoute(
     }
     if (options.classifyImageService !== undefined) {
       context.set('CLASSIFY_IMAGE_SERVICE', options.classifyImageService);
+    }
+    if (options.readTextService !== undefined) {
+      context.set('READ_TEXT_SERVICE', options.readTextService);
     }
     await next();
   });

@@ -592,6 +592,41 @@ Deliver **Read Text** (text-to-speech).
 - Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
+### Findings
+
+Recorded during delivery, because each one changed a decision.
+
+1. **Every reviewed model is Cloudflare-hosted, so the panel needs no prepaid credit.** This confirmed the phase ordering: `@cf/deepgram/aura-2-en`, `@cf/deepgram/aura-1`, and `@cf/myshell-ai/melotts` were all present and non-beta at delivery. The candidate third-party models were not needed and were not registered — adding a credit prerequisite to a panel Cloudflare hosts natively would be a poor trade.
+
+2. **The reviewed models share no controls at all.** Earlier panels' models disagreed about degree; these disagree about kind. Aura publishes named speakers and no language parameter; MeloTTS publishes a language and no speaker parameter. Even the text field differs — `text` versus `prompt` — so the wire name is declared per model. The panel renders a voice selector *or* a language selector, never both, and states which family the selected model belongs to so an absent control reads as a fact about the model rather than a gap in the page.
+
+3. **The two Aura generations overlap only partially.** They share eight voice names and differ on eight more, so switching model must reset a voice unless the new model also publishes it. Carrying a selection over blindly would stage a request the server refuses. The composable keeps a value only when the newly selected model declares it.
+
+4. **No reviewed model exposes rate or pitch.** The deliverable asked for those controls "when supported", and the answer after reading all three contracts is that none support either. They remain in the wire contract and are *rejected* rather than dropped, and the panel states the absence — silently ignoring a control teaches that the control did nothing, when the truth is that the model does not have one.
+
+5. **One reviewed format name expands into two provider fields.** Aura spells an output choice as `encoding` plus `container`, with the legal pairings described in prose rather than in its schema. A visitor assembling the two independently could produce a request the provider accepts and the browser cannot play, so this demo exposes a single format name and expands it in one reviewed place.
+
+6. **Audio is not stored, which is deliberately the opposite of Create Video.** That panel needed R2 because the provider returns a short-lived URL rather than bytes and because `<video>` seeks with `Range` requests. Neither applies here: these models return the bytes, the payload is a few hundred kilobytes, and `<audio>` seeks freely within a `data:` URI the page already holds. The architecture test confining storage writes to the video path therefore covers this panel unchanged.
+
+7. **MeloTTS declares two output shapes and does not say which to expect.** Its schema permits a raw MP3 byte stream *or* `{ audio: "<base64>" }`. Both are normalised, because a service handling only one would work until it didn't.
+
+8. **Sniffing matters more here than for images.** Aura's schema permits `linear16` with `container: none` — real audio data that no browser will play. The media type is therefore derived from the returned bytes and matched against a two-format allowlist, so headerless PCM is refused with a `502` rather than reaching the page labelled as playable. MP3 detection validates the frame header field by field: the sync word alone is eleven set bits, which occurs often enough in arbitrary binary data that accepting it would make the check a near-tautology.
+
+9. **A cost estimate is possible for the first time, and impossible for one model.** The Aura models bill per thousand characters, which the visitor has already typed, so the panel quotes a figure before the request — something no earlier synchronous panel could do. MeloTTS bills per minute of audio that does not exist until after the call, so its estimate is reported as *absent* rather than zero. A zero would read as "free".
+
+10. **An MP3 duration is not read server-side.** It would need either a constant-bitrate assumption that is wrong for real encoder output, or a walk of every frame. Only WAV's duration is read from its header; otherwise the panel takes the value from the audio element once its metadata loads. A wrong duration beside a player that disagrees is worse than no duration.
+
+11. **The Translate Text handoff contract was built ahead of the panel that produces it.** `offerText`/`takeText` and the shared truncation helper exist and are tested now, so phase 11 adds one call rather than retrofitting a contract. Text and images occupy separate slots: they are consumed by different panels, so one slot would mean an uncollected picture silently discarding a translation.
+
+### Follow-up for later phases
+
+- Transcribe Audio (phase 10) should reuse `domain/audio-bytes.ts` rather than adding a second
+  sniffer. Its *input* is audio, so it needs the same allowlist in the opposite direction, and a
+  second copy would let one fall behind.
+- The `audio/wav` duration reader slightly over-estimates for a file carrying extra chunks before
+  its data chunk. Harmless here — the player's own figure supersedes it — but worth noting if a
+  later panel ever depends on the server's number.
+
 ---
 
 ## Phase 10 — Transcribe Audio

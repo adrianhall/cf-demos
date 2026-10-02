@@ -210,7 +210,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Hear written text spoken aloud in a chosen voice.',
     group: 'Speech',
     gateway: 'required',
-    availability: 'planned',
+    availability: 'available',
     phase: 9
   },
   {

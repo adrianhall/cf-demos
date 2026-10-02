@@ -5,6 +5,7 @@ import type { CreateImageService } from './application/create-image/create-image
 import type { CreateVideoService } from './application/create-video/create-video-service';
 import type { DescribeImageService } from './application/describe-image/describe-image-service';
 import type { MetricsService } from './application/metrics/metrics-service';
+import type { ReadTextService } from './application/read-text/read-text-service';
 import type { RemixImageService } from './application/remix-image/remix-image-service';
 
 /**
@@ -43,6 +44,10 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * The Classify Image use case, sharing this request's gateway client and run store.
    */
   CLASSIFY_IMAGE_SERVICE: ClassifyImageService;
+  /**
+   * The Read Text use case, sharing this request's gateway client and run store.
+   */
+  READ_TEXT_SERVICE: ReadTextService;
   /**
    * The run-metrics use case, sharing this request's gateway client and run store.
    */

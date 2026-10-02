@@ -3,6 +3,7 @@ import type { ClassificationControlSupport } from '../../shared/classify-image';
 import type { VideoControlSupport } from '../../shared/create-video';
 import type { VisionControlSupport } from '../../shared/describe-image';
 import type { ImageControlSupport } from '../../shared/images';
+import type { SpeechControlSupport } from '../../shared/read-text';
 import type { RemixImageControlSupport } from '../../shared/remix-image';
 import type { TaskId } from '../../shared/tasks';
 
@@ -81,6 +82,15 @@ export interface CatalogueModel {
    * second of output at rates that differ thirtyfold across resolutions.
    */
   videoControls?: VideoControlSupport;
+  /**
+   * Controls a text-to-speech model accepts, how it spells them, and what it charges per character.
+   *
+   * The clearest case in the demo of the server telling the browser what it will accept rather than
+   * the browser assuming: the reviewed speech models share no controls at all, so the panel renders
+   * a voice selector or a language selector depending on which fields this object carries — never
+   * both, and never one the provider would reject.
+   */
+  speechControls?: SpeechControlSupport;
 }
 
 /**

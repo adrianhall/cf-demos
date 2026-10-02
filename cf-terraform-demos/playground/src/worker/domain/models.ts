@@ -15,6 +15,7 @@ import {
 import type { VideoControlSupport } from '../../shared/create-video';
 import type { VisionControlSupport } from '../../shared/describe-image';
 import type { ImageControlSupport } from '../../shared/images';
+import type { SpeechControlSupport } from '../../shared/read-text';
 import type { RemixImageControlSupport } from '../../shared/remix-image';
 import type { TaskId } from '../../shared/tasks';
 
@@ -153,6 +154,15 @@ export interface ModelDescriptor {
    * rather than only report after it.
    */
   videoControls?: VideoControlSupport;
+  /**
+   * Which controls a text-to-speech model accepts, how it spells them, and what it charges.
+   *
+   * Present only for a text-to-speech descriptor. The reviewed models disagree more completely here
+   * than in any earlier panel: the two families share _no_ controls at all, and even the text field
+   * has a different name in each. Both the wire names and the legal value lists are therefore
+   * declared per model, and a field absent here is never forwarded.
+   */
+  speechControls?: SpeechControlSupport;
   /**
    * The field a vision model puts its answer in.
    *
@@ -483,6 +493,171 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       // Alibaba's output reaches this demo through the catalogue's own hosts rather than from a
       // model-studio domain, and the R2 public host is the one its catalogue examples use.
       outputHosts: ['examples.aig.cloudflare.com', 'pub-04a6d208d361438ea01b797e6973bd19.r2.dev']
+    }
+  },
+  // Every reviewed text-to-speech model is Cloudflare-hosted, so this panel carries no prepaid AI
+  // Gateway credit prerequisite at all — which is why phase 9 delivers it rather than Animate
+  // Image, whose every candidate is third-party.
+  //
+  // The three models were chosen because they disagree about *everything a panel needs to know*,
+  // more completely than any earlier pair. The text field has two different names. The voice
+  // controls do not merely differ in range, they are mutually exclusive: Aura publishes a list of
+  // named speakers and no language parameter, MeloTTS publishes a language and no speaker
+  // parameter. One offers a choice of output format, the other always returns MP3. And they are
+  // billed in different units, which decides whether a pre-request estimate is even possible.
+  //
+  // Aura 2 is the default: it is the current Deepgram generation, the only reviewed model offering
+  // a format choice, and billed per character — so the panel can quote an estimate before spending
+  // anything, which is the honest thing to do on a panel where a long passage costs real money.
+  {
+    id: '@cf/deepgram/aura-2-en',
+    name: 'Aura 2 (English)',
+    provider: 'workers-ai',
+    task: 'read-text',
+    contractVersion: 1,
+    // Billed per thousand characters of *input*, which is the one billing unit in this demo whose
+    // quantity is known before the request: the visitor has already typed the text.
+    pricingUnit: 'provider-reported',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/aura-2-en/',
+    speechControls: {
+      textParameterName: 'text',
+      // Forty speakers in its schema. The full list is carried rather than a curated subset,
+      // because the schema validates against an enum and a trimmed list would make a legal request
+      // look invalid. They are the reason this panel's voice control is a select rather than a
+      // slider.
+      voices: [
+        'amalthea',
+        'andromeda',
+        'apollo',
+        'arcas',
+        'aries',
+        'asteria',
+        'athena',
+        'atlas',
+        'aurora',
+        'callista',
+        'cora',
+        'cordelia',
+        'delia',
+        'draco',
+        'electra',
+        'harmonia',
+        'helena',
+        'hera',
+        'hermes',
+        'hyperion',
+        'iris',
+        'janus',
+        'juno',
+        'jupiter',
+        'luna',
+        'mars',
+        'minerva',
+        'neptune',
+        'odysseus',
+        'ophelia',
+        'orion',
+        'orpheus',
+        'pandora',
+        'phoebe',
+        'pluto',
+        'saturn',
+        'thalia',
+        'theia',
+        'vesta',
+        'zeus'
+      ],
+      // The model's own documented default, so an unchanged form produces the output its catalogue
+      // page describes.
+      defaultVoice: 'luna',
+      // No `languages`: this descriptor is the English model, and the language is a property of the
+      // model rather than a parameter. Declaring an empty list would imply a control exists.
+      formats: ['mp3', 'wav'],
+      // MP3 by default. A WAV of the same speech is roughly ten times larger for no audible gain
+      // in a browser, and this payload travels base64-encoded in a JSON response.
+      defaultFormat: 'mp3',
+      // $0.03 per 1,000 characters at review time.
+      pricePerThousandCharactersUsd: 0.03
+    }
+  },
+  // The previous Aura generation, kept as the comparison within the same family: same contract
+  // shape, a different and smaller speaker list, and half the price. It is the cleanest
+  // demonstration in the demo that a "newer model" choice is a cost decision as much as a quality
+  // one — the two differ by a factor of two for the same text.
+  {
+    id: '@cf/deepgram/aura-1',
+    name: 'Aura 1',
+    provider: 'workers-ai',
+    task: 'read-text',
+    contractVersion: 1,
+    pricingUnit: 'provider-reported',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/aura-1/',
+    speechControls: {
+      textParameterName: 'text',
+      // Twelve speakers rather than Aura 2's forty, and only partially overlapping: `angus`,
+      // `perseus`, `helios`, and `stella` exist only here. A voice valid for one model is therefore
+      // invalid for the other, which is precisely why the panel resets the control on model change.
+      voices: [
+        'angus',
+        'asteria',
+        'arcas',
+        'orion',
+        'orpheus',
+        'athena',
+        'luna',
+        'zeus',
+        'perseus',
+        'helios',
+        'hera',
+        'stella'
+      ],
+      defaultVoice: 'angus',
+      formats: ['mp3', 'wav'],
+      defaultFormat: 'mp3',
+      // $0.015 per 1,000 characters at review time — half of Aura 2.
+      pricePerThousandCharactersUsd: 0.015
+    }
+  },
+  // MeloTTS is the model that makes the per-model control declaration do visible work. It shares no
+  // control with either Aura: its text field is `prompt`, it selects a voice implicitly from `lang`
+  // and exposes no speaker parameter, and it always returns MP3. A panel with one hardcoded form
+  // could not drive it.
+  //
+  // It is also billed per *audio minute* rather than per character, which is why the panel's cost
+  // estimate is absent rather than zero when it is selected: the billable quantity does not exist
+  // until the audio has been generated. Reporting that honestly is the point of
+  // `pricePerThousandCharactersUsd` being optional.
+  {
+    id: '@cf/myshell-ai/melotts',
+    name: 'MeloTTS (multilingual)',
+    provider: 'workers-ai',
+    task: 'read-text',
+    contractVersion: 1,
+    pricingUnit: 'audio-second',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/melotts/',
+    speechControls: {
+      // Not `text`. Its schema declares `prompt` as the required field, and sending `text` instead
+      // would be a request missing its only mandatory property.
+      textParameterName: 'prompt',
+      // No `voices`: the schema has no speaker parameter at all.
+      //
+      // The language list is the set its documentation names. The schema itself types `lang` as an
+      // open string with an `en` default, so this list is a reviewed restriction rather than a
+      // transcribed enum — which is the safer direction, since an unlisted code would otherwise be
+      // forwarded unchecked.
+      languages: ['en', 'es', 'fr', 'zh', 'jp', 'kr'],
+      defaultLanguage: 'en',
+      // No `formats` and so deliberately no `defaultFormat`: it always answers with MP3, so the
+      // panel offers no choice rather than offering one that is ignored. The format the visitor
+      // actually received is reported from the sniffed bytes, which is authoritative for every
+      // model regardless of what it was asked for.
+      //
+      // No `pricePerThousandCharactersUsd` either: billed at $0.000205 per audio minute, and the
+      // duration is not knowable before generation. The panel states that instead of estimating.
+      languageSelectsVoice: true
     }
   }
 ];

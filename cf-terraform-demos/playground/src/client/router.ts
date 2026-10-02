@@ -13,6 +13,7 @@ import CreateImageView from './views/CreateImageView.vue';
 import CreateVideoView from './views/CreateVideoView.vue';
 import DescribeImageView from './views/DescribeImageView.vue';
 import PlannedPanelView from './views/PlannedPanelView.vue';
+import ReadTextView from './views/ReadTextView.vue';
 import RemixImageView from './views/RemixImageView.vue';
 import ViewTokensView from './views/ViewTokensView.vue';
 
@@ -30,6 +31,7 @@ const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
   'create-image': CreateImageView,
   'create-video': CreateVideoView,
   'describe-image': DescribeImageView,
+  'read-text': ReadTextView,
   'remix-image': RemixImageView,
   'view-tokens': ViewTokensView
 };

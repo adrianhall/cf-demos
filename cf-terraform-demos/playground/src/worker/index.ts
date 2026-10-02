@@ -12,6 +12,7 @@ import { CreateImageService } from './application/create-image/create-image-serv
 import { CreateVideoService } from './application/create-video/create-video-service';
 import { DescribeImageService } from './application/describe-image/describe-image-service';
 import { MetricsService } from './application/metrics/metrics-service';
+import { ReadTextService } from './application/read-text/read-text-service';
 import { RemixImageService } from './application/remix-image/remix-image-service';
 import type { AppBindings } from './bindings';
 import { GatewayInferenceClient } from './infrastructure/ai/gateway-inference-client';
@@ -26,6 +27,7 @@ import { classifyImageRouter } from './routes/classify-image';
 import { createImageRouter } from './routes/create-image';
 import { createVideoRouter } from './routes/create-video';
 import { describeImageRouter } from './routes/describe-image';
+import { readTextRouter } from './routes/read-text';
 import { remixImageRouter } from './routes/remix-image';
 import { runsRouter } from './routes/runs';
 
@@ -102,6 +104,10 @@ app.use('/api/*', async (context, next) => {
     'CLASSIFY_IMAGE_SERVICE',
     new ClassifyImageService({ inference, runs, logger: context.var.LOGGER })
   );
+  context.set(
+    'READ_TEXT_SERVICE',
+    new ReadTextService({ inference, runs, logger: context.var.LOGGER })
+  );
   context.set('METRICS_SERVICE', new MetricsService({ inference, runs }));
 
   await next();
@@ -114,6 +120,7 @@ app.route('/api/classify-image', classifyImageRouter);
 app.route('/api/create-image', createImageRouter);
 app.route('/api/create-video', createVideoRouter);
 app.route('/api/describe-image', describeImageRouter);
+app.route('/api/read-text', readTextRouter);
 app.route('/api/remix-image', remixImageRouter);
 app.route('/api/runs', runsRouter);
 

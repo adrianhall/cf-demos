@@ -48,7 +48,7 @@ came to use.
 | **Create Video**   | **Text to video**            | **Available now** |
 | Animate Image      | Image to video               | Phase 16          |
 | Generate Music     | Text to music                | Phase 15          |
-| Read Text          | Text to speech               | Phase 9           |
+| **Read Text**      | **Text to speech**           | **Available now** |
 | Transcribe Audio   | Automatic speech recognition | Phase 10          |
 | Translate Text     | Translation                  | Phase 11          |
 | Classify Text      | Text classification          | Phase 12          |
@@ -578,18 +578,22 @@ Built to **phase 7** of
 - **Phase 8** delivered Create Video, and with it the demo's first storage product and first durable
   job. See [Create Video: storage and durable jobs](#create-video-storage-and-durable-jobs) for why
   both were necessary and why no job table came with them.
+- **Phase 9** delivered Read Text, the first panel whose models share _no_ controls at all. See
+  [Read Text: models that agree on nothing](#read-text-models-that-agree-on-nothing) for what that
+  forced, and why the audio is not stored.
 
-Every remaining panel renders a placeholder stating the phase that delivers it. **Read Text**, in
-phase 9, is next.
+Every remaining panel renders a placeholder stating the phase that delivers it. **Transcribe
+Audio**, in phase 10, is next.
 
 The remaining phases are ordered by **whether Cloudflare hosts a model for the task**, which is a
 practical constraint rather than a preference: a third-party model bills against prepaid AI Gateway
 credits, so a panel with only third-party options cannot be built or demonstrated on an unfunded
 account. Phases 9–14 — Read Text, Transcribe Audio, Translate Text, Classify Text, Semantic Search,
-and Evaluate Choices — all have Cloudflare-hosted models and need no credits. Generate Music (15)
-and Animate Image (16) have no hosted option in the catalogue, so they come after. Each phase
-records its candidate hosted and third-party models, and asks for the hosting to be re-confirmed
-before it starts, because the catalogue changes.
+and Evaluate Choices — all have Cloudflare-hosted models and need no credits. Phase 9 confirmed that
+for Read Text: all three of its reviewed voices run on Cloudflare. Generate Music (15) and Animate
+Image (16) have no hosted option in the catalogue, so they come after. Each phase records its
+candidate hosted and third-party models, and asks for the hosting to be re-confirmed before it
+starts, because the catalogue changes.
 
 Animate Image moved from phase 9 to phase 16 for exactly that reason: it shares all of Create
 Video's infrastructure and would otherwise be the obvious next step, but every image-to-video model
@@ -722,3 +726,68 @@ bucket grows in a demo account and `pnpm teardown` is what keeps that account cl
 `empty-r2-bucket` before Terraform destroys the bucket, because R2 refuses to delete a bucket that
 still holds objects). The panel therefore says the video is _stored_ and makes no expiry claim — a
 countdown this demo could not honour would be worse than none.
+
+## Read Text: models that agree on nothing
+
+Every earlier panel's models disagreed about _degree_ — a different step ceiling, a wider token
+range, an extra parameter. Read Text's three reviewed models disagree about _kind_, and that is the
+reason this panel is worth reading.
+
+|               | Aura 2 / Aura 1           | MeloTTS                  |
+| ------------- | ------------------------- | ------------------------ |
+| Text field    | `text`                    | `prompt`                 |
+| Voice         | 40 / 12 named speakers    | **no speaker parameter** |
+| Language      | **no language parameter** | `lang`                   |
+| Output format | `mp3` or `wav`            | always MP3               |
+| Billing       | per 1,000 characters      | per minute of audio      |
+
+There is no intersection. A single hardcoded form could not drive both families, and every one of
+these differences is load-bearing:
+
+- **The text field has two names.** Sending MeloTTS a `text` field is a request missing its only
+  required property. The wire name lives in the reviewed descriptor, so the browser sends neutral
+  `text` and the server renames it.
+- **Voice and language are mutually exclusive.** The panel renders a voice selector _or_ a language
+  selector, never both and never a disabled one — a control the provider would reject has no honest
+  disabled state. It also _says_ which family the selected model belongs to, so an absent voice
+  selector reads as a fact about the model rather than a gap in the page.
+- **The two Aura generations overlap only partially.** They share eight voice names and differ on
+  eight more, so switching model resets a voice unless the new model also publishes it. Carrying it
+  over blindly would stage a request the server refuses.
+- **One output format is two provider fields.** Aura spells a choice as `encoding` plus `container`,
+  and the legal pairings are in its prose rather than its schema. This demo exposes one name and
+  expands it, so a visitor cannot assemble a pair the provider accepts and the browser cannot play.
+
+**Rate and pitch do not exist.** The phase brief asked for them "when supported"; the reviewed
+answer is that none of the three models support either. They stay in the wire contract and are
+_rejected_ rather than dropped, and the panel states the absence — because silently ignoring a
+control teaches that the control did nothing, when the truth is that the model does not have one.
+
+### The cost estimate is sometimes impossible
+
+This is the first panel that can quote a price _before_ a synchronous request: the Aura models bill
+per thousand characters, and the visitor has already typed them. It is also the first where that
+cannot be done at all. MeloTTS bills per minute of audio that does not exist until after the call,
+so the estimate is reported as **absent** rather than as zero. A zero would read as "free", which is
+the one thing a cost figure must never do.
+
+### The audio is not stored, and that is the opposite of Create Video
+
+Create Video needed R2 because the provider returns a short-lived URL rather than bytes, and because
+`<video>` seeks with `Range` requests a JSON body cannot answer. Neither applies here: these models
+return the bytes themselves, the payload is a few hundred kilobytes, and an `<audio>` element seeks
+freely within a `data:` URI the page already holds. Storing it would add a retention surface for no
+benefit, so the architecture test that confines writes to the video path covers this panel too.
+
+The media type still comes from **sniffing the returned bytes**, never from a provider header — the
+same rule as the image panels, and for the same reason: the type decides how the browser treats the
+payload. It matters more here than it looks. Aura's schema permits `linear16` with no container,
+which is real audio data that no browser will play; that output is refused with a `502` rather than
+reaching the page labelled as playable.
+
+### The text alternative is the result, not a caption
+
+Audio is the one output in this demo that some visitors cannot perceive at all. The spoken text is
+therefore rendered beside the player as a peer of it — not behind a disclosure — so the result is
+available in both forms at once. It costs nothing to show, since the text _is_ what the model was
+given, and it removes any doubt about what was actually read.

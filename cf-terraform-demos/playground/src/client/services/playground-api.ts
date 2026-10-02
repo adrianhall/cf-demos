@@ -13,6 +13,7 @@ import type {
 } from '../../shared/create-video';
 import type { DescribeImageRequest, DescribeImageResponse } from '../../shared/describe-image';
 import type { CreateImageRequest, CreateImageResponse } from '../../shared/images';
+import type { ReadTextRequest, ReadTextResponse } from '../../shared/read-text';
 import type { RemixImageRequest, RemixImageResponse } from '../../shared/remix-image';
 import type { RunMetrics } from '../../shared/runs';
 import { parseSseBuffer } from '../../shared/sse';
@@ -270,6 +271,41 @@ export async function classifyImage(
   }
 
   return (await response.json()) as ClassifyImageResponse;
+}
+
+/**
+ * Speaks one passage of text.
+ *
+ * A single request/response rather than a stream, and unlike Create Video there is no job to poll:
+ * a speech model returns its complete audio within the request, and the bytes travel in the
+ * response rather than being stored.
+ *
+ * @param request The speech request to send, carrying the text and the chosen controls.
+ * @param signal Abort signal, so the caller's Cancel button aborts the HTTP request itself rather
+ *   than merely ignoring the result. The provider's work is not cancelled — and the panel says so —
+ *   but the browser stops waiting.
+ * @returns The generated audio, its run receipt, and the controls the server applied — including
+ *   the cost estimate where the model's billing makes one possible.
+ * @throws {ApiError} When the server rejects the request (`400` for an unsupported control, a voice
+ *   the selected model does not publish, or an over-long passage; `401` for an expired Access
+ *   session) or when the provider fails or returns something that is not playable audio (`502`).
+ */
+export async function readText(
+  request: ReadTextRequest,
+  signal?: AbortSignal
+): Promise<ReadTextResponse> {
+  const response = await fetch('/api/read-text', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+
+  return (await response.json()) as ReadTextResponse;
 }
 
 /**
