@@ -382,6 +382,7 @@ function loadExample(example: ImageExample): void {
       <InfoDialog :open="showRunDetails" title="Run details" @close="showRunDetails = false">
         <RunDetails
           v-if="receipt"
+          embedded
           :receipt="receipt"
           :metrics="metrics"
           :cost-pending="costPending"

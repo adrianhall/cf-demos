@@ -62,12 +62,14 @@ function mountDetails(props: {
   receipt?: RunReceipt;
   metrics?: RunMetrics;
   costPending?: boolean;
+  embedded?: boolean;
 }) {
   return mount(RunDetails, {
     props: {
       receipt: props.receipt ?? receipt(),
       ...(props.metrics === undefined ? {} : { metrics: props.metrics }),
-      costPending: props.costPending ?? false
+      costPending: props.costPending ?? false,
+      embedded: props.embedded ?? false
     }
   });
 }
@@ -194,9 +196,22 @@ describe('RunDetails', () => {
     expect(live.text()).toContain('$0.000123');
   });
 
-  it('labels itself for assistive technology', () => {
-    const section = mountDetails({}).find('section');
+  it('labels its standalone presentation for assistive technology', () => {
+    const wrapper = mountDetails({});
+    const section = wrapper.find('section');
     expect(section.attributes('aria-labelledby')).toBe('run-details-heading');
+    expect(wrapper.find('#run-details-heading').text()).toBe('Run details');
+  });
+
+  // The modal already owns the accessible name and rounded boundary. Repeating either inside it
+  // creates a box inside a box and two adjacent headings with the same text.
+  it('removes its own shell and title when embedded in a modal', () => {
+    const wrapper = mountDetails({ embedded: true });
+    const section = wrapper.find('section');
+
+    expect(section.classes()).toContain('run-details--embedded');
+    expect(section.attributes('aria-labelledby')).toBeUndefined();
+    expect(wrapper.find('.run-details-heading').exists()).toBe(false);
   });
 
   it('omits token counts when the provider reported none', () => {

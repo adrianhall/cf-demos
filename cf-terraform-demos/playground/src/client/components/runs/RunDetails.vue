@@ -2,20 +2,31 @@
 import { computed, ref, watch } from 'vue';
 import type { RunMetrics, RunReceipt } from '../../../runs';
 
-const props = defineProps<{
-  /**
-   * Receipt of the run being described.
-   */
-  receipt: RunReceipt;
-  /**
-   * Resolved gateway metrics, absent while the cost is still being polled for.
-   */
-  metrics?: RunMetrics | undefined;
-  /**
-   * Whether a metrics poll is currently in flight.
-   */
-  costPending: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    /**
+     * Receipt of the run being described.
+     */
+    receipt: RunReceipt;
+    /**
+     * Resolved gateway metrics, absent while the cost is still being polled for.
+     */
+    metrics?: RunMetrics | undefined;
+    /**
+     * Whether a metrics poll is currently in flight.
+     */
+    costPending: boolean;
+    /**
+     * Whether the component is rendered inside a container that already supplies its title and
+     * visual boundary, such as the Run details modal.
+     *
+     * The standalone Chat presentation keeps its own heading and border. A modal already has both,
+     * so repeating them produces a box inside a box and two adjacent headings with the same text.
+     */
+    embedded?: boolean;
+  }>(),
+  { embedded: false }
+);
 
 /**
  * How the cost should be described right now.
@@ -107,8 +118,12 @@ watch(gatewayLogIds, () => {
 </script>
 
 <template>
-  <section class="run-details" aria-labelledby="run-details-heading">
-    <h3 id="run-details-heading" class="run-details-heading">Run details</h3>
+  <section
+    class="run-details"
+    :class="{ 'run-details--embedded': props.embedded }"
+    :aria-labelledby="props.embedded ? undefined : 'run-details-heading'"
+  >
+    <h3 v-if="!props.embedded" id="run-details-heading" class="run-details-heading">Run details</h3>
 
     <dl class="details">
       <div class="detail">
@@ -195,6 +210,17 @@ watch(gatewayLogIds, () => {
   padding: 1rem 1.125rem;
 }
 
+/*
+  The modal already supplies the title, padding, background, and rounded boundary. Remove the
+  component's own shell there so the content becomes the modal body rather than a card nested
+  inside another card.
+*/
+.run-details--embedded {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
 .run-details-heading {
   font-size: 0.75rem;
   font-weight: 700;
@@ -248,15 +274,14 @@ watch(gatewayLogIds, () => {
 }
 
 /*
-  A compact but comfortably clickable icon button. It is 28px square — above WCAG 2.2's 24px
-  minimum target — and the independent focus outline makes keyboard focus visible against the
-  bordered details panel.
+  A compact but comfortably clickable icon button. The 28px transparent target stays above WCAG
+  2.2's 24px minimum without drawing a second rounded box around a glyph that is already two
+  outlined rectangles. The independent focus outline appears only for keyboard focus.
 */
 .copy-button {
   align-items: center;
   background: none;
-  border: 1px solid rgb(var(--v-theme-outline));
-  border-radius: 0.375rem;
+  border: none;
   color: rgb(var(--v-theme-on-surface-variant));
   cursor: pointer;
   display: inline-flex;
@@ -269,7 +294,6 @@ watch(gatewayLogIds, () => {
 
 .copy-button:hover,
 .copy-button:focus-visible {
-  border-color: rgb(var(--v-theme-primary));
   color: rgb(var(--v-theme-primary));
 }
 
