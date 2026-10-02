@@ -12,6 +12,7 @@ import {
   MAX_CLASSIFICATION_LABELS,
   type ClassificationControlSupport
 } from '../../shared/classify-image';
+import type { VideoControlSupport } from '../../shared/create-video';
 import type { VisionControlSupport } from '../../shared/describe-image';
 import type { ImageControlSupport } from '../../shared/images';
 import type { RemixImageControlSupport } from '../../shared/remix-image';
@@ -142,6 +143,16 @@ export interface ModelDescriptor {
    * controls truthfully instead of implying the model was asked to rank.
    */
   classificationControls?: ClassificationControlSupport;
+  /**
+   * Which controls a text-to-video model accepts, how it spells them, and what it charges.
+   *
+   * Present only for a text-to-video descriptor. The reviewed models disagree about the wire name
+   * _and_ the spelling of the values for the same conceptual control, so both are declared per
+   * model. It also carries the per-second price list, because this is the first panel where a
+   * single click can cost several dollars and the UI therefore has to estimate before the request
+   * rather than only report after it.
+   */
+  videoControls?: VideoControlSupport;
   /**
    * The field a vision model puts its answer in.
    *
@@ -391,6 +402,87 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       minimumConfidence: { min: 0, max: 1, step: 0.01, default: 0 },
       // The model's schema has no ranking fields at all, so these are applied to its response.
       appliedBy: 'playground'
+    }
+  },
+  // Every text-to-video model in the catalogue is third-party, so this panel inherits the prepaid
+  // AI Gateway credit prerequisite that Remix Image already discloses. All of them also return a
+  // short-lived URL on the provider's own host rather than bytes, and all of them report only
+  // `state: "Completed"` — there is no provider job handle to poll, which is why the job this panel
+  // reports on is this demo's own Workflow.
+  //
+  // PixVerse v6 is the default because it is by far the cheapest way to see the panel work: 360p
+  // runs at $0.025 a second against Alibaba's $0.28 at 1080p, an elevenfold difference for the same
+  // click. Defaulting to the expensive model would make the first exploratory run the costly one.
+  {
+    id: 'pixverse/v6',
+    name: 'PixVerse v6',
+    provider: 'third-party',
+    task: 'create-video',
+    contractVersion: 1,
+    // Billed per second of output, and the rate varies with resolution and whether audio is
+    // generated. The label keeps the figure from being read as comparable to a per-token Chat cost.
+    pricingUnit: 'video-second',
+    invocation: 'job',
+    documentationUrl: 'https://developers.cloudflare.com/ai/models/pixverse/v6/',
+    videoControls: {
+      resolutionParameterName: 'quality',
+      resolutions: ['360p', '540p', '720p', '1080p'],
+      // The cheapest option, not the model's own 720p default. One click here can cost real money,
+      // so the default is the one a visitor would pick if they knew the price list.
+      defaultResolution: '360p',
+      aspectParameterName: 'aspect_ratio',
+      aspectRatios: ['16:9', '4:3', '1:1', '3:4', '9:16', '2:3', '3:2', '21:9'],
+      defaultAspectRatio: '16:9',
+      durationRange: { min: 1, max: 15, step: 1, default: 5 },
+      // Short by default for the same reason the resolution is low: duration is the other half of
+      // the price multiplication.
+      defaultDuration: 5,
+      seed: true,
+      negativePrompt: true,
+      audioParameterName: 'generate_audio',
+      // Audio costs more per second, and this panel shows an estimate before the request, so the
+      // silent rates are the honest baseline to quote. The gateway log remains authoritative.
+      pricePerSecondUsd: { '360p': 0.025, '540p': 0.035, '720p': 0.045, '1080p': 0.09 },
+      // PixVerse serves finished renders from its own media CDN. `examples.aig.cloudflare.com` is
+      // included because the catalogue proxies its documentation examples through that host, which
+      // is what a first exploratory call against the Unified Catalog can return.
+      outputHosts: ['media.pixverse.ai', 'examples.aig.cloudflare.com']
+    }
+  },
+  // Alibaba HappyHorse 1.1 is the comparison model, and it disagrees with PixVerse in exactly the
+  // ways that make a per-model descriptor necessary rather than decorative: it names its resolution
+  // control `resolution` instead of `quality` and spells the values `720P` rather than `720p`, names
+  // its aspect control `ratio`, starts its duration range at 3 rather than 1, and generates no audio
+  // at all. A panel with one hardcoded form could not drive both.
+  {
+    id: 'alibaba/hh1.1-t2v',
+    name: 'HappyHorse 1.1',
+    provider: 'third-party',
+    task: 'create-video',
+    contractVersion: 1,
+    pricingUnit: 'video-second',
+    invocation: 'job',
+    documentationUrl: 'https://developers.cloudflare.com/ai/models/alibaba/hh1.1-t2v/',
+    videoControls: {
+      resolutionParameterName: 'resolution',
+      // Uppercase, exactly as its schema enumerates them. A provider validating against an enum
+      // treats `720p` and `720P` as different strings, so the spelling is pinned here rather than
+      // normalised somewhere in the request builder.
+      resolutions: ['720P', '1080P'],
+      defaultResolution: '720P',
+      aspectParameterName: 'ratio',
+      aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+      defaultAspectRatio: '16:9',
+      durationRange: { min: 3, max: 15, step: 1, default: 5 },
+      defaultDuration: 5,
+      seed: true,
+      negativePrompt: false,
+      // No audio parameter in its schema, so the control is absent rather than false — the panel
+      // will not offer it and the request builder has nothing to forward.
+      pricePerSecondUsd: { '720P': 0.14, '1080P': 0.18 },
+      // Alibaba's output reaches this demo through the catalogue's own hosts rather than from a
+      // model-studio domain, and the R2 public host is the one its catalogue examples use.
+      outputHosts: ['examples.aig.cloudflare.com', 'pub-04a6d208d361438ea01b797e6973bd19.r2.dev']
     }
   }
 ];

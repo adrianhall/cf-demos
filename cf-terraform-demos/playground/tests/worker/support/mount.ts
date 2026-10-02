@@ -11,6 +11,7 @@ import type { Logger } from '@adrianhall/cloudflare-toolkit/logging';
 import type { ChatService } from '../../../src/worker/application/chat/chat-service';
 import type { ClassifyImageService } from '../../../src/worker/application/classify-image/classify-image-service';
 import type { CreateImageService } from '../../../src/worker/application/create-image/create-image-service';
+import type { CreateVideoService } from '../../../src/worker/application/create-video/create-video-service';
 import type { DescribeImageService } from '../../../src/worker/application/describe-image/describe-image-service';
 import type { MetricsService } from '../../../src/worker/application/metrics/metrics-service';
 import type { AppBindings } from '../../../src/worker/bindings';
@@ -54,6 +55,10 @@ export interface MountOptions {
    * Create Image service the route should use.
    */
   createImageService?: CreateImageService;
+  /**
+   * Create Video service the route should use.
+   */
+  createVideoService?: CreateVideoService;
   /**
    * Describe Image service the route should use.
    */
@@ -143,6 +148,9 @@ export function mountRoute(
     }
     if (options.createImageService !== undefined) {
       context.set('CREATE_IMAGE_SERVICE', options.createImageService);
+    }
+    if (options.createVideoService !== undefined) {
+      context.set('CREATE_VIDEO_SERVICE', options.createVideoService);
     }
     if (options.describeImageService !== undefined) {
       context.set('DESCRIBE_IMAGE_SERVICE', options.describeImageService);

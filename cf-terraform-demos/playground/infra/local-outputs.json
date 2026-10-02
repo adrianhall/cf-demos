@@ -29,6 +29,11 @@
     "type": "string",
     "value": "playground.localhost"
   },
+  "r2_bucket_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "playground-local-video"
+  },
   "worker_name": {
     "sensitive": false,
     "type": "string",

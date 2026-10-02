@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import type { ClassificationControlSupport } from '../../shared/classify-image';
+import type { VideoControlSupport } from '../../shared/create-video';
 import type { VisionControlSupport } from '../../shared/describe-image';
 import type { ImageControlSupport } from '../../shared/images';
 import type { RemixImageControlSupport } from '../../shared/remix-image';
@@ -72,6 +73,14 @@ export interface CatalogueModel {
    * happens after the model answers rather than letting a slider imply the model was asked.
    */
   classificationControls?: ClassificationControlSupport;
+  /**
+   * Controls a text-to-video model accepts, how it spells them, and what it charges per second.
+   *
+   * Carries the price list as well as the control ranges, because this is the only panel that must
+   * quote a cost _before_ the request rather than only report one afterwards: generation bills per
+   * second of output at rates that differ thirtyfold across resolutions.
+   */
+  videoControls?: VideoControlSupport;
 }
 
 /**

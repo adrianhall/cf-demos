@@ -45,7 +45,7 @@ came to use.
 | **Remix Image**    | **Image to image**           | **Available now** |
 | **Classify Image** | **Image classification**     | **Available now** |
 | Detect Objects     | Object detection             | Phase 17          |
-| Create Video       | Text to video                | Phase 8           |
+| **Create Video**   | **Text to video**            | **Available now** |
 | Animate Image      | Image to video               | Phase 9           |
 | Generate Music     | Text to music                | Phase 10          |
 | Read Text          | Text to speech               | Phase 11          |
@@ -575,9 +575,92 @@ Built to **phase 7** of
   rendered as an accessible table rather than a wall of bars, result controls applied to the
   response because the reviewed classifier's schema accepts none, and explicit copy about what a
   confidence score is and is not.
+- **Phase 8** delivered Create Video, and with it the demo's first storage product and first durable
+  job. See [Create Video: storage and durable jobs](#create-video-storage-and-durable-jobs) for why
+  both were necessary and why no job table came with them.
 
-Every remaining panel renders a placeholder stating the phase that delivers it. Create Video, in
-phase 8, is next. **Detect Objects** was added to the plan as phase 17 — the last panel phase,
-before the cross-panel hardening pass — because the catalogue's object-detection model answers a
-genuinely different question from Classify Image: _where_ something is rather than _what_ the
-picture is of. It reuses this panel's ranked table and adds a validated overlay on top of it.
+Every remaining panel renders a placeholder stating the phase that delivers it. Animate Image, in
+phase 9, is next, and reuses Create Video's job and storage infrastructure rather than adding its
+own. **Detect Objects** was added to the plan as phase 17 — the last panel phase, before the
+cross-panel hardening pass — because the catalogue's object-detection model answers a genuinely
+different question from Classify Image: _where_ something is rather than _what_ the picture is of.
+It reuses Classify Image's ranked table and adds a validated overlay on top of it.
+
+## Create Video: storage and durable jobs
+
+Every panel up to this point held its media in the browser and stored nothing. Create Video breaks
+that, and the reasons are worth reading before copying any of it, because three of them are not what
+you would guess from the outside.
+
+**The model returns a URL, not bytes.** Every text-to-video model in the catalogue answers with
+`{ state: "Completed", result: { video: "https://…" } }` — a short-lived link on the provider's own
+host. So the panel never receives media from the model at all. Rendering that link directly would
+make the result depend on an external host's retention, leak the visitor's IP to it, and break for a
+run reopened from history minutes later.
+
+**There is no provider job to poll.** The envelope carries a `state`, but `Completed` is the only
+documented value and the call resolves when generation has finished. There is no provider-issued job
+identifier. The job this panel reports on is therefore **its own Workflow**, not the provider's — if
+you are looking for the polling adapter that talks to a provider's job API, there isn't one, because
+there is no such API to talk to.
+
+**R2 is here for seeking, not for size.** A `<video>` element issues `Range` requests to show a
+poster frame, seek, and play without downloading the whole file. The base64-in-JSON transport every
+other panel uses cannot answer a `Range` request, so reusing it would produce a player that cannot
+seek. R2 answers ranged reads natively, and `R2Bucket.put()` accepts a `ReadableStream`, so provider
+bytes are piped into storage without ever being buffered whole in a 128 MB isolate. The memory
+argument is real but secondary; seeking is what made storage non-negotiable.
+
+**Workflows is here because the visitor's connection is the fragile part.** An HTTP-triggered Worker
+has _no_ wall-clock duration limit while the client stays connected, so a multi-minute render would
+fit inside a request. But when the tab closes, the request is cancelled and `waitUntil()` extends
+execution by only about thirty seconds — and a render abandoned halfway has still been _paid for_. A
+panel whose subject is honest cost cannot casually discard dollars, so generation is durable.
+
+### Why there is no job table
+
+A Workflow instance already _is_ a job record: it reports `queued`/`running`/`complete`/`errored`,
+carries its output, and retains terminal state for days. Adding D1 or KV beside it would create
+**two sources of truth for one job status**, and the predictable result is a job that one store
+calls finished while the other calls it running. So this panel adds neither.
+
+That leaves ownership, which a stored owner column would normally provide. Instead the identifier
+_is_ the proof: it is an HMAC of the verified email and the browser's run identifier, keyed by the
+Access audience tag. The status route recomputes it from the identity on the current request, so a
+visitor asking after someone else's run derives a different identifier, finds nothing, and receives
+a `404` — not a "forbidden", which would itself confirm the job exists. Ownership becomes
+unforgeable because it is not stored anywhere to be tampered with. See
+`src/worker/domain/media-job-identity.ts`.
+
+### Two cost traps this panel had to avoid
+
+**Workflow steps retry by default.** That is normally their whole value, but the inference step here
+bills per second of generated video and can cost several dollars, so an inherited default would turn
+one transient provider fault into several charges — and nothing about the panel's behaviour would
+look wrong while it happened. The inference step runs with `retries: { limit: 0 }`; only the cheap,
+idempotent fetch-and-store step keeps them. Both policies live in `src/worker/domain/media-job.ts`
+with a test asserting the zero, because no functional test would ever reveal the problem.
+
+**Pricing spans thirtyfold by resolution.** `$0.025` a second at 360p against `$0.28` at 1080p, so a
+fifteen-second render can be a few cents or several dollars. Every descriptor therefore defaults to
+the _cheapest_ resolution rather than the model's own default, the per-second price is shown against
+each option in the selector, and an estimate appears next to the button that spends it. The estimate
+is labelled an estimate everywhere; the authoritative figure is still the AI Gateway log's.
+
+### What is stored, and what is not
+
+Only generated video, only under the `generated-video/` prefix, and only through `R2VideoStorage` —
+which refuses any key outside that prefix, so the containment is a property of the code rather than
+a convention. An architecture test asserts that no other module writes to a bucket.
+
+**Uploaded images are deliberately still transient.** Routing them through R2 was considered and
+rejected: the vision and classification models take the image _in the request_, so the Worker would
+have to read every byte back out of storage to make the call — the bottleneck moves rather than
+disappearing — and it would add a retention surface this demo otherwise does not have to explain.
+The 1 MB image cap comes from base64-in-JSON, not from missing storage.
+
+**Nothing deletes a finished video yet.** A scheduled reaper arrives in phase 18; until then the
+bucket grows in a demo account and `pnpm teardown` is what keeps that account clean (it runs
+`empty-r2-bucket` before Terraform destroys the bucket, because R2 refuses to delete a bucket that
+still holds objects). The panel therefore says the video is _stored_ and makes no expiry claim — a
+countdown this demo could not honour would be worse than none.

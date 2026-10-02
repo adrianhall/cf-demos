@@ -8,18 +8,22 @@ import { createMeRouter } from '@demos/worker-common';
 import { ChatService } from './application/chat/chat-service';
 import { ClassifyImageService } from './application/classify-image/classify-image-service';
 import { CreateImageService } from './application/create-image/create-image-service';
+import { CreateVideoService } from './application/create-video/create-video-service';
 import { DescribeImageService } from './application/describe-image/describe-image-service';
 import { MetricsService } from './application/metrics/metrics-service';
 import { RemixImageService } from './application/remix-image/remix-image-service';
 import type { AppBindings } from './bindings';
 import { GatewayInferenceClient } from './infrastructure/ai/gateway-inference-client';
+import { WorkflowMediaJobs } from './infrastructure/jobs/workflow-media-jobs';
 import { ProviderImageClient } from './infrastructure/media/provider-image-client';
+import { R2VideoStorage } from './infrastructure/media/r2-video-storage';
 import { createMemoryRunRepository } from './infrastructure/runs/memory-run-repository';
 import { accessMiddleware } from './middleware/access';
 import { catalogueRouter } from './routes/catalogue';
 import { chatRouter } from './routes/chat';
 import { classifyImageRouter } from './routes/classify-image';
 import { createImageRouter } from './routes/create-image';
+import { createVideoRouter } from './routes/create-video';
 import { describeImageRouter } from './routes/describe-image';
 import { remixImageRouter } from './routes/remix-image';
 import { runsRouter } from './routes/runs';
@@ -73,6 +77,19 @@ app.use('/api/*', async (context, next) => {
     new CreateImageService({ inference, runs, logger: context.var.LOGGER })
   );
   context.set(
+    'CREATE_VIDEO_SERVICE',
+    new CreateVideoService({
+      jobs: new WorkflowMediaJobs(context.env.VIDEO_JOBS),
+      storage: new R2VideoStorage(context.env.VIDEO_BUCKET),
+      runs,
+      // The Access audience tag keys the job-identifier derivation. It is already bound, already
+      // has to be correct for anything to work, and is not visible to a visitor — see
+      // `domain/media-job-identity.ts` for why a keyed derivation rather than a plain hash.
+      jobIdKey: context.env.ACCESS_AUD,
+      logger: context.var.LOGGER
+    })
+  );
+  context.set(
     'DESCRIBE_IMAGE_SERVICE',
     new DescribeImageService({ inference, runs, logger: context.var.LOGGER })
   );
@@ -94,6 +111,7 @@ app.route('/api/catalogue', catalogueRouter);
 app.route('/api/chat', chatRouter);
 app.route('/api/classify-image', classifyImageRouter);
 app.route('/api/create-image', createImageRouter);
+app.route('/api/create-video', createVideoRouter);
 app.route('/api/describe-image', describeImageRouter);
 app.route('/api/remix-image', remixImageRouter);
 app.route('/api/runs', runsRouter);
@@ -104,3 +122,8 @@ app.onError(problemDetailsErrorHandler({ includeStack: import.meta.env.DEV }));
 app.notFound(notFoundHandler());
 
 export default app;
+
+// The Workflow class is exported from the Worker's entry module because `cloudflare.config.ts`
+// declares it as a named export of this Worker. It is deliberately the only export besides the app
+// itself: everything else reaches the platform through a binding.
+export { CreateVideoWorkflow } from './infrastructure/jobs/create-video-workflow';

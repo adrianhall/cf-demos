@@ -111,7 +111,10 @@ resource "cloudflare_worker" "demo" {
   # itself, since neither resource's own arguments reference the other. `cf` owns the binding, so
   # Terraform cannot infer the dependency and would otherwise be free to delete a gateway that a
   # live Worker is still sending inference through.
-  depends_on = [cloudflare_ai_gateway.demo]
+  # Both edges exist for the same reason: `cf` owns the bindings it attaches at deploy time, so
+  # Terraform cannot infer that this Worker depends on the gateway or the bucket, and would
+  # otherwise be free to delete either while a live Worker is still using it.
+  depends_on = [cloudflare_ai_gateway.demo, cloudflare_r2_bucket.video]
 }
 
 # Cloudflare rejects a custom domain attached to a Worker with zero deployments (error 100124).
@@ -166,4 +169,25 @@ resource "cloudflare_workers_custom_domain" "demo" {
   zone_id    = local.cloudflare_zone_id
 
   depends_on = [cloudflare_workers_deployment.bootstrap]
+}
+
+# Where Create Video stores generated video.
+#
+# This is the demo's first storage product, and the reasoning is recorded in the phase plan rather
+# than inferred: every reviewed text-to-video model returns a short-lived URL on the provider's own
+# host instead of bytes, and a `<video>` element seeks by issuing `Range` requests that a
+# base64-in-JSON response cannot answer. Copying the bytes here once, immediately, is what makes the
+# result seekable, keeps the provider's host out of the visitor's browser, and keeps a working
+# result after the provider's link has expired.
+#
+# Deliberately **no lifecycle rule**. Ongoing cleanup is phase 18's scheduled reaper, so this phase
+# does not have to choose a retention window or state one in the UI. `pnpm teardown` empties the
+# bucket before destroying it, which is what keeps a demo account clean in the meantime.
+resource "cloudflare_r2_bucket" "video" {
+  account_id = local.cloudflare_account_id
+  name       = "${local.worker_name}-video"
+
+  # Standard rather than Infrequent Access: these objects are written once and read back within
+  # minutes by the visitor who generated them, which is the opposite of the IA access pattern.
+  storage_class = "Standard"
 }

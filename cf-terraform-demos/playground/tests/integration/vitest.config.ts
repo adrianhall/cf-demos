@@ -20,6 +20,11 @@ export default defineProject({
       miniflare: {
         compatibilityDate: '2026-08-25',
         compatibilityFlags: ['nodejs_compat'],
+        // The video bucket is simulated so the Create Video read path can be exercised as deployed:
+        // without it, a request for a video that does not exist fails as a missing binding rather
+        // than as the `404` the route is supposed to answer. Nothing is written to it by the suite —
+        // generation needs the Workflow and a real provider, both of which are deliberately absent.
+        r2Buckets: ['VIDEO_BUCKET'],
         bindings: {
           // Matches the audience and team domain the suite signs development JWTs for. A test
           // that signs a token for a different audience must be rejected, which is what proves

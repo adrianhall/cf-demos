@@ -4,7 +4,7 @@
  */
 
 /**
- * The seven outputs declared in `infra/outputs.tf`, camelCased from their snake_case Terraform
+ * The eight outputs declared in `infra/outputs.tf`, camelCased from their snake_case Terraform
  * output names.
  */
 export type TerraformOutputs = {
@@ -35,6 +35,14 @@ export type TerraformOutputs = {
    */
   hostname: string;
   /**
+   * Name of the R2 bucket Create Video stores generated video in, bound as `VIDEO_BUCKET`.
+   *
+   * Declared in Terraform as `r2_bucket_name` rather than a more descriptive name, because that is
+   * the key the toolkit's `empty-r2-bucket --terraform` mode reads. Matching it means `pnpm
+   * teardown` empties the bucket using the shared CLI rather than a demo-local script.
+   */
+  videoBucketName: string;
+  /**
    * Worker service name.
    */
   workerName: string;
@@ -50,5 +58,6 @@ export const OUTPUT_KEYS = {
   cloudflareTeamDomain: 'cloudflare_team_domain',
   environment: 'environment',
   hostname: 'hostname',
+  videoBucketName: 'r2_bucket_name',
   workerName: 'worker_name'
 } as const;

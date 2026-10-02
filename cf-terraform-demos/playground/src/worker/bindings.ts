@@ -2,6 +2,7 @@ import type { CloudflareToolkitVariables } from '@adrianhall/cloudflare-toolkit/
 import type { ChatService } from './application/chat/chat-service';
 import type { ClassifyImageService } from './application/classify-image/classify-image-service';
 import type { CreateImageService } from './application/create-image/create-image-service';
+import type { CreateVideoService } from './application/create-video/create-video-service';
 import type { DescribeImageService } from './application/describe-image/describe-image-service';
 import type { MetricsService } from './application/metrics/metrics-service';
 import type { RemixImageService } from './application/remix-image/remix-image-service';
@@ -23,6 +24,13 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * The Create Image use case, sharing this request's gateway client and run store.
    */
   CREATE_IMAGE_SERVICE: CreateImageService;
+  /**
+   * The Create Video use case, sharing this request's run store.
+   *
+   * Unlike the other services it holds no inference client: the gateway call happens inside the
+   * Workflow, long after the request that started it has ended.
+   */
+  CREATE_VIDEO_SERVICE: CreateVideoService;
   /**
    * The Describe Image use case, sharing this request's gateway client and run store.
    */

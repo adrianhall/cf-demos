@@ -180,7 +180,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Generate a short video clip from a written description.',
     group: 'Generate',
     gateway: 'required',
-    availability: 'planned',
+    availability: 'available',
     phase: 8
   },
   {

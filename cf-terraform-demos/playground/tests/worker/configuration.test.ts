@@ -34,7 +34,7 @@ describe('Terraform outputs', () => {
 
   it('documents every declared output', async () => {
     const outputsTf = await readDemoFile('infra/outputs.tf');
-    const declared = [...outputsTf.matchAll(/output "([a-z_]+)" \{([\s\S]*?)\n\}/gu)];
+    const declared = [...outputsTf.matchAll(/output "([a-z0-9_]+)" \{([\s\S]*?)\n\}/gu)];
     expect(declared.length).toBe(Object.keys(OUTPUT_KEYS).length);
     for (const [, name, body] of declared) {
       expect(body, `output "${name}" needs a description`).toContain('description =');
@@ -92,10 +92,51 @@ describe('AI Gateway infrastructure', () => {
   // `cf` attaches the AI binding at deploy time, so Terraform cannot infer that the Worker depends
   // on the gateway. Without the explicit edge, `terraform destroy` is free to delete a gateway a
   // live Worker is still sending inference through.
-  it('forces the Worker to be destroyed before the gateway it uses', async () => {
+  it('forces the Worker to be destroyed before the resources it binds', async () => {
     const tf = await readDemoFile('infra/playground.tf');
     const workerBlock = /resource "cloudflare_worker" "demo" \{([\s\S]*?)\n\}/u.exec(tf)?.[1] ?? '';
-    expect(workerBlock).toMatch(/depends_on\s*=\s*\[cloudflare_ai_gateway\.demo\]/u);
+    // Both edges matter and for the same reason: `cf` owns the bindings it attaches at deploy time,
+    // so Terraform cannot infer either dependency and would be free to delete a gateway or a bucket
+    // that a live Worker is still using.
+    expect(workerBlock).toMatch(/depends_on\s*=\s*\[[^\]]*cloudflare_ai_gateway\.demo/u);
+    expect(workerBlock).toMatch(/depends_on\s*=\s*\[[^\]]*cloudflare_r2_bucket\.video/u);
+  });
+});
+
+describe('video storage infrastructure', () => {
+  it('declares the R2 bucket Terraform owns', async () => {
+    const tf = await readDemoFile('infra/playground.tf');
+    expect(tf).toMatch(/resource "cloudflare_r2_bucket" "video"/u);
+  });
+
+  it('exposes the bucket name as a scalar output', async () => {
+    const outputs = await readDemoFile('infra/outputs.tf');
+    // Named `r2_bucket_name` to match what the toolkit's `empty-r2-bucket --terraform` mode reads,
+    // so teardown uses the shared CLI rather than a demo-local script.
+    expect(outputs).toMatch(/output "r2_bucket_name"/u);
+    expect(outputs).toMatch(/value\s*=\s*cloudflare_r2_bucket\.video\.name/u);
+  });
+
+  // Deliberately absent in this phase. Ongoing cleanup is phase 18's scheduled reaper, so phase 8
+  // ships no retention window and the UI makes no expiry claim. This asserts the *absence* so the
+  // two halves of that decision cannot drift apart: a lifecycle rule added here without updating
+  // the panel's copy would leave the UI silent about an expiry that had started happening.
+  it('ships no lifecycle rule, deferring cleanup to the scheduled reaper', async () => {
+    const tf = await readDemoFile('infra/playground.tf');
+    expect(tf).not.toMatch(/cloudflare_r2_bucket_lifecycle/u);
+  });
+
+  // R2 refuses to delete a bucket that still holds objects, so teardown has to empty it first or
+  // the destroy fails and leaves the account dirty.
+  it('empties the bucket before Terraform destroys it', async () => {
+    const pkg = JSON.parse(await readDemoFile('package.json')) as {
+      scripts: Record<string, string>;
+    };
+    const teardown = pkg.scripts['teardown'] ?? '';
+    const steps = teardown.split(/\s+/u).filter((step) => step.startsWith('teardown:'));
+    expect(steps.indexOf('teardown:bucket')).toBeGreaterThanOrEqual(0);
+    expect(steps.indexOf('teardown:bucket')).toBeLessThan(steps.indexOf('teardown:infra'));
+    expect(pkg.scripts['teardown:bucket']).toMatch(/empty-r2-bucket/u);
   });
 });
 
@@ -120,7 +161,13 @@ describe('Worker configuration', () => {
     const pkg = JSON.parse(await readDemoFile('package.json')) as {
       scripts: Record<string, string>;
     };
-    expect(pkg.scripts.teardown).toBe('run-s teardown:worker teardown:infra');
+    // Asserted as an ordering rather than an exact string, so adding a cleanup step (phase 8 added
+    // bucket emptying) does not require editing the rule it is meant to satisfy. The rule itself is
+    // the ordering: the Worker's code goes first, because Cloudflare refuses to delete a gateway or
+    // a bucket a deployed Worker is still bound to.
+    const steps = pkg.scripts.teardown.split(/\s+/u).filter((step) => step.startsWith('teardown:'));
+    expect(steps[0]).toBe('teardown:worker');
+    expect(steps.at(-1)).toBe('teardown:infra');
   });
 
   it('provisions infrastructure before uploading the Worker', async () => {

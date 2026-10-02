@@ -13,7 +13,7 @@
  * Terraform state and stay fast and offline-friendly.
  */
 
-import { bindings, defineConfig, defineWorker } from 'cf/config';
+import { bindings, defineConfig, defineWorker, exports } from 'cf/config';
 import { requireTerraformOutputs } from '@adrianhall/cloudflare-toolkit/vite';
 import { OUTPUT_KEYS, type TerraformOutputs } from './infra/outputs.ts';
 import * as entrypoint from './src/worker/index.ts' with { type: 'cf-worker' };
@@ -40,6 +40,19 @@ export default defineConfig({
       previewUrls: false,
 
       domains: isProduction ? [values.hostname] : [],
+
+      exports: {
+        // Create Video's generation runs here rather than in the request that starts it. An HTTP
+        // Worker has no duration limit while the client stays connected, but when the visitor
+        // closes the tab the request is cancelled and `waitUntil()` buys about thirty seconds — and
+        // a render abandoned halfway has still been paid for. Durable execution is what stops this
+        // panel from charging someone for a video it then discards.
+        //
+        // The instance also serves as the job record, which is why this demo adds no D1 table and
+        // no KV namespace for job status: a second store would be a second source of truth for one
+        // job's state.
+        CreateVideoWorkflow: exports.workflow({ name: `${values.workerName}-create-video` })
+      },
 
       assets: {
         notFoundHandling: 'single-page-application',
@@ -81,6 +94,21 @@ export default defineConfig({
         // every dashboard URL the presenter will open.
         CLOUDFLARE_ACCOUNT_ID: bindings.text(values.cloudflareAccountId),
         ACCESS_AUD: bindings.text(values.accessAud),
+        // Where Create Video keeps generated video. Bound in both modes so local development
+        // exercises the same storage path as production against `cf dev`'s local simulation.
+        //
+        // This is the demo's first storage product, and it is here for a specific reason rather
+        // than convenience: a `<video>` element seeks by issuing `Range` requests, which the
+        // base64-in-JSON transport every other panel uses cannot answer. Streaming provider bytes
+        // into R2 also keeps a multi-megabyte file out of the isolate's 128 MB budget. Uploaded
+        // images deliberately do *not* use it — they travel in the request, as before.
+        VIDEO_BUCKET: bindings.r2({ name: values.videoBucketName }),
+        // The Workflow binding the API routes use to start, poll, and terminate a generation.
+        VIDEO_JOBS: bindings.workflow({
+          name: `${values.workerName}-create-video`,
+          worker: values.workerName,
+          exportName: 'CreateVideoWorkflow'
+        }),
         CLOUDFLARE_TEAM_DOMAIN: bindings.text(values.cloudflareTeamDomain),
         // Deliberately absent in development: its absence selects the toolkit's development
         // logging defaults without requiring an untracked `.dev.vars` file.

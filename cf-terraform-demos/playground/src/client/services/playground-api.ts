@@ -6,6 +6,11 @@
 
 import type { ChatRequest, ChatStreamEvent } from '../../shared/chat';
 import type { ClassifyImageRequest, ClassifyImageResponse } from '../../shared/classify-image';
+import type {
+  CreateVideoAcceptedResponse,
+  CreateVideoRequest,
+  CreateVideoStatusResponse
+} from '../../shared/create-video';
 import type { DescribeImageRequest, DescribeImageResponse } from '../../shared/describe-image';
 import type { CreateImageRequest, CreateImageResponse } from '../../shared/images';
 import type { RemixImageRequest, RemixImageResponse } from '../../shared/remix-image';
@@ -281,4 +286,84 @@ export async function fetchRunMetrics(runId: string): Promise<RunMetrics> {
     throw new ApiError(response.status, await failureMessage(response));
   }
   return (await response.json()) as RunMetrics;
+}
+
+/**
+ * Starts generating a video.
+ *
+ * Returns as soon as the job has been accepted rather than when the video exists, which is the
+ * whole point of the panel's design: generation outlives the request, so the browser polls
+ * {@link fetchVideoStatus} from here.
+ *
+ * @param request The generation request, carrying the prompt and the chosen controls.
+ * @param signal Abort signal, so a caller can abandon the start request itself.
+ * @returns The accepted job's run identifier, state, and the controls the server applied —
+ *   including the cost estimate it computed.
+ * @throws {ApiError} With `400` when a control is unsupported or out of range, `409` when a job
+ *   already exists for this run identifier, or `401` when the Access session has expired.
+ */
+export async function startVideo(
+  request: CreateVideoRequest,
+  signal?: AbortSignal
+): Promise<CreateVideoAcceptedResponse> {
+  const response = await fetch('/api/create-video', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+
+  return (await response.json()) as CreateVideoAcceptedResponse;
+}
+
+/**
+ * Reads the current state of one video job.
+ *
+ * @param runId Run to poll.
+ * @returns The job's state, plus the stored video, receipt, and applied controls once it completes.
+ * @throws {ApiError} With `404` when no job exists for the signed-in identity and this run
+ *   identifier — which is also the answer for another visitor's job, deliberately — or `401` when
+ *   the Access session has expired.
+ */
+export async function fetchVideoStatus(runId: string): Promise<CreateVideoStatusResponse> {
+  const response = await fetch(`/api/create-video/${encodeURIComponent(runId)}/status`);
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+  return (await response.json()) as CreateVideoStatusResponse;
+}
+
+/**
+ * Cancels a running video job.
+ *
+ * @param runId Run to cancel.
+ * @returns The job's final reported state.
+ * @throws {ApiError} With `404` when no such job exists for the signed-in identity, or `401` when
+ *   the Access session has expired.
+ */
+export async function cancelVideo(runId: string): Promise<CreateVideoStatusResponse> {
+  const response = await fetch(`/api/create-video/${encodeURIComponent(runId)}/cancel`, {
+    method: 'POST'
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+  return (await response.json()) as CreateVideoStatusResponse;
+}
+
+/**
+ * Builds the URL a `<video>` element plays a finished run from.
+ *
+ * A URL rather than a fetch, because the element must issue its own requests: it asks for byte
+ * ranges as the visitor seeks, and a body this module had already read could not answer them.
+ *
+ * @param runId Run whose video to play.
+ * @returns The authenticated, same-origin URL of the stored video.
+ */
+export function videoUrl(runId: string): string {
+  return `/api/create-video/${encodeURIComponent(runId)}/video`;
 }

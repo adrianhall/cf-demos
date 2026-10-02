@@ -344,17 +344,32 @@ describe('claims about model confidence', () => {
 });
 
 describe('media handling', () => {
-  // The specification requires generated media to stay transient in this phase: no R2 bucket, no
-  // retention policy, no cleanup step at teardown. Introducing storage to make a panel work is a
-  // decision that has to be designed explicitly, so it should not be possible to slip in.
-  it('persists no generated media to a storage product', async () => {
+  // Phase 8 replaced the blanket "no storage product" rule with a narrower one, and the narrower
+  // rule is the one worth enforcing. Generated *video* is stored, because a `<video>` element seeks
+  // with `Range` requests that a base64 JSON body cannot answer and because the provider returns a
+  // short-lived URL rather than bytes. Nothing else is, and that boundary is what this guard holds:
+  // it is the difference between "this demo stores one kind of thing, deliberately" and "storage
+  // leaked into whichever panel found it convenient".
+  //
+  // It also protects a later phase. The scheduled reaper will delete only what lives under the
+  // generated-video prefix, so an object written anywhere else would be one nothing ever collects.
+  it('writes to a storage product only from the video path', async () => {
     const offenders: string[] = [];
-    const directories = ['src/worker', 'src/client'];
+    const permitted = [
+      // The R2 adapter, which is the single point where keys meet the bucket and where the prefix
+      // guard lives.
+      'src/worker/infrastructure/media/r2-video-storage.ts',
+      // The Workflow step that streams a provider's response into that adapter.
+      'src/worker/infrastructure/jobs/create-video-workflow.ts'
+    ];
 
-    for (const directory of directories) {
+    for (const directory of ['src/worker', 'src/client']) {
       for (const file of await listSourceFiles(path.join(demoRoot, directory))) {
+        if (permitted.includes(file)) {
+          continue;
+        }
         const contents = stripComments(await readFile(path.join(demoRoot, file), 'utf8'));
-        if (/\benv\.(?:R2|BUCKET|MEDIA)\b|\.put\s*\(/u.test(contents)) {
+        if (/\.put\s*\(|\benv\.(?:R2|MEDIA)\b/u.test(contents)) {
           offenders.push(file);
         }
       }
@@ -363,9 +378,69 @@ describe('media handling', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('declares no R2 binding in the Worker configuration', async () => {
-    const config = await readFile(path.join(demoRoot, 'cloudflare.config.ts'), 'utf8');
-    expect(stripComments(config)).not.toMatch(/r2_buckets|R2Bucket/u);
+  // Images stay transient, which was examined directly in phase 8 rather than assumed. Routing an
+  // upload through R2 would not save memory — the vision and classification models take the image
+  // *in the request*, so the Worker would read every byte back out of storage to make the call —
+  // and it would add a retention surface this demo otherwise does not have to explain.
+  it('keeps uploaded images out of storage', async () => {
+    const imagePanels = [
+      'src/worker/application/describe-image/describe-image-service.ts',
+      'src/worker/application/classify-image/classify-image-service.ts',
+      'src/worker/application/remix-image/remix-image-service.ts',
+      'src/worker/application/create-image/create-image-service.ts'
+    ];
+
+    for (const file of imagePanels) {
+      const contents = stripComments(await readFile(path.join(demoRoot, file), 'utf8'));
+      expect(contents, `${file} must not reach a storage product`).not.toMatch(
+        /VIDEO_BUCKET|R2Bucket|VideoStoragePort/u
+      );
+    }
+  });
+
+  // Every stored object must be named by the derivation, never by a string a caller supplied or a
+  // module spelled by hand. A second spelling of the prefix would create objects outside the
+  // reaper's reach while looking entirely correct.
+  it('derives every storage key from the shared prefix constant', async () => {
+    const storage = await readFile(
+      path.join(demoRoot, 'src/worker/infrastructure/media/r2-video-storage.ts'),
+      'utf8'
+    );
+    expect(storage).toMatch(/GENERATED_VIDEO_PREFIX/u);
+
+    const offenders: string[] = [];
+    for (const file of await listSourceFiles(path.join(demoRoot, 'src/worker'))) {
+      if (file.endsWith('media-job-identity.ts')) {
+        continue;
+      }
+      const contents = stripComments(await readFile(path.join(demoRoot, file), 'utf8'));
+      // A literal prefix string anywhere but its own definition is the drift this catches.
+      if (/['"`]generated-video\//u.test(contents)) {
+        offenders.push(file);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('binds exactly one R2 bucket, for video', async () => {
+    const config = stripComments(
+      await readFile(path.join(demoRoot, 'cloudflare.config.ts'), 'utf8')
+    );
+    expect(config).toMatch(/VIDEO_BUCKET:\s*bindings\.r2\(/u);
+    // One bucket, not a general-purpose media store that later panels quietly adopt.
+    expect(config.match(/bindings\.r2\(/gu)).toHaveLength(1);
+  });
+
+  // Phase 8's analysis concluded that a Workflow instance already *is* the job record: it reports
+  // its own status, carries its output, and retains terminal state for days. A D1 table or KV
+  // namespace beside it would be a second source of truth for one job's status, and the predictable
+  // result is a job that one store calls finished while the other calls it running.
+  it('adds no D1 or KV binding for job state', async () => {
+    const config = stripComments(
+      await readFile(path.join(demoRoot, 'cloudflare.config.ts'), 'utf8')
+    );
+    expect(config).not.toMatch(/bindings\.d1\(/u);
+    expect(config).not.toMatch(/bindings\.kv\(/u);
   });
 
   // The media type a browser is given decides how it treats the payload, so it must come from the

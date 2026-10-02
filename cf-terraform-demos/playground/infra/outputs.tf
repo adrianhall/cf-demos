@@ -32,3 +32,8 @@ output "worker_name" {
   description = "Worker service name."
   value       = cloudflare_worker.demo.name
 }
+
+output "r2_bucket_name" {
+  description = "Name of the R2 bucket Create Video stores generated video in. Bound into the Worker as VIDEO_BUCKET; emptied by `pnpm teardown` before the bucket is destroyed, since R2 refuses to delete a bucket that still holds objects."
+  value       = cloudflare_r2_bucket.video.name
+}

@@ -10,6 +10,7 @@ import ActivityView from './views/ActivityView.vue';
 import ChatView from './views/ChatView.vue';
 import ClassifyImageView from './views/ClassifyImageView.vue';
 import CreateImageView from './views/CreateImageView.vue';
+import CreateVideoView from './views/CreateVideoView.vue';
 import DescribeImageView from './views/DescribeImageView.vue';
 import PlannedPanelView from './views/PlannedPanelView.vue';
 import RemixImageView from './views/RemixImageView.vue';
@@ -27,6 +28,7 @@ const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
   'chat': ChatView,
   'classify-image': ClassifyImageView,
   'create-image': CreateImageView,
+  'create-video': CreateVideoView,
   'describe-image': DescribeImageView,
   'remix-image': RemixImageView,
   'view-tokens': ViewTokensView
