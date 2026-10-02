@@ -18,6 +18,10 @@ import type { ImageControlSupport } from '../../shared/images';
 import type { SpeechControlSupport } from '../../shared/read-text';
 import type { RemixImageControlSupport } from '../../shared/remix-image';
 import type { TaskId } from '../../shared/tasks';
+import {
+  MAX_INPUT_AUDIO_BYTES,
+  type TranscriptionControlSupport
+} from '../../shared/transcribe-audio';
 
 /**
  * Who runs the model behind a descriptor.
@@ -163,6 +167,16 @@ export interface ModelDescriptor {
    * declared per model, and a field absent here is never forwarded.
    */
   speechControls?: SpeechControlSupport;
+  /**
+   * How a transcription model carries its audio, which controls it accepts, and what it charges.
+   *
+   * Present only for an automatic-speech-recognition descriptor. The disagreement here is the
+   * widest in the demo: the three reviewed models want the _same bytes_ in three different
+   * encodings, return the transcript in three different shapes, and mean different things by a
+   * confidence number. The encoding a model demands also decides how large a file it may safely be
+   * given, so the size ceiling is declared per model rather than once for the panel.
+   */
+  transcriptionControls?: TranscriptionControlSupport;
   /**
    * The field a vision model puts its answer in.
    *
@@ -658,6 +672,141 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       // No `pricePerThousandCharactersUsd` either: billed at $0.000205 per audio minute, and the
       // duration is not knowable before generation. The panel states that instead of estimating.
       languageSelectsVoice: true
+    }
+  },
+  // Every reviewed transcription model is Cloudflare-hosted, so this panel carries no prepaid AI
+  // Gateway credit prerequisite — the same reason phase 10 follows phase 9 rather than the
+  // third-party-only phases.
+  //
+  // These three disagree more completely than any other set in this demo. They want the *same
+  // bytes* in three different encodings; they return the transcript in three different shapes; two
+  // report a confidence number and mean different things by it; and they differ in price by a
+  // factor of ten. Every one of those differences is visible in the panel.
+  //
+  // Whisper large v3 turbo is the default: it is the only reviewed model that returns segment
+  // timings with per-segment quality figures, it takes the audio as a base64 string rather than
+  // expanding it into JSON numbers, and at $0.0005 per audio minute it is the cheapest of the
+  // three by an order of magnitude.
+  {
+    id: '@cf/openai/whisper-large-v3-turbo',
+    name: 'Whisper large v3 turbo',
+    provider: 'workers-ai',
+    task: 'transcribe-audio',
+    contractVersion: 1,
+    pricingUnit: 'audio-second',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/',
+    transcriptionControls: {
+      // Its schema declares `audio` as `anyOf: [string (base64), { body, contentType }]`. The
+      // base64 branch is chosen because it is one copy of the data rather than an expansion of it.
+      audioEncoding: 'base64',
+      maxAudioBytes: MAX_INPUT_AUDIO_BYTES,
+      // ISO 639-1 codes. A reviewed restriction rather than a transcribed enum: the schema types
+      // `language` as an open string, so an unlisted code would otherwise be forwarded unchecked.
+      languages: ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'ja', 'zh', 'ko', 'ru', 'ar', 'hi'],
+      // No `supportsLanguageDetection`: Whisper detects the language by default and has no flag to
+      // ask it to. That is a different thing from Nova 3's explicit `detect_language`, so the
+      // absence is recorded rather than approximated.
+      //
+      // No `supportsDiarization` and no `supportsPunctuation`: its schema declares neither. It
+      // punctuates as part of its output, which is a capability rather than a control.
+      supportsContextPrompt: true,
+      // The only reviewed model returning `segments[]` with start/end ranges, which is why it is
+      // the default: phrase-level timings are the useful granularity for reading a transcript.
+      timestampGranularity: 'segment',
+      // `avg_logprob`, not a probability. Negative and unbounded below, so the panel must not draw
+      // it as a proportion — see `ConfidenceScale`.
+      confidenceScale: 'log-probability',
+      // $0.0005 per audio minute at review time.
+      pricePerAudioMinuteUsd: 0.000_5
+    }
+  },
+  // Nova 3 is the model that makes the per-model declaration do visible work. It shares almost
+  // nothing with the Whisper family: the audio must be an `{ body, contentType }` object rather
+  // than a string, the transcript is buried three levels deep in
+  // `results.channels[0].alternatives[0]`, and it is the only reviewed model that can label
+  // speakers or be asked to punctuate.
+  //
+  // It is also ten times the price of turbo, which is the most instructive fact in this panel's
+  // selector: diarization and a genuine confidence number are not free.
+  {
+    id: '@cf/deepgram/nova-3',
+    name: 'Nova 3',
+    provider: 'workers-ai',
+    task: 'transcribe-audio',
+    contractVersion: 1,
+    pricingUnit: 'audio-second',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/nova-3/',
+    transcriptionControls: {
+      // Its schema requires an object with *both* `body` and `contentType`. Sending a bare string
+      // is a request missing its only mandatory property, so the sniffed media type is not merely
+      // a safety check here — it is a required field of the request.
+      audioEncoding: 'body-object',
+      maxAudioBytes: MAX_INPUT_AUDIO_BYTES,
+      // BCP-47 tags, not ISO 639-1. `en-GB` is valid here and invalid for Whisper, which is the
+      // clearest demonstration in the panel that a language code is a per-model contract rather
+      // than a universal identifier.
+      languages: ['en', 'en-GB', 'en-US', 'es', 'fr', 'de', 'it', 'pt', 'pt-BR', 'nl', 'ja', 'hi'],
+      supportsLanguageDetection: true,
+      supportsDiarization: true,
+      supportsPunctuation: true,
+      // No `supportsContextPrompt`: it has `keyterm` and `keywords`, which are a different
+      // contract from a free-text prompt. Offering this panel's context-prompt control for Nova 3
+      // would mean silently sending the text to a field with different semantics.
+      timestampGranularity: 'word',
+      // A genuine confidence in [0, 1], which is why this is the one model whose numbers the panel
+      // may legitimately draw as proportions.
+      confidenceScale: 'probability',
+      // $0.0052 per audio minute over regular HTTP at review time. Its WebSocket rate is higher
+      // again; this demo only ever makes HTTP calls, so the HTTP figure is the honest one.
+      pricePerAudioMinuteUsd: 0.005_2
+    }
+  },
+  // The original Whisper, included for the encoding it demands rather than for its quality. Its
+  // schema has no `audio` string branch at all: the only object form is `{ audio: number[] }`, one
+  // JSON number per byte.
+  //
+  // That is why this panel declares its size ceiling per model. A 4 MiB file becomes an array of
+  // four million small integers, and the measurements recorded for Describe Image's 1 MiB cap show
+  // what that costs in a 128 MB isolate. The lower limit here is a property of the contract, not an
+  // arbitrary restriction, and the panel says so when this model is selected.
+  //
+  // Reviewed *instead of* `@cf/openai/whisper-tiny-en`, which the plan listed. That model is marked
+  // Beta and publishes no price at all, and a panel whose whole point is comparing cost per audio
+  // minute cannot honestly include a model with no rate.
+  {
+    id: '@cf/openai/whisper',
+    name: 'Whisper (original)',
+    provider: 'workers-ai',
+    task: 'transcribe-audio',
+    contractVersion: 1,
+    pricingUnit: 'audio-second',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/whisper/',
+    transcriptionControls: {
+      audioEncoding: 'byte-array',
+      // One quarter of the ceiling. Describe Image measured ~55 MB peak for a 1 MiB payload
+      // expanded this way and ~234 MB for 4 MiB — past the isolate's 128 MB limit — so this is the
+      // largest size that leaves headroom for concurrent requests.
+      maxAudioBytes: 1_024 * 1_024,
+      // No `languages`: its schema has no language parameter whatsoever. It detects the language
+      // and cannot be told one, so the panel offers no hint for it rather than offering a control
+      // the provider would reject.
+      //
+      // No `supportsLanguageDetection` either, for the same reason as turbo: detection is its
+      // behaviour rather than a flag.
+      //
+      // No diarization, punctuation, or context prompt — none are in its schema.
+      //
+      // Per-word ranges in a `words[]` array, which is a third output shape again.
+      timestampGranularity: 'word',
+      // No `confidenceScale`: its output schema declares no confidence or log-probability field at
+      // all, so the panel reports its spans without any quality figure rather than inventing one.
+      //
+      // $0.0005 per audio minute at review time — the same rate as turbo, which is itself worth
+      // seeing: the newer model is not more expensive.
+      pricePerAudioMinuteUsd: 0.000_5
     }
   }
 ];

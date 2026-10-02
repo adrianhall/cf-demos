@@ -7,6 +7,7 @@ import type { DescribeImageService } from './application/describe-image/describe
 import type { MetricsService } from './application/metrics/metrics-service';
 import type { ReadTextService } from './application/read-text/read-text-service';
 import type { RemixImageService } from './application/remix-image/remix-image-service';
+import type { TranscribeAudioService } from './application/transcribe-audio/transcribe-audio-service';
 
 /**
  * Hono context variables added by this Worker: the toolkit's `Cloudflare_Access_Identity` and
@@ -48,6 +49,10 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * The Read Text use case, sharing this request's gateway client and run store.
    */
   READ_TEXT_SERVICE: ReadTextService;
+  /**
+   * The Transcribe Audio use case, sharing this request's gateway client and run store.
+   */
+  TRANSCRIBE_AUDIO_SERVICE: TranscribeAudioService;
   /**
    * The run-metrics use case, sharing this request's gateway client and run store.
    */

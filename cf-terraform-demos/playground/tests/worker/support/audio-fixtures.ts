@@ -113,6 +113,57 @@ export function rawPcmBytes(length = 64): Uint8Array {
 }
 
 /**
+ * Builds an Ogg file.
+ *
+ * Only the page header is real. That is enough, because nothing in this demo decodes audio — the
+ * Worker identifies the container and forwards the bytes.
+ *
+ * @param length Total size to produce.
+ * @returns The Ogg bytes.
+ */
+export function oggBytes(length = 512): Uint8Array {
+  const bytes = new Uint8Array(length);
+  // "OggS"
+  bytes.set([0x4f, 0x67, 0x67, 0x53], 0);
+  return bytes;
+}
+
+/**
+ * Builds a WebM/Matroska file.
+ *
+ * The format a browser's own recorder produces in Chrome and Firefox, so this fixture covers the
+ * microphone path rather than an exotic case.
+ *
+ * @param length Total size to produce.
+ * @returns The WebM bytes.
+ */
+export function webmBytes(length = 512): Uint8Array {
+  const bytes = new Uint8Array(length);
+  // EBML header.
+  bytes.set([0x1a, 0x45, 0xdf, 0xa3], 0);
+  return bytes;
+}
+
+/**
+ * Builds an ISO base-media (MP4/M4A) file.
+ *
+ * The signature sits at offset four, after the box size, which is the detail an intuitive
+ * implementation gets wrong — so the fixture places it correctly and a test asserts the sniffer
+ * finds it there.
+ *
+ * @param length Total size to produce.
+ * @returns The MP4 bytes.
+ */
+export function mp4Bytes(length = 512): Uint8Array {
+  const bytes = new Uint8Array(length);
+  // Box size, then "ftyp", then a brand.
+  bytes.set([0x00, 0x00, 0x00, 0x20], 0);
+  bytes.set([0x66, 0x74, 0x79, 0x70], 4);
+  bytes.set([0x4d, 0x34, 0x41, 0x20], 8);
+  return bytes;
+}
+
+/**
  * Wraps bytes in a `ReadableStream`, as the Workers AI binding returns them.
  *
  * A function rather than a shared value, because a stream is single-use: one built at module scope

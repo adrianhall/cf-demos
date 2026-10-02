@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isAcceptedInput,
   isPlayable,
   readAudioDurationSeconds,
+  readInputAudioDurationSeconds,
   sniffAudioMediaType,
+  sniffInputAudioMediaType,
   speechFileName
 } from '../../../src/worker/domain/audio-bytes';
-import { mp3FrameBytes, mp3WithId3Bytes, rawPcmBytes, wavBytes } from '../support/audio-fixtures';
+import {
+  mp3FrameBytes,
+  mp3WithId3Bytes,
+  mp4Bytes,
+  oggBytes,
+  rawPcmBytes,
+  wavBytes,
+  webmBytes
+} from '../support/audio-fixtures';
 
 describe('identifying audio by signature', () => {
   it('recognises an MP3 that starts with an ID3 tag', () => {
@@ -159,5 +170,87 @@ describe('download file names', () => {
   // header-injection surface for no real benefit.
   it('does not incorporate any caller-supplied text', () => {
     expect(speechFileName('run-7', 'wav')).not.toMatch(/[^\w.-]/u);
+  });
+});
+
+/**
+ * The input direction, added in phase 10. Deliberately a wider allowlist than the output sniffer
+ * and deliberately the same module: the two directions share their signature helpers, so keeping
+ * them together is what stops one falling behind the other.
+ */
+describe('identifying submitted audio by signature', () => {
+  it('accepts the formats the output sniffer already knows', () => {
+    expect(sniffInputAudioMediaType(mp3WithId3Bytes())).toBe('audio/mpeg');
+    expect(sniffInputAudioMediaType(mp3FrameBytes())).toBe('audio/mpeg');
+    expect(sniffInputAudioMediaType(wavBytes())).toBe('audio/wav');
+  });
+
+  it('accepts an Ogg container', () => {
+    expect(sniffInputAudioMediaType(oggBytes())).toBe('audio/ogg');
+  });
+
+  // The format Chrome and Firefox record in. Rejecting it would make the microphone button
+  // useless on both, which is why it is in the input set and not the playback one.
+  it('accepts the WebM a browser records', () => {
+    expect(sniffInputAudioMediaType(webmBytes())).toBe('audio/webm');
+  });
+
+  // The format Safari records in. Its signature sits at offset four rather than zero, after the
+  // box size — matching at offset zero is the intuitive mistake, and would reject every such file.
+  it('accepts an MP4 whose signature is not at the start', () => {
+    expect(sniffInputAudioMediaType(mp4Bytes())).toBe('audio/mp4');
+  });
+
+  it('refuses an empty buffer', () => {
+    expect(sniffInputAudioMediaType(new Uint8Array(0))).toBeUndefined();
+  });
+
+  it('refuses raw headerless PCM', () => {
+    expect(sniffInputAudioMediaType(rawPcmBytes())).toBeUndefined();
+  });
+
+  it('refuses a text document renamed to look like audio', () => {
+    const text = new TextEncoder().encode('this is not audio, it is prose');
+    expect(sniffInputAudioMediaType(text)).toBeUndefined();
+  });
+
+  it('refuses a PNG', () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+    expect(sniffInputAudioMediaType(png)).toBeUndefined();
+  });
+
+  // The input set is deliberately wider than what Read Text will play. Asserting the asymmetry
+  // keeps a later edit from quietly collapsing the two into one list.
+  it('accepts more formats than the playback sniffer', () => {
+    expect(sniffAudioMediaType(webmBytes())).toBeUndefined();
+    expect(sniffInputAudioMediaType(webmBytes())).toBe('audio/webm');
+  });
+});
+
+describe('the accepted-input predicate', () => {
+  it('accepts every input format the panel allows', () => {
+    for (const type of ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/mp4']) {
+      expect(isAcceptedInput(type), type).toBe(true);
+    }
+  });
+
+  it('refuses a format outside the input allowlist', () => {
+    expect(isAcceptedInput('audio/flac')).toBe(false);
+    expect(isAcceptedInput('video/mp4')).toBe(false);
+  });
+});
+
+describe('reading a submitted file\u2019s duration', () => {
+  it('reads a WAV duration', () => {
+    expect(readInputAudioDurationSeconds(wavBytes(4), 'audio/wav')).toBeCloseTo(4, 1);
+  });
+
+  // The distinction matters more for input than for playback: this panel's cost estimate is
+  // derived from the duration, so a guessed duration would become a guessed price.
+  it('declines to guess the duration of a compressed format', () => {
+    expect(readInputAudioDurationSeconds(mp3WithId3Bytes(4_096), 'audio/mpeg')).toBeUndefined();
+    expect(readInputAudioDurationSeconds(webmBytes(4_096), 'audio/webm')).toBeUndefined();
+    expect(readInputAudioDurationSeconds(oggBytes(4_096), 'audio/ogg')).toBeUndefined();
+    expect(readInputAudioDurationSeconds(mp4Bytes(4_096), 'audio/mp4')).toBeUndefined();
   });
 });

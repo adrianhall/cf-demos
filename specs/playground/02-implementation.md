@@ -672,6 +672,44 @@ Deliver **Transcribe Audio** (automatic speech recognition / speech-to-text).
 - Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
+### Findings
+
+Recorded during delivery, because each one changed a decision.
+
+1. **`@cf/openai/whisper-tiny-en` was not registered, despite being a listed candidate.** It is marked Beta and publishes no price at all. This panel's entire comparison is cost per audio minute, so a model with no rate could not be presented honestly beside one that has one. `@cf/openai/whisper` was reviewed in its place: same per-minute price as turbo, and it contributes the third audio encoding, which is more instructive than a cheaper tier would have been.
+
+2. **All three reviewed models are Cloudflare-hosted, so the panel needs no prepaid credit.** The candidate third-party models were not needed and were not registered.
+
+3. **The same bytes are wanted in three different encodings.** Turbo takes a base64 string, Nova 3 requires `{ body, contentType }`, and the original Whisper requires `number[]` — one JSON number per byte. This is a wider disagreement than any earlier panel's and it is not cosmetic: the encoding decides how much memory a request costs.
+
+4. **The file size limit is therefore per model, which is new.** Every earlier panel had one upload ceiling. A 4 MiB file expanded into a JSON array of byte values would, by the measurements recorded for Describe Image, exhaust a 128 MB isolate — so the byte-array model declares a 1 MiB ceiling and the others declare 4 MiB. The browser reads the ceiling from the catalogue, the server enforces it from the descriptor, and the refusal explains *why* the limit is lower, because a file that worked a moment ago being rejected otherwise reads as a bug.
+
+5. **A loaded file can become invalid by switching model.** The composable re-checks on model change and reports the problem while *keeping* the file, so switching back restores a working state. Discarding a large upload the visitor waited to read would be a worse answer.
+
+6. **The transcript arrives in three unrelated envelopes**, including one nested four levels deep at `results.channels[0].alternatives[0].transcript`. The envelope is selected from the reviewed descriptor rather than probed for, so a changed contract is a logged refusal instead of a subtly wrong transcript. Only the first alternative is read: the list is ranked, so anything past it is a lower-confidence reading.
+
+7. **Two models report a "confidence" and mean different things by it.** Nova 3 returns a probability in `[0, 1]`; Whisper returns `avg_logprob`, which is negative and unbounded below. The scale travels with the numbers and the panel renders them differently — a bar for the probability, a bare value and a warning for the log probability. Rescaling the second to make one bar work for both would have been a fabrication.
+
+8. **A language code is a per-model contract.** Turbo takes ISO 639-1, Nova 3 takes BCP-47, and the original Whisper takes no language parameter at all. `en-GB` is valid for exactly one reviewed model. A client-side membership check was added after a test caught the composable forwarding a stale code that the new model's list did not contain.
+
+9. **A language hint and language detection are mutually exclusive by meaning rather than by schema.** Both fields are individually legal for Nova 3, but the provider would silently honour one. The combination is refused rather than resolved on the visitor's behalf.
+
+10. **The cost cannot usually be estimated in advance**, which is the opposite of Read Text. Every reviewed model bills per audio minute and a compressed file's duration is not readable without decoding it, so only WAV yields an estimate — and only WAV can have the duration cap enforced against it. The panel states the limitation rather than leaving the figure absent.
+
+11. **The audio sniffer was extended rather than duplicated**, as the phase 9 follow-up asked. Input and output share the signature helpers and keep separate allowlists, because the directions are not symmetric: playback is constrained by what a browser renders, input by what a browser's recorder produces. An MP4's `ftyp` signature sits at offset four rather than zero, which is the detail an intuitive implementation gets wrong and would have rejected every Safari recording.
+
+12. **The microphone is a progressive enhancement throughout.** The record button is absent rather than disabled when the APIs are missing, permission states are explicit so a denial and a device fault can be given opposite advice, and the recording container is negotiated with `isTypeSupported` because Chrome and Safari do not overlap.
+
+### Follow-up for later phases
+
+- `MAX_TRANSCRIPT_SPANS` caps the timed breakdown at 2,000 entries. The transcript text is never
+  truncated, so nothing is lost from the primary result, but a panel that later wants per-word
+  timings for an hour of audio will need pagination rather than a higher cap.
+- Nova 3 exposes `keyterm` and `keywords`, which are a different contract from Whisper's free-text
+  `initial_prompt`. They were deliberately not wired to this panel's context-prompt control, since
+  that would send the visitor's text to a field with different semantics. A future phase wanting
+  keyword biasing should add a separate, explicitly named control.
+
 ---
 
 ## Phase 11 — Translate Text

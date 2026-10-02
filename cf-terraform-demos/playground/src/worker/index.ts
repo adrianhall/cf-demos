@@ -14,6 +14,7 @@ import { DescribeImageService } from './application/describe-image/describe-imag
 import { MetricsService } from './application/metrics/metrics-service';
 import { ReadTextService } from './application/read-text/read-text-service';
 import { RemixImageService } from './application/remix-image/remix-image-service';
+import { TranscribeAudioService } from './application/transcribe-audio/transcribe-audio-service';
 import type { AppBindings } from './bindings';
 import { GatewayInferenceClient } from './infrastructure/ai/gateway-inference-client';
 import { WorkflowMediaJobs } from './infrastructure/jobs/workflow-media-jobs';
@@ -30,6 +31,7 @@ import { describeImageRouter } from './routes/describe-image';
 import { readTextRouter } from './routes/read-text';
 import { remixImageRouter } from './routes/remix-image';
 import { runsRouter } from './routes/runs';
+import { transcribeAudioRouter } from './routes/transcribe-audio';
 
 /**
  * Worker entry point and composition root.
@@ -108,6 +110,10 @@ app.use('/api/*', async (context, next) => {
     'READ_TEXT_SERVICE',
     new ReadTextService({ inference, runs, logger: context.var.LOGGER })
   );
+  context.set(
+    'TRANSCRIBE_AUDIO_SERVICE',
+    new TranscribeAudioService({ inference, runs, logger: context.var.LOGGER })
+  );
   context.set('METRICS_SERVICE', new MetricsService({ inference, runs }));
 
   await next();
@@ -122,6 +128,7 @@ app.route('/api/create-video', createVideoRouter);
 app.route('/api/describe-image', describeImageRouter);
 app.route('/api/read-text', readTextRouter);
 app.route('/api/remix-image', remixImageRouter);
+app.route('/api/transcribe-audio', transcribeAudioRouter);
 app.route('/api/runs', runsRouter);
 
 /**

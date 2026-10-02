@@ -6,6 +6,7 @@ import type { ImageControlSupport } from '../../shared/images';
 import type { SpeechControlSupport } from '../../shared/read-text';
 import type { RemixImageControlSupport } from '../../shared/remix-image';
 import type { TaskId } from '../../shared/tasks';
+import type { TranscriptionControlSupport } from '../../shared/transcribe-audio';
 
 /**
  * A reviewed model as the catalogue endpoint reports it.
@@ -91,6 +92,15 @@ export interface CatalogueModel {
    * both, and never one the provider would reject.
    */
   speechControls?: SpeechControlSupport;
+  /**
+   * Controls a transcription model accepts, how it carries audio, and what it charges per minute.
+   *
+   * The browser needs this for something no earlier panel required: the _file size limit_ is
+   * per-model, because the encoding a model's schema demands decides what is safe to send. The
+   * picker therefore reads its own ceiling from here rather than from a shared constant, so a file
+   * is refused in the browser with the same number the server would use.
+   */
+  transcriptionControls?: TranscriptionControlSupport;
 }
 
 /**

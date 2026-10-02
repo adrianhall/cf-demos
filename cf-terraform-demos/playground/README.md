@@ -37,24 +37,24 @@ wants to do rather than after a model task type. The task type is in the panel's
 the panel teaches the vocabulary without putting a block of explanation above the thing a visitor
 came to use.
 
-| Panel              | Task type                    | Status            |
-| ------------------ | ---------------------------- | ----------------- |
-| **Chat**           | **Text generation**          | **Available now** |
-| **Create Image**   | **Text to image**            | **Available now** |
-| **Describe Image** | **Image to text**            | **Available now** |
-| **Remix Image**    | **Image to image**           | **Available now** |
-| **Classify Image** | **Image classification**     | **Available now** |
-| Detect Objects     | Object detection             | Phase 17          |
-| **Create Video**   | **Text to video**            | **Available now** |
-| Animate Image      | Image to video               | Phase 16          |
-| Generate Music     | Text to music                | Phase 15          |
-| **Read Text**      | **Text to speech**           | **Available now** |
-| Transcribe Audio   | Automatic speech recognition | Phase 10          |
-| Translate Text     | Translation                  | Phase 11          |
-| Classify Text      | Text classification          | Phase 12          |
-| Evaluate Choices   | Structured evaluation        | Phase 14          |
-| Semantic Search    | Text embeddings              | Phase 13          |
-| **View Tokens**    | **Tokenization**             | **Available now** |
+| Panel                | Task type                        | Status            |
+| -------------------- | -------------------------------- | ----------------- |
+| **Chat**             | **Text generation**              | **Available now** |
+| **Create Image**     | **Text to image**                | **Available now** |
+| **Describe Image**   | **Image to text**                | **Available now** |
+| **Remix Image**      | **Image to image**               | **Available now** |
+| **Classify Image**   | **Image classification**         | **Available now** |
+| Detect Objects       | Object detection                 | Phase 17          |
+| **Create Video**     | **Text to video**                | **Available now** |
+| Animate Image        | Image to video                   | Phase 16          |
+| Generate Music       | Text to music                    | Phase 15          |
+| **Read Text**        | **Text to speech**               | **Available now** |
+| **Transcribe Audio** | **Automatic speech recognition** | **Available now** |
+| Translate Text       | Translation                      | Phase 11          |
+| Classify Text        | Text classification              | Phase 12          |
+| Evaluate Choices     | Structured evaluation            | Phase 14          |
+| Semantic Search      | Text embeddings                  | Phase 13          |
+| **View Tokens**      | **Tokenization**                 | **Available now** |
 
 Panels that are not built yet are still listed, each stating the phase that delivers it. Hiding them
 would misrepresent the product; a sidebar that quietly grows tells a visitor nothing about where the
@@ -582,18 +582,23 @@ Built to **phase 7** of
   [Read Text: models that agree on nothing](#read-text-models-that-agree-on-nothing) for what that
   forced, and why the audio is not stored.
 
-Every remaining panel renders a placeholder stating the phase that delivers it. **Transcribe
-Audio**, in phase 10, is next.
+- **Phase 10** delivered Transcribe Audio, whose models disagree about the _payload itself_. See
+  [Transcribe Audio: three encodings, three envelopes](#transcribe-audio-three-encodings-three-envelopes)
+  for why the file size limit changes with the model, and why two "confidence" numbers here are not
+  comparable.
+
+Every remaining panel renders a placeholder stating the phase that delivers it. **Translate Text**,
+in phase 11, is next.
 
 The remaining phases are ordered by **whether Cloudflare hosts a model for the task**, which is a
 practical constraint rather than a preference: a third-party model bills against prepaid AI Gateway
 credits, so a panel with only third-party options cannot be built or demonstrated on an unfunded
 account. Phases 9–14 — Read Text, Transcribe Audio, Translate Text, Classify Text, Semantic Search,
-and Evaluate Choices — all have Cloudflare-hosted models and need no credits. Phase 9 confirmed that
-for Read Text: all three of its reviewed voices run on Cloudflare. Generate Music (15) and Animate
-Image (16) have no hosted option in the catalogue, so they come after. Each phase records its
-candidate hosted and third-party models, and asks for the hosting to be re-confirmed before it
-starts, because the catalogue changes.
+and Evaluate Choices — all have Cloudflare-hosted models and need no credits. Phases 9 and 10
+confirmed that for Read Text and Transcribe Audio: all three reviewed models in each run on
+Cloudflare. Generate Music (15) and Animate Image (16) have no hosted option in the catalogue, so
+they come after. Each phase records its candidate hosted and third-party models, and asks for the
+hosting to be re-confirmed before it starts, because the catalogue changes.
 
 Animate Image moved from phase 9 to phase 16 for exactly that reason: it shares all of Create
 Video's infrastructure and would otherwise be the obvious next step, but every image-to-video model
@@ -791,3 +796,68 @@ Audio is the one output in this demo that some visitors cannot perceive at all. 
 therefore rendered beside the player as a peer of it — not behind a disclosure — so the result is
 available in both forms at once. It costs nothing to show, since the text _is_ what the model was
 given, and it removes any doubt about what was actually read.
+
+## Transcribe Audio: three encodings, three envelopes
+
+Read Text's models disagreed about _controls_. Transcribe Audio's disagree about the **payload** —
+they want the same bytes in three different shapes, and return the answer in three unrelated ones.
+
+|                | Whisper large v3 turbo | Nova 3                                           | Whisper (original)       |
+| -------------- | ---------------------- | ------------------------------------------------ | ------------------------ |
+| Audio in       | base64 string          | `{ body, contentType }`                          | `number[]`, one per byte |
+| Max file       | 4 MB                   | 4 MB                                             | **1 MB**                 |
+| Transcript out | `text` + `segments[]`  | `results.channels[0].alternatives[0].transcript` | `text` + `words[]`       |
+| Language       | ISO 639-1              | **BCP-47**                                       | no parameter at all      |
+| Quality figure | `avg_logprob`          | `confidence` (0–1)                               | none                     |
+| Price          | $0.0005/min            | $0.0052/min                                      | $0.0005/min              |
+
+Four of those rows change what the panel does:
+
+- **The file size limit is per model.** This is the first panel where that is true. A 4 MB file
+  becomes four million JSON numbers for the byte-array model, and the measurements recorded for
+  Describe Image's 1 MB image cap show that exhausting a 128 MB isolate with one ordinary request is
+  arithmetic rather than theory. So the same file is accepted for one model and refused for another,
+  the picker reads its ceiling from the catalogue, and the refusal **explains why** — without that,
+  a file that worked a moment ago being rejected reads as a bug.
+- **A language code is a per-model contract.** `en-GB` is valid for exactly one reviewed model.
+  Merging the lists into one would invent a standard none of the providers agreed to, so the panel
+  offers each model's own codes and says they differ.
+- **"Confidence" means two different things.** Nova 3 returns a probability in `[0, 1]`; Whisper
+  returns an average log probability, which is negative and unbounded below. Normalising the second
+  into the first's range — the obvious way to make one progress bar work for both — would fabricate
+  a meaning the model never gave it. The probability gets a bar, the log probability gets its raw
+  number and a plain-language warning, and the model that reports neither gets no column at all.
+- **The envelope is read from the reviewed descriptor, never guessed.** Probing for keys would be
+  more forgiving and considerably worse: a changed contract would find some other string field and
+  present it as a transcript. Reading the declared shape turns that same break into a logged `502`.
+
+### The microphone is optional, and stays optional
+
+The panel is complete by file upload alone. The record button is **absent** — not disabled — on a
+browser without `MediaRecorder` or a secure context, because a disabled control implies the feature
+exists and is temporarily unavailable. Permission states are modelled explicitly rather than as
+booleans, since a denial and a device fault need opposite advice: one is a decision the visitor can
+revisit in their browser settings, the other is something retrying might genuinely fix.
+
+Browsers do not agree on a recording format either — Chrome and Firefox produce WebM, Safari
+produces MP4 — so the container is negotiated with `MediaRecorder.isTypeSupported` rather than
+assumed, and both signatures are in the input allowlist.
+
+### Input and output audio share one sniffer, with different allowlists
+
+`domain/audio-bytes.ts` now identifies audio in both directions, which is deliberate: the two share
+their signature helpers, and a second copy would let one fall behind. The **allowlists** differ,
+because the directions are not symmetric. Read Text decides what to render in the page, so its set
+is as narrow as the browser's reliable playback support. Here the file is forwarded to a provider,
+so the set must include what a browser's own recorder produces.
+
+One detail worth copying: an MP4's `ftyp` signature sits at **offset four**, after the box size.
+Matching it at offset zero is the intuitive mistake, and would reject every recording Safari makes.
+
+### What this panel cannot tell you in advance
+
+Every reviewed model bills per audio minute, and a compressed file's duration is not readable
+without decoding it. So unlike Read Text — where the billable quantity is text the visitor has
+already typed — this panel usually **cannot** quote a cost before the run, and says so rather than
+leaving the figure mysteriously absent. Only WAV declares a duration cheaply enough to use, and that
+is also the only format against which the ten-minute duration cap can be enforced.

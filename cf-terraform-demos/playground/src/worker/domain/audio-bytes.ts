@@ -16,6 +16,7 @@
  */
 
 import { isPlayableAudioMediaType, type AudioMediaType } from '../../shared/read-text';
+import { isAcceptedAudioMediaType, type InputAudioMediaType } from '../../shared/transcribe-audio';
 
 /**
  * Reports whether a byte pattern occurs at an offset.
@@ -150,6 +151,126 @@ export function sniffAudioMediaType(bytes: Uint8Array): AudioMediaType | undefin
  */
 export function isPlayable(value: string): boolean {
   return isPlayableAudioMediaType(value);
+}
+
+/**
+ * Reports whether the bytes are an Ogg container.
+ *
+ * `OggS` is the page header, and every Ogg stream begins with one. The codec inside — Vorbis or
+ * Opus — is not determined here, because this panel forwards the file to a provider rather than
+ * decoding it, and both codecs are ones a transcription model accepts.
+ *
+ * @param bytes Candidate audio data.
+ * @returns `true` when an Ogg page header is present.
+ */
+function isOgg(bytes: Uint8Array): boolean {
+  return matchesAt(bytes, 0, [0x4f, 0x67, 0x67, 0x53]);
+}
+
+/**
+ * Reports whether the bytes are an EBML container, which in practice means WebM or Matroska.
+ *
+ * Needed because a browser's own recorder produces it: Chrome's `MediaRecorder` emits WebM, so a
+ * sniffer that did not recognise this signature would reject every microphone recording made in
+ * that browser.
+ *
+ * The signature only proves EBML, not specifically audio — a WebM _video_ file carries the same
+ * four bytes. That is acceptable here and would not be for the player in Read Text: this file is
+ * forwarded to a transcription model, which extracts the audio track or fails with its own error,
+ * whereas a `data:` URI would have been a rendering decision made on the strength of the guess.
+ *
+ * @param bytes Candidate audio data.
+ * @returns `true` when an EBML header is present.
+ */
+function isEbml(bytes: Uint8Array): boolean {
+  return matchesAt(bytes, 0, [0x1a, 0x45, 0xdf, 0xa3]);
+}
+
+/**
+ * Reports whether the bytes are an ISO base-media container, which in practice means MP4 or M4A.
+ *
+ * The signature is not at offset zero: an ISO base-media file begins with a four-byte box length
+ * followed by the box type, so `ftyp` sits at offset four. Matching it at offset zero — the
+ * intuitive mistake — would reject every such file.
+ *
+ * Needed because Safari's `MediaRecorder` emits MP4, so excluding it would make the microphone
+ * button useless on that browser.
+ *
+ * @param bytes Candidate audio data.
+ * @returns `true` when an `ftyp` box header is present.
+ */
+function isIsoBaseMedia(bytes: Uint8Array): boolean {
+  // "ftyp", after the four-byte box size.
+  return matchesAt(bytes, 4, [0x66, 0x74, 0x79, 0x70]);
+}
+
+/**
+ * Identifies _submitted_ audio bytes by signature, for the Transcribe Audio panel.
+ *
+ * Deliberately a wider allowlist than {@link sniffAudioMediaType}, and deliberately the same
+ * module. The two directions are not symmetric: Read Text decides what to render in the page, so
+ * its set is as narrow as the browser's reliable playback support, while this set must include what
+ * a browser's own recorder produces. Keeping both here means the shared signature helpers have one
+ * definition rather than two copies that can fall out of step — which is why this lives beside the
+ * output sniffer instead of in a second module.
+ *
+ * @param bytes Candidate audio data, as submitted by a visitor.
+ * @returns The media type the bytes actually are, or `undefined` when they match no accepted input
+ *   format — which includes an empty buffer, a truncated file, raw headerless PCM, and a text
+ *   document renamed to look like audio.
+ */
+export function sniffInputAudioMediaType(bytes: Uint8Array): InputAudioMediaType | undefined {
+  // WAV and MP3 first, reusing the output sniffer's own checks so the two directions cannot
+  // disagree about what a WAV is.
+  const playable = sniffAudioMediaType(bytes);
+  if (playable !== undefined) {
+    return playable;
+  }
+
+  if (isOgg(bytes)) {
+    return 'audio/ogg';
+  }
+
+  if (isEbml(bytes)) {
+    return 'audio/webm';
+  }
+
+  if (isIsoBaseMedia(bytes)) {
+    return 'audio/mp4';
+  }
+
+  return undefined;
+}
+
+/**
+ * Reports whether a media type is one the Transcribe Audio panel accepts as input.
+ *
+ * @param value Candidate media type.
+ * @returns `true` when the type is in the input allowlist.
+ */
+export function isAcceptedInput(value: string): boolean {
+  return isAcceptedAudioMediaType(value);
+}
+
+/**
+ * Reads the duration of submitted audio where the container declares it cheaply and correctly.
+ *
+ * Only WAV qualifies, for the reason given on {@link readAudioDurationSeconds}: every other
+ * accepted input format would need either a constant-bitrate assumption that is wrong for real
+ * encoder output or a walk of the whole file. The distinction matters more here than it did for
+ * playback, because this panel's _cost estimate_ is derived from the duration — so a guessed
+ * duration would become a guessed price presented as an estimate, which is worse than declining to
+ * estimate at all.
+ *
+ * @param bytes The full submitted file.
+ * @param mediaType The type already determined by {@link sniffInputAudioMediaType}.
+ * @returns The duration in seconds, or `undefined` when it cannot be established.
+ */
+export function readInputAudioDurationSeconds(
+  bytes: Uint8Array,
+  mediaType: InputAudioMediaType
+): number | undefined {
+  return mediaType === 'audio/wav' ? readAudioDurationSeconds(bytes, 'audio/wav') : undefined;
 }
 
 /**

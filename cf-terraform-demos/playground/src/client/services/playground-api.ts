@@ -17,6 +17,10 @@ import type { ReadTextRequest, ReadTextResponse } from '../../shared/read-text';
 import type { RemixImageRequest, RemixImageResponse } from '../../shared/remix-image';
 import type { RunMetrics } from '../../shared/runs';
 import { parseSseBuffer } from '../../shared/sse';
+import type {
+  TranscribeAudioRequest,
+  TranscribeAudioResponse
+} from '../../shared/transcribe-audio';
 
 /**
  * Thrown when the API answers a non-streaming request with a failure.
@@ -306,6 +310,42 @@ export async function readText(
   }
 
   return (await response.json()) as ReadTextResponse;
+}
+
+/**
+ * Transcribes one recording.
+ *
+ * The exact inverse of {@link readText} in volume: the request carries several megabytes and the
+ * response is a few kilobytes of text.
+ *
+ * @param request The transcription request to send, carrying the base64 audio and chosen controls.
+ * @param signal Abort signal, so the caller's Cancel button aborts the HTTP request itself rather
+ *   than merely ignoring the result. The provider's work is not cancelled — and the panel says so —
+ *   but the browser stops waiting, which matters more here than elsewhere because a long upload is
+ *   the slowest part of this panel.
+ * @returns The normalised transcript, what the server verified about the audio, the run receipt,
+ *   and the controls the server applied.
+ * @throws {ApiError} When the server rejects the request (`400` for a file beyond the selected
+ *   model's own size ceiling, an unsupported control, a language code that model does not accept,
+ *   or a file that is not audio; `401` for an expired Access session) or when the provider fails or
+ *   returns no usable transcript (`502`).
+ */
+export async function transcribeAudio(
+  request: TranscribeAudioRequest,
+  signal?: AbortSignal
+): Promise<TranscribeAudioResponse> {
+  const response = await fetch('/api/transcribe-audio', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+
+  return (await response.json()) as TranscribeAudioResponse;
 }
 
 /**
