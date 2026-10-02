@@ -657,10 +657,11 @@ Two further things were learned by reading the deployed logs, and both are worth
 **The toolkit's error handler logs nothing.** `problemDetailsErrorHandler` converts any error that
 is not a `ProblemDetailsError` into a `500` carrying "An unexpected error occurred" — and discards
 the error. That makes the one class of failure nobody anticipated the one class that leaves no
-record, which is the worst possible trade. The composition root therefore wraps it and logs the
-name, message, stack, and wrapped cause first (`unhandled_request_error`). An expected
-`ProblemDetailsError` is deliberately _not_ logged there: those are already described by their
-status, and logging them would bury the unexpected ones.
+record, which is the worst possible trade. It is filed upstream as
+[adrianhall/cloudflare-toolkit#209](https://github.com/adrianhall/cloudflare-toolkit/issues/209), so
+the composition root wraps it as a workaround and logs the name, message, stack, and wrapped cause
+first (`unhandled_request_error`). An expected `ProblemDetailsError` is deliberately _not_ logged
+there: those are already described by their status, and logging them would bury the unexpected ones.
 
 **The platform logs the derived instance ID.** Every Workflow log line carries
 `$workers.instanceId`, and for this panel that value _is_ the keyed HMAC of the verified email. This
