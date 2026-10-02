@@ -1,7 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import PlannedPanelView from '../../../src/client/views/PlannedPanelView.vue';
 import type { TaskId } from '../../../src/tasks';
+import {
+  clickTeleported,
+  createPanelTitleTarget,
+  isDialogOpen,
+  openDialogText,
+  panelStubs,
+  panelText
+} from '../support/panel';
 
 /**
  * Mount the placeholder for one panel.
@@ -12,17 +20,50 @@ import type { TaskId } from '../../../src/tasks';
 function mountPlaceholder(taskId: TaskId) {
   return mount(PlannedPanelView, {
     props: { taskId },
-    global: {
-      stubs: { 'router-link': { props: ['to'], template: '<a :href="to"><slot /></a>' } }
-    }
+    global: { stubs: panelStubs() }
   });
 }
 
+/**
+ * Opens the panel's description modal.
+ *
+ * The trigger is teleported into the shell's header, so it is clicked through the document rather
+ * than through the wrapper's own subtree.
+ *
+ * @returns A promise fulfilled once the modal has rendered.
+ */
+async function openAbout(): Promise<void> {
+  await clickTeleported('.about-button');
+}
+
+beforeEach(() => {
+  createPanelTitleTarget();
+});
+
 describe('PlannedPanelView', () => {
-  it('shows the panel name and its technical task type', () => {
-    const text = mountPlaceholder('create-image').text();
-    expect(text).toContain('Create Image');
-    expect(text).toContain('Text to image');
+  // The name is teleported into the shell's header bar and the task type now lives in the
+  // description modal, so neither is in the component's own subtree any more. Both are still one
+  // click apart for a visitor, which is what these two assertions check.
+  it('shows the panel name in the header', () => {
+    const wrapper = mountPlaceholder('create-image');
+    expect(panelText(wrapper)).toContain('Create Image');
+  });
+
+  it('describes the technical task type in the panel description', async () => {
+    mountPlaceholder('create-image');
+    await openAbout();
+
+    expect(openDialogText()).toContain('Text to image');
+  });
+
+  // The description has to be reachable, not merely present. A modal with no trigger would be
+  // content nobody can get to.
+  it('opens its description from the header info button', async () => {
+    mountPlaceholder('create-image');
+    expect(isDialogOpen()).toBe(false);
+
+    await openAbout();
+    expect(isDialogOpen()).toBe(true);
   });
 
   // Naming the phase turns "come back later" into something a visitor can act on: they can read
@@ -64,7 +105,10 @@ describe('PlannedPanelView', () => {
     expect(heading.element.tagName).toBe('H2');
   });
 
-  it('declares that an inference panel is routed through AI Gateway', () => {
-    expect(mountPlaceholder('chat').text()).toContain('Routed through AI Gateway');
+  it('declares that an inference panel is routed through AI Gateway', async () => {
+    mountPlaceholder('chat');
+    await openAbout();
+
+    expect(openDialogText()).toContain('Routed through AI Gateway');
   });
 });

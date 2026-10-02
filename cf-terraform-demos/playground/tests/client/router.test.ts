@@ -86,6 +86,34 @@ describe('createAppRouter', () => {
     expect(router.currentRoute.value.meta.taskId).toBe('classify-image');
   });
 
+  // The browser tab and a screen reader's navigation announcement have to say which of the fifteen
+  // panels is open, not merely "Playground" for every route.
+  it('names a panel in the document title', async () => {
+    const router = await readyRouter();
+    await router.push('/describe-image');
+
+    expect(document.title).toBe('Describe Image — Playground');
+  });
+
+  it('updates the document title on navigation', async () => {
+    const router = await readyRouter();
+    await router.push('/create-image');
+    expect(document.title).toBe('Create Image — Playground');
+
+    await router.push('/chat');
+    expect(document.title).toBe('Chat — Playground');
+  });
+
+  // Activity is not a task descriptor, so it keeps the application-level title rather than being
+  // assigned a stale panel name from the route that preceded it.
+  it('uses the application title for a non-panel route', async () => {
+    const router = await readyRouter();
+    await router.push('/create-image');
+    await router.push('/activity');
+
+    expect(document.title).toBe('Playground');
+  });
+
   // A mistyped URL is routine. Landing on the working panel is friendlier than a blank screen and
   // avoids a dedicated not-found page that nobody would read.
   it('redirects an unknown path to View Tokens', async () => {

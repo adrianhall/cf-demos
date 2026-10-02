@@ -3,6 +3,7 @@ import { nextTick } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createBrowserTokenizer } from '../../../src/client/features/view-tokens/tokenizers';
 import ViewTokensView from '../../../src/client/views/ViewTokensView.vue';
+import { clickTeleported, openDialogText, panelText } from '../support/panel';
 
 /**
  * Mounts the View Tokens panel.
@@ -58,16 +59,27 @@ afterEach(() => {
 });
 
 describe('ViewTokensView', () => {
-  it('shows the panel name and its local-only task type', () => {
-    const text = mountPanel().text();
-    expect(text).toContain('View Tokens');
-    expect(text).toContain('Tokenization');
+  // The name is teleported into the shell's header bar, so it is read from the document rather
+  // than from the component's own subtree.
+  it('shows the panel name in the header', () => {
+    expect(panelText(mountPanel())).toContain('View Tokens');
   });
 
-  // The panel's defining property. If this badge ever said "Routed through AI Gateway" the panel
-  // would be claiming a cost and a log it does not produce.
-  it('states that it runs locally and costs nothing', () => {
-    expect(mountPanel().text()).toContain('Runs in your browser — no inference, no cost');
+  it('describes its local-only task type in the panel description', async () => {
+    mountPanel();
+    await clickTeleported('.about-button');
+
+    expect(openDialogText()).toContain('Tokenization');
+  });
+
+  // The panel's defining property. If this ever said "Routed through AI Gateway" the panel would
+  // be claiming a cost and a log it does not produce. It sits in the description modal now, but
+  // the claim it must not make is unchanged.
+  it('states that it runs locally and costs nothing', async () => {
+    mountPanel();
+    await clickTeleported('.about-button');
+
+    expect(openDialogText()).toContain('Runs in your browser — no inference, no cost');
   });
 
   it('renders a token box for each token after typing', async () => {

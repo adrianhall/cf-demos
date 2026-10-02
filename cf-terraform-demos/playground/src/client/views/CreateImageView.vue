@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { MAX_NEGATIVE_PROMPT_CHARACTERS, MAX_PROMPT_CHARACTERS } from '../../images';
 import { findTask } from '../../tasks';
+import InfoButton from '../components/InfoButton.vue';
+import InfoDialog from '../components/InfoDialog.vue';
+import ModelSettingsPanel from '../components/ModelSettingsPanel.vue';
 import PanelPage from '../components/PanelPage.vue';
+import PanelWorkspace from '../components/PanelWorkspace.vue';
 import RunDetails from '../components/runs/RunDetails.vue';
 import { IMAGE_EXAMPLES, type ImageExample } from '../features/create-image/examples';
 import ImageGallery from '../features/create-image/ImageGallery.vue';
@@ -41,6 +45,22 @@ const {
   generate,
   cancel
 } = useCreateImage({ models });
+
+/**
+ * Whether the run-details modal is showing.
+ *
+ * The run details were the fourth of five stacked blocks, which put a run's reported cost — one of
+ * the things this demo exists to show — a long scroll away from the image it described. As an info
+ * button on the results heading it is one click from the output instead.
+ */
+const showRunDetails = ref(false);
+
+/**
+ * Whether the output column has anything to show.
+ *
+ * @returns `true` once at least one image has been generated.
+ */
+const hasOutput = computed(() => gallery.value.length > 0);
 
 /**
  * The selected model's declared controls, or `undefined` before the catalogue loads.
@@ -111,249 +131,304 @@ function loadExample(example: ImageExample): void {
 
 <template>
   <PanelPage v-if="task" :task="task">
-    <div class="create-image">
-      <!--
-        Stated before the first request rather than in a footnote afterwards, exactly as Chat does.
-        Image models are billed per image or per step, which is materially more per click than a
-        short chat answer, so the warning is worth making concrete.
+    <!--
+      The credit-and-logging disclosure, now reached through the header's info button rather than
+      printed above the controls. Image models bill per image or per step, which is materially more
+      per click than a short chat answer, so the warning is worth making concrete.
 
-        It deliberately makes no promise about what the gateway retains. This demo asks AI Gateway
-        not to store payloads, but a retention guarantee is the platform's to give, not this
-        application's — so the panel tells a visitor to assume their prompt is logged rather than
-        asserting something it cannot verify on the visitor's behalf.
-      -->
+      It deliberately makes no promise about what the gateway retains. This demo asks AI Gateway
+      not to store payloads, but a retention guarantee is the platform's to give, not this
+      application's — so the panel tells a visitor to assume their prompt is logged rather than
+      asserting something it cannot verify on the visitor's behalf.
+    -->
+    <template #description>
       <p class="attribution" role="note">
         This panel calls a real model and spends real inference credit — an image costs noticeably
         more per request than a short chat answer. Your verified email is recorded in the AI Gateway
         log for each request so spending can be attributed. Assume your prompt is logged too: treat
         this as you would any shared AI service and do not enter anything confidential.
       </p>
+    </template>
 
+    <div class="create-image">
       <p v-if="error" class="error" role="alert">{{ error }}</p>
 
-      <section class="composer" aria-labelledby="composer-heading">
-        <h2 id="composer-heading" class="section-heading">Describe the image</h2>
+      <PanelWorkspace :has-output="hasOutput">
+        <template #input>
+          <section class="composer" aria-labelledby="composer-heading">
+            <h2 id="composer-heading" class="section-heading">Describe the image</h2>
 
-        <label class="field-label" for="image-prompt">Prompt</label>
-        <textarea
-          id="image-prompt"
-          v-model="prompt"
-          class="text-input"
-          rows="3"
-          :maxlength="MAX_PROMPT_CHARACTERS"
-          placeholder="A lighthouse in a storm, in the style of a 1930s travel poster"
-        ></textarea>
-        <span class="counter" aria-live="polite">
-          {{ [...prompt].length.toLocaleString() }} / {{ MAX_PROMPT_CHARACTERS.toLocaleString() }}
-        </span>
+            <div class="prompt-field">
+              <label class="field-label" for="image-prompt">Prompt</label>
+              <textarea
+                id="image-prompt"
+                v-model="prompt"
+                class="text-input"
+                rows="3"
+                :maxlength="MAX_PROMPT_CHARACTERS"
+                placeholder="A lighthouse in a storm, in the style of a 1930s travel poster"
+              ></textarea>
+              <!--
+                Not a live region: announcing "1 of 2,048", "2 of 2,048" on every keystroke masks
+                the useful status messages below. The visible counter is still associated by
+                proximity, and the input's `maxlength` enforces the limit.
+              -->
+              <span class="counter">
+                {{ [...prompt].length.toLocaleString() }} /
+                {{ MAX_PROMPT_CHARACTERS.toLocaleString() }}
+              </span>
+            </div>
 
-        <div class="actions">
-          <v-btn
-            class="generate-button"
-            color="primary"
-            :disabled="!canGenerate"
-            variant="flat"
-            @click="generate"
-          >
-            Generate
-          </v-btn>
+            <div class="actions">
+              <v-btn
+                class="generate-button"
+                color="primary"
+                :disabled="!canGenerate"
+                variant="flat"
+                @click="generate"
+              >
+                Generate
+              </v-btn>
+              <!--
+                Rendered only while generating, so the control a visitor needs mid-run is the one
+                in that position.
+              -->
+              <v-btn v-if="generating" class="cancel-button" variant="outlined" @click="cancel">
+                Stop waiting
+              </v-btn>
+            </div>
+
+            <!--
+              Persistent rather than inserted only while running. The text changes from the start
+              phrase to the completion phrase, which assistive technology announces reliably;
+              inserting an image or a pre-populated live region after the fact is inconsistent
+              across screen readers.
+            -->
+            <p class="status" role="status">
+              <template v-if="generating">Generating. This usually takes a few seconds.</template>
+              <template v-else-if="receipt">Image generated.</template>
+            </p>
+
+            <div class="example-group" role="group" aria-labelledby="examples-heading">
+              <h3 id="examples-heading" class="field-label">Or try an example</h3>
+              <div class="examples">
+                <button
+                  v-for="example in IMAGE_EXAMPLES"
+                  :key="example.id"
+                  type="button"
+                  class="example-button"
+                  :data-example="example.id"
+                  :title="example.teaches"
+                  @click="loadExample(example)"
+                >
+                  {{ example.label }}
+                </button>
+              </div>
+            </div>
+          </section>
+
           <!--
-            Rendered only while generating, so the control a visitor needs mid-run is the one in
-            that position.
+            Below the input and collapsed, because a visitor picks a model once and then runs
+            several prompts against it. The summary keeps the selected model's name visible, which
+            matters more here than in most panels: the two reviewed models differ by four controls,
+            so which one is selected explains the shape of the form.
           -->
-          <v-btn v-if="generating" class="cancel-button" variant="outlined" @click="cancel">
-            Stop waiting
-          </v-btn>
-        </div>
+          <ModelSettingsPanel :model-name="selectedModel?.name">
+            <div class="field">
+              <label class="field-label" for="image-model">Model</label>
+              <select id="image-model" v-model="model" class="select">
+                <option v-for="candidate in models" :key="candidate.id" :value="candidate.id">
+                  {{ candidate.name }}
+                </option>
+              </select>
+            </div>
 
-        <!--
-          `aria-live` so a screen-reader user is told the run started and finished. A spinner alone
-          conveys nothing, and an image appearing silently is easy to miss entirely.
-        -->
-        <p v-if="generating" class="status" role="status">
-          Generating. This usually takes a few seconds.
-        </p>
+            <!--
+              The honest explanation for why this form changes shape. Without it, a visitor who
+              selects FLUX.1 and loses four controls would reasonably think the page had broken.
+            -->
+            <p class="settings-note">
+              Each model declares its own controls, so this form changes with your selection.
+              <span v-if="capabilitySentence">{{ capabilitySentence }}</span>
+            </p>
 
-        <div class="example-group" role="group" aria-labelledby="examples-heading">
-          <h3 id="examples-heading" class="field-label">Or try an example</h3>
-          <div class="examples">
-            <button
-              v-for="example in IMAGE_EXAMPLES"
-              :key="example.id"
-              type="button"
-              class="example-button"
-              :data-example="example.id"
-              :title="example.teaches"
-              @click="loadExample(example)"
-            >
-              {{ example.label }}
-            </button>
+            <div v-if="controls?.negativePrompt" class="field">
+              <label class="field-label" for="image-negative">
+                Negative prompt (what to avoid)
+              </label>
+              <textarea
+                id="image-negative"
+                v-model="negativePrompt"
+                class="text-input"
+                rows="2"
+                :maxlength="MAX_NEGATIVE_PROMPT_CHARACTERS"
+                placeholder="people, cars, text"
+              ></textarea>
+            </div>
+
+            <div v-if="controls?.steps" class="field">
+              <label class="field-label" for="image-steps">
+                Steps ({{ steps ?? `model default: ${controls.steps.default}` }})
+              </label>
+              <input
+                id="image-steps"
+                v-model.number="steps"
+                class="range"
+                type="range"
+                :min="controls.steps.min"
+                :max="controls.steps.max"
+                :step="controls.steps.step"
+              />
+              <p class="hint">
+                More steps can improve detail and take longer. This model bills per step, so it also
+                costs more — compare the figures in the run details beside the results.
+              </p>
+            </div>
+
+            <div v-if="controls?.dimensions" class="dimensions">
+              <div class="field">
+                <label class="field-label" for="image-width">
+                  Width ({{ width ?? controls.dimensions.default }})
+                </label>
+                <input
+                  id="image-width"
+                  v-model.number="width"
+                  class="range"
+                  type="range"
+                  :min="controls.dimensions.min"
+                  :max="controls.dimensions.max"
+                  :step="controls.dimensions.step"
+                />
+              </div>
+              <div class="field">
+                <label class="field-label" for="image-height">
+                  Height ({{ height ?? controls.dimensions.default }})
+                </label>
+                <input
+                  id="image-height"
+                  v-model.number="height"
+                  class="range"
+                  type="range"
+                  :min="controls.dimensions.min"
+                  :max="controls.dimensions.max"
+                  :step="controls.dimensions.step"
+                />
+              </div>
+            </div>
+
+            <div v-if="controls?.guidance" class="field">
+              <label class="field-label" for="image-guidance">
+                Guidance ({{ guidance ?? controls.guidance.default }})
+              </label>
+              <input
+                id="image-guidance"
+                v-model.number="guidance"
+                class="range"
+                type="range"
+                :min="controls.guidance.min"
+                :max="controls.guidance.max"
+                :step="controls.guidance.step"
+              />
+              <p class="hint">
+                How closely to follow the prompt. Very high values tend to look harsh.
+              </p>
+            </div>
+
+            <div v-if="controls?.seed" class="field">
+              <label class="field-label" for="image-seed">Seed (optional)</label>
+              <input
+                id="image-seed"
+                v-model.number="seed"
+                class="number-input"
+                type="number"
+                min="0"
+                placeholder="Leave empty for a random seed"
+              />
+              <p class="hint">
+                Reusing a seed with the same prompt and settings reproduces the same image.
+              </p>
+            </div>
+
+            <p v-if="selectedModel" class="docs-link">
+              <a :href="selectedModel.documentationUrl" rel="noreferrer" target="_blank">
+                {{ selectedModel.name }} in the model catalog
+              </a>
+            </p>
+          </ModelSettingsPanel>
+        </template>
+
+        <template #output>
+          <div class="output">
+            <div class="output-header">
+              <h2 class="section-heading">Run output</h2>
+              <!--
+                The run details move here from the bottom of the page, beside the images they
+                describe. The receipt is for the most recent run, which is why the button is
+                labelled as such rather than implying it covers the whole gallery.
+              -->
+              <InfoButton
+                v-if="receipt"
+                class="run-details-button"
+                label="Run details for the most recent image, including reported cost"
+                @activate="showRunDetails = true"
+              />
+            </div>
+
+            <ImageGallery :entries="gallery" />
           </div>
-        </div>
-      </section>
+        </template>
+      </PanelWorkspace>
 
-      <section class="settings" aria-labelledby="settings-heading">
-        <h2 id="settings-heading" class="section-heading">Model and settings</h2>
-
-        <div class="field">
-          <label class="field-label" for="image-model">Model</label>
-          <select id="image-model" v-model="model" class="select">
-            <option v-for="candidate in models" :key="candidate.id" :value="candidate.id">
-              {{ candidate.name }}
-            </option>
-          </select>
-        </div>
-
-        <!--
-          The honest explanation for why this form changes shape. Without it, a visitor who selects
-          FLUX.1 and loses four controls would reasonably think the page had broken.
-        -->
-        <p class="settings-note">
-          Each model declares its own controls, so this form changes with your selection.
-          <span v-if="capabilitySentence">{{ capabilitySentence }}</span>
-        </p>
-
-        <div v-if="controls?.negativePrompt" class="field">
-          <label class="field-label" for="image-negative">Negative prompt (what to avoid)</label>
-          <textarea
-            id="image-negative"
-            v-model="negativePrompt"
-            class="text-input"
-            rows="2"
-            :maxlength="MAX_NEGATIVE_PROMPT_CHARACTERS"
-            placeholder="people, cars, text"
-          ></textarea>
-        </div>
-
-        <div v-if="controls?.steps" class="field">
-          <label class="field-label" for="image-steps">
-            Steps ({{ steps ?? `model default: ${controls.steps.default}` }})
-          </label>
-          <input
-            id="image-steps"
-            v-model.number="steps"
-            class="range"
-            type="range"
-            :min="controls.steps.min"
-            :max="controls.steps.max"
-            :step="controls.steps.step"
-          />
-          <p class="hint">
-            More steps can improve detail and take longer. This model bills per step, so it also
-            costs more — compare the figures in the run details below.
-          </p>
-        </div>
-
-        <div v-if="controls?.dimensions" class="dimensions">
-          <div class="field">
-            <label class="field-label" for="image-width">
-              Width ({{ width ?? controls.dimensions.default }})
-            </label>
-            <input
-              id="image-width"
-              v-model.number="width"
-              class="range"
-              type="range"
-              :min="controls.dimensions.min"
-              :max="controls.dimensions.max"
-              :step="controls.dimensions.step"
-            />
-          </div>
-          <div class="field">
-            <label class="field-label" for="image-height">
-              Height ({{ height ?? controls.dimensions.default }})
-            </label>
-            <input
-              id="image-height"
-              v-model.number="height"
-              class="range"
-              type="range"
-              :min="controls.dimensions.min"
-              :max="controls.dimensions.max"
-              :step="controls.dimensions.step"
-            />
-          </div>
-        </div>
-
-        <div v-if="controls?.guidance" class="field">
-          <label class="field-label" for="image-guidance">
-            Guidance ({{ guidance ?? controls.guidance.default }})
-          </label>
-          <input
-            id="image-guidance"
-            v-model.number="guidance"
-            class="range"
-            type="range"
-            :min="controls.guidance.min"
-            :max="controls.guidance.max"
-            :step="controls.guidance.step"
-          />
-          <p class="hint">How closely to follow the prompt. Very high values tend to look harsh.</p>
-        </div>
-
-        <div v-if="controls?.seed" class="field">
-          <label class="field-label" for="image-seed">Seed (optional)</label>
-          <input
-            id="image-seed"
-            v-model.number="seed"
-            class="number-input"
-            type="number"
-            min="0"
-            placeholder="Leave empty for a random seed"
-          />
-          <p class="hint">
-            Reusing a seed with the same prompt and settings reproduces the same image.
-          </p>
-        </div>
-
-        <p v-if="selectedModel" class="docs-link">
-          <a :href="selectedModel.documentationUrl" rel="noreferrer" target="_blank">
-            {{ selectedModel.name }} in the model catalog
-          </a>
-        </p>
-      </section>
-
-      <RunDetails
-        v-if="receipt"
-        :receipt="receipt"
-        :metrics="metrics"
-        :cost-pending="costPending"
-      />
-
-      <ImageGallery :entries="gallery" />
+      <InfoDialog :open="showRunDetails" title="Run details" @close="showRunDetails = false">
+        <RunDetails
+          v-if="receipt"
+          :receipt="receipt"
+          :metrics="metrics"
+          :cost-pending="costPending"
+        />
+      </InfoDialog>
     </div>
   </PanelPage>
 </template>
 
 <style scoped>
-/*
-  `align-items: stretch` is the flex default, but the sections below set their own widths, so the
-  column is declared explicitly to make the intent clear: each section spans the panel and caps
-  itself, rather than collapsing to the width of its widest line of text.
-*/
 .create-image {
-  align-items: stretch;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
+  min-width: 0;
 }
 
 .composer,
-.settings {
+.output {
   min-width: 0;
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .section-heading {
   font-size: 1.125rem;
-  margin: 0 0 0.75rem;
+  margin: 0;
 }
 
 .attribution {
-  background-color: rgb(var(--v-theme-surface-variant));
-  border-radius: 0.5rem;
-  margin: 0;
-  max-width: 48rem;
-  padding: 0.75rem 1rem;
+  margin: 1rem 0 0;
+}
+
+.output {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.output-header {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
 }
 
 /*
@@ -364,6 +439,11 @@ function loadExample(example: ImageExample): void {
 .field {
   margin-bottom: 1rem;
   max-width: 28rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.prompt-field {
   min-width: 0;
   width: 100%;
 }
@@ -386,7 +466,6 @@ function loadExample(example: ImageExample): void {
   box-sizing: border-box;
   color: rgb(var(--v-theme-on-surface));
   font-size: 0.9375rem;
-  max-width: 44rem;
   padding: 0.75rem;
   resize: vertical;
   width: 100%;
@@ -411,6 +490,7 @@ function loadExample(example: ImageExample): void {
 }
 
 .range {
+  min-height: 1.5rem;
   width: 100%;
 }
 
@@ -426,16 +506,11 @@ function loadExample(example: ImageExample): void {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-top: 0.75rem;
 }
 
 .status {
   color: rgb(var(--v-theme-on-surface-variant));
-  margin: 0.75rem 0 0;
-}
-
-.example-group {
-  margin-top: 1.25rem;
+  margin: 0;
 }
 
 .examples {
@@ -459,11 +534,15 @@ function loadExample(example: ImageExample): void {
   border-color: rgb(var(--v-theme-primary));
 }
 
+.example-button:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+
 .settings-note {
   color: rgb(var(--v-theme-on-surface-variant));
   font-size: 0.875rem;
   margin: 0 0 1rem;
-  max-width: 36rem;
 }
 
 .dimensions {

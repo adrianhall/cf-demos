@@ -4,6 +4,13 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { IMAGE_EXAMPLES } from '../../../src/client/features/create-image/examples';
 import { useCatalogueStore, type CatalogueModel } from '../../../src/client/stores/catalogue';
 import CreateImageView from '../../../src/client/views/CreateImageView.vue';
+import {
+  clickTeleported,
+  isDialogOpen,
+  openDialogText,
+  panelStubs,
+  panelText
+} from '../support/panel';
 
 /**
  * A model exposing every control, mirroring Stable Diffusion XL.
@@ -54,16 +61,7 @@ async function mountView(models: CatalogueModel[] = [RICH, MINIMAL]) {
   catalogue.loaded = true;
 
   const wrapper = mount(CreateImageView, {
-    global: {
-      plugins: [pinia],
-      stubs: {
-        'router-link': { props: ['to'], template: '<a :href="to"><slot /></a>' },
-        'v-btn': {
-          props: ['disabled'],
-          template: '<button :disabled="disabled"><slot /></button>'
-        }
-      }
-    }
+    global: { plugins: [pinia], stubs: panelStubs() }
   });
 
   await flushPromises();
@@ -90,27 +88,42 @@ afterEach(() => {
 });
 
 describe('CreateImageView', () => {
-  it('shows the panel name and its technical task type', async () => {
-    const text = (await mountView()).text();
-    expect(text).toContain('Create Image');
-    expect(text).toContain('Text to image');
+  // The name is teleported into the shell's header bar and the task type now lives in the
+  // description modal, so each is read from where it actually renders.
+  it('shows the panel name in the header', async () => {
+    expect(panelText(await mountView())).toContain('Create Image');
+  });
+
+  it('describes its technical task type in the panel description', async () => {
+    await mountView();
+    await clickTeleported('.about-button');
+
+    expect(openDialogText()).toContain('Text to image');
   });
 
   it('declares that the panel is routed through AI Gateway', async () => {
-    expect((await mountView()).text()).toContain('Routed through AI Gateway');
+    await mountView();
+    await clickTeleported('.about-button');
+
+    expect(openDialogText()).toContain('Routed through AI Gateway');
   });
 
-  // The disclosure the whole attribution design depends on, made before the visitor can spend
-  // anything rather than in a footnote afterwards.
+  // The disclosure the whole attribution design depends on. It is behind the header's info button
+  // rather than printed above the prompt, which is still before the visitor can spend anything —
+  // but it has to be *reachable*, so the click is part of the assertion rather than assumed.
   it('discloses email attribution before the first request', async () => {
-    expect((await mountView()).text()).toMatch(
-      /verified email is\s+recorded in the AI Gateway log/iu
-    );
+    await mountView();
+    await clickTeleported('.about-button');
+
+    expect(openDialogText()).toMatch(/verified email is recorded in the AI Gateway log/iu);
   });
 
   // An image costs materially more per click than a short chat answer, so the warning says so.
   it('warns that an image costs more than a chat answer', async () => {
-    expect((await mountView()).text()).toMatch(/more per request than a short chat answer/iu);
+    await mountView();
+    await clickTeleported('.about-button');
+
+    expect(openDialogText()).toMatch(/more per request than a short chat answer/iu);
   });
 
   // Tells the visitor to assume their prompt is logged, rather than promising it is not. Payload
@@ -118,13 +131,18 @@ describe('CreateImageView', () => {
   // the gateway documents that a log can include the prompt — so a reassurance here would be a
   // claim this application cannot keep on a visitor's behalf.
   it('warns that the prompt should be assumed logged', async () => {
-    const text = (await mountView()).text();
+    await mountView();
+    await clickTeleported('.about-button');
+
+    const text = openDialogText();
     expect(text).toMatch(/assume your prompt is logged/iu);
     expect(text).toMatch(/nothing confidential|anything confidential/iu);
   });
 
   it('makes no promise that the prompt or image is unretained', async () => {
-    const text = (await mountView()).text();
+    const wrapper = await mountView();
+    await clickTeleported('.about-button');
+    const text = panelText(wrapper);
     expect(text).not.toMatch(/not stored/iu);
     expect(text).not.toMatch(/not retained/iu);
     expect(text).not.toMatch(/never stored/iu);
@@ -267,13 +285,15 @@ describe('CreateImageView', () => {
     expect((await mountView([RICH])).text()).toMatch(/reproduces the same image/iu);
   });
 
-  it('shows a live character count against the limit', async () => {
+  // Visible but deliberately not live: announcing the count on every keystroke masks the useful
+  // run status. `maxlength` on the editor is the programmatic limit.
+  it('shows a quiet character count against the limit', async () => {
     const wrapper = await mountView();
     await wrapper.find('#image-prompt').setValue('12345');
 
     const counter = wrapper.find('.counter');
     expect(counter.text()).toContain('5');
-    expect(counter.attributes('aria-live')).toBe('polite');
+    expect(counter.attributes('aria-live')).toBeUndefined();
   });
 
   describe('examples', () => {
@@ -322,7 +342,154 @@ describe('CreateImageView', () => {
     expect((await mountView()).find('[role="alert"]').exists()).toBe(false);
   });
 
-  it('shows no generating status before anything is generated', async () => {
-    expect((await mountView()).find('[role="status"]').exists()).toBe(false);
+  // Persistent but empty, so changing its text from "Generating" to "Image generated" is
+  // announced reliably. Inserting a populated live region at completion is inconsistent across
+  // screen readers.
+  it('keeps an empty status region ready before the first run', async () => {
+    const status = (await mountView()).find('[role="status"]');
+    expect(status.exists()).toBe(true);
+    expect(status.text()).toBe('');
+  });
+});
+
+describe('the reorganised layout', () => {
+  // The panel was previously five stacked sections of equal weight, which put the prompt below a
+  // paragraph of description and the generated image below everything else.
+  it('puts the prompt ahead of the model settings', async () => {
+    const wrapper = await mountView();
+    const composer = wrapper.find('.composer').element;
+    const settings = wrapper.find('details').element;
+
+    const relation = composer.compareDocumentPosition(settings);
+    expect(relation & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // Collapsed, with the model named in the summary. That name matters more here than in most
+  // panels: the two reviewed models differ by four controls, so which one is selected explains
+  // the shape of the form.
+  it('collapses the model settings but names the selected model', async () => {
+    const wrapper = await mountView();
+    const details = wrapper.find('details');
+
+    expect(details.element.open).toBe(false);
+    expect(details.find('summary').text()).toContain(RICH.name);
+  });
+
+  it('still allows the settings to be opened and edited', async () => {
+    const wrapper = await mountView();
+    await wrapper.find('summary').trigger('click');
+
+    expect(wrapper.find('details').element.open).toBe(true);
+    expect(wrapper.find('#image-model').exists()).toBe(true);
+  });
+
+  // Every model control stays reachable once expanded. Collapsing the section must not amount to
+  // removing the controls that make this panel a comparison tool.
+  it('keeps every control of the selected model available once expanded', async () => {
+    const wrapper = await mountView();
+    await wrapper.find('summary').trigger('click');
+
+    for (const id of [
+      '#image-model',
+      '#image-negative',
+      '#image-steps',
+      '#image-width',
+      '#image-height',
+      '#image-guidance',
+      '#image-seed'
+    ]) {
+      expect(wrapper.find(id).exists(), `${id} is reachable`).toBe(true);
+    }
+  });
+
+  it('stays a single column until an image has been generated', async () => {
+    const wrapper = await mountView();
+    expect(wrapper.find('.workspace').classes()).not.toContain('workspace--split');
+  });
+
+  it('offers no run-details button before a run', async () => {
+    expect((await mountView()).find('.run-details-button').exists()).toBe(false);
+  });
+});
+
+describe('after an image is generated', () => {
+  /**
+   * Generates one image against a stubbed endpoint.
+   *
+   * Drives the real composable over a stubbed `fetch` rather than injecting a gallery entry,
+   * because the wiring between a completed run and the output column is the thing under test.
+   *
+   * @returns The mounted wrapper, after the run has completed.
+   */
+  async function generateOnce() {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify(
+              url.includes('/metrics')
+                ? { runId: 'run-1', costStatus: 'available', totalCostUsd: 0.001_25, requests: [] }
+                : {
+                    image: {
+                      base64: 'AAAA',
+                      mediaType: 'image/png',
+                      byteLength: 2_048
+                    },
+                    receipt: {
+                      runId: 'run-1',
+                      task: 'create-image',
+                      model: RICH.id,
+                      gatewayRouted: true,
+                      logIds: ['log-xyz'],
+                      status: 'completed',
+                      costStatus: 'pending',
+                      elapsedMs: 3_200,
+                      startedAt: '2026-04-01T09:15:00.000Z'
+                    },
+                    applied: {
+                      prompt: 'a lighthouse in a storm',
+                      model: RICH.id,
+                      steps: 20,
+                      width: 1_024,
+                      height: 1_024
+                    }
+                  }
+            ),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          )
+        )
+      )
+    );
+
+    const wrapper = await mountView();
+    await wrapper.find('#image-prompt').setValue('a lighthouse in a storm');
+    await wrapper.find('.generate-button').trigger('click');
+    await flushPromises();
+    return wrapper;
+  }
+
+  // The result now sits beside the prompt instead of below the settings and the run details, so
+  // a visitor can see what they asked for and what came back at once.
+  it('splits into two columns with the result beside the prompt', async () => {
+    const wrapper = await generateOnce();
+
+    expect(wrapper.find('.workspace').classes()).toContain('workspace--split');
+    expect(wrapper.find('.workspace-output').find('.gallery').exists()).toBe(true);
+  });
+
+  it('reports the run and its cost when the details are opened', async () => {
+    const wrapper = await generateOnce();
+    await wrapper.find('.run-details-button').trigger('click');
+
+    const text = openDialogText();
+    expect(text).toContain('Run details');
+    expect(text).toContain('log-xyz');
+    expect(text).toMatch(/\$0\.001250/u);
+  });
+
+  it('keeps the details closed until asked', async () => {
+    await generateOnce();
+    expect(isDialogOpen()).toBe(false);
   });
 });

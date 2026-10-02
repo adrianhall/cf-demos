@@ -86,24 +86,30 @@ function onKeydown(event: KeyboardEvent): void {
 
 <template>
   <PanelPage v-if="task" :task="task">
-    <div class="chat">
-      <!--
-        Stated before the first request rather than in a footnote afterwards. The demo records the
-        visitor's verified email in AI Gateway metadata, and they are entitled to know that before
-        they send anything rather than after.
+    <!--
+      The credit-and-logging disclosure, reached through the header's info button. The demo records
+      the visitor's verified email in AI Gateway metadata, and they are entitled to know that
+      before they send anything rather than after.
 
-        It deliberately makes no promise about what the gateway retains. This demo asks AI Gateway
-        not to store payloads, but a retention guarantee is the platform's to give, not this
-        application's — so the panel tells a visitor to assume their prompt is logged rather than
-        asserting something it cannot verify on the visitor's behalf.
-      -->
+      It deliberately makes no promise about what the gateway retains. This demo asks AI Gateway
+      not to store payloads, but a retention guarantee is the platform's to give, not this
+      application's — so the panel tells a visitor to assume their prompt is logged rather than
+      asserting something it cannot verify on the visitor's behalf.
+
+      Chat keeps its single-column layout: a conversation is one running transcript, not an input
+      and a separate result, so the side-by-side workspace the other panels use does not apply.
+      Only the description moves here, which is the part every panel shares.
+    -->
+    <template #description>
       <p class="attribution" role="note">
         This panel calls a real model and spends real inference credit. Your verified email is
         recorded in the AI Gateway log for each request so spending can be attributed. Assume your
         prompt and the answer are logged too: treat this as you would any shared AI service and do
         not enter anything confidential.
       </p>
+    </template>
 
+    <div class="chat">
       <ChatTranscript :turns="turns" />
 
       <p v-if="error" class="error" role="alert">{{ error }}</p>
@@ -245,12 +251,9 @@ function onKeydown(event: KeyboardEvent): void {
   margin: 0 0 0.75rem;
 }
 
+/* Inside the description modal, which supplies its own padding and background. */
 .attribution {
-  background-color: rgb(var(--v-theme-surface-variant));
-  border-radius: 0.5rem;
-  margin: 0;
-  max-width: 48rem;
-  padding: 0.75rem 1rem;
+  margin: 1rem 0 0;
 }
 
 .field-label {

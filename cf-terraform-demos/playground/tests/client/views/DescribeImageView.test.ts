@@ -6,6 +6,13 @@ import { useCatalogueStore } from '../../../src/client/stores/catalogue';
 import { useHandoffStore } from '../../../src/client/stores/handoff';
 import DescribeImageView from '../../../src/client/views/DescribeImageView.vue';
 import type { ImageMediaType } from '../../../src/images';
+import {
+  clickTeleported,
+  isDialogOpen,
+  openDialogText,
+  panelStubs,
+  panelText
+} from '../support/panel';
 
 /**
  * A model that will caption a picture unasked.
@@ -60,16 +67,7 @@ async function mountView(
   }
 
   const wrapper = mount(DescribeImageView, {
-    global: {
-      plugins: [pinia],
-      stubs: {
-        'router-link': { props: ['to'], template: '<a :href="to"><slot /></a>' },
-        'v-btn': {
-          props: ['disabled'],
-          template: '<button :disabled="disabled"><slot /></button>'
-        }
-      }
-    }
+    global: { plugins: [pinia], stubs: panelStubs() }
   });
 
   await flushPromises();
@@ -87,8 +85,10 @@ beforeEach(() => {
 });
 
 describe('DescribeImageView', () => {
-  it('renders the panel heading', async () => {
-    expect((await mountView()).text()).toContain('Describe Image');
+  // Teleported into the shell's header bar, so it is read from the document rather than from the
+  // component's own subtree.
+  it('shows the panel name in the header', async () => {
+    expect(panelText(await mountView())).toContain('Describe Image');
   });
 
   it('offers every reviewed model in the selector', async () => {
@@ -120,26 +120,46 @@ describe('the disclosure', () => {
   // retention is AI Gateway's behaviour, so a reassurance here would be a claim this application
   // cannot keep on a visitor's behalf.
   it('warns that the picture and question should be assumed logged', async () => {
-    const text = (await mountView()).text();
+    await mountView();
+    await clickTeleported('.about-button');
+
+    const text = openDialogText();
     expect(text).toMatch(/assume your picture and question are logged/iu);
     expect(text).toMatch(/anything confidential/iu);
   });
 
   it('makes no promise that the picture is unretained', async () => {
-    const text = (await mountView()).text();
+    const wrapper = await mountView();
+    await clickTeleported('.about-button');
+
+    const text = panelText(wrapper);
     expect(text).not.toMatch(/not stored/iu);
     expect(text).not.toMatch(/not retained/iu);
   });
 
   // This panel has something extra to disclose: the visitor is uploading a picture, which may
   // carry faces, documents, or location data they have not thought about.
-  it('warns before the file picker rather than after the result', async () => {
-    const html = (await mountView()).html();
-    expect(html.indexOf('assume your picture')).toBeLessThan(html.indexOf('dropzone'));
+  // Previously this compared the position of the warning against the position of the dropzone in
+  // the rendered HTML. The disclosure now lives in a modal teleported to the body, so the warning
+  // is not in this subtree at all and `indexOf` returned -1 — which is less than any real index,
+  // so the old assertion passed without testing anything.
+  //
+  // What matters for this panel is unchanged and is what is asserted instead: the warning is
+  // reachable from the moment the panel loads, before a visitor has chosen a picture that might
+  // contain faces, documents, or location data they have not thought about.
+  it('offers the warning before any picture has been chosen', async () => {
+    const wrapper = await mountView();
+    expect(wrapper.find('.preview').exists()).toBe(false);
+
+    await clickTeleported('.about-button');
+    expect(openDialogText()).toMatch(/assume your picture and question are logged/iu);
   });
 
   it('states that the verified email is recorded for attribution', async () => {
-    expect((await mountView()).text()).toMatch(/verified email is recorded/iu);
+    await mountView();
+    await clickTeleported('.about-button');
+
+    expect(openDialogText()).toMatch(/verified email is recorded/iu);
   });
 });
 
@@ -267,9 +287,10 @@ describe('accessibility', () => {
     }
   });
 
-  it('announces the character counter as it changes', async () => {
+  // Visible but deliberately not live: announcing every count change masks the run status.
+  it('keeps the character counter out of the live regions', async () => {
     const wrapper = await mountView();
-    expect(wrapper.find('.counter').attributes('aria-live')).toBe('polite');
+    expect(wrapper.find('.counter').attributes('aria-live')).toBeUndefined();
   });
 
   // The file input is visually hidden and has no visible label of its own, so without an
@@ -305,5 +326,172 @@ describe('accessibility', () => {
     for (const image of wrapper.findAll('img')) {
       expect(image.attributes('alt')).toBeTruthy();
     }
+  });
+});
+
+describe('the reorganised layout', () => {
+  // The panels were previously five stacked sections of equal weight, which put the input below
+  // the description and the result below everything. These tests pin the new arrangement: input
+  // first, settings collapsed beneath it, output beside it.
+  it('puts the input ahead of the model settings', async () => {
+    const wrapper = await mountView();
+    const composer = wrapper.find('.composer').element;
+    const settings = wrapper.find('details').element;
+
+    const relation = composer.compareDocumentPosition(settings);
+    expect(relation & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // Collapsed, with the selected model named in the summary. The settings were the third of five
+  // equally-weighted blocks and most of a visit does not touch them.
+  it('collapses the model settings but names the selected model', async () => {
+    const wrapper = await mountView();
+    const details = wrapper.find('details');
+
+    expect(details.element.open).toBe(false);
+    expect(details.find('summary').text()).toContain(CAPTIONS_ALONE.name);
+  });
+
+  it('still allows the settings to be opened and edited', async () => {
+    const wrapper = await mountView();
+    await wrapper.find('summary').trigger('click');
+
+    expect(wrapper.find('details').element.open).toBe(true);
+    expect(wrapper.find('#vision-model').exists()).toBe(true);
+  });
+
+  // A half-width column of empty space beside the input reads as something failing to load, so
+  // the second column appears only once there is something to put in it.
+  it('stays a single column until a picture is chosen', async () => {
+    const wrapper = await mountView();
+    expect(wrapper.find('.workspace').classes()).not.toContain('workspace--split');
+  });
+
+  // As soon as a picture arrives, not merely once an answer does: the preview is worth a column
+  // of its own, and switching the layout on completion would move the input mid-run.
+  it('splits into two columns once a picture is present', async () => {
+    const wrapper = await mountView(undefined, {
+      base64: 'AAAA',
+      mediaType: 'image/png',
+      byteLength: 2_048,
+      origin: 'Generated in Create Image'
+    });
+
+    expect(wrapper.find('.workspace').classes()).toContain('workspace--split');
+  });
+
+  it('labels the output column even before an answer arrives', async () => {
+    const wrapper = await mountView(undefined, {
+      base64: 'AAAA',
+      mediaType: 'image/png',
+      byteLength: 2_048,
+      origin: 'Generated in Create Image'
+    });
+
+    expect(wrapper.find('.workspace-output').text()).toContain('Run output');
+  });
+
+  // The run details were the last of five blocks, which put a run's reported cost — one of the
+  // things this demo exists to show — furthest from the answer it described. There is no run yet
+  // here, so there is nothing for the button to describe.
+  it('offers no run-details button before a run', async () => {
+    const wrapper = await mountView();
+    expect(wrapper.find('.run-details-button').exists()).toBe(false);
+  });
+});
+
+describe('the run-details modal', () => {
+  /**
+   * Runs one description against a stubbed endpoint and returns the mounted panel.
+   *
+   * Drives the real composable over a stubbed `fetch` rather than injecting a fake result, because
+   * what is being tested is the wiring between a completed run and the modal that reports its cost
+   * — and injecting the receipt would skip exactly that wiring.
+   *
+   * @returns The mounted wrapper, after the run has completed.
+   */
+  async function runOnce() {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify(
+              url.includes('/metrics')
+                ? { runId: 'run-1', costStatus: 'available', totalCostUsd: 0.000_42, requests: [] }
+                : {
+                    description: 'A red door.',
+                    image: {
+                      mediaType: 'image/png',
+                      byteLength: 2_048,
+                      width: 120,
+                      height: 80
+                    },
+                    receipt: {
+                      runId: 'run-1',
+                      task: 'describe-image',
+                      model: CAPTIONS_ALONE.id,
+                      gatewayRouted: true,
+                      logIds: ['log-abc'],
+                      status: 'completed',
+                      costStatus: 'pending',
+                      elapsedMs: 412,
+                      startedAt: '2026-04-01T09:15:00.000Z'
+                    },
+                    applied: { model: CAPTIONS_ALONE.id, maxTokens: 512 }
+                  }
+            ),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          )
+        )
+      )
+    );
+
+    const wrapper = await mountView(undefined, {
+      base64: 'AAAA',
+      mediaType: 'image/png',
+      byteLength: 2_048,
+      origin: 'Generated in Create Image'
+    });
+
+    await wrapper.find('.describe-button').trigger('click');
+    await flushPromises();
+    return wrapper;
+  }
+
+  it('shows the description in the output column', async () => {
+    const wrapper = await runOnce();
+    expect(wrapper.find('.workspace-output').text()).toContain('A red door.');
+  });
+
+  it('offers a run-details button once a run has completed', async () => {
+    const wrapper = await runOnce();
+    expect(wrapper.find('.run-details-button').exists()).toBe(true);
+  });
+
+  // The details are beside the answer they describe rather than at the bottom of the page, but
+  // they are still only shown on request — a cost table is reference material, not the result.
+  it('keeps the details closed until asked', async () => {
+    await runOnce();
+    expect(isDialogOpen()).toBe(false);
+  });
+
+  it('reports the run and its cost when opened', async () => {
+    const wrapper = await runOnce();
+    await wrapper.find('.run-details-button').trigger('click');
+
+    const text = openDialogText();
+    expect(text).toContain('Run details');
+    expect(text).toContain(CAPTIONS_ALONE.id);
+    expect(text).toMatch(/\$0\.000420/u);
+  });
+
+  // The gateway log identifier is the only thread between this panel and the AI Gateway
+  // dashboard, so it has to survive the move into the modal.
+  it('names the gateway log in the details', async () => {
+    const wrapper = await runOnce();
+    await wrapper.find('.run-details-button').trigger('click');
+
+    expect(openDialogText()).toContain('log-abc');
   });
 });

@@ -68,5 +68,16 @@ export function buildRoutes(): RouteRecordRaw[] {
  * @returns A router configured with every panel route.
  */
 export function createAppRouter(history: RouterHistory = createWebHistory()): Router {
-  return createRouter({ history, routes: buildRoutes() });
+  const router = createRouter({ history, routes: buildRoutes() });
+
+  // A browser tab labelled only "Playground" gives no clue which of the fifteen panels it holds,
+  // and it is the title a screen reader announces during navigation. Read the task identifier from
+  // the route metadata generated above rather than deriving a name from the URL, so the document
+  // title uses the same reviewed panel name as the sidebar and the visible h1.
+  router.afterEach((route) => {
+    const task = TASK_DESCRIPTORS.find((candidate) => candidate.id === route.meta['taskId']);
+    document.title = task === undefined ? 'Playground' : `${task.name} — Playground`;
+  });
+
+  return router;
 }

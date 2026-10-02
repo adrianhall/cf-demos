@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { MAX_INSTRUCTION_CHARACTERS } from '../../describe-image';
 import { findTask } from '../../tasks';
+import InfoButton from '../components/InfoButton.vue';
+import InfoDialog from '../components/InfoDialog.vue';
+import ModelSettingsPanel from '../components/ModelSettingsPanel.vue';
 import PanelPage from '../components/PanelPage.vue';
+import PanelWorkspace from '../components/PanelWorkspace.vue';
 import RunDetails from '../components/runs/RunDetails.vue';
 import { VISION_EXAMPLES, type VisionExample } from '../features/describe-image/examples';
 import { formatBytes } from '../features/describe-image/image-input';
@@ -43,9 +47,29 @@ const {
 } = useDescribeImage({ models });
 
 /**
+ * Whether the run-details modal is showing.
+ *
+ * The run details were the fifth and last block on the page, which meant the cost of a run — one of
+ * the things this demo exists to show — was the item furthest from the visitor's attention.
+ * Attached to the output heading as an info button, it is one click from the answer it describes.
+ */
+const showRunDetails = ref(false);
+
+/**
  * The selected model's declared controls, or `undefined` before the catalogue loads.
  */
 const controls = computed(() => selectedModel.value?.visionControls);
+
+/**
+ * Whether the output column has anything to show.
+ *
+ * True as soon as a picture is chosen, not merely once an answer arrives. The preview is worth a
+ * column of its own: seeing the picture beside the question is what makes the question easy to
+ * write, and switching the layout only on completion would move the input mid-run.
+ *
+ * @returns `true` when a picture has been chosen or an answer exists.
+ */
+const hasOutput = computed(() => image.value !== undefined || description.value !== undefined);
 
 /**
  * A sentence describing how the selected model expects to be used.
@@ -115,213 +139,284 @@ function loadExample(example: VisionExample): void {
 
 <template>
   <PanelPage v-if="task" :task="task">
-    <div class="describe-image">
-      <!--
-        Stated before the first request, as every inference panel does. This panel has an extra
-        thing to disclose that the others do not: the visitor is uploading a picture, which may
-        contain faces, documents, or location data they have not thought about. Saying so before
-        the file picker opens is the only point at which the warning can still change what they
-        choose.
-      -->
+    <!--
+      The credit-and-logging disclosure, now reached through the header's info button rather than
+      printed above the controls. This panel has an extra thing to disclose that the others do
+      not: the visitor is uploading a picture, which may contain faces, documents, or location
+      data they have not thought about. It stays in the panel's own description slot so it is one
+      click from the panel at all times, and `tests/client/privacy-claims.test.ts` holds every
+      inference panel to carrying it.
+    -->
+    <template #description>
       <p class="attribution" role="note">
         This panel calls a real model and spends real inference credit. Your verified email is
         recorded in the AI Gateway log for each request so spending can be attributed. Assume your
         picture and question are logged too: treat this as you would any shared AI service and do
         not upload anything confidential.
       </p>
+    </template>
 
+    <div class="describe-image">
       <p v-if="error" class="error" role="alert">{{ error }}</p>
 
-      <ImagePicker :image="image" :busy="describing" @selected="selectFile" @cleared="clearImage" />
+      <PanelWorkspace :has-output="hasOutput">
+        <template #input>
+          <section class="composer" aria-labelledby="composer-heading">
+            <h2 id="composer-heading" class="section-heading">Ask about a picture</h2>
 
-      <section class="composer" aria-labelledby="composer-heading">
-        <h2 id="composer-heading" class="section-heading">Ask about it</h2>
+            <ImagePicker
+              :image="image"
+              :busy="describing"
+              @selected="selectFile"
+              @cleared="clearImage"
+            />
 
-        <label class="field-label" for="vision-instruction">
-          Question
-          <span v-if="instructionRequired" class="required-marker">(required for this model)</span>
-          <span v-else class="optional-marker">(optional for this model)</span>
-        </label>
-        <textarea
-          id="vision-instruction"
-          v-model="instruction"
-          class="text-input"
-          rows="3"
-          :maxlength="MAX_INSTRUCTION_CHARACTERS"
-          :required="instructionRequired"
-          placeholder="What is in this picture?"
-        ></textarea>
-        <span class="counter" aria-live="polite">
-          {{ [...instruction].length.toLocaleString() }} /
-          {{ MAX_INSTRUCTION_CHARACTERS.toLocaleString() }}
-        </span>
+            <div class="question-field">
+              <label class="field-label" for="vision-instruction">
+                Question
+                <span v-if="instructionRequired" class="required-marker">
+                  (required for this model)
+                </span>
+                <span v-else class="optional-marker">(optional for this model)</span>
+              </label>
+              <textarea
+                id="vision-instruction"
+                v-model="instruction"
+                class="text-input"
+                rows="3"
+                :maxlength="MAX_INSTRUCTION_CHARACTERS"
+                :required="instructionRequired"
+                placeholder="What is in this picture?"
+              ></textarea>
+              <!--
+                Not a live region: announcing the count on every keystroke masks the useful run
+                status below. The visible counter remains directly after the field, and
+                `maxlength` enforces the limit.
+              -->
+              <span class="counter">
+                {{ [...instruction].length.toLocaleString() }} /
+                {{ MAX_INSTRUCTION_CHARACTERS.toLocaleString() }}
+              </span>
+            </div>
 
-        <div class="actions">
-          <v-btn
-            class="describe-button"
-            color="primary"
-            :disabled="!canDescribe"
-            variant="flat"
-            @click="describe"
-          >
-            Describe
-          </v-btn>
-          <v-btn v-if="describing" class="cancel-button" variant="outlined" @click="cancel">
-            Stop waiting
-          </v-btn>
-        </div>
+            <div class="actions">
+              <v-btn
+                class="describe-button"
+                color="primary"
+                :disabled="!canDescribe"
+                variant="flat"
+                @click="describe"
+              >
+                Describe
+              </v-btn>
+              <v-btn v-if="describing" class="cancel-button" variant="outlined" @click="cancel">
+                Stop waiting
+              </v-btn>
+            </div>
 
-        <!--
-          Says which precondition is unmet rather than leaving a disabled button unexplained. The
-          two reasons are genuinely different: one is "choose a picture" and the other is "this
-          model needs a question", and conflating them would make a model switch look broken.
-        -->
-        <p v-if="image === undefined" class="hint">Choose a picture to describe.</p>
-        <p v-else-if="instructionRequired && instruction.trim() === ''" class="hint">
-          {{ selectedModel?.name }} needs a question before it can answer.
-        </p>
+            <!--
+              Says which precondition is unmet rather than leaving a disabled button unexplained.
+              The two reasons are genuinely different: one is "choose a picture" and the other is
+              "this model needs a question", and conflating them would make a model switch look
+              broken.
+            -->
+            <p v-if="image === undefined" class="hint">Choose a picture to describe.</p>
+            <p v-else-if="instructionRequired && instruction.trim() === ''" class="hint">
+              {{ selectedModel?.name }} needs a question before it can answer.
+            </p>
 
-        <p v-if="describing" class="status" role="status">
-          Describing. This usually takes a few seconds.
-        </p>
+            <!--
+              Persistent so the text *changes* from the start phrase to the completion phrase.
+              Screen readers announce that more reliably than a live region inserted already
+              populated after the answer arrives.
+            -->
+            <p class="status" role="status">
+              <template v-if="describing">Describing. This usually takes a few seconds.</template>
+              <template v-else-if="description">Description ready.</template>
+            </p>
 
-        <div class="example-group" role="group" aria-labelledby="examples-heading">
-          <h3 id="examples-heading" class="field-label">Or try a question</h3>
-          <div class="examples">
-            <button
-              v-for="example in VISION_EXAMPLES"
-              :key="example.id"
-              type="button"
-              class="example-button"
-              :data-example="example.id"
-              :title="example.teaches"
-              @click="loadExample(example)"
-            >
-              {{ example.label }}
-            </button>
-          </div>
-        </div>
-      </section>
+            <div class="example-group" role="group" aria-labelledby="examples-heading">
+              <h3 id="examples-heading" class="field-label">Or try a question</h3>
+              <div class="examples">
+                <button
+                  v-for="example in VISION_EXAMPLES"
+                  :key="example.id"
+                  type="button"
+                  class="example-button"
+                  :data-example="example.id"
+                  :title="example.teaches"
+                  @click="loadExample(example)"
+                >
+                  {{ example.label }}
+                </button>
+              </div>
+            </div>
+          </section>
 
-      <section class="settings" aria-labelledby="settings-heading">
-        <h2 id="settings-heading" class="section-heading">Model and settings</h2>
+          <!--
+            Below the input and collapsed, because a visitor picks a model once and then runs
+            several questions against it. The summary keeps the selected model's name visible, so
+            the one fact the expanded form was being kept open for is readable while it is closed.
+          -->
+          <ModelSettingsPanel :model-name="selectedModel?.name">
+            <div class="field">
+              <label class="field-label" for="vision-model">Model</label>
+              <select id="vision-model" v-model="model" class="select">
+                <option v-for="candidate in models" :key="candidate.id" :value="candidate.id">
+                  {{ candidate.name }}
+                </option>
+              </select>
+            </div>
 
-        <div class="field">
-          <label class="field-label" for="vision-model">Model</label>
-          <select id="vision-model" v-model="model" class="select">
-            <option v-for="candidate in models" :key="candidate.id" :value="candidate.id">
-              {{ candidate.name }}
-            </option>
-          </select>
-        </div>
+            <p class="settings-note">
+              Each model declares its own contract, so this form changes with your selection.
+              <span v-if="capabilitySentence">{{ capabilitySentence }}</span>
+            </p>
 
-        <p class="settings-note">
-          Each model declares its own contract, so this form changes with your selection.
-          <span v-if="capabilitySentence">{{ capabilitySentence }}</span>
-        </p>
+            <div v-if="controls?.maxTokens" class="field">
+              <label class="field-label" for="vision-max-tokens">
+                Answer length ({{ maxTokens ?? `model default: ${controls.maxTokens.default}` }}
+                tokens)
+              </label>
+              <input
+                id="vision-max-tokens"
+                v-model.number="maxTokens"
+                class="range"
+                type="range"
+                :min="controls.maxTokens.min"
+                :max="controls.maxTokens.max"
+                :step="controls.maxTokens.step"
+              />
+              <p class="hint">
+                A longer answer costs more, because these models bill per token. Compare the figures
+                in the run details beside the answer.
+              </p>
+            </div>
 
-        <div v-if="controls?.maxTokens" class="field">
-          <label class="field-label" for="vision-max-tokens">
-            Answer length ({{ maxTokens ?? `model default: ${controls.maxTokens.default}` }}
-            tokens)
-          </label>
-          <input
-            id="vision-max-tokens"
-            v-model.number="maxTokens"
-            class="range"
-            type="range"
-            :min="controls.maxTokens.min"
-            :max="controls.maxTokens.max"
-            :step="controls.maxTokens.step"
-          />
-          <p class="hint">
-            A longer answer costs more, because these models bill per token. Compare the figures in
-            the run details below.
-          </p>
-        </div>
+            <p v-if="selectedModel" class="docs-link">
+              <a :href="selectedModel.documentationUrl" rel="noreferrer" target="_blank">
+                {{ selectedModel.name }} in the model catalog
+              </a>
+            </p>
+          </ModelSettingsPanel>
+        </template>
 
-        <p v-if="selectedModel" class="docs-link">
-          <a :href="selectedModel.documentationUrl" rel="noreferrer" target="_blank">
-            {{ selectedModel.name }} in the model catalog
-          </a>
-        </p>
-      </section>
+        <template #output>
+          <section class="answer" aria-labelledby="answer-heading">
+            <div class="answer-header">
+              <h2 id="answer-heading" class="section-heading">Run output</h2>
+              <!--
+                The run details move here from the bottom of the page. A run's cost is one of the
+                things this demo exists to show, and it was previously the item furthest from the
+                answer it belonged to.
+              -->
+              <InfoButton
+                v-if="receipt"
+                class="run-details-button"
+                label="Run details, including reported cost"
+                @activate="showRunDetails = true"
+              />
+            </div>
 
-      <section v-if="description" class="answer" aria-labelledby="answer-heading">
-        <h2 id="answer-heading" class="section-heading">Description</h2>
-        <!--
-          `aria-live` so a screen-reader user hears the answer arrive. Without it the description
-          would appear silently, which in a panel whose entire output is this one block would mean
-          hearing nothing at all.
-        -->
-        <p class="description-text" aria-live="polite">{{ description }}</p>
+            <p v-if="!description && !describing" class="awaiting">
+              Your description will appear here.
+            </p>
 
-        <!--
-          What the server established about the picture, as opposed to what the browser believed.
-          Shown because this panel's central claim is that it trusts bytes rather than
-          declarations, and a claim nobody can observe is just a comment in the source.
-        -->
-        <dl v-if="verified" class="verified-facts">
-          <div class="fact">
-            <dt>Format</dt>
-            <dd>{{ verified.mediaType }}</dd>
-          </div>
-          <div class="fact">
-            <dt>Dimensions</dt>
-            <dd>{{ verified.width }} × {{ verified.height }}</dd>
-          </div>
-          <div class="fact">
-            <dt>Size</dt>
-            <dd>{{ formatBytes(verified.byteLength) }}</dd>
-          </div>
-        </dl>
-        <p v-if="sizeDiffers" class="fact-note">
-          The server measured this picture itself rather than trusting what your browser reported.
-        </p>
-      </section>
+            <!--
+              The persistent status beside the input announces that the description is ready. The
+              answer itself is ordinary text rather than another live region, so a long model
+              response is not read over the shorter completion announcement.
+            -->
+            <p v-if="description" class="description-text">{{ description }}</p>
 
-      <RunDetails
-        v-if="receipt"
-        :receipt="receipt"
-        :metrics="metrics"
-        :cost-pending="costPending"
-      />
+            <!--
+              What the server established about the picture, as opposed to what the browser
+              believed. Shown because this panel's central claim is that it trusts bytes rather
+              than declarations, and a claim nobody can observe is just a comment in the source.
+            -->
+            <dl v-if="verified" class="verified-facts">
+              <div class="fact">
+                <dt>Format</dt>
+                <dd>{{ verified.mediaType }}</dd>
+              </div>
+              <div class="fact">
+                <dt>Dimensions</dt>
+                <dd>{{ verified.width }} × {{ verified.height }}</dd>
+              </div>
+              <div class="fact">
+                <dt>Size</dt>
+                <dd>{{ formatBytes(verified.byteLength) }}</dd>
+              </div>
+            </dl>
+            <p v-if="sizeDiffers" class="fact-note">
+              The server measured this picture itself rather than trusting what your browser
+              reported.
+            </p>
+          </section>
+        </template>
+      </PanelWorkspace>
+
+      <InfoDialog :open="showRunDetails" title="Run details" @close="showRunDetails = false">
+        <RunDetails
+          v-if="receipt"
+          :receipt="receipt"
+          :metrics="metrics"
+          :cost-pending="costPending"
+        />
+      </InfoDialog>
     </div>
   </PanelPage>
 </template>
 
 <style scoped>
 .describe-image {
-  align-items: stretch;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
+  min-width: 0;
 }
 
 .composer,
-.settings,
 .answer {
   min-width: 0;
 }
 
 .section-heading {
   font-size: 1.125rem;
-  margin: 0 0 0.75rem;
+  margin: 0;
 }
 
 .attribution {
-  background-color: rgb(var(--v-theme-surface-variant));
-  border-radius: 0.5rem;
+  margin: 1rem 0 0;
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.answer-header {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.awaiting {
+  color: rgb(var(--v-theme-on-surface-variant));
   margin: 0;
-  max-width: 48rem;
-  padding: 0.75rem 1rem;
+}
+
+.question-field,
+.field {
+  min-width: 0;
+  width: 100%;
 }
 
 .field {
   margin-bottom: 1rem;
   max-width: 28rem;
-  min-width: 0;
-  width: 100%;
 }
 
 .field-label {
@@ -347,7 +442,6 @@ function loadExample(example: VisionExample): void {
   box-sizing: border-box;
   color: rgb(var(--v-theme-on-surface));
   font-size: 0.9375rem;
-  max-width: 44rem;
   padding: 0.75rem;
   resize: vertical;
   width: 100%;
@@ -371,6 +465,7 @@ function loadExample(example: VisionExample): void {
 }
 
 .range {
+  min-height: 1.5rem;
   width: 100%;
 }
 
@@ -386,16 +481,11 @@ function loadExample(example: VisionExample): void {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-top: 0.75rem;
 }
 
 .status {
   color: rgb(var(--v-theme-on-surface-variant));
-  margin: 0.75rem 0 0;
-}
-
-.example-group {
-  margin-top: 1.25rem;
+  margin: 0;
 }
 
 .examples {
@@ -419,18 +509,21 @@ function loadExample(example: VisionExample): void {
   border-color: rgb(var(--v-theme-primary));
 }
 
+.example-button:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+
 .settings-note {
   color: rgb(var(--v-theme-on-surface-variant));
   font-size: 0.875rem;
   margin: 0 0 1rem;
-  max-width: 36rem;
 }
 
 .description-text {
   background-color: rgb(var(--v-theme-surface-variant));
   border-radius: 0.5rem;
   margin: 0;
-  max-width: 48rem;
   padding: 1rem;
   white-space: pre-wrap;
 }
@@ -460,7 +553,7 @@ function loadExample(example: VisionExample): void {
 .hint {
   color: rgb(var(--v-theme-on-surface-variant));
   font-size: 0.8125rem;
-  margin: 0.25rem 0 0;
+  margin: 0;
 }
 
 .error {

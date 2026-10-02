@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { CHAT_EXAMPLES } from '../../../src/client/features/chat/examples';
 import { useCatalogueStore } from '../../../src/client/stores/catalogue';
 import ChatView from '../../../src/client/views/ChatView.vue';
+import { clickTeleported, openDialogText, panelText } from '../support/panel';
 
 /**
  * Reviewed models as the catalogue endpoint reports them.
@@ -75,25 +76,40 @@ afterEach(() => {
 });
 
 describe('ChatView', () => {
-  it('shows the panel name and its technical task type', async () => {
-    const text = (await mountChat()).text();
-    expect(text).toContain('Chat');
-    expect(text).toContain('Text generation');
+  // The name is teleported into the shell's header bar and the task type now lives in the
+  // description modal, so each is read from where it actually renders.
+  it('shows the panel name in the header', async () => {
+    expect(panelText(await mountChat())).toContain('Chat');
+  });
+
+  it('describes its technical task type in the panel description', async () => {
+    await mountChat();
+    await clickTeleported('.about-button');
+
+    expect(openDialogText()).toContain('Text generation');
   });
 
   it('declares that the panel is routed through AI Gateway', async () => {
-    expect((await mountChat()).text()).toContain('Routed through AI Gateway');
+    await mountChat();
+    await clickTeleported('.about-button');
+
+    expect(openDialogText()).toContain('Routed through AI Gateway');
   });
 
   // The visitor is told their email is recorded in gateway metadata *before* they send anything,
   // not in a footnote afterwards. This is the disclosure the whole attribution design depends on.
   it('discloses email attribution before the first request', async () => {
-    const text = (await mountChat()).text();
-    expect(text).toMatch(/verified email is\s+recorded in the AI Gateway log/iu);
+    await mountChat();
+    await clickTeleported('.about-button');
+
+    expect(openDialogText()).toMatch(/verified email is recorded in the AI Gateway log/iu);
   });
 
   it('warns that the panel spends real inference credit', async () => {
-    expect((await mountChat()).text()).toMatch(/real inference credit/iu);
+    await mountChat();
+    await clickTeleported('.about-button');
+
+    expect(openDialogText()).toMatch(/real inference credit/iu);
   });
 
   // Tells the visitor to assume their prompt is logged, rather than promising it is not. Payload
@@ -101,7 +117,10 @@ describe('ChatView', () => {
   // the gateway documents that a log can include the prompt — so a reassurance here would be a
   // claim this application cannot keep on a visitor's behalf.
   it('warns that the prompt should be assumed logged', async () => {
-    const text = (await mountChat()).text();
+    await mountChat();
+    await clickTeleported('.about-button');
+
+    const text = openDialogText();
     expect(text).toMatch(/assume your prompt and the answer are logged/iu);
     expect(text).toMatch(/nothing confidential|anything confidential/iu);
   });

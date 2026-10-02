@@ -31,8 +31,9 @@ rather than a code review conversation.
 ## Panels
 
 The navigation is one level deep. Every panel is one click from anywhere, named after what a person
-wants to do rather than after a model task type. The task type is shown underneath, so the panel
-teaches the vocabulary instead of assuming it.
+wants to do rather than after a model task type. The task type is in the panel's **About** modal, so
+the panel teaches the vocabulary without putting a block of explanation above the thing a visitor
+came to use.
 
 | Panel              | Task type                    | Status            |
 | ------------------ | ---------------------------- | ----------------- |
@@ -55,6 +56,25 @@ teaches the vocabulary instead of assuming it.
 Panels that are not built yet are still listed, each stating the phase that delivers it. Hiding them
 would misrepresent the product; a sidebar that quietly grows tells a visitor nothing about where the
 work is going.
+
+### Panel layout
+
+The working panels put the activity ahead of the explanation:
+
+- The **panel title is in the shell header**, beside an info button. That modal holds the technical
+  task type, the summary, the gateway route, and the credit/privacy disclosure. The disclosure is
+  not removed or softened — it is one click from the title instead of occupying the fold.
+- The **input is centred** while there is nothing to compare it with. As soon as a media panel has
+  output worth showing, it becomes the left column and the output appears on the right. On a narrow
+  screen the columns stack in reading order: input first, output second.
+- **Model settings are collapsed by default** beneath the input. Their summary always names the
+  selected model, so the important fact remains visible while the controls are out of the way.
+- **Run details are attached to Run output** through a second info button. Model, elapsed time,
+  reported cost, token counts, cache state, and the gateway log identifier remain available without
+  becoming a fifth equally-weighted section below the result.
+
+Chat deliberately keeps its transcript layout — a conversation is one running sequence rather than
+an input and a separate result — while sharing the title and About-modal pattern.
 
 ## Chat
 
