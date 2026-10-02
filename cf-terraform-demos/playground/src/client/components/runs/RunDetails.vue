@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { RunMetrics, RunReceipt } from '../../../runs';
 
 const props = defineProps<{
@@ -65,6 +65,45 @@ const tokens = computed(() => {
 
   return input === undefined && output === undefined ? undefined : { input, output };
 });
+
+/**
+ * Text copied by the Gateway log control.
+ *
+ * A run can carry more than one gateway log when an operation makes several model calls. Copy all
+ * identifiers in the same comma-separated form the component displays, so the button never copies a
+ * different value from the one beside it.
+ */
+const gatewayLogIds = computed(() => props.receipt.logIds.join(', '));
+
+/**
+ * Feedback from the most recent copy attempt.
+ *
+ * Kept as visible text as well as a polite status announcement: clipboard permission can be denied,
+ * and silently doing nothing would leave a visitor believing the identifier was copied.
+ */
+const copyStatus = ref<'copied' | 'failed' | undefined>(undefined);
+
+/**
+ * Copies the displayed gateway log identifier to the system clipboard.
+ *
+ * @returns A promise fulfilled after success or failure feedback has been rendered. Clipboard
+ *   permission errors are handled in the component and are not thrown to the page.
+ */
+async function copyGatewayLog(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(gatewayLogIds.value);
+    copyStatus.value = 'copied';
+  } catch {
+    copyStatus.value = 'failed';
+  }
+}
+
+// A metrics update does not change the log identifiers, but a reused modal can be given a new
+// receipt. Clear the old "Copied" message so it never describes an identifier that is no longer
+// on screen.
+watch(gatewayLogIds, () => {
+  copyStatus.value = undefined;
+});
 </script>
 
 <template>
@@ -95,7 +134,7 @@ const tokens = computed(() => {
       </div>
       <div v-if="metrics?.costStatus === 'available'" class="detail">
         <dt>Billing unit</dt>
-        <dd>Per token, as reported by the gateway</dd>
+        <dd>Per token</dd>
       </div>
       <div v-if="tokens" class="detail">
         <dt>Tokens</dt>
@@ -110,12 +149,33 @@ const tokens = computed(() => {
       </div>
       <!--
         The log identifier names a log record, not its contents, and this demo stores no payloads
-        in those records. It is shown so a presenter can find the exact request in the AI Gateway
-        dashboard.
+        in those records. It is the final grid item rather than spanning both columns, which puts it
+        on the right and balances a fully populated run as four items in each column.
       -->
-      <div v-if="receipt.logIds.length > 0" class="detail detail--wide">
+      <div v-if="receipt.logIds.length > 0" class="detail gateway-log-detail">
         <dt>Gateway log</dt>
-        <dd class="log-id">{{ receipt.logIds.join(', ') }}</dd>
+        <dd class="gateway-log-content">
+          <span class="gateway-log-value">
+            <code class="log-id">{{ gatewayLogIds }}</code>
+            <button
+              type="button"
+              class="copy-button"
+              :aria-label="`Copy gateway log identifier ${gatewayLogIds}`"
+              title="Copy gateway log identifier"
+              @click="copyGatewayLog"
+            >
+              <!--
+                Two offset rectangles form a copy icon without adding an icon font. The button's
+                accessible name carries the action and exact value, so the drawing is decorative.
+              -->
+              <span class="copy-icon" aria-hidden="true"></span>
+            </button>
+          </span>
+          <span class="copy-status" role="status">
+            <template v-if="copyStatus === 'copied'">Copied</template>
+            <template v-else-if="copyStatus === 'failed'">Could not copy</template>
+          </span>
+        </dd>
       </div>
     </dl>
 
@@ -146,12 +206,16 @@ const tokens = computed(() => {
 .details {
   display: grid;
   gap: 0.625rem 1.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
 }
 
-.detail--wide {
-  grid-column: 1 / -1;
+/*
+  Keep the log in the right-hand list even when an optional field such as Tokens is absent. On a
+  fully populated run it is the eighth item, balancing the modal as four details per column.
+*/
+.gateway-log-detail {
+  grid-column: 2;
 }
 
 .detail dt {
@@ -163,15 +227,104 @@ const tokens = computed(() => {
   margin: 0;
 }
 
+.gateway-log-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.gateway-log-value {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
 .log-id {
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 0.8125rem;
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/*
+  A compact but comfortably clickable icon button. It is 28px square — above WCAG 2.2's 24px
+  minimum target — and the independent focus outline makes keyboard focus visible against the
+  bordered details panel.
+*/
+.copy-button {
+  align-items: center;
+  background: none;
+  border: 1px solid rgb(var(--v-theme-outline));
+  border-radius: 0.375rem;
+  color: rgb(var(--v-theme-on-surface-variant));
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 1.75rem;
+  justify-content: center;
+  padding: 0;
+  width: 1.75rem;
+}
+
+.copy-button:hover,
+.copy-button:focus-visible {
+  border-color: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-primary));
+}
+
+.copy-button:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+
+/*
+  Copy glyph drawn with borders so the component needs no icon package or webfont. The front and
+  rear rectangles use currentColor, inheriting the hover/focus state from the button.
+*/
+.copy-icon {
+  border: 1.5px solid currentcolor;
+  border-radius: 0.125rem;
+  box-sizing: border-box;
+  height: 0.625rem;
+  position: relative;
+  transform: translate(0.125rem, 0.125rem);
+  width: 0.625rem;
+}
+
+.copy-icon::before {
+  border: 1.5px solid currentcolor;
+  border-radius: 0.125rem;
+  box-sizing: border-box;
+  content: '';
+  height: 0.625rem;
+  left: -0.25rem;
+  position: absolute;
+  top: -0.25rem;
+  width: 0.625rem;
+}
+
+.copy-status {
+  color: rgb(var(--v-theme-on-surface-variant));
+  font-size: 0.75rem;
+  min-height: 1.125rem;
+  margin-top: 0.125rem;
 }
 
 .note {
   color: rgb(var(--v-theme-on-surface-variant));
   font-size: 0.875rem;
   margin: 0.875rem 0 0;
+}
+
+/* The modal remains two columns when it has room; on a phone each detail takes the full width. */
+@media (max-width: 32rem) {
+  .details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gateway-log-detail {
+    grid-column: auto;
+  }
 }
 </style>
