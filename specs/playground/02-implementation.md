@@ -757,6 +757,52 @@ was unreachable at review time. Re-check before offering it.
 - Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
+### Findings
+
+Recorded during delivery, because each one changed a decision.
+
+1. **`@cf/utter-project/eurollm-9b-it` was not registered, and the phase brief asked for the reason.** It is typed Text Generation rather than Translation, so translating with it means prompting and reading prose back — no `target_lang` to validate, and no way to be sure the reply is a translation rather than a commentary on one. This panel's entire lesson is the *typed* translation contract, and a general LLM behind the same selector would teach that the language codes are decoration. Its catalogue page also gates access behind a sign-up form, so it could not be relied on from a fresh account. The panel adapts its request per model for the *two dedicated translators*, which is where that adaptation is genuinely instructive.
+
+2. **`@cf/ai4bharat/indictrans2-en-indic-1B` was re-checked and registered.** The brief recorded its catalogue page as unreachable at review time and asked for a re-check. The page now resolves, both schemas are published, it is Cloudflare-hosted and not beta, and it is priced identically to M2M100. It earns its place by disagreeing with M2M100 in all three ways this panel is about.
+
+3. **Both reviewed models are Cloudflare-hosted, so the panel needs no prepaid credit.** The brief preferred a hosted dedicated translator over a third-party generalist, and that is what both of these are.
+
+4. **One model has no source language at all, so a deliverable could not be built as written.** The brief asks for a swap action. M2M100 takes `source_lang`; IndicTrans2 translates from English only and declares no source field whatsoever. The swap action therefore exists for one model and *cannot* exist for the other, so it is absent rather than disabled, and the panel states why — a swap button that silently did nothing would be worse than no button.
+
+5. **The cost shape differs per model, which is new and is the panel's real lesson.** IndicTrans2 declares `text` as `string | string[]` and returns one translation per input, so a twelve-line passage is **one** billed call. M2M100 takes a single string, so the same passage is **twelve**. No earlier panel had a model choice that changed the number of charges.
+
+6. **The segment cap exists because of finding 5.** A character limit alone would let a pasted list of two hundred short lines become two hundred paid calls from one click, so the limit that protects a visitor is a count of *translatable lines* (24) rather than of characters. The refusal explains the per-line billing, because the limit otherwise reads as arbitrary. Blank lines never count against it.
+
+7. **The panel states the number of paid calls before the request.** Both models bill per token, which is not knowable until the model tokenises the text, so no currency figure would be honest in advance — unlike Read Text, where the billable quantity is text the visitor has already typed. The call count *is* exact, and it is the figure that surprises people, so that is what the panel quotes.
+
+8. **Line breaks are preserved by segmenting, not by trusting the model.** A translation model is trained on sentences, and passing a multi-line passage as one string gets newlines collapsed, re-ordered, or dropped. Each line is therefore translated as its own unit and reassembled **by original index**, which is what makes an internal blank line survive; consuming translations in order would work until exactly that case, which is the shape a test would accidentally use.
+
+9. **A language code is a per-model contract, as in phase 10.** M2M100 takes ISO 639-1 and IndicTrans2 takes FLORES-200 tags naming a script, so `hi` and `hin_Deva` are the same language and neither model accepts the other's spelling. Merging the lists would invent a standard no provider agreed to. Three IndicTrans2 languages appear twice in different scripts, so every entry carries its script in the display name.
+
+10. **M2M100's documentation contradicts its own schema about language format.** The model page's example sends `source_lang: "english"` and `target_lang: "french"` — full English names — while the schema for both fields documents "the language code (e.g. 'en' for English)". This demo follows the schema, because the schema is the normative contract and a code is what every other panel means by a language. Recorded here because if a request is ever refused upstream, the fix is a spelling change in one reviewed place.
+
+11. **A failure partway through is reported as a failed run, not a partial translation.** A half-translated passage would look like a model that trails off while charging for lines nobody can use. The log records which call failed, how many had completed, and therefore how many were already billed — the number someone reconciling a bill needs, and one a status code cannot carry.
+
+12. **The calls are made in sequence rather than in parallel.** Concurrency would be faster and worse: a failure partway through a parallel fan-out leaves an unknown number of paid calls in flight with no way to report what was spent. A regression test asserts the peak concurrency is one.
+
+13. **This is the first panel whose receipt routinely carries several gateway log identifiers.** `aggregateRunMetrics` has refused to report a partial total since phase 3, but nothing exercised it until now; a run's cost stays `pending` until every one of its calls has reported.
+
+14. **M2M100's output type has a second branch that is not a translation.** Its schema declares `{ request_id }` for async-queue acknowledgement. This demo never asks for batch mode, so receiving one means the request was routed differently than intended — and it is refused with its own reason code rather than rendered, because a `request_id` is a plausible-looking string that is not a translation.
+
+15. **A batching model's output count is checked against its input count.** A model returning two translations for three lines would otherwise have every placement after the gap silently misaligned against the source, which is a *plausible* wrong answer rather than a missing one.
+
+16. **The Read Text handoff contract built in phase 9 needed no changes.** Completing it was one call to `offerText`, with the target language travelling alongside the text. Defining the contract a phase early was worth it exactly as intended.
+
+### Follow-up for later phases
+
+- The 20 M2M100 language codes are a **reviewed allowlist, not a transcription**: its schema types
+  both language fields as open strings with no enumeration, so there is nothing to copy and nothing
+  stopping an arbitrary string being forwarded. The model handles about a hundred languages, so a
+  later phase may widen the list — but it should stay an allowlist rather than becoming a free
+  text field.
+- Finding 10's documentation conflict is worth re-checking when the model page is next revised. If
+  the schema changes to full language names, `M2M100_LANGUAGES` is the single place to edit.
+
 ---
 
 ## Phase 12 — Classify Text

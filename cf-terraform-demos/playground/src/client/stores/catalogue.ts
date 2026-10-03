@@ -7,6 +7,7 @@ import type { SpeechControlSupport } from '../../shared/read-text';
 import type { RemixImageControlSupport } from '../../shared/remix-image';
 import type { TaskId } from '../../shared/tasks';
 import type { TranscriptionControlSupport } from '../../shared/transcribe-audio';
+import type { TranslationControlSupport } from '../../shared/translate-text';
 
 /**
  * A reviewed model as the catalogue endpoint reports it.
@@ -101,6 +102,16 @@ export interface CatalogueModel {
    * is refused in the browser with the same number the server would use.
    */
   transcriptionControls?: TranscriptionControlSupport;
+  /**
+   * Which languages a translation model accepts, and whether it batches its lines.
+   *
+   * The browser needs this for two things no earlier panel required. The **swap action** exists
+   * only for a model that declares a source language, so the control is rendered from this rather
+   * than always present and sometimes inert. And `batchesSegments` lets the panel predict how many
+   * paid calls a passage will make _before_ the request, which is the one cost-shaped figure this
+   * panel can quote in advance.
+   */
+  translationControls?: TranslationControlSupport;
 }
 
 /**

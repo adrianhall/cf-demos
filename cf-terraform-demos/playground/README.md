@@ -50,7 +50,7 @@ came to use.
 | Generate Music       | Text to music                    | Phase 15          |
 | **Read Text**        | **Text to speech**               | **Available now** |
 | **Transcribe Audio** | **Automatic speech recognition** | **Available now** |
-| Translate Text       | Translation                      | Phase 11          |
+| **Translate Text**   | **Translation**                  | **Available now** |
 | Classify Text        | Text classification              | Phase 12          |
 | Evaluate Choices     | Structured evaluation            | Phase 14          |
 | Semantic Search      | Text embeddings                  | Phase 13          |
@@ -587,18 +587,23 @@ Built to **phase 7** of
   for why the file size limit changes with the model, and why two "confidence" numbers here are not
   comparable.
 
-Every remaining panel renders a placeholder stating the phase that delivers it. **Translate Text**,
-in phase 11, is next.
+- **Phase 11** delivered Translate Text, whose models disagree about _how many times one click is
+  billed_. See [Translate Text: one click, many charges](#translate-text-one-click-many-charges) for
+  why the limit is on lines rather than length, and why the swap action exists for one model and
+  cannot exist for the other.
+
+Every remaining panel renders a placeholder stating the phase that delivers it. **Classify Text**,
+in phase 12, is next.
 
 The remaining phases are ordered by **whether Cloudflare hosts a model for the task**, which is a
 practical constraint rather than a preference: a third-party model bills against prepaid AI Gateway
 credits, so a panel with only third-party options cannot be built or demonstrated on an unfunded
 account. Phases 9–14 — Read Text, Transcribe Audio, Translate Text, Classify Text, Semantic Search,
-and Evaluate Choices — all have Cloudflare-hosted models and need no credits. Phases 9 and 10
-confirmed that for Read Text and Transcribe Audio: all three reviewed models in each run on
-Cloudflare. Generate Music (15) and Animate Image (16) have no hosted option in the catalogue, so
-they come after. Each phase records its candidate hosted and third-party models, and asks for the
-hosting to be re-confirmed before it starts, because the catalogue changes.
+and Evaluate Choices — all have Cloudflare-hosted models and need no credits. Phases 9, 10, and 11
+confirmed that for Read Text, Transcribe Audio, and Translate Text: every reviewed model in all
+three runs on Cloudflare. Generate Music (15) and Animate Image (16) have no hosted option in the
+catalogue, so they come after. Each phase records its candidate hosted and third-party models, and
+asks for the hosting to be re-confirmed before it starts, because the catalogue changes.
 
 Animate Image moved from phase 9 to phase 16 for exactly that reason: it shares all of Create
 Video's infrastructure and would otherwise be the obvious next step, but every image-to-video model
@@ -861,3 +866,79 @@ without decoding it. So unlike Read Text — where the billable quantity is text
 already typed — this panel usually **cannot** quote a cost before the run, and says so rather than
 leaving the figure mysteriously absent. Only WAV declares a duration cheaply enough to use, and that
 is also the only format against which the ten-minute duration cap can be enforced.
+
+## Translate Text: one click, many charges
+
+Earlier panels' models disagreed about controls, payloads, and output shapes. Translate Text's
+disagree about something a visitor feels directly: **how many times a single click is billed.**
+
+|                   | M2M100 1.2B                      | IndicTrans2               |
+| ----------------- | -------------------------------- | ------------------------- |
+| Source language   | `source_lang`, 20 reviewed codes | **none** — English only   |
+| Target field      | `target_lang`                    | `target_language`         |
+| Code style        | ISO 639-1 (`hi`)                 | FLORES-200 (`hin_Deva`)   |
+| Text in           | one `string`                     | `string \| string[]`      |
+| A 12-line passage | **12 billed calls**              | **1 billed call**         |
+| Output            | `{ translated_text }`            | `{ translations: [...] }` |
+
+Four consequences, each of which changed a decision:
+
+- **The limit is on lines, not length.** A pasted list of 200 short sentences passes any character
+  cap comfortably and would be 200 charges from one click. So the panel caps _translatable lines_ at
+  24, and the refusal explains that some models bill per line — otherwise the limit reads as
+  arbitrary. Blank lines never count, because they are never sent.
+- **The panel states the call count before the request.** Both models bill per token, which is not
+  knowable until the model tokenises the text, so no currency figure would be honest in advance. The
+  number of _paid calls_ is exact, and it is the figure that surprises people.
+- **Line breaks are preserved by segmenting, not by hoping.** A translation model is trained on
+  sentences; handing it a multi-line passage as one string gets the newlines collapsed or
+  re-ordered. So each line is translated as its own unit and reassembled **by original index** —
+  which is what makes a blank line in the middle of a passage survive. Consuming translations in
+  order would work until exactly that case.
+- **A failure partway through is a failed run, not a partial result.** A passage half-translated is
+  not a translation, and returning one would look like a model that trails off while charging for
+  lines nobody can use. The log records _which_ call failed and how many had already completed — the
+  number someone reconciling a bill actually needs.
+
+The calls are made **in sequence rather than in parallel**. Concurrent translation would be faster
+and worse: a failure partway through a parallel fan-out leaves an unknown number of paid calls in
+flight with no way to report what was spent.
+
+### A control that cannot exist
+
+IndicTrans2 translates from English only and its schema declares no source-language field at all. So
+the source selector is replaced by plain text, and the **swap action is absent rather than
+disabled** — a disabled control implies a choice that is temporarily unavailable, when the truth is
+that this model has no such field. The panel says so in a sentence, because an absent control
+otherwise reads as a gap in the page.
+
+Swapping also moves the _translation_ into the source box when there is one, because checking a
+translation back the other way is overwhelmingly why anyone swaps.
+
+### Why the general-purpose LLM was not offered
+
+`@cf/utter-project/eurollm-9b-it` was a listed candidate and is deliberately **not registered**. It
+is a text-generation model, so translating with it means writing a prompt and reading prose back —
+with no `target_lang` to validate and no way to be sure the reply is a translation rather than a
+commentary on one. This panel's entire lesson is the _typed_ translation contract, and a general LLM
+behind the same selector would teach that the language codes are decoration. Its catalogue page also
+gates access behind a sign-up form, so it could not be relied on from a fresh account.
+
+### Two standards for the same language
+
+`hi` and `hin_Deva` name the same language, and **neither model accepts the other's spelling.** The
+lists are therefore declared per model rather than merged, because merging them would invent a
+standard no provider agreed to. IndicTrans2's codes name a script as well as a language, which is
+why three languages appear twice in its list — Kashmiri, Manipuri, and Sindhi each in two scripts —
+and why every entry carries its script in the display name.
+
+### Accessibility notes worth copying
+
+The translated column carries a `lang` attribute taken from the applied target language. Without it
+a screen reader reads Hindi with English pronunciation rules, which is unintelligible — so this is
+load-bearing rather than cosmetic. The result is a real `table` with scoped headers, and every cell
+also carries a visually-hidden column label, because the rows stack on a narrow screen and a stacked
+row without labels reads as alternating fragments of two languages.
+
+The download is encoded with `encodeURIComponent` rather than base64: a naive `btoa` throws on any
+character outside Latin-1, which is _every_ language one of these two models targets.

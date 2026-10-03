@@ -22,6 +22,7 @@ import {
   MAX_INPUT_AUDIO_BYTES,
   type TranscriptionControlSupport
 } from '../../shared/transcribe-audio';
+import type { TranslationControlSupport, TranslationLanguage } from '../../shared/translate-text';
 
 /**
  * Who runs the model behind a descriptor.
@@ -51,6 +52,90 @@ export type PricingUnit =
  * How a model returns its result, which decides the shape of the route serving it.
  */
 export type InvocationStyle = 'synchronous' | 'streamed' | 'job';
+
+/**
+ * Languages this demo will ask M2M100 to translate between.
+ *
+ * A **reviewed allowlist, not a transcription.** M2M100 itself handles a hundred languages, and its
+ * schema types `source_lang` and `target_lang` as open strings with no enumeration — so there is no
+ * provider list to copy and nothing stopping an arbitrary string being forwarded. These are the ISO
+ * 639-1 codes this demo has chosen to offer, which keeps the selector usable and means a code
+ * reaching the provider is one somebody checked.
+ *
+ * Declared before the descriptors because both the source and target lists point at it: the model
+ * translates in every direction between these, so a second copy would be a second thing to keep in
+ * step.
+ */
+const M2M100_LANGUAGES: readonly TranslationLanguage[] = [
+  { code: 'en', name: 'English' },
+  { code: 'ar', name: 'Arabic' },
+  { code: 'bn', name: 'Bengali' },
+  { code: 'zh', name: 'Chinese' },
+  { code: 'nl', name: 'Dutch' },
+  { code: 'fr', name: 'French' },
+  { code: 'de', name: 'German' },
+  { code: 'hi', name: 'Hindi' },
+  { code: 'it', name: 'Italian' },
+  { code: 'ja', name: 'Japanese' },
+  { code: 'ko', name: 'Korean' },
+  { code: 'pl', name: 'Polish' },
+  { code: 'pt', name: 'Portuguese' },
+  { code: 'ru', name: 'Russian' },
+  { code: 'es', name: 'Spanish' },
+  { code: 'sw', name: 'Swahili' },
+  { code: 'tr', name: 'Turkish' },
+  { code: 'uk', name: 'Ukrainian' },
+  { code: 'ur', name: 'Urdu' },
+  { code: 'vi', name: 'Vietnamese' }
+];
+
+/**
+ * Languages IndicTrans2 declares as translation targets.
+ *
+ * Transcribed from its schema's `target_language` enum, which — unlike M2M100's open string — is
+ * genuinely enumerated, so this list is the provider's rather than this demo's. `eng_Latn` is
+ * omitted: it is the model's fixed _source_, and offering English as a target would be offering an
+ * English-to-English translation.
+ *
+ * The codes are FLORES-200 style, naming a script as well as a language, which is why three
+ * languages appear twice. The display names carry the script so a selector does not show two
+ * identical entries.
+ */
+const INDICTRANS2_LANGUAGES: readonly TranslationLanguage[] = [
+  { code: 'hin_Deva', name: 'Hindi (Devanagari)' },
+  { code: 'asm_Beng', name: 'Assamese (Bengali)' },
+  { code: 'awa_Deva', name: 'Awadhi (Devanagari)' },
+  { code: 'ben_Beng', name: 'Bengali (Bengali)' },
+  { code: 'bho_Deva', name: 'Bhojpuri (Devanagari)' },
+  { code: 'brx_Deva', name: 'Bodo (Devanagari)' },
+  { code: 'doi_Deva', name: 'Dogri (Devanagari)' },
+  { code: 'gom_Deva', name: 'Konkani (Devanagari)' },
+  { code: 'gon_Deva', name: 'Gondi (Devanagari)' },
+  { code: 'guj_Gujr', name: 'Gujarati (Gujarati)' },
+  { code: 'hne_Deva', name: 'Chhattisgarhi (Devanagari)' },
+  { code: 'kan_Knda', name: 'Kannada (Kannada)' },
+  { code: 'kas_Arab', name: 'Kashmiri (Arabic)' },
+  { code: 'kas_Deva', name: 'Kashmiri (Devanagari)' },
+  { code: 'kha_Latn', name: 'Khasi (Latin)' },
+  { code: 'lus_Latn', name: 'Mizo (Latin)' },
+  { code: 'mag_Deva', name: 'Magahi (Devanagari)' },
+  { code: 'mai_Deva', name: 'Maithili (Devanagari)' },
+  { code: 'mal_Mlym', name: 'Malayalam (Malayalam)' },
+  { code: 'mar_Deva', name: 'Marathi (Devanagari)' },
+  { code: 'mni_Beng', name: 'Manipuri (Bengali)' },
+  { code: 'mni_Mtei', name: 'Manipuri (Meitei)' },
+  { code: 'npi_Deva', name: 'Nepali (Devanagari)' },
+  { code: 'ory_Orya', name: 'Odia (Odia)' },
+  { code: 'pan_Guru', name: 'Punjabi (Gurmukhi)' },
+  { code: 'san_Deva', name: 'Sanskrit (Devanagari)' },
+  { code: 'sat_Olck', name: 'Santali (Ol Chiki)' },
+  { code: 'snd_Arab', name: 'Sindhi (Arabic)' },
+  { code: 'snd_Deva', name: 'Sindhi (Devanagari)' },
+  { code: 'tam_Taml', name: 'Tamil (Tamil)' },
+  { code: 'tel_Telu', name: 'Telugu (Telugu)' },
+  { code: 'urd_Arab', name: 'Urdu (Arabic)' },
+  { code: 'unr_Deva', name: 'Mundari (Devanagari)' }
+];
 
 /**
  * One reviewed model a panel may use.
@@ -177,6 +262,18 @@ export interface ModelDescriptor {
    * given, so the size ceiling is declared per model rather than once for the panel.
    */
   transcriptionControls?: TranscriptionControlSupport;
+  /**
+   * Which languages a translation model accepts, how it spells its controls, and whether it
+   * batches.
+   *
+   * Present only for a translation descriptor. The disagreement that matters most here is not about
+   * controls but about **cost shape**: one reviewed model accepts an array of lines in a single
+   * call, and the other takes one string, so the same multi-line passage is one paid call or one
+   * per line depending on the selection. The other substance is that one model has no source
+   * language at all, which is why the panel's swap action exists for one model and cannot exist for
+   * the other.
+   */
+  translationControls?: TranslationControlSupport;
   /**
    * The field a vision model puts its answer in.
    *
@@ -807,6 +904,97 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       // $0.0005 per audio minute at review time — the same rate as turbo, which is itself worth
       // seeing: the newer model is not more expensive.
       pricePerAudioMinuteUsd: 0.000_5
+    }
+  },
+  // Both reviewed translation models are Cloudflare-hosted, so this panel carries no prepaid AI
+  // Gateway credit prerequisite. The phase brief noted that any catalogue text-generation model can
+  // translate by prompt, and deliberately preferred a hosted dedicated translator — which is what
+  // both of these are.
+  //
+  // `@cf/utter-project/eurollm-9b-it` was a listed candidate and is **not registered**. It is typed
+  // Text Generation, not Translation: translating with it means writing a prompt and reading prose
+  // back, with no `target_lang` to validate and no way to be sure the reply is a translation rather
+  // than a commentary on one. The phase brief asked for a decision with a reason, and the reason is
+  // that this panel's entire lesson is the *typed* translation contract — explicit language codes
+  // validated against a declared list. A general LLM behind the same selector would teach that
+  // those codes are decoration. Its catalogue page also gates access behind a sign-up form, so it
+  // could not be relied on from a fresh account.
+  //
+  // M2M100 is the default: it is the hosted model whose declared task type is Translation, it
+  // handles a hundred languages in both directions, and its explicit source/target contract is what
+  // this panel's validation is built around.
+  {
+    id: '@cf/meta/m2m100-1.2b',
+    name: 'M2M100 1.2B',
+    provider: 'workers-ai',
+    task: 'translate-text',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/m2m100-1.2b/',
+    translationControls: {
+      targetParameterName: 'target_lang',
+      sourceParameterName: 'source_lang',
+      // A reviewed subset rather than a transcribed enum: the schema types both language fields as
+      // open strings with no enumeration, so there is nothing to transcribe and an unlisted code
+      // would be forwarded unchecked.
+      //
+      // ISO 639-1 codes. The model page's own example sends `source_lang: "english"` and
+      // `target_lang: "french"` — full English names — while the schema for both fields documents
+      // "the language code (e.g. 'en' for English)". The two disagree, and this demo follows the
+      // schema, because the schema is the normative contract and a code is what every other panel
+      // in this demo means by a language. Worth knowing if a request is ever refused upstream: the
+      // fix would be a spelling change in one reviewed place.
+      sourceLanguages: M2M100_LANGUAGES,
+      targetLanguages: M2M100_LANGUAGES,
+      defaultSourceLanguage: 'en',
+      defaultTargetLanguage: 'fr',
+      // Its synchronous schema declares `text` as a plain `string`, so a multi-line passage costs
+      // one call per line. That is the expensive side of this panel's comparison, and the UI states
+      // the call count before the request rather than after the bill.
+      batchesSegments: false,
+      outputField: 'translated_text'
+    }
+  },
+  // IndicTrans2 is the model that makes the per-model declaration do visible work, and it differs
+  // from M2M100 in all three ways this panel is about.
+  //
+  // It has **no source language**: it translates from English only and its schema declares no
+  // source field at all, so the swap action genuinely cannot exist for it. It spells its target
+  // field `target_language` rather than `target_lang`. And it accepts `string | string[]`, so a
+  // twelve-line passage is one paid call rather than twelve — the clearest demonstration in the
+  // demo that a model's request shape is a cost decision.
+  //
+  // The phase brief recorded that this model's catalogue page was unreachable at review time and
+  // asked for a re-check before offering it. Re-checked at delivery: the page resolves, its input
+  // and output schemas are published, it is Cloudflare-hosted and not beta, and it is priced
+  // identically to M2M100.
+  {
+    id: '@cf/ai4bharat/indictrans2-en-indic-1B',
+    name: 'IndicTrans2 (English → Indic)',
+    provider: 'workers-ai',
+    task: 'translate-text',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl:
+      'https://developers.cloudflare.com/workers-ai/models/indictrans2-en-indic-1B/',
+    translationControls: {
+      targetParameterName: 'target_language',
+      // No `sourceParameterName`: the field does not exist in its schema. Declaring the fixed
+      // source separately lets the panel label the input side honestly instead of leaving it blank.
+      fixedSourceLanguage: { code: 'eng_Latn', name: 'English (Latin)' },
+      // Transcribed directly from the schema's enum, which — unlike M2M100's — really is
+      // enumerated. FLORES-200 style tags naming a script as well as a language, so the same
+      // language can appear twice: Kashmiri in Arabic and Devanagari, Manipuri in Bengali and
+      // Meitei, Sindhi in Arabic and Devanagari. The display names carry the script for exactly
+      // that reason.
+      targetLanguages: INDICTRANS2_LANGUAGES,
+      defaultTargetLanguage: 'hin_Deva',
+      // `text` is `string | string[]` and the output is one translation per input, so every line
+      // travels in a single call.
+      batchesSegments: true,
+      outputField: 'translations'
     }
   }
 ];

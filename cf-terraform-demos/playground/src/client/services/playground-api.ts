@@ -21,6 +21,7 @@ import type {
   TranscribeAudioRequest,
   TranscribeAudioResponse
 } from '../../shared/transcribe-audio';
+import type { TranslateTextRequest, TranslateTextResponse } from '../../shared/translate-text';
 
 /**
  * Thrown when the API answers a non-streaming request with a failure.
@@ -346,6 +347,42 @@ export async function transcribeAudio(
   }
 
   return (await response.json()) as TranscribeAudioResponse;
+}
+
+/**
+ * Translates one passage.
+ *
+ * The text is sent with its line structure intact and the server does the segmenting, so one
+ * request here can become several billed gateway calls — the count depends on the selected model's
+ * contract. The response reports how many were actually made.
+ *
+ * @param request The translation request to send, carrying the source text and chosen languages.
+ * @param signal Abort signal, so the caller's Cancel button aborts the HTTP request itself rather
+ *   than merely ignoring the result. Calls already made to the provider are not cancelled — and the
+ *   panel says so — which matters more here than elsewhere, because a non-batching model may have
+ *   several lines still to go.
+ * @returns The assembled translation, the run receipt, and the controls the server applied.
+ * @throws {ApiError} When the server rejects the request (`400` for a language the selected model
+ *   does not accept, a source language on a fixed-source model, identical languages, or text that
+ *   is too long or has too many lines; `401` for an expired Access session) or when the provider
+ *   fails or returns no usable translation (`502`).
+ */
+export async function translateText(
+  request: TranslateTextRequest,
+  signal?: AbortSignal
+): Promise<TranslateTextResponse> {
+  const response = await fetch('/api/translate-text', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+
+  return (await response.json()) as TranslateTextResponse;
 }
 
 /**

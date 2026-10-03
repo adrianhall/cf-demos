@@ -230,7 +230,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Translate text between languages a model supports.',
     group: 'Understand',
     gateway: 'required',
-    availability: 'planned',
+    availability: 'available',
     phase: 11
   },
   {

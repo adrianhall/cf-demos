@@ -16,6 +16,7 @@ import type { DescribeImageService } from '../../../src/worker/application/descr
 import type { MetricsService } from '../../../src/worker/application/metrics/metrics-service';
 import type { ReadTextService } from '../../../src/worker/application/read-text/read-text-service';
 import type { TranscribeAudioService } from '../../../src/worker/application/transcribe-audio/transcribe-audio-service';
+import type { TranslateTextService } from '../../../src/worker/application/translate-text/translate-text-service';
 import type { AppBindings } from '../../../src/worker/bindings';
 
 /**
@@ -77,6 +78,10 @@ export interface MountOptions {
    * Transcribe Audio service the route should use.
    */
   transcribeAudioService?: TranscribeAudioService;
+  /**
+   * Translate Text service the route should use.
+   */
+  translateTextService?: TranslateTextService;
   /**
    * Logger to place on the context, so a caller can share one recorder between the route and the
    * services it calls — which is how the composition root wires them. Defaults to a fresh one.
@@ -173,6 +178,9 @@ export function mountRoute(
     }
     if (options.transcribeAudioService !== undefined) {
       context.set('TRANSCRIBE_AUDIO_SERVICE', options.transcribeAudioService);
+    }
+    if (options.translateTextService !== undefined) {
+      context.set('TRANSLATE_TEXT_SERVICE', options.translateTextService);
     }
     await next();
   });

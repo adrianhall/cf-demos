@@ -16,6 +16,7 @@ import PlannedPanelView from './views/PlannedPanelView.vue';
 import ReadTextView from './views/ReadTextView.vue';
 import RemixImageView from './views/RemixImageView.vue';
 import TranscribeAudioView from './views/TranscribeAudioView.vue';
+import TranslateTextView from './views/TranslateTextView.vue';
 import ViewTokensView from './views/ViewTokensView.vue';
 
 /**
@@ -35,6 +36,7 @@ const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
   'read-text': ReadTextView,
   'remix-image': RemixImageView,
   'transcribe-audio': TranscribeAudioView,
+  'translate-text': TranslateTextView,
   'view-tokens': ViewTokensView
 };
 
