@@ -1706,3 +1706,49 @@ changes without anyone touching the repository, and that no test could have dete
 test now pins the *convention* rather than the list, since asserting which models are beta would
 mean depending on live infrastructure: any descriptor mentioning beta must spell it `(beta)` at the
 end of the display name, so the next correction is a one-word edit in a known shape.
+
+### Phase 18 deployment smoke run
+
+Deliverables 6 and 7 ask for a clean-checkout developer journey and a real deploy/teardown run, and
+deliverable 10 asks for the reaper to be verified against the deployed bucket rather than only
+against a fake. All three were done, and two of them found nothing — which is worth recording as
+much as a finding would be.
+
+**Clean checkout.** A fresh `git clone` into a temporary directory, then `pnpm install`, reproduced
+the full suite — **3,831 tests across 156 files** — with **no `.env` present at all**. That is a
+stronger result than the deliverable asks for: it confirms the tests are genuinely offline rather
+than merely not needing credentials on a machine that happens to have them. `cf workers types` and
+the formatter also ran unmodified. The checkout contained the committed `infra/local-outputs.json`
+placeholder and no Terraform state, no `infra/outputs.json`, and no `.dev.vars` — the last of which
+does not exist anywhere in the demo.
+
+**Deploy.** `pnpm deploy` provisioned infrastructure and uploaded the Worker, which reported its
+triggers back: the custom domain, both Workflows, and `schedule: 0 * * * *`.
+
+**The reaper, verified against the real deployed bucket.** The retention window could not be waited
+out, so it was temporarily compressed instead: the schedule was set to every minute and
+`VIDEO_RETENTION_HOURS` to three minutes, and the Worker redeployed. Both halves were then observed
+directly through `cf r2 objects list`:
+
+- An object older than the compressed window was **deleted** by a cron firing nobody triggered.
+- A freshly written object **survived** the next firing, with the same code and the same window.
+
+Both constants were restored and the Worker redeployed at `0 * * * *` with the 24-hour window, and
+the test object was removed. The bucket ends empty.
+
+One thing could **not** be verified and is stated rather than implied: the reaper's
+`video_reaper_completed` log line was not read back from deployed logs. Neither the Log Explorer
+SQL dataset nor the Workers observability telemetry API returned any events for this account —
+including for a request deliberately made to produce one — so the channel itself was unavailable
+rather than the line being absent. The line *was* observed in local development against the real
+handler and the local R2 simulation, and that is where the `info`-level logging defect described
+below was found. The deployed evidence is the bucket's contents, which is the behaviour that
+matters most and is not inferable from anything else.
+
+**A defect this found that no unit test would have.** `resolveLoggerConfig` returns `warn` both for
+production and for an absent `ENVIRONMENT`, so the reaper's summary — the only line carrying the
+budget-exhausted signal — was being discarded in every environment. A reaper that silently never
+reports is precisely the failure mode that signal exists to make visible. The scheduled handler now
+overrides its level to `info`, and only that handler does: a request-scoped logger keeps the level
+its environment chose, because a request already leaves an invocation log and a cron firing does
+not.
