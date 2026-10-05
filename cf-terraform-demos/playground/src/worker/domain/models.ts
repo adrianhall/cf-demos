@@ -1614,7 +1614,13 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
   },
   {
     id: '@cf/google/embeddinggemma-300m',
-    name: 'EmbeddingGemma 300M',
+    // Marked beta in the catalogue, following the convention the two other beta models use. It
+    // was *not* beta when phase 13 reviewed it, which is the kind of drift the phase 18
+    // reconciliation exists to catch: the contract is unchanged and the model still returns the
+    // reviewed 768-dimension vectors, so this is a labelling correction rather than a removal.
+    // A visitor choosing between three embedding models should know which one carries a
+    // stability caveat.
+    name: 'EmbeddingGemma 300M (beta)',
     provider: 'workers-ai',
     task: 'semantic-search',
     contractVersion: 1,

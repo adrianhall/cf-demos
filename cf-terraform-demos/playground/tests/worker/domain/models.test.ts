@@ -57,6 +57,24 @@ describe('MODEL_DESCRIPTORS', () => {
       expect(model.documentationUrl.startsWith('https://')).toBe(true);
     }
   });
+
+  // Beta status is the one descriptor fact that can change without anybody touching this
+  // repository, and phase 18's reconciliation found it had: EmbeddingGemma was not beta when
+  // phase 13 reviewed it and is now. The demo's convention is to say so in the display name, so
+  // a visitor choosing between three embedding models knows which carries a stability caveat.
+  //
+  // This cannot assert *which* models are beta without calling the live catalogue, which would
+  // make the suite depend on live infrastructure. What it can hold is the convention: the marker
+  // lives in the name, lower-cased and parenthesised, so a future correction is a one-word edit
+  // in a known shape rather than a new field invented at the point of need.
+  it('marks a beta model in its display name, consistently', () => {
+    const betaModels = MODEL_DESCRIPTORS.filter((model) => /beta/iu.test(model.name));
+
+    expect(betaModels.length).toBeGreaterThan(0);
+    for (const model of betaModels) {
+      expect(model.name, `${model.id} should spell the marker "(beta)"`).toMatch(/ \(beta\)$/u);
+    }
+  });
 });
 
 describe('modelsForTask', () => {

@@ -1678,3 +1678,31 @@ Moondream is the single registered model. LLaVA 1.5 and Llama 3.2 Vision were ex
 would require prohibited prose parsing to recover boxes; Llama 3.2 Vision additionally returned 403
 until a licence agreement prompt was submitted. Logs omit the picture, target content, boxes, and
 verified email; target length is retained only for diagnostics.
+
+### Phase 18 descriptor reconciliation
+
+Deliverable 5 asks for every model descriptor to be reconciled against the current catalogue, with
+unavailable models removed rather than left as dead selectors. Checked against the live account
+rather than from memory, and the headline is that **nothing had to be removed**.
+
+- **All 27 Cloudflare-hosted models are still catalogued.** `cf ai models list` returns 69 models
+  across ten task types, and every registered `@cf/…` identifier appears in it.
+- **All 8 third-party models still resolve.** Each was probed with a deliberately invalid field;
+  every one answered with its own validator's field list (`[7003] … Unsupported field passed`),
+  which proves the model is routable and its schema unchanged in shape. A retired model would have
+  failed differently.
+- **No new task type has appeared that would reopen an earlier decision.** The ten task types are
+  the same ten phases 15 and 16 recorded. There is still no Music Generation and no Image-to-Video
+  task type, so those panels remain third-party and credit-dependent for the stated reasons.
+
+One real drift was found. **`@cf/google/embeddinggemma-300m` is now marked Beta and was not when
+phase 13 reviewed it.** Its contract is unchanged — a live call still returns the reviewed
+768-dimension vectors — so this is a labelling correction rather than a removal, and the display
+name now carries the `(beta)` marker the two other beta models already use. A visitor choosing
+between three embedding models should be able to see which one carries a stability caveat.
+
+This is exactly the class of drift the reconciliation exists to catch: a descriptor fact that
+changes without anyone touching the repository, and that no test could have detected offline. A
+test now pins the *convention* rather than the list, since asserting which models are beta would
+mean depending on live infrastructure: any descriptor mentioning beta must spell it `(beta)` at the
+end of the display name, so the next correction is a one-word edit in a known shape.
