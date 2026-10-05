@@ -200,7 +200,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Compose a short piece of music from a style description.',
     group: 'Generate',
     gateway: 'required',
-    availability: 'planned',
+    availability: 'available',
     phase: 15
   },
   {

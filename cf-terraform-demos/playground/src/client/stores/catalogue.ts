@@ -4,6 +4,7 @@ import type { TextClassificationControlSupport } from '../../shared/classify-tex
 import type { VideoControlSupport } from '../../shared/create-video';
 import type { VisionControlSupport } from '../../shared/describe-image';
 import type { EvaluationControlSupport } from '../../shared/evaluate-choices';
+import type { MusicControlSupport } from '../../shared/generate-music';
 import type { ImageControlSupport } from '../../shared/images';
 import type { SpeechControlSupport } from '../../shared/read-text';
 import type { RemixImageControlSupport } from '../../shared/remix-image';
@@ -87,6 +88,20 @@ export interface CatalogueModel {
    * second of output at rates that differ thirtyfold across resolutions.
    */
   videoControls?: VideoControlSupport;
+  /**
+   * Controls a music model accepts, how it spells them, and how it bills.
+   *
+   * The browser needs this for something no earlier panel required: `pricing` is a **discriminated
+   * union**, and which branch it carries decides what the panel can honestly quote before a run.
+   * For a per-second model the estimate moves as the visitor drags the length control; for a
+   * per-track model the figure is the same whatever the length, and a second charge appears if the
+   * model is asked to write the lyrics. The panel renders two genuinely different cost sentences
+   * from this field rather than one sentence with a different number in it.
+   *
+   * `lengthSeconds` is likewise absent rather than zero for a model with no length control, which
+   * is why the length slider exists for one model and cannot exist for the other.
+   */
+  musicControls?: MusicControlSupport;
   /**
    * Controls a text-to-speech model accepts, how it spells them, and what it charges per character.
    *

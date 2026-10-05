@@ -6,6 +6,7 @@ import type { CreateImageService } from './application/create-image/create-image
 import type { CreateVideoService } from './application/create-video/create-video-service';
 import type { DescribeImageService } from './application/describe-image/describe-image-service';
 import type { EvaluateChoicesService } from './application/evaluate-choices/evaluate-choices-service';
+import type { GenerateMusicService } from './application/generate-music/generate-music-service';
 import type { MetricsService } from './application/metrics/metrics-service';
 import type { ReadTextService } from './application/read-text/read-text-service';
 import type { RemixImageService } from './application/remix-image/remix-image-service';
@@ -49,6 +50,14 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * The Classify Image use case, sharing this request's gateway client and run store.
    */
   CLASSIFY_IMAGE_SERVICE: ClassifyImageService;
+  /**
+   * The Generate Music use case, sharing this request's gateway client and run store, plus the
+   * provider-audio retrieval client.
+   *
+   * Unlike Create Video it holds no job or storage dependency: neither reviewed music model has a
+   * job API, so the track arrives within the request and is returned rather than stored.
+   */
+  GENERATE_MUSIC_SERVICE: GenerateMusicService;
   /**
    * The Read Text use case, sharing this request's gateway client and run store.
    */

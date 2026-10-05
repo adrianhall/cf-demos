@@ -15,6 +15,7 @@ import type { CreateImageService } from '../../../src/worker/application/create-
 import type { CreateVideoService } from '../../../src/worker/application/create-video/create-video-service';
 import type { DescribeImageService } from '../../../src/worker/application/describe-image/describe-image-service';
 import type { EvaluateChoicesService } from '../../../src/worker/application/evaluate-choices/evaluate-choices-service';
+import type { GenerateMusicService } from '../../../src/worker/application/generate-music/generate-music-service';
 import type { MetricsService } from '../../../src/worker/application/metrics/metrics-service';
 import type { ReadTextService } from '../../../src/worker/application/read-text/read-text-service';
 import type { SemanticSearchService } from '../../../src/worker/application/semantic-search/semantic-search-service';
@@ -73,6 +74,10 @@ export interface MountOptions {
    * Classify Image service the route should use.
    */
   classifyImageService?: ClassifyImageService;
+  /**
+   * Generate Music service the route should use.
+   */
+  generateMusicService?: GenerateMusicService;
   /**
    * Read Text service the route should use.
    */
@@ -187,6 +192,9 @@ export function mountRoute(
     }
     if (options.classifyImageService !== undefined) {
       context.set('CLASSIFY_IMAGE_SERVICE', options.classifyImageService);
+    }
+    if (options.generateMusicService !== undefined) {
+      context.set('GENERATE_MUSIC_SERVICE', options.generateMusicService);
     }
     if (options.readTextService !== undefined) {
       context.set('READ_TEXT_SERVICE', options.readTextService);

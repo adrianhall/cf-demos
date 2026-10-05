@@ -17,6 +17,7 @@ import type {
   EvaluateChoicesRequest,
   EvaluateChoicesResponse
 } from '../../shared/evaluate-choices';
+import type { GenerateMusicRequest, GenerateMusicResponse } from '../../shared/generate-music';
 import type { CreateImageRequest, CreateImageResponse } from '../../shared/images';
 import type { ReadTextRequest, ReadTextResponse } from '../../shared/read-text';
 import type { RemixImageRequest, RemixImageResponse } from '../../shared/remix-image';
@@ -317,6 +318,48 @@ export async function readText(
   }
 
   return (await response.json()) as ReadTextResponse;
+}
+
+/**
+ * Generates one music track.
+ *
+ * A single request/response rather than a job to poll, which is the client-visible consequence of a
+ * contract fact: neither reviewed music model has a job API, so the track arrives within the
+ * request. It takes appreciably longer than a text completion all the same, which is why the signal
+ * matters more here than on most panels — the panel's Cancel button has to be able to stop the
+ * browser waiting.
+ *
+ * The response carries the audio itself. The model returned a short-lived URL on its own CDN; the
+ * Worker fetched it from an allowlisted host and verified the bytes, so the browser never makes a
+ * request to the provider and never renders a link that may already have expired.
+ *
+ * @param request The music request to send, carrying the prompt and the chosen controls.
+ * @param signal Abort signal, so the caller's Cancel button aborts the HTTP request itself rather
+ *   than merely ignoring the result. The provider's work is not cancelled — and the panel says so,
+ *   because on this panel it has already been charged for.
+ * @returns The verified track, its run receipt, and the controls the server applied — including the
+ *   billing unit and the cost estimate.
+ * @throws {ApiError} When the server rejects the request (`400` for a control the selected model
+ *   does not accept, a lyrics combination the model refuses, or an over-long prompt; `401` for an
+ *   expired Access session), when the account has no prepaid AI Gateway credit (`503`), or when the
+ *   provider fails or returns something that is not playable audio (`502`).
+ */
+export async function generateMusic(
+  request: GenerateMusicRequest,
+  signal?: AbortSignal
+): Promise<GenerateMusicResponse> {
+  const response = await fetch('/api/generate-music', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+
+  return (await response.json()) as GenerateMusicResponse;
 }
 
 /**

@@ -60,8 +60,12 @@ describe('MODEL_DESCRIPTORS', () => {
 });
 
 describe('modelsForTask', () => {
+  // `detect-objects` rather than `generate-music`, which phase 15 delivered. Detect Objects is the
+  // panel with genuinely no model: `@cf/facebook/detr-resnet-50` was removed from the catalogue and
+  // no Object Detection task type exists in either catalogue now, so it is the honest example of a
+  // panel whose selector would be empty.
   it('returns an empty list for a panel with no reviewed model', () => {
-    expect(modelsForTask('generate-music')).toEqual([]);
+    expect(modelsForTask('detect-objects')).toEqual([]);
   });
 
   it('returns every reviewed model bound to a panel, in catalogue order', () => {
@@ -109,7 +113,7 @@ describe('defaultModelForTask', () => {
   });
 
   it('returns undefined for a panel with no reviewed model', () => {
-    expect(defaultModelForTask('generate-music')).toBeUndefined();
+    expect(defaultModelForTask('detect-objects')).toBeUndefined();
   });
 });
 

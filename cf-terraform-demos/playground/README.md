@@ -47,7 +47,7 @@ came to use.
 | Detect Objects       | Object detection                 | Phase 17          |
 | **Create Video**     | **Text to video**                | **Available now** |
 | Animate Image        | Image to video                   | Phase 16          |
-| Generate Music       | Text to music                    | Phase 15          |
+| **Generate Music**   | **Text to music**                | **Available now** |
 | **Read Text**        | **Text to speech**               | **Available now** |
 | **Transcribe Audio** | **Automatic speech recognition** | **Available now** |
 | **Translate Text**   | **Translation**                  | **Available now** |
@@ -521,6 +521,7 @@ learns each image model's control capabilities without being able to decide them
 | `POST /api/describe-image`     | Describe a picture with a reviewed vision model.                              |
 | `POST /api/remix-image`        | Edit a picture with a reviewed reference-image model.                         |
 | `POST /api/classify-image`     | Rank a picture against a reviewed classifier's fixed label set.               |
+| `POST /api/generate-music`     | Compose one track and return it with its receipt and non-token cost estimate. |
 | `GET /api/runs/:runId/metrics` | Resolved or pending gateway cost for one of your own runs.                    |
 
 Every route is behind Access, derives identity only from the verified JWT, and returns RFC 9457
@@ -610,9 +611,17 @@ Built to **phase 7** of
   rendered separately from every probability, and why one of the three question types has no
   confidence at all.
 
+- **Phase 15** delivered Generate Music, the **first credit-dependent panel** and the one the
+  session cost meter was built for: its two models bill in two different units, and neither is a
+  token. See
+  [Generate Music: when the unit is not a token](#generate-music-when-the-unit-is-not-a-token) for
+  why one model has a track-length control and the other genuinely cannot, and why this panel needs
+  no Workflow despite producing media.
+
 Every remaining panel renders a placeholder stating the phase that delivers it. **Phase 14 completed
-every credit-free panel**: the three that remain — Generate Music, Animate Image, and Detect Objects
-— are blocked on prepaid AI Gateway credits or on a model that does not exist.
+every credit-free panel**, and phase 15 was therefore the first that could not be delivered without
+prepaid AI Gateway credits. The two that remain — Animate Image and Detect Objects — are blocked on
+credits or on a model that does not exist.
 
 The remaining phases are ordered by **whether Cloudflare hosts a model for the task**, which is a
 practical constraint rather than a preference: a third-party model bills against prepaid AI Gateway
@@ -623,6 +632,12 @@ confirmed that for Read Text, Transcribe Audio, and Translate Text: every review
 three runs on Cloudflare. Generate Music (15) and Animate Image (16) have no hosted option in the
 catalogue, so they come after. Each phase records its candidate hosted and third-party models, and
 asks for the hosting to be re-confirmed before it starts, because the catalogue changes.
+
+Generate Music re-confirmed it at delivery, and the answer had not changed: `cf ai models list`
+returns 69 Cloudflare-hosted models across ten task types, and **Music Generation is not one of
+them**. A search for "music" matches nothing. So phase 15 is where the ordering constraint ran out
+and the first credit-dependent panel shipped — which is also why it is the panel whose honesty
+obligations about cost are the heaviest in the application.
 
 Animate Image moved from phase 9 to phase 16 for exactly that reason: it shares all of Create
 Video's infrastructure and would otherwise be the obvious next step, but every image-to-video model
@@ -755,6 +770,124 @@ bucket grows in a demo account and `pnpm teardown` is what keeps that account cl
 `empty-r2-bucket` before Terraform destroys the bucket, because R2 refuses to delete a bucket that
 still holds objects). The panel therefore says the video is _stored_ and makes no expiry claim — a
 countdown this demo could not honour would be worse than none.
+
+## Generate Music: when the unit is not a token
+
+Every panel before this one put a figure in the session cost meter. This one puts a figure in it
+that **is not a token count and cannot be compared to one** — and then does it twice, in two
+different units, from the same selector.
+
+|                | ElevenLabs Music v2                 | MiniMax Music 2.6                     |
+| -------------- | ----------------------------------- | ------------------------------------- |
+| Billed         | **$0.0025 per second of audio**     | **$0.15 per track**, any length       |
+| Lyrics charge  | —                                   | **+$0.01** when the model writes them |
+| Track length   | `music_length_ms`, 3–600 s          | **no length field at all**            |
+| Instrumental   | `force_instrumental` (optional)     | `is_instrumental` (**required**)      |
+| Lyrics         | **no lyrics field**                 | `lyrics`, or written from the prompt  |
+| Output formats | `mp3_44100_128`, `mp3_48000_320`, … | `mp3`, `wav`                          |
+| Seed           | yes, 0–4,294,967,295                | no                                    |
+
+There is no Cloudflare-hosted alternative: the Workers AI catalogue has no music model at all, and
+no Music Generation task type. Both options are third-party and bill against prepaid AI Gateway
+credits, which is why this panel is the last in the sequence and the first that an unfunded account
+cannot run.
+
+### The billing units are the lesson
+
+Generate a short track on each model, run a Chat prompt beside them, and the meter shows a per-token
+charge, a per-second charge, and a per-track charge side by side. The demo never turns one into
+another. Three specific consequences follow:
+
+- **The estimate is quoted before the request, with its unit named.** `$0.15` means something
+  different for a per-track model than for a per-second one, so the figure never appears without the
+  sentence explaining how it was reached. The authoritative number still comes from the AI Gateway
+  log afterwards, and the estimate is labelled an estimate everywhere.
+- **The estimate moves with the length control for one model and not for the other.** That is the
+  clearest demonstration available that "what did it cost" has more than one shape: on ElevenLabs
+  the length slider _is_ the price control; on MiniMax it does not exist and the price is flat.
+- **No charge here is ever derived from tokens.** Neither model reports a token count, so there is
+  nothing to derive one from, and a figure assembled anyway would be the exact misreading this panel
+  exists to correct. The session ledger adds the costs AI Gateway reported — the one thing a
+  per-token, per-second, and per-track run genuinely have in common.
+
+At sixty seconds the two prices meet exactly: a minute of ElevenLabs audio costs $0.15, which is
+MiniMax's flat charge for a track of any length. Either side of that line a different model is the
+cheaper one, and that is a real decision rather than a trivia point.
+
+### A length control that cannot exist
+
+MiniMax has no `duration`, no `length`, and no equivalent. Its schema sets
+`additionalProperties: false`, so sending one is a **rejected** request rather than an ignored field
+— the model decides how long the track is and charges the same either way. The panel therefore
+renders no length control for it and says why, because a missing control with no explanation reads
+as a page that failed to load.
+
+The same is true in the other direction for lyrics. ElevenLabs has no lyrics field; vocals are
+described in the prompt. A request carrying `lyrics` is refused with a message naming the model
+rather than having the field dropped, since dropping teaches a visitor that the control did nothing
+when the truth is that this model does not have one.
+
+### One provider rule, enforced before the charge
+
+MiniMax refuses a vocal track with neither supplied nor generated lyrics — "When `is_instrumental`
+is false and `lyrics_optimizer` is false, `lyrics` must be provided". That rule is reimplemented in
+the domain layer, and on a per-track model the reason is concrete: enforced locally it is a free
+`400` naming the three ways out of it, while left to the provider it would be an opaque error after
+fifteen cents had been spent. The browser mirrors the same rule from the published descriptor, so
+the button explains itself before it is pressed.
+
+Two more combinations are refused rather than resolved by precedence: lyrics on an instrumental
+track, and supplying lyrics while also asking the model to write them. The second matters because
+writing lyrics is a **separate charge** — silently preferring one input would be silently paying for
+the other.
+
+### The track is fetched, checked, and not stored
+
+Both models answer with a short-lived URL on their own CDN rather than with audio. Rendering that
+URL in the page would be simpler and worse in three ways: it leaks the visitor's IP address and
+referrer to a third party on every play, it makes the result depend on an external host's retention,
+and it lets the provider's `Content-Type` header decide how the browser treats the response. So the
+Worker fetches it once, **server-side, from an exact host allowlist published in the descriptor**,
+refuses a redirect, bounds the read, and establishes the media type by **sniffing the bytes**. A
+provider answering with an HTML error page under a `200` fails there rather than reaching a player.
+
+Unlike Create Video, nothing is stored. A track is a few megabytes, an `<audio>` element seeks
+freely within a payload the page already holds, and there is no `Range` request to answer — so
+storage would add a retention surface this demo would then have to promise something about. The
+panel states plainly that the audio lives in the page only, and that the provider's own copy may
+already have expired.
+
+### The player, and the waveform that is not there
+
+Native `<audio controls>` provides play, pause, seeking, volume, keyboard operation, screen-reader
+announcement, and the system media keys. On top of it the panel adds restart, back-ten, and
+forward-ten buttons plus <kbd>←</kbd>, <kbd>→</kbd>, <kbd>Home</kbd>, and <kbd>k</kbd> shortcuts,
+because a two-minute track is long enough that seeking matters. The shortcuts deliberately **ignore
+events originating on the audio element itself**, so the browser's own arrow-key seeking keeps
+working rather than being overridden by a worse version of itself. <kbd>Space</kbd> is left unbound:
+it is how a keyboard user activates the focused button.
+
+There is **no waveform**. Drawing a real one means decoding the audio and reducing a couple of
+million samples per track in the main thread, or adding a visualisation package; a decorative shape
+that did not correspond to the audio would be a picture of a different track. The length, format,
+and size are reported as text instead.
+
+The lyrics panel is always present, because its content and its absence are equally informative.
+Supplied lyrics are shown as a peer of the player rather than behind a disclosure — audio is the one
+output some visitors cannot perceive at all. An instrumental track says so. And a track whose lyrics
+the model wrote says that the model charged separately for them and **returned only the audio**, so
+the words exist in the recording and nowhere else.
+
+### Why there is no job here
+
+Create Video needs a Workflow because a render takes minutes and a cancelled request is a render
+that was paid for and discarded. Neither music model has a job API: no job handle, no polling
+endpoint, no operation identifier, and both document the result arriving from the call itself. A
+Workflow would therefore add a polling protocol, a storage product, and a derived-key scheme to
+deliver a value the request already has. Generation is still noticeably slower than a text
+completion, which the panel handles with an honest progress state and a cancellable request — and it
+says plainly that stopping the wait does not stop the charge, because by then the model is already
+working.
 
 ## Read Text: models that agree on nothing
 

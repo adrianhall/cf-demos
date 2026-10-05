@@ -13,6 +13,7 @@ import { CreateImageService } from './application/create-image/create-image-serv
 import { CreateVideoService } from './application/create-video/create-video-service';
 import { DescribeImageService } from './application/describe-image/describe-image-service';
 import { EvaluateChoicesService } from './application/evaluate-choices/evaluate-choices-service';
+import { GenerateMusicService } from './application/generate-music/generate-music-service';
 import { MetricsService } from './application/metrics/metrics-service';
 import { ReadTextService } from './application/read-text/read-text-service';
 import { RemixImageService } from './application/remix-image/remix-image-service';
@@ -23,6 +24,7 @@ import type { AppBindings } from './bindings';
 import { GatewayInferenceClient } from './infrastructure/ai/gateway-inference-client';
 import { createMemoryEmbeddingCache } from './infrastructure/embeddings/memory-embedding-cache';
 import { WorkflowMediaJobs } from './infrastructure/jobs/workflow-media-jobs';
+import { ProviderAudioClient } from './infrastructure/media/provider-audio-client';
 import { ProviderImageClient } from './infrastructure/media/provider-image-client';
 import { R2VideoStorage } from './infrastructure/media/r2-video-storage';
 import { createMemoryRunRepository } from './infrastructure/runs/memory-run-repository';
@@ -35,6 +37,7 @@ import { createImageRouter } from './routes/create-image';
 import { createVideoRouter } from './routes/create-video';
 import { describeImageRouter } from './routes/describe-image';
 import { evaluateChoicesRouter } from './routes/evaluate-choices';
+import { generateMusicRouter } from './routes/generate-music';
 import { readTextRouter } from './routes/read-text';
 import { remixImageRouter } from './routes/remix-image';
 import { runsRouter } from './routes/runs';
@@ -116,6 +119,18 @@ app.use('/api/*', async (context, next) => {
     new ClassifyImageService({ inference, runs, logger: context.var.LOGGER })
   );
   context.set(
+    'GENERATE_MUSIC_SERVICE',
+    new GenerateMusicService({
+      inference,
+      runs,
+      // A dedicated client rather than the image one: a different byte cap, a different signature
+      // allowlist, and a different answer to "what is this payload". One client taking a media kind
+      // would be one implementation choosing which rules to apply from a flag.
+      audio: new ProviderAudioClient(),
+      logger: context.var.LOGGER
+    })
+  );
+  context.set(
     'READ_TEXT_SERVICE',
     new ReadTextService({ inference, runs, logger: context.var.LOGGER })
   );
@@ -158,6 +173,7 @@ app.route('/api/classify-image', classifyImageRouter);
 app.route('/api/create-image', createImageRouter);
 app.route('/api/create-video', createVideoRouter);
 app.route('/api/describe-image', describeImageRouter);
+app.route('/api/generate-music', generateMusicRouter);
 app.route('/api/read-text', readTextRouter);
 app.route('/api/remix-image', remixImageRouter);
 app.route('/api/transcribe-audio', transcribeAudioRouter);

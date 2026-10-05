@@ -183,6 +183,119 @@ describe('useLedgerStore', () => {
     expect(ledger.ledger.unavailableRuns).toBe(0);
   });
 
+  // Phase 15's test, and the one that justifies the ledger's shape. The three panels in play bill in
+  // three different units — Chat per token, ElevenLabs per second of output audio, MiniMax per track
+  // — and only the first reports a token count at all. The ledger adds the *costs the gateway
+  // reported*, which is the only thing those three runs have in common; it never derives a figure
+  // from tokens, and it never needs to know which unit produced one.
+  //
+  // Written as one session rather than three separate assertions, because the failure this guards
+  // against is a total that only works when every run is the same kind of thing.
+  it('sums a session mixing token, per-second, and per-track charges', () => {
+    const ledger = useLedgerStore();
+
+    ledger.recordRun('chat-run', 'pending');
+    ledger.recordRun('music-seconds-run', 'pending');
+    ledger.recordRun('music-track-run', 'pending');
+
+    // Chat: per-token, and the only run here that reports a token count.
+    ledger.applyMetrics(
+      metrics({
+        runId: 'chat-run',
+        totalCostUsd: 0.000_18,
+        requests: [
+          {
+            logId: 'chat-log',
+            model: '@cf/meta/llama-3.2-3b-instruct',
+            provider: 'workers-ai',
+            cached: false,
+            success: true,
+            durationMs: 300,
+            costUsd: 0.000_18,
+            tokensIn: 14,
+            tokensOut: 52
+          }
+        ]
+      })
+    );
+
+    // ElevenLabs: per second of output audio. The gateway reports a cost and **no tokens at all**,
+    // which is the case a ledger that reached for `tokensIn` would get wrong.
+    ledger.applyMetrics(
+      metrics({
+        runId: 'music-seconds-run',
+        totalCostUsd: 0.075,
+        requests: [
+          {
+            logId: 'music-seconds-log',
+            model: 'elevenlabs/music-v2',
+            provider: 'elevenlabs',
+            cached: false,
+            success: true,
+            durationMs: 21_000,
+            costUsd: 0.075
+          }
+        ]
+      })
+    );
+
+    // MiniMax: a flat price per track, in a third unit again.
+    ledger.applyMetrics(
+      metrics({
+        runId: 'music-track-run',
+        totalCostUsd: 0.15,
+        requests: [
+          {
+            logId: 'music-track-log',
+            model: 'minimax/music-2.6',
+            provider: 'minimax',
+            cached: false,
+            success: true,
+            durationMs: 34_000,
+            costUsd: 0.15
+          }
+        ]
+      })
+    );
+
+    expect(ledger.ledger.runCount).toBe(3);
+    expect(ledger.ledger.billedRequests).toBe(3);
+    expect(ledger.ledger.pendingRuns).toBe(0);
+    // The sum of three reported costs in three different billing units, which is a legitimate total
+    // precisely because each figure came from the gateway rather than from an arithmetic on tokens.
+    expect(ledger.ledger.knownCostUsd).toBeCloseTo(0.225_18, 10);
+  });
+
+  // The negative half of the same rule, stated as its own test so the intent survives a refactor of
+  // the one above. A music run reports a real cost and no tokens; the total must include it.
+  it('includes a run that reports a cost but no tokens', () => {
+    const ledger = useLedgerStore();
+    ledger.recordRun('music-run', 'pending');
+
+    ledger.applyMetrics(
+      metrics({
+        runId: 'music-run',
+        totalCostUsd: 0.15,
+        requests: [
+          {
+            logId: 'music-log',
+            model: 'minimax/music-2.6',
+            provider: 'minimax',
+            cached: false,
+            success: true,
+            durationMs: 34_000,
+            costUsd: 0.15
+            // No `tokensIn` and no `tokensOut`: this provider reports neither, and their absence
+            // must not be read as "this run was free".
+          }
+        ]
+      })
+    );
+
+    expect(ledger.ledger.knownCostUsd).toBeCloseTo(0.15, 10);
+    expect(ledger.ledger.unavailableRuns).toBe(0);
+  });
+
   it('counts every gateway request of a multi-call run', () => {
     const ledger = useLedgerStore();
     ledger.recordRun('run-1', 'pending');

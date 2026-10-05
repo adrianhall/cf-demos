@@ -1167,28 +1167,20 @@ Deliver **Detect Objects**, which answers *where* rather than *what*. Classify I
 
 ### Candidate models
 
-**Blocked: there is currently no suitable model.** `@cf/facebook/detr-resnet-50` was the model this
-phase was planned around, and at review time its catalogue page returns `404`, it is absent from the
-Workers AI model list, and neither catalogue declares an Object Detection task type at all. A search
-for object-detection models returns nothing.
+I’d start with Moondream 3.1 (`@cf/moondream/moondream3.1-9B-A2B`) for object detection on Workers AI. It is hosted on Cloudflare and has a dedicated detection mode that returns bounding boxes—not just a text description of an image.
 
-This phase therefore stays last and stays **unstarted** until a real detection model is available.
-Keeping it in the plan rather than deleting it is deliberate: the panel is genuinely useful, the
-sidebar entry shows the product's intended shape, and the work is ready to run the moment a model
-appears.
+#### Why it fits
 
-**Do not deliver it with a vision model.** Prompting `@cf/meta/llama-3.2-11b-vision-instruct` or
-`@cf/moondream/moondream3.1-9B-A2B` for coordinates would produce boxes, but it means parsing prose
-as structured output — the exact path [§5](./01-specification.md) rules out, and the thing Evaluate
-Choices exists to argue against. A panel that teaches the wrong lesson is worse than a panel that is
-honestly absent.
+- **Object localization**: Use task: "detect" to get detected objects’ bounding boxes.
+- **Natural-language targets**: Specify what to find, such as "car" or "person wearing a red shirt".
+- **Flexible image input**: Accepts a public HTTPS image URL or a base64 data URI.
+- **Additional capabilities**: Supports image questions, captions, OCR, and pointing if your app needs more later.
 
-**Re-check at the start of the hardening phase.** If nothing has appeared, say so in the README and
-in the panel placeholder rather than leaving a phase number implying imminent delivery.
+Also consider `@cf/meta/llama-3.2-11b-vision-instruct` as an alternative.  Note that you should only use these models if the bounding boxes can be extracted from the result easily.  Parsing prose as structured output is not a good alternative.  It is better to remove the "Detect Objects" option than parse plain text prose.
 
 ### Deliverables
 
-- Add a reviewed object-detection descriptor for Cloudflare-hosted `@cf/facebook/detr-resnet-50` (Beta, COCO 2017, 80 categories). Confirm its current input and output contract against the model page before pinning it: at review time the catalogue page was not reachable at the usual `/workers-ai/models/detr-resnet-50/` path, so the contract must be re-read rather than assumed from ResNet-50's.
+- Add a reviewed object-detection descriptor for Cloudflare-hosted model(s).
 - Validate the picture with the shared byte-authoritative input rules, and reject a generative field exactly as Classify Image does.
 - Apply the score floor and any result limit to the response, declaring where they are applied with the same `appliedBy` convention Classify Image established. Do not forward a control the model's schema does not declare.
 - **Validate every returned box before it is rendered.** A detection carries geometry as well as a label, so the normaliser has to reject a box with a non-finite coordinate, a negative width or height, or bounds outside the image. An unchecked box paints outside its container and reads as a layout bug rather than as provider output.
@@ -1386,3 +1378,97 @@ loads a scenario and runs it.
 Phase 14 completes every credit-free panel. The three that remain — Generate Music, Animate Image,
 and Detect Objects — are blocked on prepaid AI Gateway credits or, for Detect Objects, on a model
 that is not catalogued at all.
+
+### Phase 15 contract review — Generate Music
+
+**Re-confirmed first: there is still no Cloudflare-hosted music model.** `cf ai models list` returns
+69 models across ten task types — Automatic Speech Recognition, Dumb Pipe, Image Classification,
+Image-to-Text, Text Classification, Text Embeddings, Text Generation, Text-to-Image, Text-to-Speech,
+and Translation. **Music Generation is not among them**, and `--search music` matches nothing. The
+phase text asked for this to be re-checked in case a hosted model had appeared and the phase should
+move earlier; it has not, so phase 15 stands where it is and is the **first credit-dependent panel
+delivered**.
+
+**The account has no prepaid AI Gateway credits, and the exact failure was verified.** A valid
+request to a third-party music model returns Gateway error **`2021` / HTTP `402`**: "Insufficient
+balance; add money to your gateway or use BYOK". This is a known, expected, handled condition rather
+than a blocker, and the same one Create Video (phase 8) and Remix Image (phase 6) already disclose —
+both are `availability: 'available'` with credit-blocked third-party models. The existing
+`src/worker/domain/provider-failures.ts` already classifies `402`/`2021` into `insufficient-credit`,
+the inference client already turns that into a sanitised `503`, and this panel reuses that path
+rather than introducing a second opinion about what counts as a billing failure. No new failure
+classification, no new error type.
+
+**Schema validation runs before billing**, which is how both schemas were mapped at zero cost:
+deliberately invalid requests are rejected by the provider's validator without a charge, so the
+accepted field lists below were captured live rather than transcribed hopefully from documentation.
+
+| Model | Live findings | Registered behaviour |
+| --- | --- | --- |
+| `elevenlabs/music-v2` | Accepted fields: `prompt`, `composition_plan.chunks`, `music_length_ms`, `output_format`, `seed`, `force_instrumental`, `store_for_inpainting`, `sign_with_c2pa`. `music_length_ms` is **required when `composition_plan` is absent**, range `>=3000` and `<=600000`. `output_format` is a 17-value enum spanning MP3 and Opus. Instrumental control is `force_instrumental`, **not** `is_instrumental`. `seed` range is `0`–`4294967295`. Priced **$0.0025 per output audio second**. | The **default**, because it is two orders of magnitude cheaper to explore: a ten-second sketch is 2.5¢. `pricingUnit: 'audio-second'`. The length control is exposed in whole seconds and converted to milliseconds in the request builder. `lyrics: 'unsupported'`. |
+| `minimax/music-2.6` | Accepted fields: `prompt`, `lyrics`, `sample_rate`, `bitrate`, `format`, `lyrics_optimizer`, `is_instrumental`. **There is no duration or length field at all** — `duration` is rejected as unsupported. `format` enum is `mp3`/`wav`. `is_instrumental` and `lyrics_optimizer` are both **required**. Rejects with "When 'is_instrumental' is false and 'lyrics_optimizer' is false, 'lyrics' must be provided". Priced **$0.15 per track, plus $0.01 per lyrics generation**. | The comparison model. `pricingUnit: 'track'`. No length control is exposed, because the field does not exist and `additionalProperties: false` makes sending one a rejected request. The no-lyrics refusal is reimplemented locally so it costs nothing instead of 15¢. |
+
+**Both models are synchronous, and the panel is shaped accordingly.** Neither schema declares a job
+handle, a polling endpoint, or an operation identifier, and both document the result arriving from
+the call itself as `{ state: "Completed", result: { audio } }`. The phase brief said to reuse the
+job infrastructure *only* if the selected model is asynchronous and not to assume it is — so this
+panel is a plain `POST` like Read Text rather than a Workflow like Create Video. It adds **no**
+Workflow, no storage product, no derived job key, and no polling route. The justification is
+recorded in a comment in both `src/worker/domain/models.ts` and
+`src/worker/application/generate-music/generate-music-service.ts`.
+
+**The two models disagree about almost everything, and that disagreement is the phase's teaching
+point**, not an inconvenience to be smoothed over:
+
+- **The billing units differ.** Per output second against per track, with a separate per-lyrics
+  charge on one side only. Neither is a token, and neither model reports a token count. The session
+  cost meter therefore shows per-token, per-second, and per-track charges side by side and **never
+  derives a music charge from tokens**; a dedicated ledger test runs a Chat run beside one of each
+  music model and asserts the total.
+- **A requested length exists for one model and cannot exist for the other.** Validation refuses
+  `lengthSeconds` for MiniMax with a message naming the model, rather than dropping it.
+- **The instrumental flag has two names**, and one of them is required while the other is optional.
+  The request builder always sends a required boolean — even `false` — because omitting a required
+  property is a malformed request rather than a defaulted one.
+- **The output-format enums share no value at all**: `mp3_44100_128` against `mp3`. Switching model
+  resets the format rather than carrying it over.
+
+Two deliberate restrictions on the published options are worth recording, because both are this
+demo's and not the provider's. **`MAX_MUSIC_LENGTH_SECONDS` is 120, not 600**: the audio travels
+base64-encoded in the JSON response rather than being stored, and at $0.0025 a second a ten-minute
+track is $1.50 for one click. **Opus formats and `auto` are omitted from the ElevenLabs format
+list**: Opus arrives in an Ogg container that this demo's playback allowlist does not accept, so
+offering it would mean paying for a track the panel then refuses to play, and `auto` could not be
+reported honestly in the applied controls.
+
+**Provider-hosted output is fetched server-side under a host allowlist and is never stored.** Both
+models return a short-lived URL on their own CDN. `ProviderAudioClient` validates the scheme,
+credentials, port, and exact hostname against the descriptor's `outputHosts`, refuses redirects,
+bounds the read during buffering, and establishes the media type by **sniffing the bytes** rather
+than trusting a `Content-Type`. The verified audio is returned in the response, so the browser never
+contacts the provider and never renders a link that may have expired. The panel discloses that the
+original is provider-hosted, names the host it came from, and makes no retention promise — nothing is
+stored, which is the opposite of Create Video's choice and for stated reasons.
+
+**What could not be verified, and is explicitly unverified.** No successful music generation was
+performed, because the account has no prepaid credits. Every assertion above about *request*
+acceptance and rejection was captured live from the provider's validator; nothing below was:
+
+- The **output envelope** is implemented from both catalogue pages, which agree on
+  `{ state, result: { audio } }`. The reader also accepts a flattened `{ audio }` because the binding
+  sometimes unwraps a Unified Catalog envelope, but neither shape was observed from a paid call.
+- The **`outputHosts` lists** are taken from each model's published examples
+  (`examples.aig.cloudflare.com`, `storage.googleapis.com`,
+  `minimax-algeng-chat-tts-us.oss-us-east-1.aliyuncs.com`). A provider serving from a different CDN
+  host in practice would be refused with a `502`, and the rejected host is logged so the list can be
+  corrected from the log rather than by guesswork.
+- The **actual media type and duration** of a generated track, and therefore whether
+  `readAudioDurationSeconds` ever returns a value for real output. MP3 is expected to report none by
+  design.
+- The **authoritative cost** AI Gateway reports for a music run, and whether it matches the estimate
+  computed from the published prices.
+
+The exit criterion requiring "one real deployed request per new panel" is therefore **not met for a
+successful run**, and that is stated here rather than implied as done. What was verified against the
+live provider is the complete input contract of both models and the exact billing failure, including
+its code, status, and message.

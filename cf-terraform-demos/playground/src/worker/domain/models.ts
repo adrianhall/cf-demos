@@ -20,6 +20,11 @@ import {
 import type { VideoControlSupport } from '../../shared/create-video';
 import type { VisionControlSupport } from '../../shared/describe-image';
 import type { EvaluationControlSupport } from '../../shared/evaluate-choices';
+import {
+  MAX_MUSIC_LENGTH_SECONDS,
+  MIN_MUSIC_LENGTH_SECONDS,
+  type MusicControlSupport
+} from '../../shared/generate-music';
 import type { ImageControlSupport } from '../../shared/images';
 import type { SpeechControlSupport } from '../../shared/read-text';
 import type { RemixImageControlSupport } from '../../shared/remix-image';
@@ -327,6 +332,18 @@ export interface ModelDescriptor {
    * rather than only report after it.
    */
   videoControls?: VideoControlSupport;
+  /**
+   * Which controls a music model accepts, how it spells them, and what it charges.
+   *
+   * Present only for a music-generation descriptor. The disagreement here reaches further than in
+   * any earlier panel: the two reviewed models not only name the same conceptual control
+   * differently and enumerate completely disjoint output formats, they disagree about whether a
+   * requested track length exists at all — and they are **billed in different units**. One charges
+   * per second of output audio, the other a flat price per track plus a separate charge for writing
+   * lyrics. The pricing therefore travels in the descriptor as a discriminated union rather than as
+   * a nullable rate, because the billable quantity itself differs.
+   */
+  musicControls?: MusicControlSupport;
   /**
    * Which controls a text-to-speech model accepts, how it spells them, and what it charges.
    *
@@ -719,6 +736,167 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       // Alibaba's output reaches this demo through the catalogue's own hosts rather than from a
       // model-studio domain, and the R2 public host is the one its catalogue examples use.
       outputHosts: ['examples.aig.cloudflare.com', 'pub-04a6d208d361438ea01b797e6973bd19.r2.dev']
+    }
+  },
+  // Generate Music. **Re-confirmed at delivery: the Workers AI catalogue contains no music model
+  // at all.** `cf ai models list` returns 69 Cloudflare-hosted models across ten task types —
+  // Automatic Speech Recognition, Image Classification, Image-to-Text, Text Classification, Text
+  // Embeddings, Text Generation, Text-to-Image, Text-to-Speech, Translation, and one Dumb Pipe —
+  // and no Music Generation type exists among them. A search for "music" matches nothing. That is
+  // the catalogue's state rather than an oversight, and it is the whole reason this phase sits after
+  // every credit-free panel: both options below are third-party and bill against prepaid AI Gateway
+  // credits, exactly as Create Video and Remix Image already disclose.
+  //
+  // These two models disagree more completely than any other pair in this demo, and the
+  // disagreement is the panel's subject rather than an inconvenience:
+  //
+  // - **The billing units differ.** ElevenLabs charges per second of output audio; MiniMax charges a
+  //   flat price per track and a separate price for writing lyrics. Neither is a token. A session
+  //   meter that folded a per-track charge into a per-token total would be arithmetically fine and
+  //   conceptually wrong.
+  // - **One has a length control and the other genuinely cannot.** `music_length_ms` is required for
+  //   ElevenLabs when no composition plan is given; MiniMax has no length field whatsoever and its
+  //   schema sets `additionalProperties: false`, so sending `duration` is a *rejected* request.
+  // - **The instrumental flag has two names**: `force_instrumental` against `is_instrumental`.
+  // - **The output-format enums share no value at all**: `mp3_44100_128` against `mp3`.
+  //
+  // Both are synchronous. Neither schema declares a job handle, a polling endpoint, or an operation
+  // identifier, and both document the same envelope — `{ state: "Completed", result: { audio } }` —
+  // returned from the call itself. The phase brief asked for the job infrastructure to be reused
+  // *only* if the selected model is asynchronous, and it is not, so this panel is a plain
+  // request/response like Read Text rather than a Workflow like Create Video.
+  //
+  // ElevenLabs Music v2 is the default because it is two orders of magnitude cheaper to explore: a
+  // thirty-second track costs $0.075 against MiniMax's $0.15 flat charge for any length, and a
+  // ten-second sketch costs two and a half cents. Defaulting to the per-track model would make every
+  // exploratory run cost the same as the longest one.
+  {
+    id: 'elevenlabs/music-v2',
+    name: 'ElevenLabs Music v2',
+    provider: 'third-party',
+    task: 'generate-music',
+    contractVersion: 1,
+    // Billed per second of generated audio, which is why this panel can quote an exact figure
+    // before the request: the visitor chooses the duration.
+    pricingUnit: 'audio-second',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/ai/models/elevenlabs/music-v2/',
+    musicControls: {
+      instrumentalParameterName: 'force_instrumental',
+      // Optional in its schema, so it is sent only when the caller chose a value.
+      instrumentalParameterRequired: false,
+      // No lyrics field at all. Vocals are described in the prompt, and because the schema sets
+      // `additionalProperties: false` a `lyrics` field would be a rejected request rather than an
+      // ignored one — so the panel refuses it with a message naming the model.
+      lyrics: 'unsupported',
+      lengthParameterName: 'music_length_ms',
+      lengthUnit: 'milliseconds',
+      // The panel works in whole seconds because that is what a person chooses; the provider takes
+      // milliseconds. Its own range is 3,000–600,000 ms. The upper bound here is this demo's,
+      // not the provider's: see MAX_MUSIC_LENGTH_SECONDS for why ten minutes of base64 audio in a
+      // JSON response is not a thing this panel should relay.
+      lengthSeconds: {
+        min: MIN_MUSIC_LENGTH_SECONDS,
+        max: MAX_MUSIC_LENGTH_SECONDS,
+        step: 1,
+        // Short by default, for the same reason Create Video defaults to its cheapest settings:
+        // duration is the entire price multiplication here, and a default that quietly selected two
+        // minutes would make a first exploratory click cost twelve times what it needs to.
+        default: 15
+      },
+      formatParameterName: 'output_format',
+      // A reviewed *subset* of its enum rather than a transcription of it. The schema also permits
+      // `auto` and five Opus variants; Opus arrives in an Ogg container, which is not in this demo's
+      // playback allowlist, so offering it would mean paying for a track the panel then refuses to
+      // play. `auto` is excluded because the applied controls report what was asked for, and a value
+      // meaning "you decide" could not be reported honestly.
+      formats: [
+        'mp3_22050_32',
+        'mp3_24000_48',
+        'mp3_44100_64',
+        'mp3_44100_96',
+        'mp3_44100_128',
+        'mp3_44100_192',
+        'mp3_48000_128',
+        'mp3_48000_192',
+        'mp3_48000_240',
+        'mp3_48000_320'
+      ],
+      // The middle of the list. Format does not affect the price — the charge is per second
+      // regardless — so the default is chosen for audible quality against payload size rather than
+      // for cost, which is the opposite of how Create Video picks its default.
+      defaultFormat: 'mp3_44100_128',
+      seed: true,
+      // $0.0025 per output audio second at review time.
+      pricing: { unit: 'audio-second', pricePerOutputSecondUsd: 0.0025 },
+      // Its catalogue examples serve finished tracks from the Unified Catalog's own example host.
+      outputHosts: ['examples.aig.cloudflare.com', 'storage.googleapis.com']
+    }
+  },
+  // MiniMax Music 2.6 is the comparison model, and it makes the per-model declaration do visible
+  // work in a way no earlier panel's second model has: it disagrees about the *billing unit*, not
+  // merely about control names.
+  //
+  // It has **no length control whatsoever**. Its schema declares `prompt`, `lyrics`, `sample_rate`,
+  // `bitrate`, `format`, `lyrics_optimizer`, and `is_instrumental`, sets
+  // `additionalProperties: false`, and rejects `duration` as an unsupported field. The model decides
+  // how long the track is, and the price is the same either way — which is why a one-minute track
+  // costs exactly what the per-second model charges for a minute, and a two-minute track costs half
+  // as much per second.
+  //
+  // It is also the only reviewed model that can write its own lyrics, charges separately for doing
+  // so, and **does not return the words**. The response carries an audio URL and nothing else, so
+  // the panel states that generated lyrics exist only in the recording rather than rendering an
+  // empty lyrics panel.
+  {
+    id: 'minimax/music-2.6',
+    name: 'MiniMax Music 2.6',
+    provider: 'third-party',
+    task: 'generate-music',
+    contractVersion: 1,
+    // Billed per finished track. The label is what keeps the figure from being read as comparable
+    // either to a per-token Chat cost or to the per-second model beside it in this very panel.
+    pricingUnit: 'track',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/ai/models/minimax/music-2.6/',
+    musicControls: {
+      instrumentalParameterName: 'is_instrumental',
+      // Its schema lists `is_instrumental` among its required properties, so it is sent on every
+      // request even when it is `false`. Omitting a required boolean is a malformed request, not a
+      // defaulted one.
+      instrumentalParameterRequired: true,
+      lyrics: 'optional',
+      lyricsParameterName: 'lyrics',
+      lyricsOptimizerParameterName: 'lyrics_optimizer',
+      // Required too, for the same reason.
+      lyricsOptimizerRequired: true,
+      // A documented provider refusal, reimplemented locally so the message names the three ways
+      // out of it — supply lyrics, ask the model to write them, or make the track instrumental —
+      // and so the refusal happens before anything is charged.
+      requiresLyricsForVocals: true,
+      // No `lengthParameterName`, no `lengthUnit`, and no `lengthSeconds`. The absence is the
+      // contract: there is no length field to forward, and the panel says so rather than offering a
+      // control the provider would reject.
+      formatParameterName: 'format',
+      // Its whole enum, which has no value in common with the model above.
+      formats: ['mp3', 'wav'],
+      // MP3. A WAV of the same track is roughly ten times larger for no audible gain in a browser,
+      // and this payload travels base64-encoded in a JSON response.
+      defaultFormat: 'mp3',
+      // No seed in its schema.
+      seed: false,
+      // $0.15 per track plus $0.01 per lyrics generation at review time.
+      pricing: {
+        unit: 'track',
+        pricePerTrackUsd: 0.15,
+        pricePerLyricsGenerationUsd: 0.01
+      },
+      // Its catalogue examples serve finished tracks from MiniMax's own Alibaba Cloud OSS bucket,
+      // and the Unified Catalog proxies its documentation examples through the shared example host.
+      outputHosts: [
+        'minimax-algeng-chat-tts-us.oss-us-east-1.aliyuncs.com',
+        'examples.aig.cloudflare.com'
+      ]
     }
   },
   // Every reviewed text-to-speech model is Cloudflare-hosted, so this panel carries no prepaid AI
