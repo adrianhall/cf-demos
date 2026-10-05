@@ -851,7 +851,7 @@ Deliver **Classify Text** as fixed-label classification, distinct from Evaluate 
 
 Recorded during delivery, because each one changed a decision.
 
-1. **`@cf/baai/bge-reranker-base` was not registered, and the phase brief asked for the reason.** Despite being typed Text Classification it does not classify a text: it scores the *relevance between a query and a list of passages*, taking `{ query, contexts[] }` and returning `{ id, score }` pairs indexed into the caller's own array. Its "labels" would be the caller's own passages, which is the precise opposite of the fixed-label contract this panel exists to teach and much closer to Semantic Search in phase 13. Offering it behind a selector labelled "Classify Text" would teach that a classifier's categories are something a caller supplies.
+1. **`@cf/baai/bge-reranker-base` was not registered, and the phase brief asked for the reason.** Despite being typed Text Classification it does not classify a text: it scores the *relevance between a query and a list of passages*, taking `{ query, contexts[] }` and returning `{ id, score }` pairs indexed into the caller's own array. Its "labels" would be the caller's own passages, which is the precise opposite of the fixed-label contract this panel exists to teach. Offering it behind a selector labelled "Classify Text" would teach that a classifier's categories are something a caller supplies. **It belongs in Semantic Search instead**, where its operation is the panel's own — see the phase 13 candidate list, which now records the verified contract and the retrieve-then-rerank lesson it enables.
 
 2. **The generated platform types for the reranker are wrong.** `Ai_Cf_Baai_Bge_Reranker_Base_Input` carries the JSDoc comment for `query` but omits the field itself, while the published JSON schema lists it as required. Code written against those types would not compile with a `query` and would fail at the provider without one. Worth reporting upstream; it does not affect this demo because the model is not registered, but phase 13 should check whether the same defect affects any model it needs.
 
@@ -955,6 +955,42 @@ Deliver **Semantic Search** using gateway-routed embeddings and local vector com
 
 Also hosted, if a fourth comparison is useful: `@cf/baai/bge-large-en-v1.5`,
 `@cf/baai/bge-base-en-v1.5`, `@cf/baai/bge-small-en-v1.5`, `@cf/pfnet/plamo-embedding-1b`.
+
+**Add `@cf/baai/bge-reranker-base` as a second-stage re-ranking step.** Phase 12 excluded it from
+Classify Text because it does not classify a text — it scores the *relevance between a query and a
+list of passages*, which is exactly this panel's operation. Verified with `cf ai run` during phase
+12:
+
+```
+query:    "How do I reset my password?"
+contexts: ["Our office is open Monday to Friday, 9am to 5pm.",
+           "To change your credentials, visit Account Settings and select Reset.",
+           "The cafeteria serves hot lunch until 2pm."]
+
+=> [ { id: 1, score: 0.9845 }, { id: 0, score: 0.0000374 }, { id: 2, score: 0.0000373 } ]
+```
+
+That result makes it worth more than a fourth embedding model, because it demonstrates something
+the embedding comparison cannot:
+
+- **It is a different operation with a different cost shape.** Embeddings are computed once per
+  passage and cached, then compared locally for free. A reranker re-reads the query against every
+  passage on *every* query, so it cannot be cached per passage and its cost scales with collection
+  size per search. That is the retrieve-then-rerank trade-off every production RAG system makes,
+  and this panel is the only place in the demo it can be shown.
+- **Its scores are not comparable to cosine similarity, and are far more separable.** 0.98 against
+  0.00004 is a different kind of number from two cosine scores of 0.71 and 0.68. The panel already
+  plans to teach that similarity scores are incomparable across models; a reranker makes the point
+  unmissable because the scale is visibly different.
+- **It takes `top_k`, so unlike every model in Classify Text this control is applied by the
+  *model*** rather than by this application — giving the demo a genuine `appliedBy: 'model'`
+  example to contrast with the `'playground'` ones.
+
+Two cautions for whoever implements it. The reranker's **generated platform types are wrong**: the
+input interface carries the JSDoc for `query` but omits the field, while the published schema
+requires it (phase 12, finding 2). And its scores collapse to a near-identical floor (~0.000037)
+for everything irrelevant, so a relative-score bar needs a log scale or an explicit note, or every
+non-match will render as an identical empty bar.
 
 **Third-party** (requires prepaid AI Gateway credits):
 

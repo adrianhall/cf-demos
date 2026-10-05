@@ -313,6 +313,28 @@ describe('the composer', () => {
     expect(notes.join(' ')).toMatch(/no "neutral" label/iu);
   });
 
+  // An unsafe verdict is the half of the safety model nobody can see without triggering one, and
+  // inventing a prompt on the spot tends to mean typing something genuinely unpleasant.
+  it('offers examples that reach a cited safety category', async () => {
+    const { wrapper } = await render();
+    const labels = wrapper.findAll('.example').map((entry) => entry.text());
+
+    expect(labels.join(' ')).toMatch(/S7/u);
+    expect(labels.join(' ')).toMatch(/S13/u);
+  });
+
+  // Both flagging examples describe mishandling data or spreading misinformation rather than
+  // depicting harm, so the panel can demonstrate a verdict without asking anyone to write
+  // something they would rather not.
+  it('keeps the flagging examples mild', async () => {
+    const { wrapper } = await render();
+    const text = wrapper.text().toLowerCase();
+
+    for (const word of ['bomb', 'weapon', 'kill', 'suicide', 'explosive']) {
+      expect(text, `examples avoid "${word}"`).not.toContain(word);
+    }
+  });
+
   it('links to the selected model\u2019s catalogue page', async () => {
     const { wrapper } = await render();
     expect(wrapper.find('.docs-link a').attributes('href')).toBe(SCORING.documentationUrl);

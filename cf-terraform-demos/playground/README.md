@@ -1011,13 +1011,32 @@ report unsafe content as _safe_. The same reasoning applies to a missing `safe` 
 to `true` would announce unverified content as safe, and defaulting to `false` would accuse it on
 the strength of a malformed response. Both refuse.
 
+### Why there are only two models
+
+Unlike every other panel, this one could not be given a third model. The account's live catalogue
+holds 69 models, of which **two** are typed Text Classification — and one of those is the reranker
+excluded below. Reaching outside the task type is how Llama Guard, typed _Text Generation_, came to
+be here at all.
+
+The obvious further candidates are Meta's other safety models, and both are unavailable rather than
+unsuitable: `@cf/meta/prompt-guard-2-86m` and `@cf/meta/llama-guard-3-1b` exist but return
+`5018 This account is not allowed to access`, while `llama-guard-4-12b` and
+`llama-guard-3-11b-vision` are not in the catalogue at all. If access to the first two is granted
+later, Prompt Guard would be the stronger addition: prompt-injection detection is a third kind of
+answer again, distinct from both a scored ranking and a hazard verdict.
+
 ### Why the reranker was excluded
 
 `@cf/baai/bge-reranker-base` is typed Text Classification and is deliberately **not registered**. It
 does not classify a text: it scores the _relevance between a query and a list of passages_, taking
 `{ query, contexts[] }` and returning `{ id, score }` pairs indexed into the caller's own array. Its
-"labels" would be the caller's own passages — the precise opposite of the fixed-label contract, and
-much closer to Semantic Search in phase 13.
+"labels" would be the caller's own passages — the precise opposite of the fixed-label contract.
+
+It is not merely excluded, though: it is **reassigned to Semantic Search**, where scoring a query
+against passages _is_ the panel's operation. Verified live, it answers a retrieval question with
+0.98 for the matching passage against 0.00004 for the rest — a far more separable scale than cosine
+similarity, which makes it the clearest way to show the retrieve-then-rerank trade-off that
+production RAG systems make.
 
 Worth recording separately: **the generated platform types for that model are wrong.** The
 `Ai_Cf_Baai_Bge_Reranker_Base_Input` interface carries the JSDoc comment for `query` but omits the
