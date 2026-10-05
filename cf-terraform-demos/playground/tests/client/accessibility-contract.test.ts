@@ -41,6 +41,44 @@ async function views(): Promise<{ name: string; source: string }[]> {
 }
 
 /**
+ * Reads every single-file component under the browser tier, not just the panel views.
+ *
+ * The heading checks are panel-shaped and so read `views/` alone, but a control contract applies
+ * wherever the control is — the sidebar's group disclosure lives in `components/shell`, and a
+ * future one could land in `features/`.
+ *
+ * @returns Each component's demo-relative path and source.
+ */
+async function clientComponents(): Promise<{ name: string; source: string }[]> {
+  const found: { name: string; source: string }[] = [];
+  const stack = ['src/client/views', 'src/client/components', 'src/client/features'].map((root) =>
+    path.join(demoRoot, root)
+  );
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (current === undefined) {
+      break;
+    }
+
+    for (const dirent of await readdir(current, { withFileTypes: true })) {
+      const absolute = path.join(current, dirent.name);
+
+      if (dirent.isDirectory()) {
+        stack.push(absolute);
+      } else if (dirent.name.endsWith('.vue')) {
+        found.push({
+          name: path.relative(demoRoot, absolute),
+          source: await readFile(absolute, 'utf8')
+        });
+      }
+    }
+  }
+
+  return found;
+}
+
+/**
  * Extracts the template half of a single-file component.
  *
  * The `<script>` block mentions headings in JSDoc and the `<style>` block selects them, so a naive
@@ -113,6 +151,29 @@ describe('status and failure announcements', () => {
 
       expect(body, `${name} renders an error with no role="alert"`).toMatch(/role="alert"/u);
     }
+  });
+});
+
+describe('disclosure controls', () => {
+  // A disclosure that reports its state but never says what it governs leaves a screen-reader user
+  // to guess which region just appeared — in the sidebar, the difference between "a group opened"
+  // and "the page changed". `aria-expanded` and `aria-controls` are a pair; the individual
+  // component suites assert the state tracks reality, and this holds the pairing everywhere.
+  //
+  // `<details>`/`<summary>` is deliberately not covered: the element carries its own expanded
+  // state in the accessibility tree, which is exactly why `ModelSettingsPanel` uses it.
+  it('pairs every aria-expanded control with the region it controls', async () => {
+    const offenders: string[] = [];
+
+    for (const { name, source } of await clientComponents()) {
+      const body = template(source);
+      if (!/aria-expanded/u.test(body) || /aria-controls/u.test(body)) {
+        continue;
+      }
+      offenders.push(name);
+    }
+
+    expect(offenders).toEqual([]);
   });
 });
 

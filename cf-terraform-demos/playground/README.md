@@ -37,6 +37,13 @@ wants to do rather than after a model task type. The task type is in the panel's
 the panel teaches the vocabulary without putting a block of explanation above the thing a visitor
 came to use.
 
+The sidebar's group headings — Generate, Understand, Speech, Reason, Inspect — are disclosures. Each
+can be collapsed to narrow the list, and an expand-all/collapse-all pair at the top of the
+navigation drives all five at once. The collapsed set persists across reloads so a presenter can
+tidy the sidebar before a demo. This is a view preference, not a level of navigation: a group is
+never a destination, every panel keeps its own top-level route, and expand-all restores the full
+list in a single click.
+
 | Panel                | Task type                        | Status            |
 | -------------------- | -------------------------------- | ----------------- |
 | **Chat**             | **Text generation**              | **Available now** |

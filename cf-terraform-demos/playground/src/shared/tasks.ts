@@ -58,10 +58,13 @@ export type GatewayRequirement = 'required' | 'none';
 export type TaskAvailability = 'available' | 'planned';
 
 /**
- * Purely visual grouping label for the sidebar.
+ * Grouping label for the sidebar.
  *
- * Groups are labels, never navigation. They do not expand, collapse, filter, or route, and no panel
- * is reachable only by going "through" a group. The navigation stays exactly one level deep.
+ * A group labels a set of panels and can be collapsed to hide them, which is a view preference
+ * rather than a level of navigation: a group is not a route, nothing is reachable only by going
+ * "through" one, and the expand-all control restores every link in a single click. Collapsing is
+ * for a presenter narrowing the sidebar to the panels they are about to show, not a hierarchy a
+ * visitor has to understand before they can find anything.
  */
 export type TaskGroup = 'Generate' | 'Understand' | 'Speech' | 'Reason' | 'Inspect';
 
@@ -88,7 +91,8 @@ export interface TaskDescriptor {
    */
   summary: string;
   /**
-   * Visual sidebar grouping. Decorative only; see {@link TaskGroup}.
+   * Sidebar grouping, which also decides which disclosure the panel sits inside; see
+   * {@link TaskGroup}.
    */
   group: TaskGroup;
   /**
