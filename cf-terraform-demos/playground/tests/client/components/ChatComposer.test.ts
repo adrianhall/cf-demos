@@ -5,7 +5,7 @@ import type { CatalogueModel } from '../../../src/client/stores/catalogue';
 
 const MODELS: CatalogueModel[] = [
   {
-    id: 'model-a',
+    id: '@cf/example/model-a',
     name: 'Model A',
     provider: 'workers-ai',
     task: 'chat',
@@ -13,7 +13,7 @@ const MODELS: CatalogueModel[] = [
     documentationUrl: 'https://example.com/a'
   },
   {
-    id: 'model-b',
+    id: '@cf/example/model-b',
     name: 'Model B',
     provider: 'workers-ai',
     task: 'chat',
@@ -43,7 +43,7 @@ function mountComposer(
   return mount(ChatComposer, {
     props: {
       'draft': '',
-      'model': 'model-a',
+      'model': '@cf/example/model-a',
       'temperature': undefined,
       'models': MODELS,
       'canSend': false,
@@ -60,9 +60,25 @@ function mountComposer(
 }
 
 describe('ChatComposer', () => {
-  it('offers every reviewed model inside the composer', () => {
+  it('offers every reviewed model inside the composer, using descriptive names only', () => {
     const options = mountComposer().findAll('#model-select option');
     expect(options.map((option) => option.text())).toEqual(['Model A', 'Model B']);
+    expect(options.map((option) => option.text()).join(' ')).not.toContain('@cf/');
+  });
+
+  it('shows the full unmodified ID of the active model beside the selector', () => {
+    expect(mountComposer().find('[data-model-id]').text()).toBe('@cf/example/model-a');
+  });
+
+  // The component emits the dropdown's v-model update and reacts when its parent supplies the new
+  // active value. The route-level test drives the complete loop through the real parent.
+  it('updates the displayed model ID when its active-model prop changes', async () => {
+    const wrapper = mountComposer();
+
+    await wrapper.setProps({ model: '@cf/example/model-b' });
+
+    expect(wrapper.find('[data-model-id]').text()).toBe('@cf/example/model-b');
+    expect(wrapper.text()).not.toContain('@cf/example/model-a');
   });
 
   it('labels the message field and model selector', () => {

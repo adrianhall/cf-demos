@@ -15,7 +15,7 @@ import ModelSettingsPanel from '../../../src/client/components/ModelSettingsPane
  * @param props Props to pass.
  * @returns The mounted wrapper.
  */
-function mountPanel(props: { modelName?: string; initiallyOpen?: boolean } = {}) {
+function mountPanel(props: { modelName?: string; modelId?: string; initiallyOpen?: boolean } = {}) {
   return mount(ModelSettingsPanel, {
     props,
     slots: { default: '<label for="x">Temperature</label><input id="x" />' }
@@ -48,10 +48,34 @@ describe('ModelSettingsPanel', () => {
     expect(wrapper.find('summary').text()).toContain('Second Model');
   });
 
+  // The ID is technical reference material rather than a selector label. Showing it here keeps the
+  // dropdown readable while giving the visitor the exact value they can copy into `cf ai run`.
+  it('shows the full unmodified model ID in the expanded settings body', () => {
+    const id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+    const wrapper = mountPanel({ modelName: 'Llama 3.3 70B', modelId: id, initiallyOpen: true });
+
+    expect(wrapper.find('[data-model-id]').text()).toBe(id);
+  });
+
+  // The contract is not merely "an ID appears"; it identifies the active model. The name and ID
+  // props are supplied from the same selected-model lookup in every panel, so when a dropdown
+  // changes both have to replace the old value rather than leaving stale copyable reference data.
+  it('updates the displayed ID when the active model changes', async () => {
+    const wrapper = mountPanel({ modelName: 'First Model', modelId: '@cf/example/first' });
+
+    await wrapper.setProps({ modelName: 'Second Model', modelId: '@cf/example/second' });
+
+    expect(wrapper.find('[data-model-id]').text()).toBe('@cf/example/second');
+    expect(wrapper.text()).not.toContain('@cf/example/first');
+  });
+
   // The catalogue is fetched after mount, so there is a first paint with no selection. An empty
   // bracket would read as a rendering fault rather than as a pending fetch.
   it('says the model is loading before the catalogue arrives', () => {
-    expect(mountPanel().find('summary').text()).toContain('loading');
+    const wrapper = mountPanel();
+
+    expect(wrapper.find('summary').text()).toContain('loading');
+    expect(wrapper.find('[data-model-id]').text()).toContain('loading');
   });
 
   it('renders the controls given to it', () => {

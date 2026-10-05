@@ -466,7 +466,7 @@ function loadExample(example: MusicExample): void {
             </div>
           </section>
 
-          <ModelSettingsPanel :model-name="selectedModel?.name">
+          <ModelSettingsPanel :model-name="selectedModel?.name" :model-id="selectedModel?.id">
             <div class="field">
               <label class="field-label" for="music-model">Model</label>
               <select id="music-model" v-model="model" class="select" :disabled="generating">

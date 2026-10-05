@@ -288,7 +288,7 @@ function loadExample(example: SpeechExample): void {
             </div>
           </section>
 
-          <ModelSettingsPanel :model-name="selectedModel?.name">
+          <ModelSettingsPanel :model-name="selectedModel?.name" :model-id="selectedModel?.id">
             <div class="field">
               <label class="field-label" for="speech-model">Model</label>
               <select id="speech-model" v-model="model" class="select">

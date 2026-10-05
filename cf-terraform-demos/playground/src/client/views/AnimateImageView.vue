@@ -386,7 +386,7 @@ function loadExample(example: AnimateExample): void {
             </div>
           </section>
 
-          <ModelSettingsPanel :model-name="selectedModel?.name">
+          <ModelSettingsPanel :model-name="selectedModel?.name" :model-id="selectedModel?.id">
             <div class="field">
               <label class="field-label" for="animate-model">Model</label>
               <select id="animate-model" v-model="model" class="select" :disabled="animating">

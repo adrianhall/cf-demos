@@ -259,7 +259,7 @@ function loadExample(example: VisionExample): void {
             several questions against it. The summary keeps the selected model's name visible, so
             the one fact the expanded form was being kept open for is readable while it is closed.
           -->
-          <ModelSettingsPanel :model-name="selectedModel?.name">
+          <ModelSettingsPanel :model-name="selectedModel?.name" :model-id="selectedModel?.id">
             <div class="field">
               <label class="field-label" for="vision-model">Model</label>
               <select id="vision-model" v-model="model" class="select">

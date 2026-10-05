@@ -91,7 +91,10 @@ The working panels put the activity ahead of the explanation:
   output worth showing, it becomes the left column and the output appears on the right. On a narrow
   screen the columns stack in reading order: input first, output second.
 - **Model settings are collapsed by default** beneath the input. Their summary always names the
-  selected model, so the important fact remains visible while the controls are out of the way.
+  selected model, so the important fact remains visible while the controls are out of the way. The
+  expanded block gives the full, copyable model ID — including `@cf/` — and updates it immediately
+  when the dropdown changes. IDs stay out of native option labels because those cannot wrap; on a
+  narrow panel the distinguishing tail would be the first part hidden.
 - **Run details are attached to Run output** through a second info button. Model, elapsed time,
   reported cost, token counts, cache state, and the gateway log identifier remain available without
   becoming a fifth equally-weighted section below the result.
@@ -109,8 +112,8 @@ Gateway has written its log.
   shows that the larger model costs materially more per token and is not always the better value.
 - **A familiar two-state chat interface.** The first visit centres one question box beneath
   suggested prompts. After the first send, the transcript starts at the top and the same composer
-  stays at the bottom, with the model selector inside it. New chat returns to the welcome state
-  without touching session cost totals.
+  stays at the bottom, with the model selector and the active model's full ID inside it. New chat
+  returns to the welcome state without touching session cost totals.
 - **Streaming output**, with the Send control becoming Stop without replacing the focused button.
   Stop aborts the HTTP request rather than merely ignoring what keeps arriving. A cancelled answer
   keeps the text it already generated, because that text was generated and paid for.
@@ -142,7 +145,7 @@ The panel that shows why a model's _contract_ matters more than its name. Its tw
 disagree about almost everything, and the panel handles that honestly rather than hiding it behind a
 single lowest-common-denominator form.
 
-|          | FLUX.1 \[schnell]         | Stable Diffusion XL (beta)                                                 |
+|          | FLUX.1 \[schnell]         | Stable Diffusion XL                                                        |
 | -------- | ------------------------- | -------------------------------------------------------------------------- |
 | Controls | prompt, steps (max **8**) | prompt, negative prompt, width, height, steps (max **20**), guidance, seed |
 | Returns  | `{ image: "<base64>" }`   | a raw PNG byte stream                                                      |
@@ -193,7 +196,7 @@ The reverse of Create Image in every dimension that matters. The request carries
 the answer is a paragraph, the untrusted input is now a _file_, and the two reviewed models disagree
 about something more fundamental than a slider range.
 
-|            | LLaVA 1.5 7B (beta)             | Llama 3.2 11B Vision          |
+|            | LLaVA 1.5 7B                    | Llama 3.2 11B Vision          |
 | ---------- | ------------------------------- | ----------------------------- |
 | A question | **Optional** — captions unasked | **Required** (`minLength: 1`) |
 | Answer cap | 32–1,024 tokens, default 512    | 32–2,048 tokens, default 256  |

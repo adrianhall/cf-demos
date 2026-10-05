@@ -254,7 +254,7 @@ onMounted(() => {
             </p>
           </section>
 
-          <ModelSettingsPanel :model-name="selectedModel?.name">
+          <ModelSettingsPanel :model-name="selectedModel?.name" :model-id="selectedModel?.id">
             <div class="field">
               <label class="field-label" for="transcribe-model">Model</label>
               <select id="transcribe-model" v-model="model" class="select">

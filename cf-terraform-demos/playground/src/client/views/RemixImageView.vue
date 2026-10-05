@@ -135,7 +135,7 @@ function loadExample(example: RemixExample): void {
               ><template v-else-if="receipt">Remixed image ready.</template>
             </p>
           </section>
-          <ModelSettingsPanel :model-name="selectedModel?.name">
+          <ModelSettingsPanel :model-name="selectedModel?.name" :model-id="selectedModel?.id">
             <div class="field">
               <label class="field-label" for="remix-model">Model</label
               ><select id="remix-model" v-model="model" class="select">

@@ -171,6 +171,18 @@ describe('first-run welcome state', () => {
     }
   });
 
+  // Drives the native dropdown through the complete view/composable/component v-model loop. The
+  // copyable reference has to identify the *active* option, not merely the model selected at mount.
+  it('updates the full model ID when the dropdown selection changes', async () => {
+    const wrapper = await mountChat();
+
+    expect(wrapper.find('[data-model-id]').text()).toBe(MODELS[0]!.id);
+    await wrapper.find('#model-select').setValue(MODELS[1]!.id);
+
+    expect(wrapper.find('[data-model-id]').text()).toBe(MODELS[1]!.id);
+    expect(wrapper.text()).not.toContain(MODELS[0]!.id);
+  });
+
   it('loads a quick question without sending it', async () => {
     const wrapper = await mountChat();
     await wrapper.find(`[data-example="${CHAT_EXAMPLES[0]!.id}"]`).trigger('click');

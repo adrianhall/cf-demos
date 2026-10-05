@@ -116,7 +116,7 @@ function percent(value: number): string {
           </section>
         </section>
 
-        <ModelSettingsPanel :model-name="selectedModel?.name">
+        <ModelSettingsPanel :model-name="selectedModel?.name" :model-id="selectedModel?.id">
           <label class="field-label" for="detect-model">Model</label>
           <select id="detect-model" v-model="model">
             <option v-for="item in models" :key="item.id" :value="item.id">

@@ -497,7 +497,7 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
   },
   {
     id: '@cf/stabilityai/stable-diffusion-xl-base-1.0',
-    name: 'Stable Diffusion XL (beta)',
+    name: 'Stable Diffusion XL',
     provider: 'workers-ai',
     task: 'create-image',
     contractVersion: 1,
@@ -608,7 +608,7 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
   // "ask a question, or don't".
   {
     id: '@cf/llava-hf/llava-1.5-7b-hf',
-    name: 'LLaVA 1.5 7B (beta)',
+    name: 'LLaVA 1.5 7B',
     provider: 'workers-ai',
     task: 'describe-image',
     contractVersion: 1,
@@ -1614,13 +1614,11 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
   },
   {
     id: '@cf/google/embeddinggemma-300m',
-    // Marked beta in the catalogue, following the convention the two other beta models use. It
-    // was *not* beta when phase 13 reviewed it, which is the kind of drift the phase 18
-    // reconciliation exists to catch: the contract is unchanged and the model still returns the
-    // reviewed 768-dimension vectors, so this is a labelling correction rather than a removal.
-    // A visitor choosing between three embedding models should know which one carries a
-    // stability caveat.
-    name: 'EmbeddingGemma 300M (beta)',
+    // Phase 18 added `(beta)` after the live catalogue changed, then the follow-on deliberately
+    // removed it again: models move between beta and GA without notice, so stability baked into a
+    // display name is a claim this offline registry cannot keep current. A stale caveat is worse
+    // than no caveat; the model ID and reviewed contract remain stable and useful facts.
+    name: 'EmbeddingGemma 300M',
     provider: 'workers-ai',
     task: 'semantic-search',
     contractVersion: 1,

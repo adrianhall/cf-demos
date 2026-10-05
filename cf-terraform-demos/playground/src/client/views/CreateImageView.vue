@@ -279,7 +279,7 @@ async function animateGeneratedImage(entry: (typeof gallery.value)[number]): Pro
             matters more here than in most panels: the two reviewed models differ by four controls,
             so which one is selected explains the shape of the form.
           -->
-          <ModelSettingsPanel :model-name="selectedModel?.name">
+          <ModelSettingsPanel :model-name="selectedModel?.name" :model-id="selectedModel?.id">
             <div class="field">
               <label class="field-label" for="image-model">Model</label>
               <select id="image-model" v-model="model" class="select">

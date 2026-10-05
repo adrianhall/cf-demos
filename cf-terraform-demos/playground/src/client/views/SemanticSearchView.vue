@@ -237,7 +237,7 @@ onMounted(() => {
               ><template v-else-if="result">Search ready.</template>
             </p>
           </section>
-          <ModelSettingsPanel :model-name="selectedModel?.name">
+          <ModelSettingsPanel :model-name="selectedModel?.name" :model-id="selectedModel?.id">
             <div class="field">
               <label class="field-label" for="semantic-model">Model</label>
               <select id="semantic-model" v-model="model" class="select">

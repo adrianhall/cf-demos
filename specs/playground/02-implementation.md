@@ -2301,3 +2301,21 @@ confirmed to fail when a flag is deliberately falsified.
 
 Both marks carry an accessible name rather than only a `title`. The outgoing pill was text and so
 never needed one; a bare logo and a bare "3P" glyph both do.
+### Item 3 — model IDs in the settings panel, and dropping the `(beta)` marker
+
+**This reverses the phase 18 descriptor-reconciliation decision recorded above.** That entry added
+a `(beta)` marker to `EmbeddingGemma 300M` and pinned the convention with a test, on the reasoning
+that a visitor choosing between three embedding models should see which carries a stability caveat.
+That reasoning was sound. What the phase could not yet see is the maintenance cost: catalogue
+models move between beta and GA in *both* directions and without notice, so a marker baked into a
+display name is a claim the repository cannot keep current. It will be wrong some of the time, and
+a stale stability claim is worse than no claim — it is the kind of fact a visitor has no reason to
+doubt. The marker is gone from all three names, and the test that pinned the convention is replaced
+by a guard asserting no descriptor name carries a stability marker at all, so it cannot creep back
+one model at a time.
+
+The model ID itself goes in the expanded model-settings block, in full and unmodified — `@cf/`
+included, because that is the string a visitor copies into `cf ai run`. It is deliberately *not*
+appended to the dropdown options: a native `<option>` cannot wrap or be styled, so a 56-character
+label truncates from the right on a narrow panel, hiding exactly the distinguishing tail worth
+showing.

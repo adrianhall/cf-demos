@@ -22,6 +22,14 @@ const props = defineProps<{
    */
   modelName?: string | undefined;
   /**
+   * Full identifier of the currently selected model, shown in the expanded settings body.
+   *
+   * Optional for the same first-paint reason as `modelName`. The value is deliberately unmodified:
+   * `@cf/` is part of what a visitor copies into `cf ai run`, and stripping a shared prefix here
+   * would teach a subtly wrong identifier.
+   */
+  modelId?: string | undefined;
+  /**
    * Whether to start expanded. Defaults to collapsed.
    */
   initiallyOpen?: boolean;
@@ -36,6 +44,17 @@ const props = defineProps<{
     </summary>
 
     <div class="settings-body">
+      <!--
+        Kept out of the native dropdown on purpose. Model identifiers are long and `<option>`
+        cannot wrap or be styled reliably, so putting one beside the name makes the meaningful tail
+        truncate first on a narrow panel. Here it can wrap, be selected, and be copied verbatim.
+      -->
+      <dl class="model-identity">
+        <dt>Model ID</dt>
+        <dd>
+          <code data-model-id>{{ props.modelId ?? 'loading…' }}</code>
+        </dd>
+      </dl>
       <slot />
     </div>
   </details>
@@ -113,6 +132,32 @@ const props = defineProps<{
 .settings-body {
   border-top: 1px solid rgb(var(--v-theme-outline-variant));
   padding: 1rem;
+}
+
+.model-identity {
+  display: grid;
+  gap: 0.375rem;
+  margin: 0 0 1rem;
+  min-width: 0;
+}
+
+.model-identity dt {
+  color: rgb(var(--v-theme-on-surface-variant));
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.model-identity dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.model-identity code {
+  color: rgb(var(--v-theme-on-surface));
+  overflow-wrap: anywhere;
+  user-select: all;
 }
 
 /* The caret communicates state without needing motion, so honour a request to remove it. */

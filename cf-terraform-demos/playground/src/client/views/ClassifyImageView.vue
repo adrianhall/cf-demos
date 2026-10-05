@@ -245,7 +245,7 @@ function loadExample(example: ClassificationExample): void {
             </div>
           </section>
 
-          <ModelSettingsPanel :model-name="selectedModel?.name">
+          <ModelSettingsPanel :model-name="selectedModel?.name" :model-id="selectedModel?.id">
             <div class="field">
               <label class="field-label" for="classify-model">Model</label>
               <select id="classify-model" v-model="model" class="select">

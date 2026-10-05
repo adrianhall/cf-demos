@@ -140,6 +140,29 @@ describe('the panel\u2019s disclosures', () => {
   });
 });
 
+describe('model selection', () => {
+  // Standard panels put the ID in `ModelSettingsPanel`, rather than in their native `<option>`
+  // labels. Drive a real dropdown with two descriptors so the test proves the copyable ID follows
+  // the active value through the view's selected-model computed property.
+  it('updates the full model ID when the model dropdown changes', async () => {
+    const { wrapper } = await render();
+
+    expect(wrapper.find('[data-model-id]').text()).toBe(PAIRWISE.id);
+    await wrapper.find('#translate-model').setValue(FIXED_SOURCE.id);
+
+    expect(wrapper.find('[data-model-id]').text()).toBe(FIXED_SOURCE.id);
+    expect(wrapper.text()).not.toContain(PAIRWISE.id);
+  });
+
+  it('keeps long model IDs out of the native dropdown labels', async () => {
+    const { wrapper } = await render();
+    const labels = wrapper.findAll('#translate-model option').map((option) => option.text());
+
+    expect(labels).toEqual([PAIRWISE.name, FIXED_SOURCE.name]);
+    expect(labels.join(' ')).not.toContain('@cf/');
+  });
+});
+
 describe('the language pair', () => {
   it('offers a source selector for a model that has one', async () => {
     const { wrapper } = await render();

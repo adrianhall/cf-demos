@@ -7,7 +7,7 @@
  * send or stop control on the right. Keeping the model in the composer makes it clear which model
  * the next message will use without introducing a separate settings section above the chat.
  */
-import { nextTick, useTemplateRef, watch } from 'vue';
+import { computed, nextTick, useTemplateRef, watch } from 'vue';
 import { MAX_MESSAGE_CHARACTERS, MAX_TEMPERATURE, MIN_TEMPERATURE } from '../../../shared/chat';
 import InfoButton from '../../components/InfoButton.vue';
 import type { CatalogueModel } from '../../stores/catalogue';
@@ -76,6 +76,17 @@ const model = defineModel<string>('model', { required: true });
  * Optional sampling temperature.
  */
 const temperature = defineModel<number | undefined>('temperature', { required: true });
+
+/**
+ * Descriptor for the model the next message will use.
+ *
+ * Derived from the same two values that drive the dropdown — its `v-model` and its options — so the
+ * copyable ID below cannot lag behind the active option. The catalogue arrives after first paint,
+ * in which case the value is temporarily absent and the UI honestly says "loading…".
+ */
+const selectedModel = computed(() =>
+  props.models.find((candidate) => candidate.id === model.value)
+);
 
 const input = useTemplateRef<HTMLTextAreaElement>('input');
 
@@ -176,6 +187,13 @@ function onKeydown(event: KeyboardEvent): void {
             {{ candidate.name }}
           </option>
         </select>
+
+        <!--
+          Chat keeps its settings inline rather than using `ModelSettingsPanel`, so its full model
+          ID sits beside the selector. It is not appended to `<option>`: native options cannot wrap
+          or be styled reliably, and a long identifier would hide its distinguishing tail first.
+        -->
+        <code class="model-id" data-model-id>{{ selectedModel?.id ?? 'loading…' }}</code>
 
         <button
           type="button"
@@ -299,6 +317,14 @@ function onKeydown(event: KeyboardEvent): void {
   font-size: 0.8125rem;
   min-height: 2rem;
   padding: 0.25rem 0.625rem;
+}
+
+.model-id {
+  color: rgb(var(--v-theme-on-surface-variant));
+  font-size: 0.6875rem;
+  max-width: 18rem;
+  overflow-wrap: anywhere;
+  user-select: all;
 }
 
 .model-select:hover,

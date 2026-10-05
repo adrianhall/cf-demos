@@ -323,7 +323,7 @@ function loadExample(example: VideoExample): void {
             </div>
           </section>
 
-          <ModelSettingsPanel :model-name="selectedModel?.name">
+          <ModelSettingsPanel :model-name="selectedModel?.name" :model-id="selectedModel?.id">
             <div class="field">
               <label class="field-label" for="video-model">Model</label>
               <select id="video-model" v-model="model" class="select" :disabled="generating">
