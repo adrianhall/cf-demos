@@ -1472,3 +1472,157 @@ The exit criterion requiring "one real deployed request per new panel" is theref
 successful run**, and that is stated here rather than implied as done. What was verified against the
 live provider is the complete input contract of both models and the exact billing failure, including
 its code, status, and message.
+
+### Phase 16 contract review — Animate Image
+
+**Re-confirmed first, as the phase text asked: there is still no Cloudflare-hosted image-to-video
+model, and the catalogue has no Image-to-Video task type at all.** `cf ai models list` returns ten
+task types — Automatic Speech Recognition, Dumb Pipe, Image Classification, Image-to-Text, Text
+Classification, Text Embeddings, Text Generation, Text-to-Image, Text-to-Speech, and Translation.
+Image-to-Video is not among them, so there was nothing that would have justified moving the phase
+back towards its original slot at 9. It stays where it is, as the **second credit-dependent panel**.
+
+**The account has no prepaid AI Gateway credits, and the exact failure was verified again.** A
+valid request to `alibaba/hh1.1-i2v` returns Gateway error **`2021` / HTTP `402`**: "Insufficient
+balance; add money to your gateway or use BYOK". This is the same known, expected, handled
+condition Create Video, Remix Image, and Generate Music already disclose. `provider-failures.ts`
+already classifies `402`/`2021` as `insufficient-credit`; this panel **reuses that path unchanged**
+and introduces no new failure classification and no new error type.
+
+**Schema validation runs before billing**, which is how every input contract below was mapped at
+zero cost: deliberately invalid requests are rejected by each provider's validator without a
+charge, so the accepted field lists were captured live rather than transcribed hopefully.
+
+#### The image-input question, which was the phase's real risk
+
+The brief flagged this as the item to resolve carefully, and it decided which models could be
+offered. **Every reviewed model types its source image as a URI, not as bytes** — `alibaba/hh1.1-i2v`
+rejects a non-URL value with `Invalid value at image: Invalid URL`. The question was therefore
+whether a `data:` URI counts, because if it did not, the panel would have had to publish the
+visitor's picture at a fetchable address and Phase 8's Finding 10 would have broken.
+
+It was probed directly, and the answer differs by model:
+
+| Model | Image parameter | `data:` URI probe result |
+| --- | --- | --- |
+| `alibaba/hh1.1-i2v` | `image` | **Accepted** — passed validation and reached billing (`402`) |
+| `minimax/hailuo-2.3` | `first_frame_image` | **Accepted** — reached billing (`402`) |
+| `runwayml/gen-4.5` | `image_input` | **Accepted** — reached billing (`402`) |
+| `lightricks/ltx-2-5-fast` | `image_uri` | **Rejected** — `Validation error at image_uri: Must be an HTTPS URL` |
+
+A `402` is the decisive evidence here: billing is reached only after validation passes, so a probe
+that gets there has had its payload accepted in full.
+
+**Finding 10 therefore holds unchanged for this panel.** The picture travels in the request, into
+Workflow instance state, and is written to no storage product. The R2 bucket remains for generated
+video only.
+
+**`lightricks/ltx-2-5-fast` is not registered, and the reason is stated rather than omitted.**
+Offering it would mean uploading a visitor's picture to a publicly fetchable URL purely to satisfy
+a parameter type — publishing private input to a third party as a side effect of an implementation
+detail. The descriptor carries an explicit `imageDelivery: 'data-uri' | 'https-only'` field so the
+refusal is a recorded capability a future phase can revisit, and a test asserts every offered model
+declares `data-uri`.
+
+**`pruna/p-video-animate` was probed and skipped for an unrelated reason.** It returned
+`Required values missing: video, image` — it requires *both*, making it a motion-transfer model
+that animates a picture using an existing video's motion. That is a different task from this
+panel's and would need a second media input the panel does not collect.
+
+#### Registered models
+
+| Model | Live findings | Registered behaviour |
+| --- | --- | --- |
+| `alibaba/hh1.1-i2v` | Valid fields: `image, prompt, negative_prompt, resolution, duration, seed, watermark`. `image` is **required**. `resolution` enum is `"720P"\|"1080P"` (uppercase, exactly as its t2v sibling). `duration` probed at both ends: `2` is refused with `Too small: expected number to be >=3`, `999` with `Too big: expected number to be <=15`. `seed` is `0`–`2147483647`. A probe carrying only the image reached billing, confirming the prompt is genuinely optional. Priced **$0.14/second @720p, $0.18/second @1080p**. | The **default**, and the natural counterpart to Create Video's `alibaba/hh1.1-t2v`: same vendor, same control vocabulary, so the reuse of the Phase 8 descriptor shape is visible when the two are read side by side. `pricingUnit: 'video-second'`, `durationRange: 3–15`, default `720P` at 5 s — the cheapest useful combination rather than the model's own default. |
+| `minimax/hailuo-2.3` | Valid fields: `prompt, first_frame_image, prompt_optimizer, fast_pretreatment, duration, resolution`. The image parameter is named **`first_frame_image`**. `resolution` enum is `"768P"\|"1080P"` — **no value in common with Alibaba's**. `duration` is an enum, not a range: probed one value at a time, **6 and 10 are accepted while 3, 4, 5, 8, and 12 are each refused** with `Invalid value at duration: Invalid input`. `prompt` is required. No seed field. Priced **per exact combination**: $0.28 for 6 s @768P, $0.56 for 10 s @768P, $0.49 for 6 s @1080P. | The comparison model. `durationChoices: [6, 10]`, `motionPromptRequired: true`, `seed: false`. Its prices are declared per combination because they **do not reduce to a rate** — see below. |
+
+Two further models were probed and their field lists recorded for a future phase but not
+registered, since two models are enough to demonstrate the disagreement: `runwayml/gen-4.5`
+(`prompt, image_input, ratio, duration, seed, content_moderation.public_figure_threshold`; `ratio`
+enumerates `"1280:720"|"720:1280"|"1104:832"|"960:960"|"832:1104"|"1584:672"`; `duration` maxes at
+10) and `lightricks/ltx-2-5-fast` (`prompt, image_uri, last_frame_uri, duration, resolution, fps,
+generate_audio`; `resolution` enumerates explicit pixel dimensions such as `"1280x720"` rather than
+a shorthand).
+
+#### The disagreements, which are the phase's teaching point
+
+- **The source image has four different wire names** — `image`, `first_frame_image`, `image_uri`,
+  `image_input`. One concept, four spellings, across four models from four vendors. This is exactly
+  the disagreement the descriptor-driven approach exists for, and it is made visible in the same
+  way Create Video made `quality` against `resolution` visible: the name travels in the descriptor
+  and `buildAnimateImageInput()` reads it at the last moment.
+- **The resolution enums share no value at all**: `720P` against `768P`. Switching model resets the
+  control rather than carrying a string the other would reject outright.
+- **One model takes a duration range and the other exactly two lengths.** Eight seconds is valid
+  for Alibaba and refused by MiniMax, so the control is a flattened option list driven by whichever
+  form the descriptor declares.
+- **The motion prompt is optional for one and required for the other**, so the panel marks the
+  field from the descriptor rather than picking one behaviour for both.
+- **The two price in incompatible shapes, and one of them is not a rate.** This is the sharpest
+  finding of the phase. MiniMax's published figures work out at 4.67¢ a second at six seconds and
+  5.6¢ at ten, so there is no per-second price to quote. `AnimateImageControlSupport` therefore
+  carries `pricePerSecondUsd` **or** `priceByCombinationUsd`, never both, and a test asserts
+  exactly one is declared per model.
+
+**An unpublished combination is reported as unknown rather than interpolated.** The catalogue
+publishes no figure for MiniMax at ten seconds at 1080P. Deriving one from the two it does publish
+would be inventing a number and attributing it to the provider, in the panel whose subject is
+honest cost. The estimate therefore travels as `{ costUsd, estimateKnown }` all the way to the UI,
+which renders *"No published price … This run will still be charged; the amount simply is not
+knowable in advance"* rather than a `$0.00` that would read as free.
+
+#### Reuse, and what was deliberately not duplicated
+
+The phase required reusing Phase 8's infrastructure and adding no second storage product and no
+parallel job mechanism. What is shared: the **R2 bucket** and its `generated-video/` prefix, the
+`R2VideoStorage` adapter, `ProviderVideoClient` and its host allowlist, the `MediaJob` states and
+`MediaJobPort`, `WorkflowMediaJobs`, the derived-instance-ID ownership scheme (`deriveMediaJobId`
+keyed by `ACCESS_AUD`), `videoObjectKey`, both Workflow step policies, and the whole
+`provider-failures` classification. An architecture test asserts both services are constructed over
+the same bucket binding and the same derivation key, and that the configuration binds exactly one
+R2 bucket.
+
+**A second Workflow class is the one piece that is duplicated, deliberately.** The two panels carry
+different payloads and apply different validation on arrival — this one re-verifies the picture
+from its own bytes — so a single class switching on a discriminator would have to accept a union
+payload and re-validate against whichever arm it guessed, while making the retries-disabled cost
+reasoning apply to two panels at once. The shared parts are shared as modules, which is the form of
+reuse that does not create a second thing to reason about.
+
+**`MAX_ANIMATE_SOURCE_BYTES` is 640 KiB, not the 1 MiB every other image panel allows, and the
+constraint is the Workflow rather than the image.** A Workflow event payload caps at 1 MiB and
+base64 expands by four thirds, so a 1 MiB picture becomes a 1.37 MiB parameter and `create()`
+rejects the instance — a failure arriving *after* the panel had accepted the picture. The limit is
+this demo's own and the refusal message says so.
+
+#### What could not be verified, and is explicitly unverified
+
+**No animation was generated, and no video was produced, stored, or played.** The account has no
+prepaid credits. Every assertion above about *request* acceptance and rejection was captured live
+from each provider's validator; none of the following was:
+
+- The **output envelope**. Implemented from both catalogue pages, which agree on
+  `{ state: "Completed", result: { video } }` — MiniMax additionally documents `task_id` and
+  `status`, which this demo ignores because the lifecycle it reports is the Workflow's. The reader
+  also accepts a flattened `{ video }`, but neither shape was observed from a paid call.
+- The **`outputHosts` allowlists**, taken from each model's published examples
+  (`examples.aig.cloudflare.com` and `pub-04a6d208d361438ea01b797e6973bd19.r2.dev` for Alibaba,
+  `video-product.cdn.minimax.io` for MiniMax). A provider serving from a different CDN host would
+  be refused with a `502`, and the rejected host is logged so the list can be corrected from the
+  log rather than by guesswork.
+- Whether a **`data:` URI of a realistic size** is accepted. The probes used a 1×1 PNG; validation
+  accepted it, but no provider has been asked to decode a 640 KB one, and a provider-side payload
+  limit below this panel's own would only appear on a paid call.
+- The **media type and duration of real output**, and therefore whether the sniffed type is ever
+  `video/webm` rather than `video/mp4` in practice.
+- The **authoritative cost** AI Gateway reports for an animation run, and whether it matches either
+  estimate shape — including whether MiniMax is in fact billed per combination as published.
+- The **end-to-end storage and playback path for this panel specifically**. The code is the same
+  adapter Create Video uses and is covered against fakes, but no object has been written by an
+  Animate Image job.
+
+The exit criterion requiring "one real deployed request per new panel" is **not met for a
+successful run**, and that is stated here rather than implied as done. What was verified against
+the live providers is the complete input contract of four models, the data-URI question that
+decided which could be offered at all, and the exact billing failure including its code, status,
+and message.

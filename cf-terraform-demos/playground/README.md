@@ -46,7 +46,7 @@ came to use.
 | **Classify Image**   | **Image classification**         | **Available now** |
 | Detect Objects       | Object detection                 | Phase 17          |
 | **Create Video**     | **Text to video**                | **Available now** |
-| Animate Image        | Image to video                   | Phase 16          |
+| **Animate Image**    | **Image to video**               | **Available now** |
 | **Generate Music**   | **Text to music**                | **Available now** |
 | **Read Text**        | **Text to speech**               | **Available now** |
 | **Transcribe Audio** | **Automatic speech recognition** | **Available now** |
@@ -512,17 +512,21 @@ learns each image model's control capabilities without being able to decide them
 
 ## API
 
-| Route                          | Purpose                                                                       |
-| ------------------------------ | ----------------------------------------------------------------------------- |
-| `GET /api/me`                  | The server's verified view of who you are.                                    |
-| `GET /api/catalogue`           | Panels, reviewed models, and the gateway exception register.                  |
-| `POST /api/chat/stream`        | Chat as server-sent events: `start`, `delta`, then `completed` or `problem`.  |
-| `POST /api/create-image`       | Generates one image and returns it with its run receipt and applied controls. |
-| `POST /api/describe-image`     | Describe a picture with a reviewed vision model.                              |
-| `POST /api/remix-image`        | Edit a picture with a reviewed reference-image model.                         |
-| `POST /api/classify-image`     | Rank a picture against a reviewed classifier's fixed label set.               |
-| `POST /api/generate-music`     | Compose one track and return it with its receipt and non-token cost estimate. |
-| `GET /api/runs/:runId/metrics` | Resolved or pending gateway cost for one of your own runs.                    |
+| Route                                   | Purpose                                                                       |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| `GET /api/me`                           | The server's verified view of who you are.                                    |
+| `GET /api/catalogue`                    | Panels, reviewed models, and the gateway exception register.                  |
+| `POST /api/chat/stream`                 | Chat as server-sent events: `start`, `delta`, then `completed` or `problem`.  |
+| `POST /api/create-image`                | Generates one image and returns it with its run receipt and applied controls. |
+| `POST /api/describe-image`              | Describe a picture with a reviewed vision model.                              |
+| `POST /api/remix-image`                 | Edit a picture with a reviewed reference-image model.                         |
+| `POST /api/classify-image`              | Rank a picture against a reviewed classifier's fixed label set.               |
+| `POST /api/generate-music`              | Compose one track and return it with its receipt and non-token cost estimate. |
+| `POST /api/animate-image`               | Accepts a picture and starts an animation job; answers `202` with a run id.   |
+| `GET /api/animate-image/:runId/status`  | Job state, and the stored video and receipt once it completes.                |
+| `GET /api/animate-image/:runId/video`   | The finished animation, supporting ranged reads so it can seek.               |
+| `POST /api/animate-image/:runId/cancel` | Terminates the job and deletes anything it had stored.                        |
+| `GET /api/runs/:runId/metrics`          | Resolved or pending gateway cost for one of your own runs.                    |
 
 Every route is behind Access, derives identity only from the verified JWT, and returns RFC 9457
 `application/problem+json` on failure. More routes arrive with the panels that need them; there is
@@ -618,10 +622,17 @@ Built to **phase 7** of
   why one model has a track-length control and the other genuinely cannot, and why this panel needs
   no Workflow despite producing media.
 
+- **Phase 16** delivered Animate Image, which shares every piece of Create Video's infrastructure
+  and none of its route. See
+  [Animate Image: sharing an implementation, not a tab](#animate-image-sharing-an-implementation-not-a-tab)
+  for why the source picture has four different names across four models, why one model's prices
+  cannot be reduced to a rate, and why this panel's image size limit is lower than every other image
+  panel's for a reason that has nothing to do with images.
+
 Every remaining panel renders a placeholder stating the phase that delivers it. **Phase 14 completed
 every credit-free panel**, and phase 15 was therefore the first that could not be delivered without
-prepaid AI Gateway credits. The two that remain — Animate Image and Detect Objects — are blocked on
-credits or on a model that does not exist.
+prepaid AI Gateway credits. The one that remains — Detect Objects — is blocked on a model that does
+not exist.
 
 The remaining phases are ordered by **whether Cloudflare hosts a model for the task**, which is a
 practical constraint rather than a preference: a third-party model bills against prepaid AI Gateway
@@ -641,7 +652,9 @@ obligations about cost are the heaviest in the application.
 
 Animate Image moved from phase 9 to phase 16 for exactly that reason: it shares all of Create
 Video's infrastructure and would otherwise be the obvious next step, but every image-to-video model
-is third-party.
+is third-party. It re-confirmed that at delivery and the answer had not changed — there is no
+**Image-to-Video task type in the Workers AI catalogue at all**, so there was nothing to move it
+back for.
 
 **Detect Objects** stays last and is **blocked**: `@cf/facebook/detr-resnet-50`, the model it was
 planned around, has been removed from the catalogue, and no object-detection task type exists in
@@ -770,6 +783,133 @@ bucket grows in a demo account and `pnpm teardown` is what keeps that account cl
 `empty-r2-bucket` before Terraform destroys the bucket, because R2 refuses to delete a bucket that
 still holds objects). The panel therefore says the video is _stored_ and makes no expiry claim — a
 countdown this demo could not honour would be worse than none.
+
+## Animate Image: sharing an implementation, not a tab
+
+Animate Image takes a picture you supply and makes a short video out of it. It is the other half of
+the demo's most memorable sequence: generate a picture in **Create Image**, then click **Animate
+this image** and watch it move.
+
+It is also the clearest example in the application of a decision that is easy to get wrong. Animate
+Image and Create Video share a job lifecycle, an R2 bucket, a storage adapter, an ownership scheme,
+a video player, and a credit-failure path. The tempting conclusion is that they are one panel with a
+mode switch. **They are not.** Someone arriving with a photograph should find a destination called
+"Animate Image", not discover their task hiding inside a tab called "Create Video". So the two share
+the _implementation_ and nothing in the route table: separate panel, separate URL, separate
+endpoints, separate title — and underneath, deliberately, no second bucket, no second job mechanism,
+and no second definition of what "running" means.
+
+An architecture test enforces the sharing half of that, asserting that both services are built over
+the same bucket binding and the same job-identity derivation. The router tests enforce the other
+half, asserting that neither panel nests the other and that no mode selector exists.
+
+### The source image has four different names
+
+Four reviewed models, one concept, four spellings — captured live from each provider's validator
+rather than transcribed from documentation:
+
+| Model                     | Image parameter     | Accepts a `data:` URI? |
+| ------------------------- | ------------------- | ---------------------- |
+| `alibaba/hh1.1-i2v`       | `image`             | **yes**                |
+| `minimax/hailuo-2.3`      | `first_frame_image` | **yes**                |
+| `runwayml/gen-4.5`        | `image_input`       | **yes**                |
+| `lightricks/ltx-2-5-fast` | `image_uri`         | **no — HTTPS only**    |
+
+That disagreement is exactly why this demo drives every panel from reviewed per-model descriptors
+instead of a hardcoded request shape. The visitor supplies "a picture"; the wire name is read from
+the descriptor at the last moment, the same way Create Video resolves `quality` against
+`resolution`.
+
+The last row decided which models could be offered at all. **Every one of these models types its
+image parameter as a URI rather than as bytes** — `alibaba/hh1.1-i2v` rejects a non-URL value with
+`Invalid value at image: Invalid URL`. Three of the four accept an inline `data:` URI, which is what
+lets the picture travel inside the request and never be published anywhere.
+`lightricks/ltx-2-5-fast` refuses one with `Must be an HTTPS URL`, so offering it would mean
+uploading a visitor's picture to a publicly fetchable address purely to satisfy a parameter type. It
+is **not registered**, and the descriptor carries an explicit `imageDelivery` field so that refusal
+is a recorded capability rather than an unexplained omission.
+
+`pruna/p-video-animate` was probed and skipped for a different reason: it requires both `video` and
+`image`, making it a motion-transfer model rather than an image-to-video one.
+
+### Two models that agree on almost nothing
+
+|                | HappyHorse 1.1 I2V (default)    | MiniMax Hailuo 2.3                    |
+| -------------- | ------------------------------- | ------------------------------------- |
+| Image field    | `image`                         | `first_frame_image`                   |
+| Motion prompt  | **optional**                    | **required**                          |
+| Resolutions    | `720P`, `1080P`                 | `768P`, `1080P` — **no shared value** |
+| Durations      | any integer **3–15 s**          | **exactly 6 or 10 s**                 |
+| Billed         | **$0.14/s** @720P, $0.18 @1080P | **per exact combination** (see below) |
+| Negative promp | yes                             | no                                    |
+| Seed           | yes                             | no                                    |
+
+Because the two share no resolution value and disagree about which durations exist, **switching
+model resets the controls** rather than carrying a selection across — a `720P` sent to MiniMax is a
+rejected request, not a near miss.
+
+HappyHorse is the default because it is the direct counterpart to Create Video's
+`alibaba/hh1.1-t2v`: same vendor, same control vocabulary, so reading the two panels side by side
+makes the shared descriptor shape obvious.
+
+### A price that is not a rate
+
+Create Video could always quote a cost as "rate × seconds". One model here cannot be described that
+way at all. MiniMax publishes **$0.28 for six seconds** at 768P and **$0.56 for ten** — 4.67¢ and
+5.6¢ a second respectively. There is no single per-second figure to show.
+
+So the descriptor carries two mutually exclusive pricing shapes, and the panel renders two genuinely
+different cost sentences depending on which one the selected model declares. A test asserts that no
+model declares both, since that would leave estimation with two answers for one run.
+
+The more interesting case is the third one. The catalogue publishes no price for MiniMax at **ten
+seconds at 1080P**, so this demo **does not interpolate one**. Guessing from the two figures it does
+publish would be inventing a number and attributing it to the provider — in the one panel whose
+subject is honest cost. The panel instead says _"No published price for 10 seconds at 1080P. This
+run will still be charged; the amount simply is not knowable in advance."_ That distinction is
+carried all the way through the stack as a boolean beside the figure, because `$0.00` and "nobody
+has said" are opposite claims and only one of them is true.
+
+### A picture limit that is really a Workflow limit
+
+Every other image panel in this demo accepts **1 MB**. Animate Image accepts **640 KB**, and the
+reason has nothing to do with images.
+
+The picture does not stop at the request: it is carried into a Workflow instance as an event
+parameter, and **a Workflow event payload is capped at 1 MiB**. Base64 expands bytes by four thirds,
+so a 1 MB picture becomes a 1.37 MiB parameter and the job fails at creation — _after_ the panel had
+told the visitor their picture was fine. 640 KB encodes to roughly 874 KB and leaves room for the
+prompt, the controls, and the identity in the same payload. The limit is this demo's rather than any
+provider's, and the panel says so when it refuses a picture.
+
+### What is sent, kept, and claimed
+
+The source picture goes into the request and into instance state, and this demo writes it to **no
+storage product** — Create Video's Finding 10 holds unchanged, and the R2 bucket remains for
+generated video only. But the picture does reach a third-party provider, so the panel tells a
+visitor to **assume it is logged exactly as a prompt is** rather than offering a retention guarantee
+that is not this demo's to give. A global test forbids any panel from claiming otherwise.
+
+The generated video is handled the opposite way and for Create Video's reasons: the model returns a
+short-lived provider URL, so the bytes are fetched server-side under a host allowlist, sniffed, and
+written to the shared bucket under the same `generated-video/` prefix — which is what lets the
+player seek, and what means one scheduled reaper will eventually collect both panels' output.
+
+### Credits are required, and nothing here has been verified against a successful run
+
+**There is no Cloudflare-hosted image-to-video model**, and no Image-to-Video task type exists in
+the Workers AI catalogue. Every model in this panel is third-party and bills against prepaid AI
+Gateway credits. On an account without them, a valid request returns Gateway error **`2021` / HTTP
+`402`** — "Insufficient balance; add money to your gateway or use BYOK" — which this demo already
+classifies as `insufficient-credit` and presents as its own notice saying _add credit_ rather than
+_try again_, because retrying cannot help.
+
+The account this was built on has no credits, so **no animation has ever been generated**. Every
+statement above about what a provider _accepts and rejects_ was captured live from its validator,
+which runs before billing. Nothing about the output envelope, the real CDN hosts, or the
+authoritative gateway cost has been observed. See the phase-16 contract review in
+[`specs/playground/02-implementation.md`](../../specs/playground/02-implementation.md) for the
+explicit list.
 
 ## Generate Music: when the unit is not a token
 

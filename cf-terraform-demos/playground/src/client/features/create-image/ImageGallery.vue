@@ -20,6 +20,14 @@ const emit = defineEmits<{
    * Visitor wants to use this server-verified result as a Remix Image source.
    */
   remix: [entry: GalleryEntry];
+  /**
+   * Visitor wants to animate this server-verified result in Animate Image.
+   *
+   * A second handoff rather than a generalised "send this somewhere" event, because the two
+   * destinations are different panels doing different things and a single event with a target
+   * parameter would push the choice of destination into the parent anyway.
+   */
+  animate: [entry: GalleryEntry];
 }>();
 </script>
 
@@ -95,9 +103,21 @@ const emit = defineEmits<{
               </dd>
             </div>
           </dl>
-          <button type="button" class="remix-action" @click="emit('remix', entry)">
-            Remix this image
-          </button>
+          <!--
+            Two secondary actions rather than one, and both stay secondary: the generated image is
+            the result, and these are things a visitor may go on to do with it. "Animate this
+            image" is the Create Image → Animate Image handoff the specification calls the single
+            most memorable sequence in this application, which is why it sits beside Remix rather
+            than being buried in a menu — but it does not displace the image itself.
+          -->
+          <div class="handoff-actions">
+            <button type="button" class="remix-action" @click="emit('remix', entry)">
+              Remix this image
+            </button>
+            <button type="button" class="remix-action" @click="emit('animate', entry)">
+              Animate this image
+            </button>
+          </div>
         </div>
       </li>
     </ol>
@@ -196,6 +216,12 @@ const emit = defineEmits<{
 .file-download:focus-visible {
   outline: 2px solid rgb(var(--v-theme-primary));
   outline-offset: 2px;
+}
+
+.handoff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .remix-action {

@@ -8,6 +8,7 @@
  *   in a reviewed form rather than inventing one.
  */
 
+import type { AnimateImageControlSupport } from '../../shared/animate-image';
 import {
   MAX_CLASSIFICATION_LABELS,
   type ClassificationControlSupport
@@ -332,6 +333,20 @@ export interface ModelDescriptor {
    * rather than only report after it.
    */
   videoControls?: VideoControlSupport;
+  /**
+   * Which controls an image-to-video model accepts, how it spells them, and what it charges.
+   *
+   * Present only for an image-to-video descriptor, and kept separate from `videoControls` because a
+   * source image materially changes the contract rather than adding a field to it. Two
+   * disagreements here go further than anything Create Video had to express. **The source image has
+   * a different wire name in every reviewed model** — `image`, `first_frame_image`, `image_uri`,
+   * `image_input` — so the name travels in the descriptor rather than in a conditional. And **the
+   * two registered models price in incompatible shapes**: one publishes a per-second rate, the
+   * other a price for each exact resolution-and-duration combination that does not reduce to a rate
+   * at all. Both shapes are declared, and estimation reads whichever is present rather than
+   * converting between them.
+   */
+  animateImageControls?: AnimateImageControlSupport;
   /**
    * Which controls a music model accepts, how it spells them, and what it charges.
    *
@@ -736,6 +751,134 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       // Alibaba's output reaches this demo through the catalogue's own hosts rather than from a
       // model-studio domain, and the R2 public host is the one its catalogue examples use.
       outputHosts: ['examples.aig.cloudflare.com', 'pub-04a6d208d361438ea01b797e6973bd19.r2.dev']
+    }
+  },
+  // Animate Image. **Re-confirmed at delivery: there is no Cloudflare-hosted image-to-video model,
+  // and no Image-to-Video task type exists in the Workers AI catalogue at all.** `cf ai models
+  // list` returns ten task types — Automatic Speech Recognition, Dumb Pipe, Image Classification,
+  // Image-to-Text, Text Classification, Text Embeddings, Text Generation, Text-to-Image,
+  // Text-to-Speech, and Translation. Image-to-Video is not among them. The phase text asked for
+  // this to be rechecked in case a hosted model had appeared and the phase could move earlier; it
+  // has not, so both models below are third-party and bill against prepaid AI Gateway credits,
+  // exactly as Create Video and Remix Image already disclose.
+  //
+  // This panel is a **top-level panel sharing Create Video's implementation, not a mode inside
+  // it**: the same R2 bucket, the same Workflow, the same derived-instance-ID ownership scheme,
+  // the same `MediaJob` states, and the same credit-failure classification. It adds no second
+  // storage product and no parallel job mechanism. What it does *not* share is the tab.
+  //
+  // The two models disagree in a way that is this phase's teaching point rather than an
+  // inconvenience, and every item below was captured live from each provider's validator — schema
+  // validation runs *before* billing, so the full input contract was mapped at zero cost:
+  //
+  // - **The source image has a different name in every model.** `image` here,
+  //   `first_frame_image` for MiniMax, and — in the two models considered and not registered —
+  //   `image_uri` for Lightricks and `image_input` for Runway. One concept, four spellings. A
+  //   hardcoded request shape could drive exactly one of them.
+  // - **Every model types the image as a URI, never as raw bytes.** `alibaba/hh1.1-i2v` rejects a
+  //   non-URL value with `Invalid value at image: Invalid URL`. A `data:` URI *is* accepted, which
+  //   was verified directly: a probe carrying one passed validation and reached billing (`402`).
+  //   That is what lets Phase 8's Finding 10 stand unchanged — the picture travels in the request
+  //   and is never persisted. `lightricks/ltx-2-5-fast` is **not registered** precisely because it
+  //   refuses a data URI with `Must be an HTTPS URL`, which would require publishing a visitor's
+  //   picture at a fetchable address.
+  // - **The resolution enums share no value at all**: `720P`/`1080P` against `768P`/`1080P`.
+  //   Switching model resets the resolution rather than carrying over a string the other rejects.
+  // - **One takes a duration range and the other exactly two lengths.** Alibaba accepts any
+  //   integer from 3 to 15; MiniMax accepts 6 or 10 and rejects 3, 4, 5, 8, and 12.
+  // - **The prompt is optional for one and required for the other.** Alibaba animates a picture
+  //   with no prompt; MiniMax requires one.
+  // - **They price in incompatible shapes.** Alibaba publishes a flat per-second rate. MiniMax
+  //   publishes $0.28 for six seconds and $0.56 for ten at 768P — 4.67¢ and 5.6¢ a second — which
+  //   does not reduce to a rate, so its prices are declared per exact combination and an
+  //   unpublished combination is reported as unknown rather than interpolated.
+  //
+  // `pruna/p-video-animate` was probed and **deliberately skipped**: it requires both `video` and
+  // `image`, making it a motion-transfer model rather than an image-to-video one. It animates a
+  // picture *using an existing video's* motion, which is a different task from this panel's.
+  //
+  // HappyHorse 1.1 I2V is the default, and the choice is editorial as well as practical: it is the
+  // direct counterpart to Create Video's `alibaba/hh1.1-t2v`, same vendor and same control
+  // vocabulary, so the panel's reuse of the Phase 8 descriptor shape is immediately visible when
+  // the two are read side by side.
+  {
+    id: 'alibaba/hh1.1-i2v',
+    name: 'HappyHorse 1.1 I2V',
+    provider: 'third-party',
+    task: 'animate-image',
+    contractVersion: 1,
+    pricingUnit: 'video-second',
+    invocation: 'job',
+    documentationUrl: 'https://developers.cloudflare.com/ai/models/alibaba/hh1.1-i2v/',
+    animateImageControls: {
+      imageParameterName: 'image',
+      // Verified live: a `data:` URI passes this model's validator and reaches billing. A non-URL
+      // string is refused with `Invalid value at image: Invalid URL`.
+      imageDelivery: 'data-uri',
+      // Its own usage example animates a picture with no prompt at all, and a probe carrying only
+      // the image reached billing rather than being refused.
+      motionPromptRequired: false,
+      // Uppercase, exactly as its schema enumerates them, matching its t2v sibling. A provider
+      // validating against an enum treats `720p` and `720P` as different strings.
+      resolutions: ['720P', '1080P'],
+      defaultResolution: '720P',
+      // Probed at both ends: `duration: 2` is refused with `Too small: expected number to be >=3`
+      // and `duration: 999` with `Too big: expected number to be <=15`.
+      durationRange: { min: 3, max: 15, step: 1, default: 5 },
+      // Short by default for the same reason the resolution is the cheaper one: duration is the
+      // other half of the price multiplication, and one click here spends real money.
+      defaultDuration: 5,
+      seed: true,
+      negativePrompt: true,
+      pricePerSecondUsd: { '720P': 0.14, '1080P': 0.18 },
+      // The catalogue page's own example serves from the AI examples host, and the R2 public host
+      // is the one Alibaba's catalogue output uses — the same pair as its t2v sibling.
+      outputHosts: ['examples.aig.cloudflare.com', 'pub-04a6d208d361438ea01b797e6973bd19.r2.dev']
+    }
+  },
+  {
+    id: 'minimax/hailuo-2.3',
+    name: 'MiniMax Hailuo 2.3',
+    provider: 'third-party',
+    task: 'animate-image',
+    contractVersion: 1,
+    pricingUnit: 'video-second',
+    invocation: 'job',
+    documentationUrl: 'https://developers.cloudflare.com/ai/models/minimax/hailuo-2.3/',
+    animateImageControls: {
+      // The whole reason this descriptor field exists. MiniMax frames the picture as the clip's
+      // first frame rather than as "the image", and its validator accepts no other spelling.
+      imageParameterName: 'first_frame_image',
+      // Verified live, exactly as for Alibaba: a probe carrying a `data:` URI reached billing.
+      imageDelivery: 'data-uri',
+      // `prompt` is required by its schema; a probe omitting it is refused.
+      motionPromptRequired: true,
+      // `768P`, not `720P`. The two registered models share no resolution value, which is why the
+      // panel resets the control when the model changes rather than carrying the string across.
+      resolutions: ['768P', '1080P'],
+      defaultResolution: '768P',
+      // Exactly two lengths, verified one value at a time: 6 and 10 are accepted while 3, 4, 5, 8,
+      // and 12 are each refused with `Invalid value at duration: Invalid input`. This is the fixed
+      // -set form of the control rather than a range, and declaring it as a range would offer
+      // durations the provider rejects.
+      durationChoices: [6, 10],
+      defaultDuration: 6,
+      // Its schema declares no seed field; sending one would be an undeclared property.
+      seed: false,
+      negativePrompt: false,
+      // Per *combination*, not per second, and that is a genuine property of the published price
+      // list rather than a modelling preference: $0.28 at six seconds and $0.56 at ten works out
+      // at 4.67¢ and 5.6¢ a second. The catalogue publishes no ten-second 1080P figure, so that
+      // combination is deliberately absent and the panel reports its estimate as unknown instead
+      // of inventing one.
+      priceByCombinationUsd: {
+        '768P@6': 0.28,
+        '768P@10': 0.56,
+        '1080P@6': 0.49
+      },
+      // MiniMax serves finished renders from its own CDN; the examples host appears for the same
+      // reason it does elsewhere, since a first exploratory call can return a proxied example.
+      outputHosts: ['video-product.cdn.minimax.io', 'examples.aig.cloudflare.com']
     }
   },
   // Generate Music. **Re-confirmed at delivery: the Workers AI catalogue contains no music model

@@ -4,6 +4,11 @@
  *   response parsing, and there is one place to look when asking what the client actually sends.
  */
 
+import type {
+  AnimateImageAcceptedResponse,
+  AnimateImageRequest,
+  AnimateImageStatusResponse
+} from '../../shared/animate-image';
 import type { ChatRequest, ChatStreamEvent } from '../../shared/chat';
 import type { ClassifyImageRequest, ClassifyImageResponse } from '../../shared/classify-image';
 import type { ClassifyTextRequest, ClassifyTextResponse } from '../../shared/classify-text';
@@ -648,4 +653,87 @@ export async function cancelVideo(runId: string): Promise<CreateVideoStatusRespo
  */
 export function videoUrl(runId: string): string {
   return `/api/create-video/${encodeURIComponent(runId)}/video`;
+}
+
+/**
+ * Starts animating a picture.
+ *
+ * Deliberately a separate function against a separate endpoint rather than a flag on
+ * {@link startVideo}. The two panels share their job machinery on the server, but the request bodies
+ * differ — this one carries a picture — and a shared function taking an optional image would be one
+ * signature describing two contracts.
+ *
+ * @param request The animation request, carrying the base64 picture and the chosen controls.
+ * @param signal Abort signal, so a caller can abandon the start request itself.
+ * @returns The accepted job's run identifier, state, and the controls the server applied —
+ *   including the facts it verified from the picture's own bytes and its cost estimate.
+ * @throws {ApiError} With `400` when the picture is refused or a control is unsupported or out of
+ *   range, `409` when a job already exists for this run identifier, or `401` when the Access
+ *   session has expired.
+ */
+export async function startAnimation(
+  request: AnimateImageRequest,
+  signal?: AbortSignal
+): Promise<AnimateImageAcceptedResponse> {
+  const response = await fetch('/api/animate-image', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+
+  return (await response.json()) as AnimateImageAcceptedResponse;
+}
+
+/**
+ * Reads the current state of one animation job.
+ *
+ * @param runId Run to poll.
+ * @returns The job's state, plus the stored video, receipt, and applied controls once it completes.
+ * @throws {ApiError} With `404` when no job exists for the signed-in identity and this run
+ *   identifier — which is also the answer for another visitor's job, deliberately — or `401` when
+ *   the Access session has expired.
+ */
+export async function fetchAnimationStatus(runId: string): Promise<AnimateImageStatusResponse> {
+  const response = await fetch(`/api/animate-image/${encodeURIComponent(runId)}/status`);
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+  return (await response.json()) as AnimateImageStatusResponse;
+}
+
+/**
+ * Cancels a running animation job.
+ *
+ * @param runId Run to cancel.
+ * @returns The job's final reported state.
+ * @throws {ApiError} With `404` when no such job exists for the signed-in identity, or `401` when
+ *   the Access session has expired.
+ */
+export async function cancelAnimation(runId: string): Promise<AnimateImageStatusResponse> {
+  const response = await fetch(`/api/animate-image/${encodeURIComponent(runId)}/cancel`, {
+    method: 'POST'
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+  return (await response.json()) as AnimateImageStatusResponse;
+}
+
+/**
+ * Builds the URL a `<video>` element plays a finished animation from.
+ *
+ * A URL rather than a fetch, for the same reason as {@link videoUrl}: the element issues its own
+ * ranged requests as the visitor seeks, and a body this module had already read could not answer
+ * them.
+ *
+ * @param runId Run whose video to play.
+ * @returns The authenticated, same-origin URL of the stored video.
+ */
+export function animationUrl(runId: string): string {
+  return `/api/animate-image/${encodeURIComponent(runId)}/video`;
 }

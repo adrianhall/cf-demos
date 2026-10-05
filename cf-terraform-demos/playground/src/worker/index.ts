@@ -6,6 +6,7 @@ import {
 } from '@adrianhall/cloudflare-toolkit/hono';
 import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-details';
 import { createMeRouter } from '@demos/worker-common';
+import { AnimateImageService } from './application/animate-image/animate-image-service';
 import { ChatService } from './application/chat/chat-service';
 import { ClassifyImageService } from './application/classify-image/classify-image-service';
 import { ClassifyTextService } from './application/classify-text/classify-text-service';
@@ -29,6 +30,7 @@ import { ProviderImageClient } from './infrastructure/media/provider-image-clien
 import { R2VideoStorage } from './infrastructure/media/r2-video-storage';
 import { createMemoryRunRepository } from './infrastructure/runs/memory-run-repository';
 import { accessMiddleware } from './middleware/access';
+import { animateImageRouter } from './routes/animate-image';
 import { catalogueRouter } from './routes/catalogue';
 import { chatRouter } from './routes/chat';
 import { classifyImageRouter } from './routes/classify-image';
@@ -107,6 +109,19 @@ app.use('/api/*', async (context, next) => {
     })
   );
   context.set(
+    'ANIMATE_IMAGE_SERVICE',
+    new AnimateImageService({
+      // A separate Workflow binding, because the two panels run different code with different
+      // parameters — but the *same* bucket and the same derivation key, because a generated video
+      // is a generated video whichever panel produced it and ownership is proved the same way.
+      jobs: new WorkflowMediaJobs(context.env.ANIMATE_JOBS, context.var.LOGGER),
+      storage: new R2VideoStorage(context.env.VIDEO_BUCKET),
+      runs,
+      jobIdKey: context.env.ACCESS_AUD,
+      logger: context.var.LOGGER
+    })
+  );
+  context.set(
     'DESCRIBE_IMAGE_SERVICE',
     new DescribeImageService({ inference, runs, logger: context.var.LOGGER })
   );
@@ -167,6 +182,7 @@ app.use('/api/*', async (context, next) => {
 });
 
 app.route('/api/me', createMeRouter<AppBindings>());
+app.route('/api/animate-image', animateImageRouter);
 app.route('/api/catalogue', catalogueRouter);
 app.route('/api/chat', chatRouter);
 app.route('/api/classify-image', classifyImageRouter);
@@ -228,7 +244,14 @@ app.notFound(notFoundHandler());
 
 export default app;
 
-// The Workflow class is exported from the Worker's entry module because `cloudflare.config.ts`
-// declares it as a named export of this Worker. It is deliberately the only export besides the app
-// itself: everything else reaches the platform through a binding.
+// The Workflow classes are exported from the Worker's entry module because `cloudflare.config.ts`
+// declares them as named exports of this Worker. They are deliberately the only exports besides
+// the app itself: everything else reaches the platform through a binding.
+//
+// Two Workflows rather than one, and the split is by *panel* rather than by resource. They share
+// the bucket, the storage adapter, the step policies, and the failure classification as modules;
+// what differs is the payload each carries and the validation each applies on arrival. One class
+// switching on a discriminator would have to accept a union payload and re-validate against
+// whichever arm it guessed.
+export { AnimateImageWorkflow } from './infrastructure/jobs/animate-image-workflow';
 export { CreateVideoWorkflow } from './infrastructure/jobs/create-video-workflow';

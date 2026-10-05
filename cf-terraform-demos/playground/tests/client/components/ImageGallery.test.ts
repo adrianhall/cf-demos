@@ -182,4 +182,44 @@ describe('ImageGallery', () => {
     const wrapper = mountGallery([entry({ runId: 'a' }), entry({ runId: 'b' })]);
     expect(wrapper.findAll('ol > li')).toHaveLength(2);
   });
+
+  // The two onward chains from a generated image. Animate Image's is the Create Image → Animate
+  // Image sequence the specification calls the most memorable one in the application, and it is
+  // offered here as a secondary action rather than being allowed to displace the image itself.
+  describe('the onward handoffs', () => {
+    it('offers both Remix and Animate for a result', () => {
+      const wrapper = mountGallery([entry()]);
+
+      expect(wrapper.text()).toContain('Remix this image');
+      expect(wrapper.text()).toContain('Animate this image');
+    });
+
+    it('emits the entry rather than its bytes when Remix is chosen', async () => {
+      const wrapper = mountGallery([entry()]);
+
+      await wrapper.findAll('.remix-action')[0]?.trigger('click');
+
+      expect(wrapper.emitted('remix')?.[0]).toEqual([entry()]);
+      expect(wrapper.emitted('animate')).toBeUndefined();
+    });
+
+    it('emits the entry rather than its bytes when Animate is chosen', async () => {
+      // The parent stages the picture in the transient handoff store and navigates; the gallery
+      // itself knows nothing about either destination.
+      const wrapper = mountGallery([entry()]);
+
+      await wrapper.findAll('.remix-action')[1]?.trigger('click');
+
+      expect(wrapper.emitted('animate')?.[0]).toEqual([entry()]);
+      expect(wrapper.emitted('remix')).toBeUndefined();
+    });
+
+    it('keeps both actions after the image rather than above it', () => {
+      // Secondary by position as well as by styling: the generated image is the result, and these
+      // are things a visitor may go on to do with it.
+      const html = mountGallery([entry()]).html();
+
+      expect(html.indexOf('result-image')).toBeLessThan(html.indexOf('Animate this image'));
+    });
+  });
 });

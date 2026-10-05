@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import type { AnimateImageControlSupport } from '../../shared/animate-image';
 import type { ClassificationControlSupport } from '../../shared/classify-image';
 import type { TextClassificationControlSupport } from '../../shared/classify-text';
 import type { VideoControlSupport } from '../../shared/create-video';
@@ -88,6 +89,18 @@ export interface CatalogueModel {
    * second of output at rates that differ thirtyfold across resolutions.
    */
   videoControls?: VideoControlSupport;
+  /**
+   * Controls an image-to-video model accepts, how it spells them, and how it prices.
+   *
+   * The browser needs this for two things nothing earlier required. `motionPromptRequired` decides
+   * whether the prompt field is marked required, because one reviewed model animates a picture with
+   * no prompt and the other refuses without one. And the pricing is **two mutually exclusive
+   * shapes** rather than one rate: a per-second model's estimate moves smoothly as the duration
+   * changes, while a per-combination model's jumps between the exact figures its provider published
+   * — and a combination it has not published has no estimate at all, which the panel says rather
+   * than showing a misleading `$0.00`.
+   */
+  animateImageControls?: AnimateImageControlSupport;
   /**
    * Controls a music model accepts, how it spells them, and how it bills.
    *

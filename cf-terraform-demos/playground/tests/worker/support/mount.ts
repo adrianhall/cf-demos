@@ -8,6 +8,7 @@
 import { Hono } from 'hono';
 import type { CloudflareAccessIdentity } from '@adrianhall/cloudflare-toolkit/hono';
 import type { Logger } from '@adrianhall/cloudflare-toolkit/logging';
+import type { AnimateImageService } from '../../../src/worker/application/animate-image/animate-image-service';
 import type { ChatService } from '../../../src/worker/application/chat/chat-service';
 import type { ClassifyImageService } from '../../../src/worker/application/classify-image/classify-image-service';
 import type { ClassifyTextService } from '../../../src/worker/application/classify-text/classify-text-service';
@@ -66,6 +67,10 @@ export interface MountOptions {
    * Create Video service the route should use.
    */
   createVideoService?: CreateVideoService;
+  /**
+   * Animate Image service the route should use.
+   */
+  animateImageService?: AnimateImageService;
   /**
    * Describe Image service the route should use.
    */
@@ -186,6 +191,9 @@ export function mountRoute(
     }
     if (options.createVideoService !== undefined) {
       context.set('CREATE_VIDEO_SERVICE', options.createVideoService);
+    }
+    if (options.animateImageService !== undefined) {
+      context.set('ANIMATE_IMAGE_SERVICE', options.animateImageService);
     }
     if (options.describeImageService !== undefined) {
       context.set('DESCRIBE_IMAGE_SERVICE', options.describeImageService);

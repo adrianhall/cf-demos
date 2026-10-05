@@ -448,8 +448,52 @@ describe('media handling', () => {
       await readFile(path.join(demoRoot, 'cloudflare.config.ts'), 'utf8')
     );
     expect(config).toMatch(/VIDEO_BUCKET:\s*bindings\.r2\(/u);
-    // One bucket, not a general-purpose media store that later panels quietly adopt.
+    // One bucket, not a general-purpose media store that later panels quietly adopt. Animate
+    // Image (phase 16) is the first panel to test this properly: it generates video too, and the
+    // tempting shortcut was a second bucket of its own.
     expect(config.match(/bindings\.r2\(/gu)).toHaveLength(1);
+  });
+
+  // Phase 16's central requirement, asserted as structure rather than trusted to review. Animate
+  // Image was required to reuse Create Video's job machinery and add no second storage product
+  // and no parallel job mechanism. Each half of that is a one-line change away from being untrue:
+  // a second bucket binding, or a job service that derives its own keys.
+  it('shares one bucket and one job-identity derivation between both video panels', async () => {
+    const root = stripComments(await readFile(path.join(demoRoot, 'src/worker/index.ts'), 'utf8'));
+
+    // Both services are constructed over the same bucket binding rather than one each.
+    expect(root.match(/new R2VideoStorage\(context\.env\.VIDEO_BUCKET\)/gu)).toHaveLength(2);
+    // Both prove ownership with the same keyed derivation, keyed by the same binding, so neither
+    // panel can read the other's job and one reaper can collect both panels' objects.
+    expect(root.match(/jobIdKey:\s*context\.env\.ACCESS_AUD/gu)).toHaveLength(2);
+    // Both drive their Workflow through the one adapter, rather than one of them reaching for a
+    // binding directly.
+    expect(root.match(/new WorkflowMediaJobs\(/gu)).toHaveLength(2);
+  });
+
+  it('gives the two video panels no storage product beyond the shared bucket', async () => {
+    const config = stripComments(
+      await readFile(path.join(demoRoot, 'cloudflare.config.ts'), 'utf8')
+    );
+
+    // Two Workflows, because they carry different payloads and validate differently on arrival.
+    // That is the sanctioned duplication; a second bucket, queue, or database would not be.
+    expect(config.match(/bindings\.workflow\(/gu)).toHaveLength(2);
+    expect(config).not.toMatch(/bindings\.queue\(/u);
+    expect(config).not.toMatch(/bindings\.hyperdrive\(/u);
+  });
+
+  // Both panels' objects must land under the one prefix, or the scheduled reaper in a later phase
+  // would collect one panel's output and silently leave the other's to accumulate.
+  it('keys both panels\u2019 stored video through the shared object-key helper', async () => {
+    for (const service of [
+      'src/worker/application/create-video/create-video-service.ts',
+      'src/worker/application/animate-image/animate-image-service.ts'
+    ]) {
+      const contents = stripComments(await readFile(path.join(demoRoot, service), 'utf8'));
+      expect(contents, `${service} must derive its key`).toMatch(/videoObjectKey\(/u);
+      expect(contents, `${service} must derive its job id`).toMatch(/deriveMediaJobId\(/u);
+    }
   });
 
   // Phase 8's analysis concluded that a Workflow instance already *is* the job record: it reports

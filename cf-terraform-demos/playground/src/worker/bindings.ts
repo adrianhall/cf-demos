@@ -1,4 +1,5 @@
 import type { CloudflareToolkitVariables } from '@adrianhall/cloudflare-toolkit/hono';
+import type { AnimateImageService } from './application/animate-image/animate-image-service';
 import type { ChatService } from './application/chat/chat-service';
 import type { ClassifyImageService } from './application/classify-image/classify-image-service';
 import type { ClassifyTextService } from './application/classify-text/classify-text-service';
@@ -38,6 +39,14 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * Workflow, long after the request that started it has ended.
    */
   CREATE_VIDEO_SERVICE: CreateVideoService;
+  /**
+   * The Animate Image use case, sharing this request's run store.
+   *
+   * Like Create Video it holds no inference client, because the gateway call happens inside its
+   * Workflow. It also shares Create Video's bucket and job machinery rather than owning its own:
+   * the two panels differ in their request and their route, not in how a job is stored or owned.
+   */
+  ANIMATE_IMAGE_SERVICE: AnimateImageService;
   /**
    * The Describe Image use case, sharing this request's gateway client and run store.
    */

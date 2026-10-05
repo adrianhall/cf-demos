@@ -51,7 +51,13 @@ export default defineConfig({
         // The instance also serves as the job record, which is why this demo adds no D1 table and
         // no KV namespace for job status: a second store would be a second source of truth for one
         // job's state.
-        CreateVideoWorkflow: exports.workflow({ name: `${values.workerName}-create-video` })
+        CreateVideoWorkflow: exports.workflow({ name: `${values.workerName}-create-video` }),
+        // Animate Image runs durably for exactly the same reasons, and shares Create Video's
+        // bucket, storage adapter, step policies, and ownership derivation. It gets its own
+        // Workflow rather than a mode inside the other because the two carry different payloads
+        // and apply different validation on arrival — the picture is re-verified from its own
+        // bytes inside this one.
+        AnimateImageWorkflow: exports.workflow({ name: `${values.workerName}-animate-image` })
       },
 
       assets: {
@@ -108,6 +114,14 @@ export default defineConfig({
           name: `${values.workerName}-create-video`,
           worker: values.workerName,
           exportName: 'CreateVideoWorkflow'
+        }),
+        // Animate Image's equivalent. Note what is *not* duplicated: there is no second bucket and
+        // no second run store. Generated video from both panels lands in `VIDEO_BUCKET` under the
+        // one `generated-video/` prefix, so a single scheduled reaper will collect both.
+        ANIMATE_JOBS: bindings.workflow({
+          name: `${values.workerName}-animate-image`,
+          worker: values.workerName,
+          exportName: 'AnimateImageWorkflow'
         }),
         CLOUDFLARE_TEAM_DOMAIN: bindings.text(values.cloudflareTeamDomain),
         // Deliberately absent in development: its absence selects the toolkit's development

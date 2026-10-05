@@ -147,6 +147,27 @@ async function remixGeneratedImage(entry: (typeof gallery.value)[number]): Promi
   });
   await router.push('/remix-image');
 }
+
+/**
+ * Sends a server-sniffed generated image to Animate Image without placing bytes in a route query.
+ *
+ * The Create Image → Animate Image chain — generate a picture, then bring it to life — is the most
+ * memorable sequence this application offers, so it is reachable in one click from the result. It
+ * goes through the same transient handoff store as the Remix chain rather than a query parameter,
+ * which would put megabytes of base64 in browser history and in any intermediary's logs.
+ *
+ * @param entry Result selected for animation.
+ * @returns A promise fulfilled after navigation begins.
+ */
+async function animateGeneratedImage(entry: (typeof gallery.value)[number]): Promise<void> {
+  handoff.offer({
+    base64: entry.image.base64,
+    mediaType: entry.image.mediaType,
+    byteLength: entry.image.byteLength,
+    origin: 'Generated in Create Image'
+  });
+  await router.push('/animate-image');
+}
 </script>
 
 <template>
@@ -399,7 +420,11 @@ async function remixGeneratedImage(entry: (typeof gallery.value)[number]): Promi
               />
             </div>
 
-            <ImageGallery :entries="gallery" @remix="remixGeneratedImage" />
+            <ImageGallery
+              :entries="gallery"
+              @remix="remixGeneratedImage"
+              @animate="animateGeneratedImage"
+            />
           </div>
         </template>
       </PanelWorkspace>

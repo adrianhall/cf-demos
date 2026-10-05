@@ -7,6 +7,7 @@ import {
 } from 'vue-router';
 import { TASK_DESCRIPTORS, type TaskId } from '../shared/tasks';
 import ActivityView from './views/ActivityView.vue';
+import AnimateImageView from './views/AnimateImageView.vue';
 import ChatView from './views/ChatView.vue';
 import ClassifyImageView from './views/ClassifyImageView.vue';
 import ClassifyTextView from './views/ClassifyTextView.vue';
@@ -32,6 +33,9 @@ import ViewTokensView from './views/ViewTokensView.vue';
  * `tests/client/router.test.ts` treats as a failure.
  */
 const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
+  // Its own top-level route, not a mode inside `create-video`. The two panels share their job
+  // machinery on the server and nothing at all in the route table.
+  'animate-image': AnimateImageView,
   'chat': ChatView,
   'classify-image': ClassifyImageView,
   'create-image': CreateImageView,

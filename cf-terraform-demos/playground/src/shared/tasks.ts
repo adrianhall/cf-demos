@@ -190,7 +190,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Bring a still picture to life as a short video clip.',
     group: 'Generate',
     gateway: 'required',
-    availability: 'planned',
+    availability: 'available',
     phase: 16
   },
   {
