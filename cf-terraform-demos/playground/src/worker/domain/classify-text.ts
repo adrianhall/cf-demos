@@ -288,7 +288,17 @@ export function buildClassifyTextInput(
   const controls = request.model.textClassificationControls;
 
   if (controls?.inputShape === 'messages') {
-    return { messages: [{ role: 'user', content: request.text }] };
+    return {
+      messages: [{ role: 'user', content: request.text }],
+      // Without this, Llama Guard answers with the *string* branch of its output schema — the
+      // literal text "\n\nsafe" — rather than `{ safe, categories }`. The schema declares both
+      // branches and does not say what selects between them; verified against the live model,
+      // `response_format` is what does. Omitting it made every run of that model fail, because
+      // this application correctly refuses to parse a safety verdict out of prose.
+      ...(controls.requiresJsonResponseFormat === true
+        ? { response_format: { type: 'json_object' } }
+        : {})
+    };
   }
 
   return { text: request.text };

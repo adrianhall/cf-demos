@@ -156,6 +156,20 @@ export interface TextClassificationControlSupport {
    */
   inputShape: ClassificationInputShape;
   /**
+   * Whether this model needs `response_format: { type: 'json_object' }` to answer structurally.
+   *
+   * **The field that decides whether a verdict model is usable at all**, and it was missed on the
+   * first delivery of this panel. Llama Guard's output schema declares `response` as `string | {
+   * safe, categories }` without saying what selects between them — and the default is the _string_:
+   * asked plainly, it answers `"\n\nsafe"`. Sending `response_format` is what makes it return `{
+   * safe: true, categories: [] }` instead.
+   *
+   * Declared here rather than applied to every chat-shaped model, because it is a property of this
+   * model's contract. A model whose structured branch is the default would not need it, and sending
+   * an unsupported field is the kind of silent incompatibility this panel is about.
+   */
+  requiresJsonResponseFormat?: boolean;
+  /**
    * What this model's label set is called, shown so a visitor knows what the labels _are_.
    *
    * "Sentiment (SST-2)" and "Llama Guard 3 hazard taxonomy" are very different things, and a result

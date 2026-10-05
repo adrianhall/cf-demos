@@ -961,14 +961,15 @@ request type has no field for a label, and a body carrying `labels`, `categories
 Refusing rather than dropping matters: someone sending `labels` has a real need and would otherwise
 believe their categories were applied and that the model chose none of them.
 
-|                    | DistilBERT SST-2     | Llama Guard 3 8B           |
-| ------------------ | -------------------- | -------------------------- |
-| Declared task type | Text Classification  | **Text Generation**        |
-| Request shape      | `{ text }`           | `{ messages[] }`           |
-| Answer             | `[{ label, score }]` | `{ safe, categories[] }`   |
-| Scores             | yes                  | **none, for anything**     |
-| Ranking controls   | top-k, score floor   | **none — nothing to rank** |
-| Label set          | 2 sentiment labels   | 13 hazard categories       |
+|                         | DistilBERT SST-2     | Llama Guard 3 8B                 |
+| ----------------------- | -------------------- | -------------------------------- |
+| Declared task type      | Text Classification  | **Text Generation**              |
+| Request shape           | `{ text }`           | `{ messages[] }`                 |
+| Answer                  | `[{ label, score }]` | `{ safe, categories[] }`         |
+| Scores                  | yes                  | **none, for anything**           |
+| Ranking controls        | top-k, score floor   | **none — nothing to rank**       |
+| Label set               | 2 sentiment labels   | 14 hazard categories             |
+| Needs `response_format` | no                   | **yes — or it answers in prose** |
 
 ### The finding that shaped the panel
 
@@ -984,6 +985,20 @@ possible response, so:
   accepted and ignored, because a visitor who sets a confidence floor on a model that reports no
   confidence has formed a belief that is simply wrong;
 - the verdict renderer contains **no percentage anywhere**, and a test asserts that.
+
+### The field that makes the verdict model work at all
+
+Llama Guard's output schema declares `response` as `string | { safe, categories }` and **does not
+say what selects between them**. The default is the string: asked plainly, the model answers with
+the literal text `"\n\nsafe"`. Sending `response_format: { type: 'json_object' }` — a field its
+input schema declares but none of its usage examples show — produces
+`{ safe: true, categories: [] }` instead.
+
+This was missed on first delivery and made every run of that model fail. The panel was _correct_ to
+refuse the prose, which is the next section; it was wrong not to ask for the structured answer in
+the first place. The requirement is declared on the model descriptor rather than applied to every
+chat-shaped model, because it is a property of this model's contract, and a regression test asserts
+the field is sent.
 
 ### One refusal is a security decision
 

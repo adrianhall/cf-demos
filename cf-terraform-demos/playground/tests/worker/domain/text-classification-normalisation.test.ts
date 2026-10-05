@@ -228,11 +228,12 @@ describe('the verdict response', () => {
     expect(read.outcome.verdict.categories[0]).toMatchObject({ code: 'S10', name: 'Hate' });
   });
 
-  // A code outside the published set means the taxonomy has moved. Surfaced rather than dropped,
-  // and deliberately without an invented name.
+  // A code outside the published set means the taxonomy has moved again. Surfaced rather than
+  // dropped, and deliberately without an invented name. `S99` rather than `S14`, because S14 is a
+  // real category this panel now names.
   it('reports an unrecognised category as unrecognised rather than naming it', () => {
     const read = readTextClassification(
-      { response: { safe: false, categories: ['S1', 'S14'] } },
+      { response: { safe: false, categories: ['S1', 'S99'] } },
       verdictRequest()
     );
 
@@ -241,7 +242,23 @@ describe('the verdict response', () => {
     }
 
     expect(read.outcome.verdict.categories.map((c) => c.code)).toEqual(['S1']);
-    expect(read.outcome.verdict.unrecognisedCategories).toEqual(['S14']);
+    expect(read.outcome.verdict.unrecognisedCategories).toEqual(['S99']);
+  });
+
+  // The category Guardrails does not evaluate but the model can still emit. It must be named,
+  // not reported as unknown.
+  it('names the category outside the Guardrails subset', () => {
+    const read = readTextClassification(
+      { response: { safe: false, categories: ['S14'] } },
+      verdictRequest()
+    );
+
+    if (!read.ok || read.outcome.kind !== 'verdict') {
+      throw new Error('expected a verdict outcome');
+    }
+
+    expect(read.outcome.verdict.categories[0]?.name).toBe('Code Interpreter Abuse');
+    expect(read.outcome.verdict.unrecognisedCategories).toEqual([]);
   });
 
   it('ignores a non-string entry in the categories array', () => {

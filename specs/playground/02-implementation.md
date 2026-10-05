@@ -863,7 +863,9 @@ Recorded during delivery, because each one changed a decision.
 
 6. **Refusing to parse a prose safety verdict is a security decision, not a validation one.** Llama Guard's output type declares `response` as `string | { safe, categories }`. The structured branch is read and the string branch is refused, because a safety verdict extracted by pattern-matching English would be a security control resting on a regular expression — and a missed parse would report unsafe content as *safe*. The same reasoning drove refusing a missing `safe` boolean rather than defaulting: `true` would announce unverified content as safe, and `false` would accuse it on the strength of a malformed response.
 
-7. **The hazard taxonomy came from Cloudflare's AI Gateway Guardrails documentation**, which publishes the authoritative `S1`–`S13` mapping for the codes this model emits. Without it a result reads `S1` with no indication of meaning. `S14` (Code interpreter abuse) is a real Llama Guard category that Cloudflare's table does not cover, and it is deliberately **not invented here**: a code outside the published list is reported as unrecognised rather than given a name this demo made up.
+7. **The hazard taxonomy came from Cloudflare's AI Gateway Guardrails documentation**, which publishes the mapping for the codes this model emits. Without it a result reads `S1` with no indication of meaning. The *range* came from the model's own output schema, which describes the field as "hazard category classname, from S1 to S14" — the Guardrails table stops at `S13` because it documents the subset Guardrails evaluates, and says so explicitly. This panel calls the model directly rather than through Guardrails, so all fourteen are published. A code outside even that list is reported as unrecognised rather than given a name this demo invented.
+
+   *Corrected after delivery.* The first version registered only `S1`–`S13` and treated `S14` as an invented name to be avoided. That conflated two different things: inventing a name for an unknown code, and declining to publish a name Meta and Cloudflare both document. A visitor seeing `S14` in a result would have got a bare code for no good reason.
 
 8. **The phase brief's condition on Llama Guard was met by naming the taxonomy wherever a result appears.** The verdict renderer states which taxonomy produced the answer and that these are content-safety categories rather than general-purpose topic labels, so "S6 Specialized Advice" cannot be read as a topic classification.
 
@@ -877,8 +879,56 @@ Recorded during delivery, because each one changed a decision.
 
 13. **A partially malformed scored response degrades rather than failing.** One bad element out of several is a provider quirk worth skipping; every element bad is a contract change worth refusing. The skip is logged with counts, because the visitor otherwise sees a shorter list with nothing on screen explaining why.
 
+### Post-delivery correction: the verdict model never worked
+
+Reported by the user after deployment: every run against Llama Guard failed with the prose-verdict
+refusal, including plainly benign text. The diagnosis is worth recording in full, because the
+mistake is a general one.
+
+**The AI Gateway log said the call succeeded** — `status_code: 200`, `tokens_out: 3`, cost
+recorded. So the failure was entirely on this side of the boundary. Running the model directly
+through `cf ai run` showed why:
+
+```
+$ cf ai run @cf/meta/llama-guard-3-8b --body '{"messages":[...]}'
+{ "response": "\n\nsafe" }
+
+$ cf ai run @cf/meta/llama-guard-3-8b --body '{"messages":[...],"response_format":{"type":"json_object"}}'
+{ "response": { "safe": true, "categories": [] } }
+```
+
+The output schema declares `response` as `string | { safe, categories }` and **does not say what
+selects between them**. The default is the string branch. `response_format` — a field the *input*
+schema declares but no usage example on the model page shows — is what produces the structured
+one.
+
+Three things worth drawing out:
+
+- **The refusal itself was right.** Parsing a safety verdict out of prose would be a security
+  control resting on a regular expression. The panel correctly declined; the bug was never asking
+  for the structured answer in the first place. A more "forgiving" implementation would have parsed
+  `"\n\nsafe"`, appeared to work, and shipped the dangerous behaviour instead.
+- **Reading the output schema was not sufficient.** The decisive fact was in the *input* schema, and
+  the connection between the two was undocumented. A `oneOf` in an output schema is a question about
+  what selects the branch, and that question has to be answered before the model is registered.
+- **It would have been caught by one real call.** The exit criteria for every phase require
+  verifying one real deployed request per new panel, and that step has been blocked since phase 9
+  by local `cf dev` having no AI binding and the deployed panel requiring interactive Access login.
+  `cf ai run` resolves that: it reaches the real model without the Worker or Access in the way, and
+  it should be used to verify every reviewed model's request and response shape *before* the
+  descriptor is written.
+
+Both findings are now regression-tested: the request builder must send `response_format` for a
+verdict model, and the descriptor must declare the requirement for every model whose
+`outcomeKind` is `verdict`.
+
 ### Follow-up for later phases
 
+- **Verify every reviewed model with `cf ai run` before writing its descriptor.** This is the
+  concrete process change from the correction above, and it closes the per-phase verification gap
+  that has been open since phase 9.
+- Treat a `oneOf` in an output schema as an open question rather than a documented union: find what
+  selects the branch, and expect the answer to be in the input schema.
 - Finding 2's type defect should be reported upstream, and phase 13 should check whether the models
   it needs are affected by the same generation bug.
 - If a genuine multi-label or topic classifier is added to the catalogue later, it would strengthen

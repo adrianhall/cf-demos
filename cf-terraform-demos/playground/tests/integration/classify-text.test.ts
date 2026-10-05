@@ -342,6 +342,7 @@ describe('the panel catalogue', () => {
           minimumConfidence?: { default: number };
           appliedBy: string;
           contextWindowTokens?: number;
+          requiresJsonResponseFormat?: boolean;
         };
       }[];
     };
@@ -397,7 +398,11 @@ describe('the panel catalogue', () => {
       'POSITIVE',
       'NEGATIVE'
     ]);
-    expect(guard?.textClassificationControls?.labelSet).toHaveLength(13);
+    expect(guard?.textClassificationControls?.labelSet).toHaveLength(14);
     expect(guard?.textClassificationControls?.labelSet.map((l) => l.code)).toContain('S10');
+    // The category AI Gateway Guardrails does not evaluate, which this model can still emit.
+    expect(guard?.textClassificationControls?.labelSet.map((l) => l.code)).toContain('S14');
+    // Without this the model answers in prose and every run of it fails.
+    expect(guard?.textClassificationControls?.requiresJsonResponseFormat).toBe(true);
   });
 });

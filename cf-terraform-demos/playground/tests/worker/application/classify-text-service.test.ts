@@ -173,7 +173,9 @@ describe('the two outcome shapes', () => {
     const verdict = build({ output: () => ({ response: { safe: true } }) });
     await verdict.service.classify(request({ model: LLAMA_GUARD!.id }), ACTOR);
     expect(verdict.inference.requests[0]?.input).toEqual({
-      messages: [{ role: 'user', content: 'The staff were wonderful.' }]
+      messages: [{ role: 'user', content: 'The staff were wonderful.' }],
+      // Without this the model answers with prose and the run fails; see the domain tests.
+      response_format: { type: 'json_object' }
     });
   });
 });

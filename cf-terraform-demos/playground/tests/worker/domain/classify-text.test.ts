@@ -116,21 +116,22 @@ describe('the reviewed classification models', () => {
     expect(codes).toEqual(['POSITIVE', 'NEGATIVE']);
   });
 
-  // Transcribed from Cloudflare's published Guardrails table, which is the authoritative mapping
-  // for the codes this model emits.
-  it('publishes the S1\u2013S13 hazard taxonomy', () => {
+  // Names come from Cloudflare's published Guardrails table; the *range* comes from the model's
+  // own output schema, which describes the field as "from S1 to S14".
+  it('publishes the full S1\u2013S14 hazard taxonomy', () => {
     const codes = LLAMA_GUARD?.textClassificationControls?.labelSet.map((l) => l.code) ?? [];
-    expect(codes).toHaveLength(13);
+    expect(codes).toHaveLength(14);
     expect(codes[0]).toBe('S1');
-    expect(codes.at(-1)).toBe('S13');
+    expect(codes.at(-1)).toBe('S14');
     expect(LLAMA_GUARD?.textClassificationControls?.labelSet[9]?.name).toBe('Hate');
   });
 
-  // `S14` is a real Llama Guard category that Cloudflare's table does not cover. It is
-  // deliberately not invented here; an unrecognised code is reported as such instead.
-  it('does not invent a name for a category outside the published table', () => {
-    const codes = LLAMA_GUARD?.textClassificationControls?.labelSet.map((l) => l.code) ?? [];
-    expect(codes).not.toContain('S14');
+  // The Guardrails table stops at S13 because it documents what *Guardrails* evaluates, saying so
+  // explicitly. This panel calls the model directly, so the model's own range applies — and a
+  // visitor who sees S14 in a result deserves its published name rather than a bare code.
+  it('includes the category Guardrails does not evaluate', () => {
+    const labels = LLAMA_GUARD?.textClassificationControls?.labelSet ?? [];
+    expect(labels.find((label) => label.code === 'S14')?.name).toBe('Code Interpreter Abuse');
   });
 
   it('gives every label a distinct code', () => {
@@ -354,7 +355,42 @@ describe('building the model input', () => {
       validateClassifyTextRequest(body({ model: LLAMA_GUARD!.id, text: 'hello' }))
     );
 
-    expect(input).toEqual({ messages: [{ role: 'user', content: 'hello' }] });
+    expect(input['messages']).toEqual([{ role: 'user', content: 'hello' }]);
+  });
+
+  /**
+   * The regression test for the bug that made this model unusable on first delivery.
+   *
+   * Its output schema declares `response` as `string | { safe, categories }` without saying what
+   * selects between them, and the default is the string: asked plainly it answers "\n\nsafe".
+   * Without `response_format` every run of this model failed, because the application correctly
+   * refuses to parse a safety verdict out of prose.
+   */
+  it('asks the safety model for a structured response', () => {
+    const input = buildClassifyTextInput(
+      validateClassifyTextRequest(body({ model: LLAMA_GUARD!.id }))
+    );
+
+    expect(input['response_format']).toEqual({ type: 'json_object' });
+  });
+
+  // Declared per model rather than applied to every chat-shaped model, because sending a field a
+  // model does not declare is the kind of silent incompatibility this panel is about.
+  it('does not send a response format to a model that does not declare one', () => {
+    const input = buildClassifyTextInput(validateClassifyTextRequest(body()));
+
+    expect(input).not.toHaveProperty('response_format');
+  });
+
+  // A model needing a structured response format cannot be registered without the flag, or it
+  // would fail on every run exactly as this one did.
+  it('declares the response-format requirement for every verdict model', () => {
+    for (const model of modelsForTask('classify-text')) {
+      const controls = model.textClassificationControls;
+      if (controls?.outcomeKind === 'verdict') {
+        expect(controls.requiresJsonResponseFormat, `${model.id} asks for JSON`).toBe(true);
+      }
+    }
   });
 
   // Adding an instruction would be the caller-defined criteria this panel refuses, smuggled in by
@@ -506,7 +542,7 @@ describe('naming a reviewed label', () => {
   });
 
   it('returns the code itself for an undeclared one', () => {
-    expect(findReviewedLabelName(LLAMA_GUARD!, 'S14')).toBe('S14');
+    expect(findReviewedLabelName(LLAMA_GUARD!, 'S99')).toBe('S99');
   });
 
   // Matched exactly rather than case-insensitively, so a change in the model's own spelling

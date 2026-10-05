@@ -162,14 +162,19 @@ const SST2_LABELS: readonly ReviewedLabel[] = [
 /**
  * The Llama Guard 3 hazard taxonomy, as Cloudflare publishes it.
  *
- * Transcribed from the AI Gateway Guardrails documentation, which names the same `S1`–`S13`
- * categories this model emits and is the authoritative mapping for them. The model returns bare
- * codes, so without this list a result would read `S1` with no indication of what that means.
+ * Names transcribed from the AI Gateway Guardrails documentation, which publishes the mapping for
+ * the codes this model emits. The model returns bare codes, so without this list a result would
+ * read `S1` with no indication of what that means.
  *
- * `S14` (Code interpreter abuse) is a real Llama Guard 3 category that Cloudflare's published table
- * does not cover. It is deliberately **not invented here**: a code outside this list is reported as
- * unrecognised rather than given a name this demo made up, which is the honest response to a
- * taxonomy that has moved.
+ * `S14` is included even though that table stops at `S13`, and the two sources disagree for a
+ * reason worth knowing. The Guardrails table documents the subset _Guardrails_ evaluates, and says
+ * so explicitly: "the Llama Guard 3 category S14 (Code interpreter abuse) is not evaluated by
+ * Guardrails." The model can still emit it, and this model's own output schema confirms the range,
+ * describing the field as "hazard category classname, from S1 to S14". This panel calls the model
+ * directly rather than through Guardrails, so the model's range is the one that applies.
+ *
+ * A code outside even this list is still reported as unrecognised rather than given a name this
+ * demo invented, which is the honest response to a taxonomy that has moved again.
  *
  * These are emphatically **not** general-purpose topic labels, and the panel says so. They are the
  * categories of a content-safety model, and reading "S6 Specialized Advice" as a topic
@@ -188,7 +193,8 @@ const LLAMA_GUARD_CATEGORIES: readonly ReviewedLabel[] = [
   { code: 'S10', name: 'Hate' },
   { code: 'S11', name: 'Suicide & Self-Harm' },
   { code: 'S12', name: 'Sexual Content' },
-  { code: 'S13', name: 'Elections' }
+  { code: 'S13', name: 'Elections' },
+  { code: 'S14', name: 'Code Interpreter Abuse' }
 ];
 
 /**
@@ -1141,6 +1147,14 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       outcomeKind: 'verdict',
       // A chat model underneath, so the text travels as a single user message.
       inputShape: 'messages',
+      // **Required, and missed on the first delivery of this panel.** Its output schema declares
+      // `response` as `string | { safe, categories }` without saying what selects between them,
+      // and the default turns out to be the string: asked plainly, the model answers with the
+      // literal text "\n\nsafe". Sending `response_format: { type: 'json_object' }` — a field its
+      // input schema declares but its usage examples never show — is what produces the structured
+      // branch. Verified against the live model: without it every run of this model failed,
+      // because this application refuses to parse a safety verdict out of prose.
+      requiresJsonResponseFormat: true,
       labelSetName: 'Llama Guard 3 hazard taxonomy',
       labelSet: LLAMA_GUARD_CATEGORIES,
       // No `topK` and no `minimumConfidence`: both are meaningless without scores, and validation
