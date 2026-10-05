@@ -8,24 +8,20 @@ import {
 } from '../../../src/worker/domain/models';
 
 describe('MODEL_DESCRIPTORS', () => {
-  // A descriptor exists only for a panel that is built. Advertising a model for an unbuilt panel
-  // would promise capability the application does not have, and the selector would offer a choice
-  // that goes nowhere.
-  it('registers models only for delivered panels', () => {
-    const delivered = new Set(
-      TASK_DESCRIPTORS.filter((task) => task.availability === 'available').map((task) => task.id)
-    );
+  // A descriptor exists only for a panel in the catalogue. A model bound to an identifier no
+  // panel declares would be unreachable, and more usefully, this catches a panel renamed without
+  // its descriptors following.
+  it('registers models only against panels in the catalogue', () => {
+    const panels = new Set(TASK_DESCRIPTORS.map((task) => task.id));
     for (const model of MODEL_DESCRIPTORS) {
-      expect(delivered.has(model.task), `${model.id} belongs to an undelivered panel`).toBe(true);
+      expect(panels.has(model.task), `${model.id} belongs to no known panel`).toBe(true);
     }
   });
 
-  // Every inference panel that is built needs at least one reviewed model, or its selector is
-  // empty and the panel cannot be used at all.
-  it('gives every delivered inference panel a reviewed model', () => {
-    const inferencePanels = TASK_DESCRIPTORS.filter(
-      (task) => task.availability === 'available' && task.gateway === 'required'
-    );
+  // Every inference panel needs at least one reviewed model, or its selector is empty and the
+  // panel cannot be used at all.
+  it('gives every inference panel a reviewed model', () => {
+    const inferencePanels = TASK_DESCRIPTORS.filter((task) => task.gateway === 'required');
     for (const task of inferencePanels) {
       expect(modelsForTask(task.id).length, `${task.name} has no reviewed model`).toBeGreaterThan(
         0

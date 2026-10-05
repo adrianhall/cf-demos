@@ -329,9 +329,9 @@ describe('error responses', () => {
 
 describe('the panel catalogue', () => {
   // The browser builds its label-set disclosure, its controls, *and its choice of renderer* from
-  // this response, so the panel being marked available without reviewed models would produce an
+  // this response, so a panel listed without reviewed models would produce an
   // empty selector and no result rendering in the deployed UI.
-  it('advertises Classify Text as available with reviewed models', async () => {
+  it('advertises Classify Text with reviewed models', async () => {
     const token = await signDevJwt('alice@example.com', { audience: AUD });
     const response = await send(
       new Request('https://playground.example/api/catalogue', {
@@ -340,7 +340,11 @@ describe('the panel catalogue', () => {
     );
 
     const payload = (await response.json()) as {
-      tasks: { id: string; availability: string; gateway: string }[];
+      tasks: {
+        id: string;
+        gateway: string;
+        hosting: { cloudflare: boolean; thirdParty: boolean };
+      }[];
       models: {
         id: string;
         task: string;
@@ -360,7 +364,7 @@ describe('the panel catalogue', () => {
     };
 
     const task = payload.tasks.find((candidate) => candidate.id === 'classify-text');
-    expect(task).toMatchObject({ availability: 'available', gateway: 'required' });
+    expect(task).toMatchObject({ gateway: 'required' });
 
     const models = payload.models.filter((candidate) => candidate.task === 'classify-text');
     expect(models).toHaveLength(3);

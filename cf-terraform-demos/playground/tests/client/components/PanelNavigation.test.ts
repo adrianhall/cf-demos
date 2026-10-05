@@ -174,25 +174,70 @@ describe('PanelNavigation', () => {
     expect(names).toEqual(['Expand all groups', 'Collapse all groups']);
   });
 
-  it('has no phase label when every listed panel is delivered', () => {
-    expect(TASK_DESCRIPTORS.some((task) => task.availability === 'planned')).toBe(false);
-  });
-
-  // A delivered panel carries no phase label. Leaving one behind would make the sidebar read as if
-  // the panel were still pending while it was in fact usable.
-  it('does not label a delivered panel with a phase', () => {
+  // Replaces the three phase-pill tests. The pill was a progress indicator for a product that is
+  // now complete, and the badge slot says something permanently useful instead: who runs the
+  // models, and therefore whether the panel needs prepaid credit.
+  it('badges each panel with the provider classes behind its models', () => {
     const wrapper = mountNavigation();
-    expect(wrapper.find('a[data-task="chat"]').text()).not.toContain('Phase');
-  });
 
-  // The badge marks what is still to come. Once a panel is delivered its badge disappears, so the
-  // sidebar reads as a progress indicator rather than a permanent list of phase numbers.
-  it('badges exactly the panels that are not built yet', () => {
-    const wrapper = mountNavigation();
     for (const task of TASK_DESCRIPTORS) {
-      const badged = wrapper.find(`a[data-task="${task.id}"]`).find('.panel-badge').exists();
-      expect(badged, `${task.name} badge`).toBe(task.availability === 'planned');
+      const link = wrapper.find(`a[data-task="${task.id}"]`);
+      expect(
+        link.find('[data-hosting="cloudflare"]').exists(),
+        `${task.name} Cloudflare mark`
+      ).toBe(task.hosting.cloudflare);
+      expect(link.find('[data-hosting="third-party"]').exists(), `${task.name} 3P mark`).toBe(
+        task.hosting.thirdParty
+      );
     }
+  });
+
+  // The presenter-critical case, pinned by name rather than derived. These three panels have no
+  // Cloudflare-hosted option at all, so on an account without prepaid AI credits they do nothing
+  // — and the lone 3P mark is the only warning before a visitor tries one.
+  it('marks the credit-only panels with the third-party mark alone', () => {
+    const wrapper = mountNavigation();
+
+    for (const id of ['create-video', 'animate-image', 'generate-music']) {
+      const link = wrapper.find(`a[data-task="${id}"]`);
+      expect(link.find('[data-hosting="third-party"]').exists(), `${id} needs the 3P mark`).toBe(
+        true
+      );
+      expect(
+        link.find('[data-hosting="cloudflare"]').exists(),
+        `${id} has no hosted model, so it must not claim one`
+      ).toBe(false);
+    }
+  });
+
+  // Where both apply, both show. The pair is the information: the panel works unfunded *and* has
+  // paid options to compare against, which neither mark alone says.
+  it('shows both marks on a panel offering hosted and third-party models', () => {
+    const link = mountNavigation().find('a[data-task="remix-image"]');
+
+    expect(link.find('[data-hosting="cloudflare"]').exists()).toBe(true);
+    expect(link.find('[data-hosting="third-party"]').exists()).toBe(true);
+  });
+
+  // A bare logo and a bare "3P" glyph are both announced as nothing without a name, and a `title`
+  // alone is announced inconsistently and never reaches a touch user.
+  it('gives both marks a text alternative naming the credit consequence', () => {
+    const link = mountNavigation().find('a[data-task="remix-image"]');
+
+    expect(link.find('[data-hosting="cloudflare"]').attributes('aria-label')).toBe(
+      'Cloudflare-hosted models available'
+    );
+    expect(link.find('[data-hosting="third-party"]').attributes('aria-label')).toBe(
+      'Third-party models available, requires AI credits'
+    );
+  });
+
+  // The one panel that calls no model should claim neither provider.
+  it('badges no provider on the panel that runs no model', () => {
+    const link = mountNavigation().find('a[data-task="view-tokens"]');
+
+    expect(link.find('[data-hosting="cloudflare"]').exists()).toBe(false);
+    expect(link.find('[data-hosting="third-party"]').exists()).toBe(false);
   });
 
   // A screen-reader user navigating by landmark needs the panel list to be one, so they can skip

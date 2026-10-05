@@ -92,9 +92,7 @@ describe('privacy claims across every panel', () => {
   // Every panel that spends credit has to warn instead. The warning is the honest replacement for
   // the reassurance, so its absence would leave a visitor with neither.
   it('every inference panel warns that prompts should be assumed logged', async () => {
-    const inferenceViews = TASK_DESCRIPTORS.filter(
-      (task) => task.availability === 'available' && task.gateway === 'required'
-    );
+    const inferenceViews = TASK_DESCRIPTORS.filter((task) => task.gateway === 'required');
 
     const files = await proseFiles();
 

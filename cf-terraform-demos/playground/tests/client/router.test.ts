@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
 import { buildRoutes, createAppRouter } from '../../src/client/router';
-import PlannedPanelView from '../../src/client/views/PlannedPanelView.vue';
 import { TASK_DESCRIPTORS } from '../../src/shared/tasks';
 
 describe('buildRoutes', () => {
@@ -24,27 +23,24 @@ describe('buildRoutes', () => {
     expect(buildRoutes().map((route) => route.path)).toContain('/activity');
   });
 
-  // The sidebar promises a working panel; the router has to deliver one. Without this, marking a
-  // panel `available` in the catalogue and forgetting to register its view would produce a badge
-  // saying "ready" above a page saying "not built yet".
-  it('gives every panel marked available a view of its own', () => {
+  // Every panel in the catalogue is built, so every route must resolve to a real component. The
+  // placeholder that used to absorb a missing view is gone: a panel listed in the sidebar with no
+  // view behind it is now a defect, and this is where it surfaces. TypeScript catches the same
+  // mistake at build time via the total `Record<TaskId, …>`; this holds it at runtime too, so a
+  // route table assembled some other way cannot reintroduce the gap.
+  it('resolves every panel route to a view of its own', () => {
     const routes = buildRoutes();
+    const components = new Set<unknown>();
 
-    for (const task of TASK_DESCRIPTORS.filter((item) => item.availability === 'available')) {
+    for (const task of TASK_DESCRIPTORS) {
       const route = routes.find((candidate) => candidate.path === `/${task.id}`);
-      expect(route?.component, `${task.name} needs its own view`).not.toBe(PlannedPanelView);
+      expect(route?.component, `${task.name} needs its own view`).toBeDefined();
+      components.add(route?.component);
     }
-  });
 
-  // The other direction: a panel that is not built must still render the placeholder, so a view
-  // registered ahead of its catalogue entry cannot quietly go live.
-  it('gives every panel still planned the placeholder', () => {
-    const routes = buildRoutes();
-
-    for (const task of TASK_DESCRIPTORS.filter((item) => item.availability === 'planned')) {
-      const route = routes.find((candidate) => candidate.path === `/${task.id}`);
-      expect(route?.component, `${task.name} should still be a placeholder`).toBe(PlannedPanelView);
-    }
+    // Distinct components, which is what rules out a single shared stand-in quietly serving
+    // several panels — the exact shape the old placeholder had.
+    expect(components.size).toBe(TASK_DESCRIPTORS.length);
   });
 });
 

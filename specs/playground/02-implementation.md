@@ -2,15 +2,27 @@
 
 ## Delivery rules
 
-- The initial implementation lives at **`cf-terraform-demos/playground`** and follows [`01-specification.md`](./01-specification.md).
-- Each phase is a shippable, passing repository state. Do not begin the next phase with broken tests, unchecked generated types, unformatted files, or known exception-register drift.
-- Every inference panel must be gateway-routed from its first commit. Never add a direct `env.AI.run()` call as a temporary shortcut.
-- The entire application is authenticated from the first phase. Anyone who can authenticate through the configured Access identity provider may use it; there is no application-level email allowlist.
-- Every inference request derives the user email from the verified Access identity and includes it in AI Gateway metadata. The email must never come from a browser value, request header, or request body.
-- Each phase adds tests at the lowest suitable tier: domain validation/use-case tests, Worker route tests, Vue DOM tests, and Workers-runtime integration tests for the public surface and authorization outcomes.
-- Every phase must leave its failures diagnosable from logs alone. See [Cross-phase observability requirements](#cross-phase-observability-requirements); a phase whose panel can fail with nothing but a status code is not complete.
-- `pnpm check` and `pnpm test` pass at the end of **every** phase. Tests remain offline; no phase adds a live-inference dependency to normal tests.
-- Add a model only after confirming its current input/output contract in the unified model catalog. Pin that reviewed contract in the typed model descriptor and test it.
+- The initial implementation lives at **`cf-terraform-demos/playground`** and follows
+  [`01-specification.md`](./01-specification.md).
+- Each phase is a shippable, passing repository state. Do not begin the next phase with broken
+  tests, unchecked generated types, unformatted files, or known exception-register drift.
+- Every inference panel must be gateway-routed from its first commit. Never add a direct
+  `env.AI.run()` call as a temporary shortcut.
+- The entire application is authenticated from the first phase. Anyone who can authenticate through
+  the configured Access identity provider may use it; there is no application-level email allowlist.
+- Every inference request derives the user email from the verified Access identity and includes it
+  in AI Gateway metadata. The email must never come from a browser value, request header, or request
+  body.
+- Each phase adds tests at the lowest suitable tier: domain validation/use-case tests, Worker route
+  tests, Vue DOM tests, and Workers-runtime integration tests for the public surface and
+  authorization outcomes.
+- Every phase must leave its failures diagnosable from logs alone. See
+  [Cross-phase observability requirements](#cross-phase-observability-requirements); a phase whose
+  panel can fail with nothing but a status code is not complete.
+- `pnpm check` and `pnpm test` pass at the end of **every** phase. Tests remain offline; no phase
+  adds a live-inference dependency to normal tests.
+- Add a model only after confirming its current input/output contract in the unified model catalog.
+  Pin that reviewed contract in the typed model descriptor and test it.
 
 ## Cross-phase acceptance command set
 
@@ -21,50 +33,88 @@ pnpm check
 pnpm test
 ```
 
-`pnpm check` must stay read-only and includes TypeScript, Oxfmt check, type-aware Oxlint, generated type freshness, Terraform format/validation, descriptor validation, and AI Gateway exception-register consistency. `pnpm test` includes domain, Worker, client, and Workers-runtime integration suites as applicable to the completed phase.
+`pnpm check` must stay read-only and includes TypeScript, Oxfmt check, type-aware Oxlint, generated
+type freshness, Terraform format/validation, descriptor validation, and AI Gateway
+exception-register consistency. `pnpm test` includes domain, Worker, client, and Workers-runtime
+integration suites as applicable to the completed phase.
 
-A phase may add focused commands such as `pnpm test -- --project client`, but those are diagnostic aids, not substitutes for the full commands above.
+A phase may add focused commands such as `pnpm test -- --project client`, but those are diagnostic
+aids, not substitutes for the full commands above.
 
 ## Cross-phase observability requirements
 
-These apply to **every** phase that adds an inference panel, a job, or any other operation that can fail. They exist because of a concrete incident in Phase 4: a deployed Create Image request failed with a `502`, and the logs could not say why, which request it was, or whether the provider had even been reached. The central inference client had caught the provider's error with a bare `catch {}` and thrown a sanitised one, discarding the only description of the fault. The fault itself turned out to be transient — but it was undiagnosable, and that was the real defect.
+These apply to **every** phase that adds an inference panel, a job, or any other operation that can
+fail. They exist because of a concrete incident in Phase 4: a deployed Create Image request failed
+with a `502`, and the logs could not say why, which request it was, or whether the provider had even
+been reached. The central inference client had caught the provider's error with a bare `catch {}`
+and thrown a sanitised one, discarding the only description of the fault. The fault itself turned
+out to be transient — but it was undiagnosable, and that was the real defect.
 
-The rules below are the generalisation of that fix. A panel is not finished when it works; it is finished when its failure can be understood by someone reading the logs a week later.
+The rules below are the generalisation of that fix. A panel is not finished when it works; it is
+finished when its failure can be understood by someone reading the logs a week later.
 
 ### Correlation
 
-- Every operation carries the browser-generated **run ID** through every log line it produces, in the Worker and in AI Gateway metadata alike. One search on a run ID must return the whole story of that request.
-- Where a gateway log ID exists, record it. It is the only thread between a Worker log line and the AI Gateway dashboard entry, and **its absence is itself a finding**: the request never reached the gateway.
-- Two requests that look identical in an access log must be distinguishable in the structured logs by their run ID and their parameters.
+- Every operation carries the browser-generated **run ID** through every log line it produces, in
+  the Worker and in AI Gateway metadata alike. One search on a run ID must return the whole story of
+  that request.
+- Where a gateway log ID exists, record it. It is the only thread between a Worker log line and the
+  AI Gateway dashboard entry, and **its absence is itself a finding**: the request never reached the
+  gateway.
+- Two requests that look identical in an access log must be distinguishable in the structured logs
+  by their run ID and their parameters.
 
 ### Log an attempt before it can fail
 
-- Write a `<task>_run_started` line **before** calling the model, not only on completion. A request that fails inside the provider, times out, or is cancelled mid-flight must still leave a record of what it attempted — that is precisely the case where the parameters matter most.
-- Record the **shape** of the request: the model, the contract version, the exact parameter names sent, and the values of bounded controls (steps, dimensions, guidance, seed, temperature). The most common integration failure is sending a model a parameter its schema does not accept, and a list of the keys that actually went on the wire diagnoses it in one line.
-- Record text and binary inputs as **lengths or byte counts**, never content. "48 characters" distinguishes a real request from an empty one without retaining the visitor's prompt.
+- Write a `<task>_run_started` line **before** calling the model, not only on completion. A request
+  that fails inside the provider, times out, or is cancelled mid-flight must still leave a record of
+  what it attempted — that is precisely the case where the parameters matter most.
+- Record the **shape** of the request: the model, the contract version, the exact parameter names
+  sent, and the values of bounded controls (steps, dimensions, guidance, seed, temperature). The
+  most common integration failure is sending a model a parameter its schema does not accept, and a
+  list of the keys that actually went on the wire diagnoses it in one line.
+- Record text and binary inputs as **lengths or byte counts**, never content. "48 characters"
+  distinguishes a real request from an empty one without retaining the visitor's prompt.
 
 ### Never discard a cause
 
-- A `try` around a provider call must bind its error (`catch (cause)`) and log it. Sanitising the message for the browser is required; discarding it is a defect. Both are needed, and neither substitutes for the other.
-- Log the error's type, message, and one level of wrapped `cause`. Coerce an unknown thrown value readably — `String(someObject)` yields `[object Object]`, which occupies a log line while saying nothing.
-- Distinguish **our** refusal from **their** failure. When validation rejects a provider's output, say so with a reason code and a description of what arrived; a rejected payload and an upstream error are both a `502` to the browser but have entirely different fixes.
-- An expected-empty result still deserves a line when it may indicate a fault. A gateway log that has not propagated is routine, but a permanently unresolvable one is the cause of a run stuck forever at "cost pending".
+- A `try` around a provider call must bind its error (`catch (cause)`) and log it. Sanitising the
+  message for the browser is required; discarding it is a defect. Both are needed, and neither
+  substitutes for the other.
+- Log the error's type, message, and one level of wrapped `cause`. Coerce an unknown thrown value
+  readably — `String(someObject)` yields `[object Object]`, which occupies a log line while saying
+  nothing.
+- Distinguish **our** refusal from **their** failure. When validation rejects a provider's output,
+  say so with a reason code and a description of what arrived; a rejected payload and an upstream
+  error are both a `502` to the browser but have entirely different fixes.
+- An expected-empty result still deserves a line when it may indicate a fault. A gateway log that
+  has not propagated is routine, but a permanently unresolvable one is the cause of a run stuck
+  forever at "cost pending".
 
 ### What must never be logged
 
 - No prompt text, generated media, transcript, model output, or raw file name.
-- **Not the verified email.** It belongs in AI Gateway metadata only, which is a different retention domain with different access control.
-- A new panel's log lines must be checked against both rules, and the check belongs in that phase's tests rather than in review.
+- **Not the verified email.** It belongs in AI Gateway metadata only, which is a different retention
+  domain with different access control.
+- A new panel's log lines must be checked against both rules, and the check belongs in that phase's
+  tests rather than in review.
 
 ### Tests each phase must include
 
-- Assertions that a provider failure logs the provider's own message, the run ID, the model, and the parameter names.
-- Assertions that no log line contains the prompt or the verified email — written as "must not contain", since that is the direction that silently rots.
-- An architecture guard that fails the build if a `try` wrapping a provider call swallows its cause, and if the composition root stops supplying a logger to a client or service that needs one.
+- Assertions that a provider failure logs the provider's own message, the run ID, the model, and the
+  parameter names.
+- Assertions that no log line contains the prompt or the verified email — written as "must not
+  contain", since that is the direction that silently rots.
+- An architecture guard that fails the build if a `try` wrapping a provider call swallows its cause,
+  and if the composition root stops supplying a logger to a client or service that needs one.
 
 ### Deployment reality check
 
-Offline tests cannot prove observability is wired correctly, because a test double never produces the error a real provider does. Each phase's exit criteria therefore include **one real deployed request per new panel**, confirming that a success and an induced failure both produce the expected correlated log lines. A panel whose logging has only ever been exercised against a fake is unverified.
+Offline tests cannot prove observability is wired correctly, because a test double never produces
+the error a real provider does. Each phase's exit criteria therefore include **one real deployed
+request per new panel**, confirming that a success and an induced failure both produce the expected
+correlated log lines. A panel whose logging has only ever been exercised against a fake is
+unverified.
 
 ---
 
@@ -72,19 +122,28 @@ Offline tests cannot prove observability is wired correctly, because a test doub
 
 ### Goal
 
-Create the deployable application shell, Terraform lifecycle, authenticated Worker API, model/task catalogue, mandatory AI Gateway foundation, and test harness. The product is not yet useful as an AI playground; View Tokens in Phase 2 is the first usable capability.
+Create the deployable application shell, Terraform lifecycle, authenticated Worker API, model/task
+catalogue, mandatory AI Gateway foundation, and test harness. The product is not yet useful as an AI
+playground; View Tokens in Phase 2 is the first usable capability.
 
 ### Deliverables
 
 1. Create `cf-terraform-demos/playground` as a pnpm workspace package.
-2. Configure Vue 3, Vite, TypeScript, Hono, the Cloudflare Vite plugin/`cf` CLI workflow, Vitest, Vue Test Utils, Workers runtime testing, Oxfmt, and type-aware Oxlint in line with sibling demo conventions.
-3. Add `cloudflare.config.ts`, committed `infra/local-outputs.json`, type generation, and `.cloudflare` ignore rules.
+2. Configure Vue 3, Vite, TypeScript, Hono, the Cloudflare Vite plugin/`cf` CLI workflow, Vitest,
+   Vue Test Utils, Workers runtime testing, Oxfmt, and type-aware Oxlint in line with sibling demo
+   conventions.
+3. Add `cloudflare.config.ts`, committed `infra/local-outputs.json`, type generation, and
+   `.cloudflare` ignore rules.
 4. Add Terraform:
    - `providers.tf` sourcing only the repository-root `.env`;
-   - `playground.tf` registering the Worker, stable bootstrap version/deployment, hostname, and `cloudflare_ai_gateway`;
+   - `playground.tf` registering the Worker, stable bootstrap version/deployment, hostname, and
+     `cloudflare_ai_gateway`;
    - `access.tf` for the Access application/policy;
    - `outputs.tf` exposing documented scalar worker/gateway/audience values.
-5. Configure AI Gateway deliberately: named gateway ID, metadata logging, no raw payload retention by default, explicit cache/rate limit/log-management fields, and no implicit `default` gateway. The metadata contract must include the verified authenticated user's email for every inference request.
+5. Configure AI Gateway deliberately: named gateway ID, metadata logging, no raw payload retention
+   by default, explicit cache/rate limit/log-management fields, and no implicit `default` gateway.
+   The metadata contract must include the verified authenticated user's email for every inference
+   request.
 6. Implement Access locally and in production with `@demos/worker-common`:
    - shared policy builder;
    - `createAccessMiddleware` in Hono;
@@ -99,26 +158,45 @@ Create the deployable application shell, Terraform lifecycle, authenticated Work
    - current verified identity and Sign out control;
    - a session cost meter in an empty, explicit `No inference runs yet` state;
    - Activity / Gateway screen and privacy-safe gateway explanation.
-8. Create all shared contracts: `TaskId`, `ModelDescriptor`, `RunReceipt`, `GatewayRequestMetric`, `SessionCostLedger`, `InferencePort`, `RunRepositoryPort`, `GatewayException`, and RFC 9457 application errors.
-9. Implement the central `src/worker/infrastructure/ai/gateway-inference-client.ts` skeleton and its test double. Its signature requires a verified identity, so a caller cannot build an inference request without one. No feature invokes it yet.
-10. Commit `AI-GATEWAY-EXCEPTIONS.md` stating that the register is empty; add a typed empty exception list and a consistency-check script.
-11. Add baseline README sections: prerequisites, local workflow, deployment/teardown, gateway policy, privacy/cost policy, and a table marking all panels as planned except View Tokens in the next phase.
+8. Create all shared contracts: `TaskId`, `ModelDescriptor`, `RunReceipt`, `GatewayRequestMetric`,
+   `SessionCostLedger`, `InferencePort`, `RunRepositoryPort`, `GatewayException`, and RFC 9457
+   application errors.
+9. Implement the central `src/worker/infrastructure/ai/gateway-inference-client.ts` skeleton and its
+   test double. Its signature requires a verified identity, so a caller cannot build an inference
+   request without one. No feature invokes it yet.
+10. Commit `AI-GATEWAY-EXCEPTIONS.md` stating that the register is empty; add a typed empty
+    exception list and a consistency-check script.
+11. Add baseline README sections: prerequisites, local workflow, deployment/teardown, gateway
+    policy, privacy/cost policy, and a table marking all panels as planned except View Tokens in the
+    next phase.
 
 ### Tests introduced
 
-- **Domain:** task/model descriptor integrity; every panel has a unique route and descriptor; all inference task descriptors declare `gateway: required`; View Tokens declares `noInference`.
-- **Infrastructure/config:** parsed Terraform/config assertions for named AI Gateway output, Access audience output, and matching binding/config names.
-- **Worker unit:** `/api/me` Access success/failure; `/api/catalogue` does not disclose secrets; unknown `/api` routes are problem details. Keep the handlers in `src/worker/routes/` and shared middleware in `src/worker/middleware/`, matching the other `cf-terraform-demos`.
-- **Client DOM:** all sidebar destinations render; group headings are not controls; navigating changes the route; placeholders are accessible; cost meter starts empty.
-- **Architecture guard:** only the central gateway client may import/reference `env.AI.run`; no exception annotations exist while the register is empty.
-- **Gateway metadata contract:** the metadata builder always emits task, opaque run ID, and the verified email; it rejects a missing identity rather than sending an anonymous request, and it ignores any email supplied in a header or body.
-- **Workers runtime integration:** unauthenticated request denied, valid local Access identity accepted from more than one test identity, intended audience enforced, and `/api/catalogue` has the expected safe shape. Set a finite project timeout.
+- **Domain:** task/model descriptor integrity; every panel has a unique route and descriptor; all
+  inference task descriptors declare `gateway: required`; View Tokens declares `noInference`.
+- **Infrastructure/config:** parsed Terraform/config assertions for named AI Gateway output, Access
+  audience output, and matching binding/config names.
+- **Worker unit:** `/api/me` Access success/failure; `/api/catalogue` does not disclose secrets;
+  unknown `/api` routes are problem details. Keep the handlers in `src/worker/routes/` and shared
+  middleware in `src/worker/middleware/`, matching the other `cf-terraform-demos`.
+- **Client DOM:** all sidebar destinations render; group headings are not controls; navigating
+  changes the route; placeholders are accessible; cost meter starts empty.
+- **Architecture guard:** only the central gateway client may import/reference `env.AI.run`; no
+  exception annotations exist while the register is empty.
+- **Gateway metadata contract:** the metadata builder always emits task, opaque run ID, and the
+  verified email; it rejects a missing identity rather than sending an anonymous request, and it
+  ignores any email supplied in a header or body.
+- **Workers runtime integration:** unauthenticated request denied, valid local Access identity
+  accepted from more than one test identity, intended audience enforced, and `/api/catalogue` has
+  the expected safe shape. Set a finite project timeout.
 
 ### Exit criteria
 
 - `pnpm start` shows the authenticated, responsive shell with all flat panel destinations.
-- Any identity the configured provider accepts can sign in, and the shell shows that verified identity.
-- `pnpm deploy` provisions the named gateway and protected Worker; `pnpm teardown` deletes Worker code before Terraform destroys infrastructure.
+- Any identity the configured provider accepts can sign in, and the shell shows that verified
+  identity.
+- `pnpm deploy` provisions the named gateway and protected Worker; `pnpm teardown` deletes Worker
+  code before Terraform destroys infrastructure.
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -127,12 +205,15 @@ Create the deployable application shell, Terraform lifecycle, authenticated Work
 
 ### Goal
 
-Deliver **View Tokens**, the first fully usable Playground capability. It performs local tokenization only: no model inference, gateway log, or cost is created.
+Deliver **View Tokens**, the first fully usable Playground capability. It performs local
+tokenization only: no model inference, gateway log, or cost is created.
 
 ### Deliverables
 
-1. Add an in-browser tokenizer adapter with a narrow `TokenizerPort`, lazy-loaded to avoid taxing the initial shell bundle.
-2. Define supported tokenizer descriptors and their relationship to panel model descriptors. Clearly mark estimates where an exact tokenizer is unavailable.
+1. Add an in-browser tokenizer adapter with a narrow `TokenizerPort`, lazy-loaded to avoid taxing
+   the initial shell bundle.
+2. Define supported tokenizer descriptors and their relationship to panel model descriptors. Clearly
+   mark estimates where an exact tokenizer is unavailable.
 3. Implement the View Tokens feature as focused components:
    - prompt input and prepared examples;
    - tokenizer selector;
@@ -141,21 +222,30 @@ Deliver **View Tokens**, the first fully usable Playground capability. It perfor
    - optional context-window proportion;
    - token table with index, escaped text, and ID;
    - visible-whitespace and special-token toggles.
-4. Preserve selectable original text. Token boundaries use spacing/outline as well as colour, and each token receives an accessible label.
-5. Add a safe long-input policy: debounce typing, cap/virtualize token box rendering, and show a clear truncation notice.
-6. State in the panel and documentation that tokenization is local computation, not inference; it contributes neither a run nor cost.
+4. Preserve selectable original text. Token boundaries use spacing/outline as well as colour, and
+   each token receives an accessible label.
+5. Add a safe long-input policy: debounce typing, cap/virtualize token box rendering, and show a
+   clear truncation notice.
+6. State in the panel and documentation that tokenization is local computation, not inference; it
+   contributes neither a run nor cost.
 7. Add the first actual “usable now” status to the README and Overview.
 
 ### Tests introduced
 
-- **Domain/unit:** tokenizer normalization, exact reconstruction of original input, whitespace/newline rendering, special-token handling, count/context calculations, and tokenizer-approximation labels.
-- **Client DOM:** debounced token rendering; keyboard focus/accessible labels; toggles; prepared examples; text selection-friendly markup; long-input notice; no network request for typing.
-- **Worker:** no inference route is added; a regression test confirms View Tokens is absent from gateway task dispatch.
-- **Architecture:** View Tokens does not create a `RunReceipt`, mutate session cost totals, or create an exception-register entry.
+- **Domain/unit:** tokenizer normalization, exact reconstruction of original input,
+  whitespace/newline rendering, special-token handling, count/context calculations, and
+  tokenizer-approximation labels.
+- **Client DOM:** debounced token rendering; keyboard focus/accessible labels; toggles; prepared
+  examples; text selection-friendly markup; long-input notice; no network request for typing.
+- **Worker:** no inference route is added; a regression test confirms View Tokens is absent from
+  gateway task dispatch.
+- **Architecture:** View Tokens does not create a `RunReceipt`, mutate session cost totals, or
+  create an exception-register entry.
 
 ### Exit criteria
 
-- A visitor can type/paste text and immediately understand its token boundaries, including visible whitespace and IDs.
+- A visitor can type/paste text and immediately understand its token boundaries, including visible
+  whitespace and IDs.
 - The panel is fully keyboard usable and works with network inference deliberately unavailable.
 - `pnpm check` and `pnpm test` pass.
 
@@ -165,31 +255,46 @@ Deliver **View Tokens**, the first fully usable Playground capability. It perfor
 
 ### Goal
 
-Deliver gateway-routed single-turn/short-history **Chat** with streaming output and the first real cost-bearing run.
+Deliver gateway-routed single-turn/short-history **Chat** with streaming output and the first real
+cost-bearing run.
 
 ### Deliverables
 
 1. Add reviewed text-generation descriptors and a task-specific request schema.
-2. Implement Chat application use case via `InferencePort`; add a task route and SSE stream route with typed start/delta/completed/problem events.
-3. Capture the AI Gateway log ID after stream completion and expose the run receipt/metrics lifecycle.
-4. Implement `GET /api/runs/:runId/metrics` with bounded log propagation retry and an ownership check that compares the run's recorded identity against the current verified identity.
-5. Implement the client `useRun`/`useChat` composables, stream cancellation, late-event protection, Run Details, local history, and session cost meter updates.
+2. Implement Chat application use case via `InferencePort`; add a task route and SSE stream route
+   with typed start/delta/completed/problem events.
+3. Capture the AI Gateway log ID after stream completion and expose the run receipt/metrics
+   lifecycle.
+4. Implement `GET /api/runs/:runId/metrics` with bounded log propagation retry and an ownership
+   check that compares the run's recorded identity against the current verified identity.
+5. Implement the client `useRun`/`useChat` composables, stream cancellation, late-event protection,
+   Run Details, local history, and session cost meter updates.
 6. Add Chat ↔ View Tokens handoffs.
 
 ### Tests introduced
 
-- **Domain:** prompt/options validation, gateway options always present, stream terminal-state transition, metrics aggregation.
-- **Worker:** SSE event order, Access/authz, request body limit, gateway error mapped to problem details, metrics pending/available/unavailable states.
-- **Gateway metadata:** the first real inference carries the signed-in user's verified email; a spoofed email in the request body or a header is ignored; a second identity produces different metadata for the same prompt.
-- **Ownership:** one identity cannot read another identity's run or run metrics, and that denial is a problem-details response rather than an empty result.
-- **Client:** streamed text rendering, Cancel, final receipt handling, cost pending state, cost update, and handoff to View Tokens.
-- **Integration:** authenticated streaming route; no raw prompt and no email in structured logs; mock gateway log resolves on retry.
+- **Domain:** prompt/options validation, gateway options always present, stream terminal-state
+  transition, metrics aggregation.
+- **Worker:** SSE event order, Access/authz, request body limit, gateway error mapped to problem
+  details, metrics pending/available/unavailable states.
+- **Gateway metadata:** the first real inference carries the signed-in user's verified email; a
+  spoofed email in the request body or a header is ignored; a second identity produces different
+  metadata for the same prompt.
+- **Ownership:** one identity cannot read another identity's run or run metrics, and that denial is
+  a problem-details response rather than an empty result.
+- **Client:** streamed text rendering, Cancel, final receipt handling, cost pending state, cost
+  update, and handoff to View Tokens.
+- **Integration:** authenticated streaming route; no raw prompt and no email in structured logs;
+  mock gateway log resolves on retry.
 
 ### Exit criteria
 
-- Chat visibly streams and later displays its AI Gateway log ID and reported cost without blocking the answer.
-- Repeating an eligible prompt can visibly show the gateway cache result when the provider/model supports it.
-- The AI Gateway log for a Chat run is attributable to the signed-in user, and the demo discloses that attribution before the first request.
+- Chat visibly streams and later displays its AI Gateway log ID and reported cost without blocking
+  the answer.
+- Repeating an eligible prompt can visibly show the gateway cache result when the provider/model
+  supports it.
+- The AI Gateway log for a Chat run is attributable to the signed-in user, and the demo discloses
+  that attribution before the first request.
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -198,13 +303,16 @@ Deliver gateway-routed single-turn/short-history **Chat** with streaming output 
 
 ### Goal
 
-Deliver **Create Image** with reviewed text-to-image models, parameter-aware form controls, safe binary/media handling, and cost display.
+Deliver **Create Image** with reviewed text-to-image models, parameter-aware form controls, safe
+binary/media handling, and cost display.
 
 ### Deliverables
 
 - Add text-to-image descriptors, validation, and gateway-backed use case.
-- Implement prompt, optional negative prompt, supported size/aspect/seed/steps controls, examples, gallery, result metadata, and download.
-- Validate/render returned image bytes or provider URL safely; never trust a declared browser content type alone.
+- Implement prompt, optional negative prompt, supported size/aspect/seed/steps controls, examples,
+  gallery, result metadata, and download.
+- Validate/render returned image bytes or provider URL safely; never trust a declared browser
+  content type alone.
 - Add Create Image run details and history comparison.
 
 ### Tests introduced
@@ -216,7 +324,8 @@ Deliver **Create Image** with reviewed text-to-image models, parameter-aware for
 
 ### Exit criteria
 
-- A generated image is rendered with accessible fallback/description, model metadata, and a cost-bearing run receipt.
+- A generated image is rendered with accessible fallback/description, model metadata, and a
+  cost-bearing run receipt.
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -237,14 +346,19 @@ Deliver **Describe Image** for image-to-text/vision models.
 ### Tests introduced
 
 - Image validation rejects malformed, oversized, unsupported, and mismatched-signature files.
-- Worker maps image plus instruction to the vision task only; arbitrary URL input is rejected until an SSRF-safe URL design exists.
+- Worker maps image plus instruction to the vision task only; arbitrary URL input is rejected until
+  an SSRF-safe URL design exists.
 - Client paste/upload preview, accessible image labelling, handoff, and result states.
 - Integration auth and body-size-limit cases.
 
 ### Exit criteria
 
-- A visitor can upload an image or hand off one generated in-app and receive a gateway-routed description with run cost.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- A visitor can upload an image or hand off one generated in-app and receive a gateway-routed
+  description with run cost.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
+  own cause on failure, correlates every line by run ID, and logs neither prompt content nor the
+  verified email. Verified with one real deployed request per new panel. See
+  [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -257,22 +371,33 @@ Deliver **Remix Image** for image-to-image transformation.
 
 ### Deliverables
 
-- Add reviewed whole-image reference-editing descriptors for Cloudflare-hosted FLUX.2 Klein 4B (the default), Klein 9B, and Dev, plus P-Image-Edit and Nano Banana 2, with explicit per-model request/output adapters and only declared controls. Do not approximate this task with an inpainting model and a generated full-image mask.
+- Add reviewed whole-image reference-editing descriptors for Cloudflare-hosted FLUX.2 Klein 4B (the
+  default), Klein 9B, and Dev, plus P-Image-Edit and Nano Banana 2, with explicit per-model
+  request/output adapters and only declared controls. Do not approximate this task with an
+  inpainting model and a generated full-image mask.
 - Reuse validated image intake without coupling feature presentation components.
-- Retrieve provider-hosted output immediately through a strict HTTPS origin, redirect, byte-limit, and signature policy; keep the returned media transient.
-- Render source/result with accessible before/after comparison that also works without drag gestures.
+- Retrieve provider-hosted output immediately through a strict HTTPS origin, redirect, byte-limit,
+  and signature policy; keep the returned media transient.
+- Render source/result with accessible before/after comparison that also works without drag
+  gestures.
 - Offer Create Image → Remix Image handoff.
 
 ### Tests introduced
 
-- Input/instruction/seed validation, retired-inpainting-field rejection, and descriptor-specific control restriction.
-- Worker task routing, FLUX reference-image request mapping, and safe provider-URL media normalisation.
+- Input/instruction/seed validation, retired-inpainting-field rejection, and descriptor-specific
+  control restriction.
+- Worker task routing, FLUX reference-image request mapping, and safe provider-URL media
+  normalisation.
 - Client before/after keyboard controls, fallback two-image layout, and handoff flow.
 
 ### Exit criteria
 
-- A user can safely submit a source image plus supported transformation controls and compare result/cost.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- A user can safely submit a source image plus supported transformation controls and compare
+  result/cost.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
+  own cause on failure, correlates every line by run ID, and logs neither prompt content nor the
+  verified email. Verified with one real deployed request per new panel. See
+  [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -285,24 +410,44 @@ Deliver **Classify Image** with structured top-k results.
 
 ### Deliverables
 
-- Add a reviewed image-classification descriptor for Cloudflare-hosted ResNet-50, with top-k and confidence-threshold validation. Because its schema accepts the image and nothing else, declare the result controls as applied by the application rather than by the model, and never forward them as request fields.
-- Rank, filter, and truncate the response in the domain layer so every transport applies the same rules; apply the floor before the limit and break score ties deterministically. Do not rescale the surviving scores.
-- Render ranked labels as an accessible table with the score present as text and the bar as `aria-hidden` decoration, beside the original image, with the structured response behind a collapsed disclosure.
-- Clearly explain that a score is model output describing resemblance to training data — not the probability a label is correct, and not evidence that the right category exists in the model's label set — and distinguish it from a generative answer. Reject a generative request field rather than ignoring it.
+- Add a reviewed image-classification descriptor for Cloudflare-hosted ResNet-50, with top-k and
+  confidence-threshold validation. Because its schema accepts the image and nothing else, declare
+  the result controls as applied by the application rather than by the model, and never forward them
+  as request fields.
+- Rank, filter, and truncate the response in the domain layer so every transport applies the same
+  rules; apply the floor before the limit and break score ties deterministically. Do not rescale the
+  surviving scores.
+- Render ranked labels as an accessible table with the score present as text and the bar as
+  `aria-hidden` decoration, beside the original image, with the structured response behind a
+  collapsed disclosure.
+- Clearly explain that a score is model output describing resemblance to training data — not the
+  probability a label is correct, and not evidence that the right category exists in the model's
+  label set — and distinguish it from a generative answer. Reject a generative request field rather
+  than ignoring it.
 - Treat an empty ranking as a successful run whose floor hid everything, and say so.
-- Promote the shared image picker and prepared-image helpers out of the Describe Image feature folder so a third panel can reuse them without importing another panel's presentation.
+- Promote the shared image picker and prepared-image helpers out of the Describe Image feature
+  folder so a third panel can reuse them without importing another panel's presentation.
 
 ### Tests introduced
 
-- Structured classifier response normalization, including a non-array output, a malformed element, and a score outside 0–1; and ordering/threshold edge cases, including ties, an inclusive floor, floor-before-limit, and an empty ranking.
-- Client confidence-bar semantics, the table alternative, and a guard asserting that removing every bar loses no information.
-- Worker rejects classification options unsupported by the selected model, and rejects a generative field with an explanation.
-- An architecture guard failing the build if any panel describes a score as the probability that a label is correct.
+- Structured classifier response normalization, including a non-array output, a malformed element,
+  and a score outside 0–1; and ordering/threshold edge cases, including ties, an inclusive floor,
+  floor-before-limit, and an empty ranking.
+- Client confidence-bar semantics, the table alternative, and a guard asserting that removing every
+  bar loses no information.
+- Worker rejects classification options unsupported by the selected model, and rejects a generative
+  field with an explanation.
+- An architecture guard failing the build if any panel describes a score as the probability that a
+  label is correct.
 
 ### Exit criteria
 
-- Results are accessible, ordered, and understandable without relying on bar colour alone; runs show gateway metrics/cost.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- Results are accessible, ordered, and understandable without relying on bar colour alone; runs show
+  gateway metrics/cost.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
+  own cause on failure, correlates every line by run ID, and logs neither prompt content nor the
+  verified email. Verified with one real deployed request per new panel. See
+  [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -340,10 +485,10 @@ around a provider job ID that does not exist. Confirm this again before implemen
 **Finding 3 — the generation outlives the browser, not the Worker.** An HTTP-triggered Worker has
 **no wall-clock duration limit** while the client stays connected, so a multi-minute inference call
 fits inside a request. The constraint is the other end: when the client disconnects, tasks
-associated with that request may be cancelled, and `ctx.waitUntil()` extends execution by only
-about 30 seconds. A visitor who closes the tab during a two-minute render would be **billed for a
-video that is then discarded** — and a panel whose whole purpose is teaching honest cost cannot
-have that failure mode. This, and not a Worker timeout, is the justification for durable execution.
+associated with that request may be cancelled, and `ctx.waitUntil()` extends execution by only about
+30 seconds. A visitor who closes the tab during a two-minute render would be **billed for a video
+that is then discarded** — and a panel whose whole purpose is teaching honest cost cannot have that
+failure mode. This, and not a Worker timeout, is the justification for durable execution.
 
 **Finding 4 — video needs ranged reads, and base64-in-JSON cannot provide them.** Every earlier
 panel returns media as base64 inside a JSON body, which works because an image is displayed all at
@@ -371,7 +516,7 @@ decision with its own justification.
 **Finding 7 — ownership can be proven without a job table.** The status route still has to refuse
 another visitor's job, which normally argues for storing an owner alongside the job. Instead, derive
 the Workflow instance ID from a keyed hash of the verified email and the browser-generated run ID.
-The status route recomputes the ID from the *current* verified identity and the requested run ID, so
+The status route recomputes the ID from the _current_ verified identity and the requested run ID, so
 a different identity necessarily computes a different ID and sees a `404`. Ownership becomes
 unforgeable and unenumerable with no stored mapping, which is what keeps Finding 6 true.
 
@@ -381,26 +526,26 @@ policy would silently multiply the charge for a transient provider fault. **The 
 step must be configured with no retries;** only the subsequent fetch-and-store step, which is cheap
 and idempotent, may retry.
 
-**Finding 8a — a Workflow boundary destroys a `ProblemDetailsError`.** Found during
-implementation, and worth recording because it silently defeats the error handling every earlier
-panel relies on. A Workflow records a thrown error as `{ name, message }` only, so the
-`problemDetails` payload — the status and the visitor-facing detail — is dropped on the way out of a
-step. The first symptom was an account with no AI Gateway credit producing an unexplained "unexpected
-error" in the UI: the one failure a visitor can actually resolve, reported as the one thing they
-cannot act on. **Classify the cause inside the step, before it crosses the boundary,** and carry the
-classification as a fixed, content-free marker token; a route must never infer a cause from a
-provider's own message. Any later phase putting an inference call inside a Workflow inherits this.
+**Finding 8a — a Workflow boundary destroys a `ProblemDetailsError`.** Found during implementation,
+and worth recording because it silently defeats the error handling every earlier panel relies on. A
+Workflow records a thrown error as `{ name, message }` only, so the `problemDetails` payload — the
+status and the visitor-facing detail — is dropped on the way out of a step. The first symptom was an
+account with no AI Gateway credit producing an unexplained "unexpected error" in the UI: the one
+failure a visitor can actually resolve, reported as the one thing they cannot act on. **Classify the
+cause inside the step, before it crosses the boundary,** and carry the classification as a fixed,
+content-free marker token; a route must never infer a cause from a provider's own message. Any later
+phase putting an inference call inside a Workflow inherits this.
 
 **Finding 7a — the platform logs the derived instance ID, so the derivation is also a privacy
 decision.** Confirmed in deployed logs after implementation. Every Workflow log line carries
-`$workers.instanceId` automatically, and that value *is* the keyed HMAC of the verified email. This
-demo's own log fields are clean — no email, prompt, or object key — but the platform's metadata
-is not, and no application code can suppress it.
+`$workers.instanceId` automatically, and that value _is_ the keyed HMAC of the verified email. This
+demo's own log fields are clean — no email, prompt, or object key — but the platform's metadata is
+not, and no application code can suppress it.
 
 The exposure is small and worth stating precisely rather than overstating: the digest is keyed by a
 secret the visitor cannot read, so it is not reversible to an email, and anyone able to read Worker
 logs can already read the account's AI Gateway metadata, where the email is recorded deliberately.
-It is nonetheless a *stable per-visitor-per-run identifier* in a retention domain the demo claims
+It is nonetheless a _stable per-visitor-per-run identifier_ in a retention domain the demo claims
 holds nothing identifying, so the README's claim must be narrowed to "this application logs no
 identifying field" rather than implying the log as a whole contains none. **Phase 18 should decide
 whether to keep the derivation as the instance ID or move to an opaque random ID with the ownership
@@ -408,24 +553,23 @@ mapping stored** — the latter trades Finding 6's no-second-store property for 
 is a real trade rather than an obvious improvement.
 
 **Resolved in phase 18: the derivation stays.** Examining it closely narrowed the exposure below
-what this finding assumed. The digest is keyed over the email *and* the run identifier together,
-so it is **per run, not per visitor**: two runs by the same person produce unrelated values that
-cannot be grouped, counted, or linked to each other. What reaches the log is functionally an
-opaque per-run token that happens to be derived rather than randomly generated, and it is not
-reversible to an address because the key is one a visitor cannot read. The phrase
-"per-visitor-per-run identifier" above overstates it — there is no per-visitor component to
-recover.
+what this finding assumed. The digest is keyed over the email _and_ the run identifier together, so
+it is **per run, not per visitor**: two runs by the same person produce unrelated values that cannot
+be grouped, counted, or linked to each other. What reaches the log is functionally an opaque per-run
+token that happens to be derived rather than randomly generated, and it is not reversible to an
+address because the key is one a visitor cannot read. The phrase "per-visitor-per-run identifier"
+above overstates it — there is no per-visitor component to recover.
 
 The alternative would mean adding a KV namespace or D1 table purely to hold an ownership mapping,
-re-introducing exactly the second source of truth for job state that Finding 6 ruled out. That is
-a real regression for a marginal gain. The residual risk is that someone who can already read
-Worker logs *and* holds the Access audience tag could confirm a guessed email; that same person
-can read the account's AI Gateway metadata, where the email is recorded deliberately.
+re-introducing exactly the second source of truth for job state that Finding 6 ruled out. That is a
+real regression for a marginal gain. The residual risk is that someone who can already read Worker
+logs _and_ holds the Access audience tag could confirm a guessed email; that same person can read
+the account's AI Gateway metadata, where the email is recorded deliberately.
 
-The README's claim is narrowed as this finding requires, and the per-run property is now asserted
-in `tests/worker/domain/media-job-identity.test.ts` rather than left in prose — a future change
-keying on the email alone would pass every ownership test while turning each log line into a
-stable per-visitor identifier, which is the outcome this decision rejects.
+The README's claim is narrowed as this finding requires, and the per-run property is now asserted in
+`tests/worker/domain/media-job-identity.test.ts` rather than left in prose — a future change keying
+on the email alone would pass every ownership test while turning each log line into a stable
+per-visitor identifier, which is the outcome this decision rejects.
 
 **Finding 9 — this panel can bill several dollars per click.** Pricing is per second of output and
 varies sharply by resolution: `hh1-t2v` is $0.28/s at 1080p, so a 15-second render is **$4.20**,
@@ -438,10 +582,10 @@ prepaid AI Gateway credit prerequisite already disclosed by Remix Image.
 examined directly, because an image-upload path that shares the video storage would be an appealing
 simplification. It is a false economy. The 1 MB image-input cap is a consequence of base64-in-JSON,
 not of missing storage, and it can be raised without R2 if that is wanted. Routing an upload through
-R2 would not save memory either, because the vision and classification models take the image *in the
-request*, so the Worker would have to read every byte back out of storage to make the call — the
+R2 would not save memory either, because the vision and classification models take the image _in the
+request_, so the Worker would have to read every byte back out of storage to make the call — the
 bottleneck moves, it does not disappear. Download is unaffected, since the image is already in the
-browser. What R2 *would* add to those panels is a retention surface, a cleanup obligation, and a
+browser. What R2 _would_ add to those panels is a retention surface, a cleanup obligation, and a
 privacy claim the demo currently does not have to make. **Images stay transient; the R2 bucket is
 for generated video only,** and the prefix policy below keeps that boundary enforceable rather than
 merely intended.
@@ -465,13 +609,13 @@ Because this adds the first storage product, reconcile [§5.5](./01-specificatio
 as the platform constraints that justify it. Note honestly that the trigger was **client
 disconnection**, not a Worker duration limit, so the rule stays accurate for later panels.
 
-§5.5 currently requires that R2, when introduced, arrives with "Terraform ownership, expiry/lifecycle
-policy, content cleanup, and teardown ordering". This phase delivers ownership and teardown ordering
-and **defers expiry and ongoing cleanup to Phase 18**, so record that split in the specification
-rather than leaving the text describing something the code does not do. The deferral is sound because
-teardown already guarantees the account ends clean — the obligation Phase 18 adds is keeping a
-*running* demo clean, which is a different and lesser one. It is only sound while it stays written
-down: an undocumented gap here is indistinguishable from having forgotten.
+§5.5 currently requires that R2, when introduced, arrives with "Terraform ownership,
+expiry/lifecycle policy, content cleanup, and teardown ordering". This phase delivers ownership and
+teardown ordering and **defers expiry and ongoing cleanup to Phase 18**, so record that split in the
+specification rather than leaving the text describing something the code does not do. The deferral
+is sound because teardown already guarantees the account ends clean — the obligation Phase 18 adds
+is keeping a _running_ demo clean, which is a different and lesser one. It is only sound while it
+stays written down: an undocumented gap here is indistinguishable from having forgotten.
 
 ### Deliverables
 
@@ -482,15 +626,15 @@ down: an undocumented gap here is indistinguishable from having forgotten.
 2. Add Terraform for the R2 bucket, with a scalar bucket-name output and an explicit `depends_on`
    from the Worker so teardown orders correctly. Wire `empty-r2-bucket` into `pnpm teardown` before
    the Terraform destroy, because a non-empty bucket cannot be deleted. Bind the bucket in
-   `cloudflare.config.ts` in both modes.
-   **Deliberately no expiry policy in this phase.** Ongoing cleanup is deferred to the scheduled
-   reaper in [Phase 18](#phase-18--cross-panel-hardening-documentation-and-presentation-readiness),
-   so this phase does not have to choose a retention window, state one in the UI, or build a
-   deletion path it would then replace. The consequence is accepted and bounded: between Phase 8 and
-   Phase 18 the bucket grows monotonically in a demo account, and `pnpm teardown` is what keeps that
-   account clean. The one thing this phase must **not** do is compensate with an informal cleanup —
-   no deletion on a later poll, and no "delete the previous object when a new run starts". Either
-   would become a second owner of object lifetime that Phase 18 then has to unpick.
+   `cloudflare.config.ts` in both modes. **Deliberately no expiry policy in this phase.** Ongoing
+   cleanup is deferred to the scheduled reaper in
+   [Phase 18](#phase-18--cross-panel-hardening-documentation-and-presentation-readiness), so this
+   phase does not have to choose a retention window, state one in the UI, or build a deletion path
+   it would then replace. The consequence is accepted and bounded: between Phase 8 and Phase 18 the
+   bucket grows monotonically in a demo account, and `pnpm teardown` is what keeps that account
+   clean. The one thing this phase must **not** do is compensate with an informal cleanup — no
+   deletion on a later poll, and no "delete the previous object when a new run starts". Either would
+   become a second owner of object lifetime that Phase 18 then has to unpick.
 3. Add the Workflow that performs the generation: one step calling the gateway **with retries
    disabled** (Finding 8), then one retryable step that fetches the provider URL under the existing
    strict origin/redirect/size policy and **streams it into R2 without buffering it whole**. The
@@ -515,11 +659,11 @@ down: an undocumented gap here is indistinguishable from having forgotten.
    enums; an **estimated cost shown before the request** (Finding 9); truthful progress, failure,
    and cost-pending messaging; a poster frame; and the third-party credit disclosure. Expiry
    messaging arrives with the reaper in Phase 18, not here — see deliverable 9.
-9. Say plainly that the video is **stored**, because this is the first panel where "transient"
-   stops being literally true. Until Phase 18 adds the reaper there is no expiry, so the UI must not
-   claim one: no countdown, no "available for 24 hours", no wording a visitor could read as a
-   deletion promise. An honest "stored in this demo's bucket" is correct now and stays correct after
-   the reaper lands; a retention claim invented here would be false in both directions — unenforced
+9. Say plainly that the video is **stored**, because this is the first panel where "transient" stops
+   being literally true. Until Phase 18 adds the reaper there is no expiry, so the UI must not claim
+   one: no countdown, no "available for 24 hours", no wording a visitor could read as a deletion
+   promise. An honest "stored in this demo's bucket" is correct now and stays correct after the
+   reaper lands; a retention claim invented here would be false in both directions — unenforced
    before Phase 18, and a different number after it.
 
 ### Tests introduced
@@ -530,24 +674,24 @@ down: an undocumented gap here is indistinguishable from having forgotten.
 - Instance-ID derivation: the same identity and run ID derive one stable ID; a different identity
   derives a different one; and the status route answers `404` — never another visitor's job — for an
   ID derived from a different identity.
-- A regression test asserting the **inference step is configured with no retries**, because
-  Finding 8 is a cost defect that no functional test would reveal.
+- A regression test asserting the **inference step is configured with no retries**, because Finding
+  8 is a cost defect that no functional test would reveal.
 - Failure-classification tests: the billing condition is recognised in each documented phrasing and
-  one level down a `cause` chain, an unrelated error is *not* claimed to be a billing failure, the
+  one level down a `cause` chain, an unrelated error is _not_ claimed to be a billing failure, the
   classification survives the Workflow boundary round trip, and the encoding carries no provider
   text — so fixing Finding 8a cannot become a disclosure. Assert the panel tells a visitor with no
   credit that retrying will not help.
 - Storage: the provider body is streamed into R2 rather than buffered; an oversized or wrong-typed
   body is refused before storage; a ranged read returns the requested bytes and correct headers; and
   cancellation deletes the object.
-- A guard asserting that the only R2 keys this demo writes are under `generated-video/`, so
-  Finding 10 stays true as later phases are added.
+- A guard asserting that the only R2 keys this demo writes are under `generated-video/`, so Finding
+  10 stays true as later phases are added.
 - Client polling, bounded backoff, cancellation, late-poll suppression, estimated-cost display, and
   video-player keyboard accessibility including captions/alternative affordances.
 - Integration coverage for status-route authorization, the audience check, a finite polling timeout,
   and problem-details shape.
-- Terraform/config contract test covering the bucket-name output, the binding name, and the
-  Worker's `depends_on`.
+- Terraform/config contract test covering the bucket-name output, the binding name, and the Worker's
+  `depends_on`.
 - A test asserting the only deletion path in this phase is **cancellation**, so the informal cleanup
   ruled out in deliverable 2 cannot be added quietly before Phase 18 owns it.
 
@@ -559,11 +703,11 @@ down: an undocumented gap here is indistinguishable from having forgotten.
   provider's host by the browser.
 - Estimated cost is visible before the request; reported gateway cost is shown when available.
 - A cancelled job leaves no object behind, and `pnpm teardown` empties the bucket before destroying
-  it, leaving the account clean. Objects from completed runs are expected to accumulate until
-  Phase 18; that is a scheduled deliverable, not an outstanding defect in this phase.
+  it, leaving the account clean. Objects from completed runs are expected to accumulate until Phase
+  18; that is a scheduled deliverable, not an outstanding defect in this phase.
 - No part of the UI promises an expiry that nothing yet enforces.
 - Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
-  own cause on failure, correlates every line by run ID across the Worker *and* the Workflow, and
+  own cause on failure, correlates every line by run ID across the Worker _and_ the Workflow, and
   logs neither prompt content nor the verified email. Verified with one real deployed request per
   new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
@@ -596,7 +740,8 @@ Deliver **Read Text** (text-to-speech).
 
 ### Deliverables
 
-- Add reviewed TTS descriptors, voice/language/rate/pitch controls when supported, and output audio normalization.
+- Add reviewed TTS descriptors, voice/language/rate/pitch controls when supported, and output audio
+  normalization.
 - Render accessible player, audio duration, download, and original text alternative.
 - Add Translate Text → Read Text handoff contract in advance of translation delivery.
 
@@ -609,39 +754,85 @@ Deliver **Read Text** (text-to-speech).
 ### Exit criteria
 
 - Text is rendered as playable audio with an accessible equivalent and reported cost.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
+  own cause on failure, correlates every line by run ID, and logs neither prompt content nor the
+  verified email. Verified with one real deployed request per new panel. See
+  [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ### Findings
 
 Recorded during delivery, because each one changed a decision.
 
-1. **Every reviewed model is Cloudflare-hosted, so the panel needs no prepaid credit.** This confirmed the phase ordering: `@cf/deepgram/aura-2-en`, `@cf/deepgram/aura-1`, and `@cf/myshell-ai/melotts` were all present and non-beta at delivery. The candidate third-party models were not needed and were not registered — adding a credit prerequisite to a panel Cloudflare hosts natively would be a poor trade.
+1. **Every reviewed model is Cloudflare-hosted, so the panel needs no prepaid credit.** This
+   confirmed the phase ordering: `@cf/deepgram/aura-2-en`, `@cf/deepgram/aura-1`, and
+   `@cf/myshell-ai/melotts` were all present and non-beta at delivery. The candidate third-party
+   models were not needed and were not registered — adding a credit prerequisite to a panel
+   Cloudflare hosts natively would be a poor trade.
 
-2. **The reviewed models share no controls at all.** Earlier panels' models disagreed about degree; these disagree about kind. Aura publishes named speakers and no language parameter; MeloTTS publishes a language and no speaker parameter. Even the text field differs — `text` versus `prompt` — so the wire name is declared per model. The panel renders a voice selector *or* a language selector, never both, and states which family the selected model belongs to so an absent control reads as a fact about the model rather than a gap in the page.
+2. **The reviewed models share no controls at all.** Earlier panels' models disagreed about degree;
+   these disagree about kind. Aura publishes named speakers and no language parameter; MeloTTS
+   publishes a language and no speaker parameter. Even the text field differs — `text` versus
+   `prompt` — so the wire name is declared per model. The panel renders a voice selector _or_ a
+   language selector, never both, and states which family the selected model belongs to so an absent
+   control reads as a fact about the model rather than a gap in the page.
 
-3. **The two Aura generations overlap only partially.** They share eight voice names and differ on eight more, so switching model must reset a voice unless the new model also publishes it. Carrying a selection over blindly would stage a request the server refuses. The composable keeps a value only when the newly selected model declares it.
+3. **The two Aura generations overlap only partially.** They share eight voice names and differ on
+   eight more, so switching model must reset a voice unless the new model also publishes it.
+   Carrying a selection over blindly would stage a request the server refuses. The composable keeps
+   a value only when the newly selected model declares it.
 
-4. **No reviewed model exposes rate or pitch.** The deliverable asked for those controls "when supported", and the answer after reading all three contracts is that none support either. They remain in the wire contract and are *rejected* rather than dropped, and the panel states the absence — silently ignoring a control teaches that the control did nothing, when the truth is that the model does not have one.
+4. **No reviewed model exposes rate or pitch.** The deliverable asked for those controls "when
+   supported", and the answer after reading all three contracts is that none support either. They
+   remain in the wire contract and are _rejected_ rather than dropped, and the panel states the
+   absence — silently ignoring a control teaches that the control did nothing, when the truth is
+   that the model does not have one.
 
-5. **One reviewed format name expands into two provider fields.** Aura spells an output choice as `encoding` plus `container`, with the legal pairings described in prose rather than in its schema. A visitor assembling the two independently could produce a request the provider accepts and the browser cannot play, so this demo exposes a single format name and expands it in one reviewed place.
+5. **One reviewed format name expands into two provider fields.** Aura spells an output choice as
+   `encoding` plus `container`, with the legal pairings described in prose rather than in its
+   schema. A visitor assembling the two independently could produce a request the provider accepts
+   and the browser cannot play, so this demo exposes a single format name and expands it in one
+   reviewed place.
 
-6. **Audio is not stored, which is deliberately the opposite of Create Video.** That panel needed R2 because the provider returns a short-lived URL rather than bytes and because `<video>` seeks with `Range` requests. Neither applies here: these models return the bytes, the payload is a few hundred kilobytes, and `<audio>` seeks freely within a `data:` URI the page already holds. The architecture test confining storage writes to the video path therefore covers this panel unchanged.
+6. **Audio is not stored, which is deliberately the opposite of Create Video.** That panel needed R2
+   because the provider returns a short-lived URL rather than bytes and because `<video>` seeks with
+   `Range` requests. Neither applies here: these models return the bytes, the payload is a few
+   hundred kilobytes, and `<audio>` seeks freely within a `data:` URI the page already holds. The
+   architecture test confining storage writes to the video path therefore covers this panel
+   unchanged.
 
-7. **MeloTTS declares two output shapes and does not say which to expect.** Its schema permits a raw MP3 byte stream *or* `{ audio: "<base64>" }`. Both are normalised, because a service handling only one would work until it didn't.
+7. **MeloTTS declares two output shapes and does not say which to expect.** Its schema permits a raw
+   MP3 byte stream _or_ `{ audio: "<base64>" }`. Both are normalised, because a service handling
+   only one would work until it didn't.
 
-8. **Sniffing matters more here than for images.** Aura's schema permits `linear16` with `container: none` — real audio data that no browser will play. The media type is therefore derived from the returned bytes and matched against a two-format allowlist, so headerless PCM is refused with a `502` rather than reaching the page labelled as playable. MP3 detection validates the frame header field by field: the sync word alone is eleven set bits, which occurs often enough in arbitrary binary data that accepting it would make the check a near-tautology.
+8. **Sniffing matters more here than for images.** Aura's schema permits `linear16` with
+   `container: none` — real audio data that no browser will play. The media type is therefore
+   derived from the returned bytes and matched against a two-format allowlist, so headerless PCM is
+   refused with a `502` rather than reaching the page labelled as playable. MP3 detection validates
+   the frame header field by field: the sync word alone is eleven set bits, which occurs often
+   enough in arbitrary binary data that accepting it would make the check a near-tautology.
 
-9. **A cost estimate is possible for the first time, and impossible for one model.** The Aura models bill per thousand characters, which the visitor has already typed, so the panel quotes a figure before the request — something no earlier synchronous panel could do. MeloTTS bills per minute of audio that does not exist until after the call, so its estimate is reported as *absent* rather than zero. A zero would read as "free".
+9. **A cost estimate is possible for the first time, and impossible for one model.** The Aura models
+   bill per thousand characters, which the visitor has already typed, so the panel quotes a figure
+   before the request — something no earlier synchronous panel could do. MeloTTS bills per minute of
+   audio that does not exist until after the call, so its estimate is reported as _absent_ rather
+   than zero. A zero would read as "free".
 
-10. **An MP3 duration is not read server-side.** It would need either a constant-bitrate assumption that is wrong for real encoder output, or a walk of every frame. Only WAV's duration is read from its header; otherwise the panel takes the value from the audio element once its metadata loads. A wrong duration beside a player that disagrees is worse than no duration.
+10. **An MP3 duration is not read server-side.** It would need either a constant-bitrate assumption
+    that is wrong for real encoder output, or a walk of every frame. Only WAV's duration is read
+    from its header; otherwise the panel takes the value from the audio element once its metadata
+    loads. A wrong duration beside a player that disagrees is worse than no duration.
 
-11. **The Translate Text handoff contract was built ahead of the panel that produces it.** `offerText`/`takeText` and the shared truncation helper exist and are tested now, so phase 11 adds one call rather than retrofitting a contract. Text and images occupy separate slots: they are consumed by different panels, so one slot would mean an uncollected picture silently discarding a translation.
+11. **The Translate Text handoff contract was built ahead of the panel that produces it.**
+    `offerText`/`takeText` and the shared truncation helper exist and are tested now, so phase 11
+    adds one call rather than retrofitting a contract. Text and images occupy separate slots: they
+    are consumed by different panels, so one slot would mean an uncollected picture silently
+    discarding a translation.
 
 ### Follow-up for later phases
 
 - Transcribe Audio (phase 10) should reuse `domain/audio-bytes.ts` rather than adding a second
-  sniffer. Its *input* is audio, so it needs the same allowlist in the opposite direction, and a
+  sniffer. Its _input_ is audio, so it needs the same allowlist in the opposite direction, and a
   second copy would let one fall behind.
 - The `audio/wav` duration reader slightly over-estimates for a file carrying extra chunks before
   its data chunk. Harmless here — the player's own figure supersedes it — but worth noting if a
@@ -674,10 +865,12 @@ Deliver **Transcribe Audio** (automatic speech recognition / speech-to-text).
 
 ### Deliverables
 
-- Add audio upload and optional browser microphone recording with clear permission flow; do not require microphone support for basic use.
+- Add audio upload and optional browser microphone recording with clear permission flow; do not
+  require microphone support for basic use.
 - Validate audio type, signature, byte length, and duration where feasible.
 - Add language hint and timestamps/diarization controls only when supported by descriptor.
-- Render transcript, segments/timestamps, confidence where returned, copy/download, and audio/text association.
+- Render transcript, segments/timestamps, confidence where returned, copy/download, and audio/text
+  association.
 
 ### Tests introduced
 
@@ -688,37 +881,80 @@ Deliver **Transcribe Audio** (automatic speech recognition / speech-to-text).
 
 ### Exit criteria
 
-- Audio can be transcribed without microphone permission, and recorded audio failure/permission states are clear.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- Audio can be transcribed without microphone permission, and recorded audio failure/permission
+  states are clear.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
+  own cause on failure, correlates every line by run ID, and logs neither prompt content nor the
+  verified email. Verified with one real deployed request per new panel. See
+  [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ### Findings
 
 Recorded during delivery, because each one changed a decision.
 
-1. **`@cf/openai/whisper-tiny-en` was not registered, despite being a listed candidate.** It is marked Beta and publishes no price at all. This panel's entire comparison is cost per audio minute, so a model with no rate could not be presented honestly beside one that has one. `@cf/openai/whisper` was reviewed in its place: same per-minute price as turbo, and it contributes the third audio encoding, which is more instructive than a cheaper tier would have been.
+1. **`@cf/openai/whisper-tiny-en` was not registered, despite being a listed candidate.** It is
+   marked Beta and publishes no price at all. This panel's entire comparison is cost per audio
+   minute, so a model with no rate could not be presented honestly beside one that has one.
+   `@cf/openai/whisper` was reviewed in its place: same per-minute price as turbo, and it
+   contributes the third audio encoding, which is more instructive than a cheaper tier would have
+   been.
 
-2. **All three reviewed models are Cloudflare-hosted, so the panel needs no prepaid credit.** The candidate third-party models were not needed and were not registered.
+2. **All three reviewed models are Cloudflare-hosted, so the panel needs no prepaid credit.** The
+   candidate third-party models were not needed and were not registered.
 
-3. **The same bytes are wanted in three different encodings.** Turbo takes a base64 string, Nova 3 requires `{ body, contentType }`, and the original Whisper requires `number[]` — one JSON number per byte. This is a wider disagreement than any earlier panel's and it is not cosmetic: the encoding decides how much memory a request costs.
+3. **The same bytes are wanted in three different encodings.** Turbo takes a base64 string, Nova 3
+   requires `{ body, contentType }`, and the original Whisper requires `number[]` — one JSON number
+   per byte. This is a wider disagreement than any earlier panel's and it is not cosmetic: the
+   encoding decides how much memory a request costs.
 
-4. **The file size limit is therefore per model, which is new.** Every earlier panel had one upload ceiling. A 4 MiB file expanded into a JSON array of byte values would, by the measurements recorded for Describe Image, exhaust a 128 MB isolate — so the byte-array model declares a 1 MiB ceiling and the others declare 4 MiB. The browser reads the ceiling from the catalogue, the server enforces it from the descriptor, and the refusal explains *why* the limit is lower, because a file that worked a moment ago being rejected otherwise reads as a bug.
+4. **The file size limit is therefore per model, which is new.** Every earlier panel had one upload
+   ceiling. A 4 MiB file expanded into a JSON array of byte values would, by the measurements
+   recorded for Describe Image, exhaust a 128 MB isolate — so the byte-array model declares a 1 MiB
+   ceiling and the others declare 4 MiB. The browser reads the ceiling from the catalogue, the
+   server enforces it from the descriptor, and the refusal explains _why_ the limit is lower,
+   because a file that worked a moment ago being rejected otherwise reads as a bug.
 
-5. **A loaded file can become invalid by switching model.** The composable re-checks on model change and reports the problem while *keeping* the file, so switching back restores a working state. Discarding a large upload the visitor waited to read would be a worse answer.
+5. **A loaded file can become invalid by switching model.** The composable re-checks on model change
+   and reports the problem while _keeping_ the file, so switching back restores a working state.
+   Discarding a large upload the visitor waited to read would be a worse answer.
 
-6. **The transcript arrives in three unrelated envelopes**, including one nested four levels deep at `results.channels[0].alternatives[0].transcript`. The envelope is selected from the reviewed descriptor rather than probed for, so a changed contract is a logged refusal instead of a subtly wrong transcript. Only the first alternative is read: the list is ranked, so anything past it is a lower-confidence reading.
+6. **The transcript arrives in three unrelated envelopes**, including one nested four levels deep at
+   `results.channels[0].alternatives[0].transcript`. The envelope is selected from the reviewed
+   descriptor rather than probed for, so a changed contract is a logged refusal instead of a subtly
+   wrong transcript. Only the first alternative is read: the list is ranked, so anything past it is
+   a lower-confidence reading.
 
-7. **Two models report a "confidence" and mean different things by it.** Nova 3 returns a probability in `[0, 1]`; Whisper returns `avg_logprob`, which is negative and unbounded below. The scale travels with the numbers and the panel renders them differently — a bar for the probability, a bare value and a warning for the log probability. Rescaling the second to make one bar work for both would have been a fabrication.
+7. **Two models report a "confidence" and mean different things by it.** Nova 3 returns a
+   probability in `[0, 1]`; Whisper returns `avg_logprob`, which is negative and unbounded below.
+   The scale travels with the numbers and the panel renders them differently — a bar for the
+   probability, a bare value and a warning for the log probability. Rescaling the second to make one
+   bar work for both would have been a fabrication.
 
-8. **A language code is a per-model contract.** Turbo takes ISO 639-1, Nova 3 takes BCP-47, and the original Whisper takes no language parameter at all. `en-GB` is valid for exactly one reviewed model. A client-side membership check was added after a test caught the composable forwarding a stale code that the new model's list did not contain.
+8. **A language code is a per-model contract.** Turbo takes ISO 639-1, Nova 3 takes BCP-47, and the
+   original Whisper takes no language parameter at all. `en-GB` is valid for exactly one reviewed
+   model. A client-side membership check was added after a test caught the composable forwarding a
+   stale code that the new model's list did not contain.
 
-9. **A language hint and language detection are mutually exclusive by meaning rather than by schema.** Both fields are individually legal for Nova 3, but the provider would silently honour one. The combination is refused rather than resolved on the visitor's behalf.
+9. **A language hint and language detection are mutually exclusive by meaning rather than by
+   schema.** Both fields are individually legal for Nova 3, but the provider would silently honour
+   one. The combination is refused rather than resolved on the visitor's behalf.
 
-10. **The cost cannot usually be estimated in advance**, which is the opposite of Read Text. Every reviewed model bills per audio minute and a compressed file's duration is not readable without decoding it, so only WAV yields an estimate — and only WAV can have the duration cap enforced against it. The panel states the limitation rather than leaving the figure absent.
+10. **The cost cannot usually be estimated in advance**, which is the opposite of Read Text. Every
+    reviewed model bills per audio minute and a compressed file's duration is not readable without
+    decoding it, so only WAV yields an estimate — and only WAV can have the duration cap enforced
+    against it. The panel states the limitation rather than leaving the figure absent.
 
-11. **The audio sniffer was extended rather than duplicated**, as the phase 9 follow-up asked. Input and output share the signature helpers and keep separate allowlists, because the directions are not symmetric: playback is constrained by what a browser renders, input by what a browser's recorder produces. An MP4's `ftyp` signature sits at offset four rather than zero, which is the detail an intuitive implementation gets wrong and would have rejected every Safari recording.
+11. **The audio sniffer was extended rather than duplicated**, as the phase 9 follow-up asked. Input
+    and output share the signature helpers and keep separate allowlists, because the directions are
+    not symmetric: playback is constrained by what a browser renders, input by what a browser's
+    recorder produces. An MP4's `ftyp` signature sits at offset four rather than zero, which is the
+    detail an intuitive implementation gets wrong and would have rejected every Safari recording.
 
-12. **The microphone is a progressive enhancement throughout.** The record button is absent rather than disabled when the APIs are missing, permission states are explicit so a denial and a device fault can be given opposite advice, and the recording container is negotiated with `isTypeSupported` because Chrome and Safari do not overlap.
+12. **The microphone is a progressive enhancement throughout.** The record button is absent rather
+    than disabled when the APIs are missing, permission states are explicit so a denial and a device
+    fault can be given opposite advice, and the recording container is negotiated with
+    `isTypeSupported` because Chrome and Safari do not overlap.
 
 ### Follow-up for later phases
 
@@ -745,7 +981,7 @@ Deliver **Translate Text**.
 - `@cf/meta/m2m100-1.2b` — reviewed as the default and the only hosted model whose declared task
   type is Translation. Its contract takes explicit source and target languages, which is what this
   panel's validation is built around.
-- `@cf/utter-project/eurollm-9b-it` — a *text-generation* model with strong European-language
+- `@cf/utter-project/eurollm-9b-it` — a _text-generation_ model with strong European-language
   coverage. Including it is a deliberate teaching point: translating with a general LLM means
   prompting rather than passing language codes, so the panel must either adapt the request per model
   or decline to offer it. Decide which during the phase and say why.
@@ -762,8 +998,10 @@ was unreachable at review time. Re-check before offering it.
 ### Deliverables
 
 - Add translation descriptors and strict source/target language validation.
-- Implement source/target selectors, swap action, examples, line-break preservation, side-by-side result, and copy action.
-- Complete Translate Text → Read Text handoff using an explicit typed event rather than shared mutable component state.
+- Implement source/target selectors, swap action, examples, line-break preservation, side-by-side
+  result, and copy action.
+- Complete Translate Text → Read Text handoff using an explicit typed event rather than shared
+  mutable component state.
 
 ### Tests introduced
 
@@ -773,53 +1011,114 @@ was unreachable at review time. Re-check before offering it.
 
 ### Exit criteria
 
-- The translated text is visibly separate from source, copyable, and transferable to Read Text; metrics/cost work as for other inference panels.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- The translated text is visibly separate from source, copyable, and transferable to Read Text;
+  metrics/cost work as for other inference panels.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
+  own cause on failure, correlates every line by run ID, and logs neither prompt content nor the
+  verified email. Verified with one real deployed request per new panel. See
+  [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ### Findings
 
 Recorded during delivery, because each one changed a decision.
 
-1. **`@cf/utter-project/eurollm-9b-it` was not registered, and the phase brief asked for the reason.** It is typed Text Generation rather than Translation, so translating with it means prompting and reading prose back — no `target_lang` to validate, and no way to be sure the reply is a translation rather than a commentary on one. This panel's entire lesson is the *typed* translation contract, and a general LLM behind the same selector would teach that the language codes are decoration. Its catalogue page also gates access behind a sign-up form, so it could not be relied on from a fresh account. The panel adapts its request per model for the *two dedicated translators*, which is where that adaptation is genuinely instructive.
+1. **`@cf/utter-project/eurollm-9b-it` was not registered, and the phase brief asked for the
+   reason.** It is typed Text Generation rather than Translation, so translating with it means
+   prompting and reading prose back — no `target_lang` to validate, and no way to be sure the reply
+   is a translation rather than a commentary on one. This panel's entire lesson is the _typed_
+   translation contract, and a general LLM behind the same selector would teach that the language
+   codes are decoration. Its catalogue page also gates access behind a sign-up form, so it could not
+   be relied on from a fresh account. The panel adapts its request per model for the _two dedicated
+   translators_, which is where that adaptation is genuinely instructive.
 
-2. **`@cf/ai4bharat/indictrans2-en-indic-1B` was re-checked and registered.** The brief recorded its catalogue page as unreachable at review time and asked for a re-check. The page now resolves, both schemas are published, it is Cloudflare-hosted and not beta, and it is priced identically to M2M100. It earns its place by disagreeing with M2M100 in all three ways this panel is about.
+2. **`@cf/ai4bharat/indictrans2-en-indic-1B` was re-checked and registered.** The brief recorded its
+   catalogue page as unreachable at review time and asked for a re-check. The page now resolves,
+   both schemas are published, it is Cloudflare-hosted and not beta, and it is priced identically to
+   M2M100. It earns its place by disagreeing with M2M100 in all three ways this panel is about.
 
-3. **Both reviewed models are Cloudflare-hosted, so the panel needs no prepaid credit.** The brief preferred a hosted dedicated translator over a third-party generalist, and that is what both of these are.
+3. **Both reviewed models are Cloudflare-hosted, so the panel needs no prepaid credit.** The brief
+   preferred a hosted dedicated translator over a third-party generalist, and that is what both of
+   these are.
 
-4. **One model has no source language at all, so a deliverable could not be built as written.** The brief asks for a swap action. M2M100 takes `source_lang`; IndicTrans2 translates from English only and declares no source field whatsoever. The swap action therefore exists for one model and *cannot* exist for the other, so it is absent rather than disabled, and the panel states why — a swap button that silently did nothing would be worse than no button.
+4. **One model has no source language at all, so a deliverable could not be built as written.** The
+   brief asks for a swap action. M2M100 takes `source_lang`; IndicTrans2 translates from English
+   only and declares no source field whatsoever. The swap action therefore exists for one model and
+   _cannot_ exist for the other, so it is absent rather than disabled, and the panel states why — a
+   swap button that silently did nothing would be worse than no button.
 
-5. **The cost shape differs per model, which is new and is the panel's real lesson.** IndicTrans2 declares `text` as `string | string[]` and returns one translation per input, so a twelve-line passage is **one** billed call. M2M100 takes a single string, so the same passage is **twelve**. No earlier panel had a model choice that changed the number of charges.
+5. **The cost shape differs per model, which is new and is the panel's real lesson.** IndicTrans2
+   declares `text` as `string | string[]` and returns one translation per input, so a twelve-line
+   passage is **one** billed call. M2M100 takes a single string, so the same passage is **twelve**.
+   No earlier panel had a model choice that changed the number of charges.
 
-6. **The segment cap exists because of finding 5.** A character limit alone would let a pasted list of two hundred short lines become two hundred paid calls from one click, so the limit that protects a visitor is a count of *translatable lines* (24) rather than of characters. The refusal explains the per-line billing, because the limit otherwise reads as arbitrary. Blank lines never count against it.
+6. **The segment cap exists because of finding 5.** A character limit alone would let a pasted list
+   of two hundred short lines become two hundred paid calls from one click, so the limit that
+   protects a visitor is a count of _translatable lines_ (24) rather than of characters. The refusal
+   explains the per-line billing, because the limit otherwise reads as arbitrary. Blank lines never
+   count against it.
 
-7. **The panel states the number of paid calls before the request.** Both models bill per token, which is not knowable until the model tokenises the text, so no currency figure would be honest in advance — unlike Read Text, where the billable quantity is text the visitor has already typed. The call count *is* exact, and it is the figure that surprises people, so that is what the panel quotes.
+7. **The panel states the number of paid calls before the request.** Both models bill per token,
+   which is not knowable until the model tokenises the text, so no currency figure would be honest
+   in advance — unlike Read Text, where the billable quantity is text the visitor has already typed.
+   The call count _is_ exact, and it is the figure that surprises people, so that is what the panel
+   quotes.
 
-8. **Line breaks are preserved by segmenting, not by trusting the model.** A translation model is trained on sentences, and passing a multi-line passage as one string gets newlines collapsed, re-ordered, or dropped. Each line is therefore translated as its own unit and reassembled **by original index**, which is what makes an internal blank line survive; consuming translations in order would work until exactly that case, which is the shape a test would accidentally use.
+8. **Line breaks are preserved by segmenting, not by trusting the model.** A translation model is
+   trained on sentences, and passing a multi-line passage as one string gets newlines collapsed,
+   re-ordered, or dropped. Each line is therefore translated as its own unit and reassembled **by
+   original index**, which is what makes an internal blank line survive; consuming translations in
+   order would work until exactly that case, which is the shape a test would accidentally use.
 
-9. **A language code is a per-model contract, as in phase 10.** M2M100 takes ISO 639-1 and IndicTrans2 takes FLORES-200 tags naming a script, so `hi` and `hin_Deva` are the same language and neither model accepts the other's spelling. Merging the lists would invent a standard no provider agreed to. Three IndicTrans2 languages appear twice in different scripts, so every entry carries its script in the display name.
+9. **A language code is a per-model contract, as in phase 10.** M2M100 takes ISO 639-1 and
+   IndicTrans2 takes FLORES-200 tags naming a script, so `hi` and `hin_Deva` are the same language
+   and neither model accepts the other's spelling. Merging the lists would invent a standard no
+   provider agreed to. Three IndicTrans2 languages appear twice in different scripts, so every entry
+   carries its script in the display name.
 
-10. **M2M100's documentation contradicts its own schema about language format.** The model page's example sends `source_lang: "english"` and `target_lang: "french"` — full English names — while the schema for both fields documents "the language code (e.g. 'en' for English)". This demo follows the schema, because the schema is the normative contract and a code is what every other panel means by a language. Recorded here because if a request is ever refused upstream, the fix is a spelling change in one reviewed place.
+10. **M2M100's documentation contradicts its own schema about language format.** The model page's
+    example sends `source_lang: "english"` and `target_lang: "french"` — full English names — while
+    the schema for both fields documents "the language code (e.g. 'en' for English)". This demo
+    follows the schema, because the schema is the normative contract and a code is what every other
+    panel means by a language. Recorded here because if a request is ever refused upstream, the fix
+    is a spelling change in one reviewed place.
 
-11. **A failure partway through is reported as a failed run, not a partial translation.** A half-translated passage would look like a model that trails off while charging for lines nobody can use. The log records which call failed, how many had completed, and therefore how many were already billed — the number someone reconciling a bill needs, and one a status code cannot carry.
+11. **A failure partway through is reported as a failed run, not a partial translation.** A
+    half-translated passage would look like a model that trails off while charging for lines nobody
+    can use. The log records which call failed, how many had completed, and therefore how many were
+    already billed — the number someone reconciling a bill needs, and one a status code cannot
+    carry.
 
-12. **The calls are made in sequence rather than in parallel.** Concurrency would be faster and worse: a failure partway through a parallel fan-out leaves an unknown number of paid calls in flight with no way to report what was spent. A regression test asserts the peak concurrency is one.
+12. **The calls are made in sequence rather than in parallel.** Concurrency would be faster and
+    worse: a failure partway through a parallel fan-out leaves an unknown number of paid calls in
+    flight with no way to report what was spent. A regression test asserts the peak concurrency is
+    one.
 
-13. **This is the first panel whose receipt routinely carries several gateway log identifiers.** `aggregateRunMetrics` has refused to report a partial total since phase 3, but nothing exercised it until now; a run's cost stays `pending` until every one of its calls has reported.
+13. **This is the first panel whose receipt routinely carries several gateway log identifiers.**
+    `aggregateRunMetrics` has refused to report a partial total since phase 3, but nothing exercised
+    it until now; a run's cost stays `pending` until every one of its calls has reported.
 
-14. **M2M100's output type has a second branch that is not a translation.** Its schema declares `{ request_id }` for async-queue acknowledgement. This demo never asks for batch mode, so receiving one means the request was routed differently than intended — and it is refused with its own reason code rather than rendered, because a `request_id` is a plausible-looking string that is not a translation.
+14. **M2M100's output type has a second branch that is not a translation.** Its schema declares
+    `{ request_id }` for async-queue acknowledgement. This demo never asks for batch mode, so
+    receiving one means the request was routed differently than intended — and it is refused with
+    its own reason code rather than rendered, because a `request_id` is a plausible-looking string
+    that is not a translation.
 
-15. **A batching model's output count is checked against its input count.** A model returning two translations for three lines would otherwise have every placement after the gap silently misaligned against the source, which is a *plausible* wrong answer rather than a missing one.
+15. **A batching model's output count is checked against its input count.** A model returning two
+    translations for three lines would otherwise have every placement after the gap silently
+    misaligned against the source, which is a _plausible_ wrong answer rather than a missing one.
 
-16. **The Read Text handoff contract built in phase 9 needed no changes.** Completing it was one call to `offerText`, with the target language travelling alongside the text. Defining the contract a phase early was worth it exactly as intended.
+16. **The Read Text handoff contract built in phase 9 needed no changes.** Completing it was one
+    call to `offerText`, with the target language travelling alongside the text. Defining the
+    contract a phase early was worth it exactly as intended.
 
 ### Follow-up for later phases
 
 - The 20 M2M100 language codes are a **reviewed allowlist, not a transcription**: its schema types
   both language fields as open strings with no enumeration, so there is nothing to copy and nothing
   stopping an arbitrary string being forwarded. The model handles about a hundred languages, so a
-  later phase may widen the list — but it should stay an allowlist rather than becoming a free
-  text field.
+  later phase may widen the list — but it should stay an allowlist rather than becoming a free text
+  field.
 - Finding 10's documentation conflict is worth re-checking when the model page is next revised. If
   the schema changes to full language names, `M2M100_LANGUAGES` is the single place to edit.
 
@@ -837,8 +1136,8 @@ Deliver **Classify Text** as fixed-label classification, distinct from Evaluate 
 
 - `@cf/huggingface/distilbert-sst-2-int8` — reviewed as the default. A genuine fixed-label
   classifier returning scored sentiment labels, which is the contract this panel exists to show.
-- `@cf/baai/bge-reranker-base` — also typed Text Classification, but it scores *relevance between a
-  query and a passage* rather than labelling one text. Offer it only if the panel can express that
+- `@cf/baai/bge-reranker-base` — also typed Text Classification, but it scores _relevance between a
+  query and a passage_ rather than labelling one text. Offer it only if the panel can express that
   honestly; otherwise record why it was excluded, since a mislabelled control would teach the wrong
   thing.
 - `@cf/meta/llama-guard-3-8b` — safety classification over a fixed taxonomy. A good third example if
@@ -851,8 +1150,10 @@ Deliver **Classify Text** as fixed-label classification, distinct from Evaluate 
 
 ### Deliverables
 
-- Add reviewed text-classification descriptors and declared modes/labels (such as sentiment, topic, or emotion).
-- Implement examples, text input, threshold/top-label display, structured raw response disclosure, and explanatory copy distinguishing labels from free-form generation.
+- Add reviewed text-classification descriptors and declared modes/labels (such as sentiment, topic,
+  or emotion).
+- Implement examples, text input, threshold/top-label display, structured raw response disclosure,
+  and explanatory copy distinguishing labels from free-form generation.
 - Cross-link to Evaluate Choices but do not share the task API/schema.
 
 ### Tests introduced
@@ -863,41 +1164,101 @@ Deliver **Classify Text** as fixed-label classification, distinct from Evaluate 
 
 ### Exit criteria
 
-- The panel teaches conventional classification and is demonstrably distinct from structured Jev evaluation.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- The panel teaches conventional classification and is demonstrably distinct from structured Jev
+  evaluation.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
+  own cause on failure, correlates every line by run ID, and logs neither prompt content nor the
+  verified email. Verified with one real deployed request per new panel. See
+  [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ### Findings
 
 Recorded during delivery, because each one changed a decision.
 
-1. **`@cf/baai/bge-reranker-base` was not registered, and the phase brief asked for the reason.** Despite being typed Text Classification it does not classify a text: it scores the *relevance between a query and a list of passages*, taking `{ query, contexts[] }` and returning `{ id, score }` pairs indexed into the caller's own array. Its "labels" would be the caller's own passages, which is the precise opposite of the fixed-label contract this panel exists to teach. Offering it behind a selector labelled "Classify Text" would teach that a classifier's categories are something a caller supplies. **It belongs in Semantic Search instead**, where its operation is the panel's own — see the phase 13 candidate list, which now records the verified contract and the retrieve-then-rerank lesson it enables.
+1. **`@cf/baai/bge-reranker-base` was not registered, and the phase brief asked for the reason.**
+   Despite being typed Text Classification it does not classify a text: it scores the _relevance
+   between a query and a list of passages_, taking `{ query, contexts[] }` and returning
+   `{ id, score }` pairs indexed into the caller's own array. Its "labels" would be the caller's own
+   passages, which is the precise opposite of the fixed-label contract this panel exists to teach.
+   Offering it behind a selector labelled "Classify Text" would teach that a classifier's categories
+   are something a caller supplies. **It belongs in Semantic Search instead**, where its operation
+   is the panel's own — see the phase 13 candidate list, which now records the verified contract and
+   the retrieve-then-rerank lesson it enables.
 
-2. **The generated platform types for the reranker are wrong.** `Ai_Cf_Baai_Bge_Reranker_Base_Input` carries the JSDoc comment for `query` but omits the field itself, while the published JSON schema lists it as required. Code written against those types would not compile with a `query` and would fail at the provider without one. Worth reporting upstream; it does not affect this demo because the model is not registered, but phase 13 should check whether the same defect affects any model it needs.
+2. **The generated platform types for the reranker are wrong.** `Ai_Cf_Baai_Bge_Reranker_Base_Input`
+   carries the JSDoc comment for `query` but omits the field itself, while the published JSON schema
+   lists it as required. Code written against those types would not compile with a `query` and would
+   fail at the provider without one. Worth reporting upstream; it does not affect this demo because
+   the model is not registered, but phase 13 should check whether the same defect affects any model
+   it needs.
 
-3. **Only two models in the entire catalogue are typed Text Classification**, and one of them is the reranker. Registering a third meant reaching outside the task type, which is how Llama Guard — typed *Text Generation* — came to be in a classification panel.
+3. **Only two models in the entire catalogue are typed Text Classification**, and one of them is the
+   reranker. Registering a third meant reaching outside the task type, which is how Llama Guard —
+   typed _Text Generation_ — came to be in a classification panel.
 
-4. **`@cf/meta/llama-guard-3-8b` was registered, and it disagrees with the default about whether a classification has a score at all.** DistilBERT returns `[{ label, score }]`. Llama Guard returns `{ safe, categories[] }` with **no score for anything**. That single fact forced the outcome to be a discriminated union rather than one shape with optional fields: a panel that assumed a score would render `NaN%` against a perfectly valid answer. It is the first panel in the demo where the *kind* of answer, not merely its envelope, varies by model.
+4. **`@cf/meta/llama-guard-3-8b` was registered, and it disagrees with the default about whether a
+   classification has a score at all.** DistilBERT returns `[{ label, score }]`. Llama Guard returns
+   `{ safe, categories[] }` with **no score for anything**. That single fact forced the outcome to
+   be a discriminated union rather than one shape with optional fields: a panel that assumed a score
+   would render `NaN%` against a perfectly valid answer. It is the first panel in the demo where the
+   _kind_ of answer, not merely its envelope, varies by model.
 
-5. **The ranking controls therefore became per-model capabilities.** `topK` and `minimumConfidence` are meaningful only where there are scores, so they are refused for the verdict model rather than accepted and dropped — a visitor who sets a confidence floor on a model reporting no confidence has formed a belief that is simply wrong.
+5. **The ranking controls therefore became per-model capabilities.** `topK` and `minimumConfidence`
+   are meaningful only where there are scores, so they are refused for the verdict model rather than
+   accepted and dropped — a visitor who sets a confidence floor on a model reporting no confidence
+   has formed a belief that is simply wrong.
 
-6. **Refusing to parse a prose safety verdict is a security decision, not a validation one.** Llama Guard's output type declares `response` as `string | { safe, categories }`. The structured branch is read and the string branch is refused, because a safety verdict extracted by pattern-matching English would be a security control resting on a regular expression — and a missed parse would report unsafe content as *safe*. The same reasoning drove refusing a missing `safe` boolean rather than defaulting: `true` would announce unverified content as safe, and `false` would accuse it on the strength of a malformed response.
+6. **Refusing to parse a prose safety verdict is a security decision, not a validation one.** Llama
+   Guard's output type declares `response` as `string | { safe, categories }`. The structured branch
+   is read and the string branch is refused, because a safety verdict extracted by pattern-matching
+   English would be a security control resting on a regular expression — and a missed parse would
+   report unsafe content as _safe_. The same reasoning drove refusing a missing `safe` boolean
+   rather than defaulting: `true` would announce unverified content as safe, and `false` would
+   accuse it on the strength of a malformed response.
 
-7. **The hazard taxonomy came from Cloudflare's AI Gateway Guardrails documentation**, which publishes the mapping for the codes this model emits. Without it a result reads `S1` with no indication of meaning. The *range* came from the model's own output schema, which describes the field as "hazard category classname, from S1 to S14" — the Guardrails table stops at `S13` because it documents the subset Guardrails evaluates, and says so explicitly. This panel calls the model directly rather than through Guardrails, so all fourteen are published. A code outside even that list is reported as unrecognised rather than given a name this demo invented.
+7. **The hazard taxonomy came from Cloudflare's AI Gateway Guardrails documentation**, which
+   publishes the mapping for the codes this model emits. Without it a result reads `S1` with no
+   indication of meaning. The _range_ came from the model's own output schema, which describes the
+   field as "hazard category classname, from S1 to S14" — the Guardrails table stops at `S13`
+   because it documents the subset Guardrails evaluates, and says so explicitly. This panel calls
+   the model directly rather than through Guardrails, so all fourteen are published. A code outside
+   even that list is reported as unrecognised rather than given a name this demo invented.
 
-   *Corrected after delivery.* The first version registered only `S1`–`S13` and treated `S14` as an invented name to be avoided. That conflated two different things: inventing a name for an unknown code, and declining to publish a name Meta and Cloudflare both document. A visitor seeing `S14` in a result would have got a bare code for no good reason.
+   _Corrected after delivery._ The first version registered only `S1`–`S13` and treated `S14` as an
+   invented name to be avoided. That conflated two different things: inventing a name for an unknown
+   code, and declining to publish a name Meta and Cloudflare both document. A visitor seeing `S14`
+   in a result would have got a bare code for no good reason.
 
-8. **The phase brief's condition on Llama Guard was met by naming the taxonomy wherever a result appears.** The verdict renderer states which taxonomy produced the answer and that these are content-safety categories rather than general-purpose topic labels, so "S6 Specialized Advice" cannot be read as a topic classification.
+8. **The phase brief's condition on Llama Guard was met by naming the taxonomy wherever a result
+   appears.** The verdict renderer states which taxonomy produced the answer and that these are
+   content-safety categories rather than general-purpose topic labels, so "S6 Specialized Advice"
+   cannot be read as a topic classification.
 
-9. **The regression guard covers thirteen spellings, not one.** This is a semantic boundary rather than a schema detail: a caller reaching for `categories` is making exactly the same mistake as one reaching for `labels`. The refusal names Evaluate Choices, because the request is reasonable — it has simply arrived at the wrong endpoint.
+9. **The regression guard covers thirteen spellings, not one.** This is a semantic boundary rather
+   than a schema detail: a caller reaching for `categories` is making exactly the same mistake as
+   one reaching for `labels`. The refusal names Evaluate Choices, because the request is reasonable
+   — it has simply arrived at the wrong endpoint.
 
-10. **The character limit is smaller than the other text panels', for a model reason.** DistilBERT has a 512-token window and text beyond it is truncated *by the model*, which returns a confident score for the prefix with nothing in the response to say so. The limit keeps the text inside that window, and the refusal explains why so the number does not look arbitrary.
+10. **The character limit is smaller than the other text panels', for a model reason.** DistilBERT
+    has a 512-token window and text beyond it is truncated _by the model_, which returns a confident
+    score for the prefix with nothing in the response to say so. The limit keeps the text inside
+    that window, and the refusal explains why so the number does not look arbitrary.
 
-11. **The two models want different request shapes.** DistilBERT takes `{ text }`; Llama Guard is a chat model underneath and takes `messages[]`. Notably **no system prompt or instruction accompanies the text** even for the chat-shaped model — adding one would be the caller-defined criteria this panel refuses, smuggled in by the application rather than by the caller.
+11. **The two models want different request shapes.** DistilBERT takes `{ text }`; Llama Guard is a
+    chat model underneath and takes `messages[]`. Notably **no system prompt or instruction
+    accompanies the text** even for the chat-shaped model — adding one would be the caller-defined
+    criteria this panel refuses, smuggled in by the application rather than by the caller.
 
-12. **`ranked-labels.ts` was reused unchanged.** Phase 7 placed those presentation helpers beside the component rather than in the Classify Image feature folder, explicitly anticipating this panel. The wording of a score is exactly the thing that must not be re-invented differently in two panels, and it was not.
+12. **`ranked-labels.ts` was reused unchanged.** Phase 7 placed those presentation helpers beside
+    the component rather than in the Classify Image feature folder, explicitly anticipating this
+    panel. The wording of a score is exactly the thing that must not be re-invented differently in
+    two panels, and it was not.
 
-13. **A partially malformed scored response degrades rather than failing.** One bad element out of several is a provider quirk worth skipping; every element bad is a contract change worth refusing. The skip is logged with counts, because the visitor otherwise sees a shorter list with nothing on screen explaining why.
+13. **A partially malformed scored response degrades rather than failing.** One bad element out of
+    several is a provider quirk worth skipping; every element bad is a contract change worth
+    refusing. The skip is logged with counts, because the visitor otherwise sees a shorter list with
+    nothing on screen explaining why.
 
 ### Post-delivery correction: the verdict model never worked
 
@@ -905,9 +1266,9 @@ Reported by the user after deployment: every run against Llama Guard failed with
 refusal, including plainly benign text. The diagnosis is worth recording in full, because the
 mistake is a general one.
 
-**The AI Gateway log said the call succeeded** — `status_code: 200`, `tokens_out: 3`, cost
-recorded. So the failure was entirely on this side of the boundary. Running the model directly
-through `cf ai run` showed why:
+**The AI Gateway log said the call succeeded** — `status_code: 200`, `tokens_out: 3`, cost recorded.
+So the failure was entirely on this side of the boundary. Running the model directly through
+`cf ai run` showed why:
 
 ```bash
 $ cf ai run @cf/meta/llama-guard-3-8b --body '{"messages":[...]}'
@@ -918,9 +1279,8 @@ $ cf ai run @cf/meta/llama-guard-3-8b --body '{"messages":[...],"response_format
 ```
 
 The output schema declares `response` as `string | { safe, categories }` and **does not say what
-selects between them**. The default is the string branch. `response_format` — a field the *input*
-schema declares but no usage example on the model page shows — is what produces the structured
-one.
+selects between them**. The default is the string branch. `response_format` — a field the _input_
+schema declares but no usage example on the model page shows — is what produces the structured one.
 
 Three things worth drawing out:
 
@@ -928,19 +1288,19 @@ Three things worth drawing out:
   control resting on a regular expression. The panel correctly declined; the bug was never asking
   for the structured answer in the first place. A more "forgiving" implementation would have parsed
   `"\n\nsafe"`, appeared to work, and shipped the dangerous behaviour instead.
-- **Reading the output schema was not sufficient.** The decisive fact was in the *input* schema, and
+- **Reading the output schema was not sufficient.** The decisive fact was in the _input_ schema, and
   the connection between the two was undocumented. A `oneOf` in an output schema is a question about
   what selects the branch, and that question has to be answered before the model is registered.
 - **It would have been caught by one real call.** The exit criteria for every phase require
-  verifying one real deployed request per new panel, and that step has been blocked since phase 9
-  by local `cf dev` having no AI binding and the deployed panel requiring interactive Access login.
+  verifying one real deployed request per new panel, and that step has been blocked since phase 9 by
+  local `cf dev` having no AI binding and the deployed panel requiring interactive Access login.
   `cf ai run` resolves that: it reaches the real model without the Worker or Access in the way, and
-  it should be used to verify every reviewed model's request and response shape *before* the
+  it should be used to verify every reviewed model's request and response shape _before_ the
   descriptor is written.
 
 Both findings are now regression-tested: the request builder must send `response_format` for a
-verdict model, and the descriptor must declare the requirement for every model whose
-`outcomeKind` is `verdict`.
+verdict model, and the descriptor must declare the requirement for every model whose `outcomeKind`
+is `verdict`.
 
 ### Follow-up for later phases
 
@@ -977,8 +1337,8 @@ Also hosted, if a fourth comparison is useful: `@cf/baai/bge-large-en-v1.5`,
 `@cf/baai/bge-base-en-v1.5`, `@cf/baai/bge-small-en-v1.5`, `@cf/pfnet/plamo-embedding-1b`.
 
 **Add `@cf/baai/bge-reranker-base` as a second-stage re-ranking step.** Phase 12 excluded it from
-Classify Text because it does not classify a text — it scores the *relevance between a query and a
-list of passages*, which is exactly this panel's operation. Verified with `cf ai run` during phase
+Classify Text because it does not classify a text — it scores the _relevance between a query and a
+list of passages_, which is exactly this panel's operation. Verified with `cf ai run` during phase
 12:
 
 ```text
@@ -990,26 +1350,26 @@ contexts: ["Our office is open Monday to Friday, 9am to 5pm.",
 => [ { id: 1, score: 0.9845 }, { id: 0, score: 0.0000374 }, { id: 2, score: 0.0000373 } ]
 ```
 
-That result makes it worth more than a fourth embedding model, because it demonstrates something
-the embedding comparison cannot:
+That result makes it worth more than a fourth embedding model, because it demonstrates something the
+embedding comparison cannot:
 
 - **It is a different operation with a different cost shape.** Embeddings are computed once per
   passage and cached, then compared locally for free. A reranker re-reads the query against every
-  passage on *every* query, so it cannot be cached per passage and its cost scales with collection
-  size per search. That is the retrieve-then-rerank trade-off every production RAG system makes,
-  and this panel is the only place in the demo it can be shown.
+  passage on _every_ query, so it cannot be cached per passage and its cost scales with collection
+  size per search. That is the retrieve-then-rerank trade-off every production RAG system makes, and
+  this panel is the only place in the demo it can be shown.
 - **Its scores are not comparable to cosine similarity, and are far more separable.** 0.98 against
   0.00004 is a different kind of number from two cosine scores of 0.71 and 0.68. The panel already
   plans to teach that similarity scores are incomparable across models; a reranker makes the point
   unmissable because the scale is visibly different.
 - **It takes `top_k`, so unlike every model in Classify Text this control is applied by the
-  *model*** rather than by this application — giving the demo a genuine `appliedBy: 'model'`
-  example to contrast with the `'playground'` ones.
+  _model_** rather than by this application — giving the demo a genuine `appliedBy: 'model'` example
+  to contrast with the `'playground'` ones.
 
 Two cautions for whoever implements it. The reranker's **generated platform types are wrong**: the
 input interface carries the JSDoc for `query` but omits the field, while the published schema
-requires it (phase 12, finding 2). And its scores collapse to a near-identical floor (~0.000037)
-for everything irrelevant, so a relative-score bar needs a log scale or an explicit note, or every
+requires it (phase 12, finding 2). And its scores collapse to a near-identical floor (~0.000037) for
+everything irrelevant, so a relative-score bar needs a log scale or an explicit note, or every
 non-match will render as an identical empty bar.
 
 **Third-party** (requires prepaid AI Gateway credits):
@@ -1019,25 +1379,37 @@ non-match will render as an identical empty bar.
 
 ### Deliverables
 
-- Add `@cf/baai/bge-m3` and/or `@cf/qwen/qwen3-embedding-0.6b` after confirming current model contracts.
-- Implement editable curated collections, query input, reviewed similarity metric (cosine similarity by default), and local ranking.
-- Implement a content-derived embedding cache key and visible cache indicators. Cache scope is the current browser/application session until a storage design is separately specified.
-- Return aggregate run metrics plus individual inference records: query embedding and every cache-miss passage embedding.
-- Render rank, relative score explanation, model/dimension/vector summary, comparison between models, and a deliberately limited raw-vector disclosure.
+- Add `@cf/baai/bge-m3` and/or `@cf/qwen/qwen3-embedding-0.6b` after confirming current model
+  contracts.
+- Implement editable curated collections, query input, reviewed similarity metric (cosine similarity
+  by default), and local ranking.
+- Implement a content-derived embedding cache key and visible cache indicators. Cache scope is the
+  current browser/application session until a storage design is separately specified.
+- Return aggregate run metrics plus individual inference records: query embedding and every
+  cache-miss passage embedding.
+- Render rank, relative score explanation, model/dimension/vector summary, comparison between
+  models, and a deliberately limited raw-vector disclosure.
 - Keep this in-memory. Do not add Vectorize, D1, or R2 merely for this panel.
 
 ### Tests introduced
 
-- Cosine-similarity math, zero-vector handling, deterministic ranking ties, cache keys, cache hit/miss aggregation, and descriptor dimension validation.
+- Cosine-similarity math, zero-vector handling, deterministic ranking ties, cache keys, cache
+  hit/miss aggregation, and descriptor dimension validation.
 - Worker test for aggregate receipt/cost state covering query plus passage calls.
-- Client test that scores are labelled as relative rather than probability/confidence; model comparison and raw vector disclosure.
-- Integration test confirming all embedding calls use the gateway client and metrics aggregate without exposing passage text in telemetry.
+- Client test that scores are labelled as relative rather than probability/confidence; model
+  comparison and raw vector disclosure.
+- Integration test confirming all embedding calls use the gateway client and metrics aggregate
+  without exposing passage text in telemetry.
 
 ### Exit criteria
 
 - A visitor sees semantic similarity outrank lexical overlap where the curated data demonstrates it.
-- Aggregate cost accurately reflects all inference calls in a search, while cached passages remain visibly free of new inference.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- Aggregate cost accurately reflects all inference calls in a search, while cached passages remain
+  visibly free of new inference.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
+  own cause on failure, correlates every line by run ID, and logs neither prompt content nor the
+  verified email. Verified with one real deployed request per new panel. See
+  [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -1046,7 +1418,9 @@ non-match will render as an identical empty bar.
 
 ### Goal
 
-Deliver **Evaluate Choices**, the structured-evaluation panel for `typesafe/jev`.  In addition, `clef` is now available from Cloudflare and should be the default choice.  See <https://blog.cloudflare.com/clef-decision-models/>.
+Deliver **Evaluate Choices**, the structured-evaluation panel for `typesafe/jev`. In addition,
+`clef` is now available from Cloudflare and should be the default choice. See
+<https://blog.cloudflare.com/clef-decision-models/>.
 
 ### Candidate models
 
@@ -1072,7 +1446,8 @@ this phase needs no third-party model to be useful.
 
 - Add the Jev descriptor, typed state input (text/JSON), and question-builder domain schema.
 - Support `noul`, `choice`, and `score` questions with criteria and explicit request JSON preview.
-- Render type-specific result cards: probability bar, choice distribution, score gauge/legend, and separate confidence display.
+- Render type-specific result cards: probability bar, choice distribution, score gauge/legend, and
+  separate confidence display.
 - Add prepared support-triage, refund-policy, moderation, and lead-qualification scenarios.
 - Add a View Tokens handoff for state size/context awareness.
 
@@ -1080,13 +1455,19 @@ this phase needs no third-party model to be useful.
 
 - Domain schema tests for each question type, criteria, JSON state, and response normalization.
 - Worker rejects generic Chat input and invalid/missing question contracts.
-- Client question add/remove/reorder, JSON synchronization, visual and textual result alternatives, and confidence distinction.
-- Cost-ledger test for the model’s input-priced/free-output shape without hardcoding a price calculation.
+- Client question add/remove/reorder, JSON synchronization, visual and textual result alternatives,
+  and confidence distinction.
+- Cost-ledger test for the model’s input-priced/free-output shape without hardcoding a price
+  calculation.
 
 ### Exit criteria
 
-- Caller-defined typed questions receive typed, calibrated results with no “parse model prose as JSON” path.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- Caller-defined typed questions receive typed, calibrated results with no “parse model prose as
+  JSON” path.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
+  own cause on failure, correlates every line by run ID, and logs neither prompt content nor the
+  verified email. Verified with one real deployed request per new panel. See
+  [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -1109,16 +1490,19 @@ hosted music model has appeared, this phase should move earlier.
   (~$0.0025/second at review time), which is cheap enough that the panel is demonstrable for cents.
 - `minimax/music-2.6` — the comparison model named in the original phase text.
 
-Because every option bills against credits, this panel must carry the same pre-request cost
-estimate and credit disclosure Create Video established, and reuse its
-`insufficient-credit` failure path rather than inventing another.
+Because every option bills against credits, this panel must carry the same pre-request cost estimate
+and credit disclosure Create Video established, and reuse its `insufficient-credit` failure path
+rather than inventing another.
 
 ### Deliverables
 
-- Add `elevenlabs/music-v2` and/or `minimax/music-2.6` only after confirming Unified Billing/gateway compatibility and account prerequisites.
-- Implement style/mood prompt, instrumental flag, optional lyrics, supported track length/output format controls, and explicit model-specific differences.
+- Add `elevenlabs/music-v2` and/or `minimax/music-2.6` only after confirming Unified Billing/gateway
+  compatibility and account prerequisites.
+- Implement style/mood prompt, instrumental flag, optional lyrics, supported track length/output
+  format controls, and explicit model-specific differences.
 - Normalise provider audio URLs into a safe media result; show provider-hosted/expiry caveat.
-- Add audio player, waveform if practical without a heavy dependency, lyrics display, download, duration, and reported pricing unit/cost.
+- Add audio player, waveform if practical without a heavy dependency, lyrics display, download,
+  duration, and reported pricing unit/cost.
 - Reuse the job infrastructure only if selected model is asynchronous; do not assume it is.
 
 ### Tests introduced
@@ -1130,8 +1514,12 @@ estimate and credit disclosure Create Video established, and reuse its
 
 ### Exit criteria
 
-- The session meter demonstrates different billing units correctly and never derives a music charge from tokens.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- The session meter demonstrates different billing units correctly and never derives a music charge
+  from tokens.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
+  own cause on failure, correlates every line by run ID, and logs neither prompt content nor the
+  verified email. Verified with one real deployed request per new panel. See
+  [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -1140,7 +1528,8 @@ estimate and credit disclosure Create Video established, and reuse its
 
 ### Goal
 
-Deliver **Animate Image** as its own top-level panel while sharing the Phase 8 media-job implementation.
+Deliver **Animate Image** as its own top-level panel while sharing the Phase 8 media-job
+implementation.
 
 ### Candidate models
 
@@ -1161,8 +1550,12 @@ credit-failure path. Add no second storage product and no parallel job mechanism
 
 ### Deliverables
 
-- Add image-to-video descriptors, validated source image intake, optional motion prompt, and supported duration/resolution controls.
-- Reuse `MediaJob` and player infrastructure, not Create Video’s UI route or a mode switch. That now includes Phase 8's R2 bucket, Workflow, and derived-instance-ID ownership scheme: reuse them rather than adding a second storage product or a parallel job mechanism. The source image still travels in the request and is still not persisted — Phase 8's Finding 10 applies unchanged.
+- Add image-to-video descriptors, validated source image intake, optional motion prompt, and
+  supported duration/resolution controls.
+- Reuse `MediaJob` and player infrastructure, not Create Video’s UI route or a mode switch. That now
+  includes Phase 8's R2 bucket, Workflow, and derived-instance-ID ownership scheme: reuse them
+  rather than adding a second storage product or a parallel job mechanism. The source image still
+  travels in the request and is still not persisted — Phase 8's Finding 10 applies unchanged.
 - Implement side-by-side image/video result layout and Create Image → Animate Image handoff.
 
 ### Tests introduced
@@ -1173,8 +1566,12 @@ credit-failure path. Add no second storage product and no parallel job mechanism
 
 ### Exit criteria
 
-- A user can animate an upload or generated image on `/animate-image`, with the same truthful job/cost behaviour as Create Video.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither prompt content nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- A user can animate an upload or generated image on `/animate-image`, with the same truthful
+  job/cost behaviour as Create Video.
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
+  own cause on failure, correlates every line by run ID, and logs neither prompt content nor the
+  verified email. Verified with one real deployed request per new panel. See
+  [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -1183,48 +1580,80 @@ credit-failure path. Add no second storage product and no parallel job mechanism
 
 ### Goal
 
-Deliver **Detect Objects**, which answers *where* rather than *what*. Classify Image scores a whole picture against a fixed label set; this panel returns a set of located regions, each with its own label and score. It is the first panel whose result is spatial, and the first whose primary rendering is an overlay on the visitor's own image.
+Deliver **Detect Objects**, which answers _where_ rather than _what_. Classify Image scores a whole
+picture against a fixed label set; this panel returns a set of located regions, each with its own
+label and score. It is the first panel whose result is spatial, and the first whose primary
+rendering is an overlay on the visitor's own image.
 
 ### Candidate models
 
-I’d start with Moondream 3.1 (`@cf/moondream/moondream3.1-9B-A2B`) for object detection on Workers AI. It is hosted on Cloudflare and has a dedicated detection mode that returns bounding boxes—not just a text description of an image.
+I’d start with Moondream 3.1 (`@cf/moondream/moondream3.1-9B-A2B`) for object detection on Workers
+AI. It is hosted on Cloudflare and has a dedicated detection mode that returns bounding boxes—not
+just a text description of an image.
 
 #### Why it fits
 
 - **Object localization**: Use task: "detect" to get detected objects’ bounding boxes.
 - **Natural-language targets**: Specify what to find, such as "car" or "person wearing a red shirt".
 - **Flexible image input**: Accepts a public HTTPS image URL or a base64 data URI.
-- **Additional capabilities**: Supports image questions, captions, OCR, and pointing if your app needs more later.
+- **Additional capabilities**: Supports image questions, captions, OCR, and pointing if your app
+  needs more later.
 
-Also consider `@cf/meta/llama-3.2-11b-vision-instruct` as an alternative.  Note that you should only use these models if the bounding boxes can be extracted from the result easily.  Parsing prose as structured output is not a good alternative.  It is better to remove the "Detect Objects" option than parse plain text prose.
+Also consider `@cf/meta/llama-3.2-11b-vision-instruct` as an alternative. Note that you should only
+use these models if the bounding boxes can be extracted from the result easily. Parsing prose as
+structured output is not a good alternative. It is better to remove the "Detect Objects" option than
+parse plain text prose.
 
 ### Deliverables
 
 - Add a reviewed object-detection descriptor for Cloudflare-hosted model(s).
-- Validate the picture with the shared byte-authoritative input rules, and reject a generative field exactly as Classify Image does.
-- Apply the score floor and any result limit to the response, declaring where they are applied with the same `appliedBy` convention Classify Image established. Do not forward a control the model's schema does not declare.
-- **Validate every returned box before it is rendered.** A detection carries geometry as well as a label, so the normaliser has to reject a box with a non-finite coordinate, a negative width or height, or bounds outside the image. An unchecked box paints outside its container and reads as a layout bug rather than as provider output.
-- Render the detections as an overlay on the source image **and** as the same accessible ranked table Classify Image uses, with each row naming the label, the score, and the region in words. The overlay is an enhancement on a result that is already complete without it.
-- Let a visitor focus or hover a table row to highlight its box, and the reverse, so the two representations are visibly one result rather than two.
-- Treat "no objects detected" as a successful run and say so, distinguishing it from a run that has not happened and from a floor that hid everything.
-- Reuse the shared source-image picker, the ranked-result table, the model-settings pattern, Run Details, and the session ledger. Share code, not tabs: this is a separate route from Classify Image.
-- Offer a Create Image → Detect Objects handoff only if it is genuinely useful; it is secondary and must not displace the primary result.
+- Validate the picture with the shared byte-authoritative input rules, and reject a generative field
+  exactly as Classify Image does.
+- Apply the score floor and any result limit to the response, declaring where they are applied with
+  the same `appliedBy` convention Classify Image established. Do not forward a control the model's
+  schema does not declare.
+- **Validate every returned box before it is rendered.** A detection carries geometry as well as a
+  label, so the normaliser has to reject a box with a non-finite coordinate, a negative width or
+  height, or bounds outside the image. An unchecked box paints outside its container and reads as a
+  layout bug rather than as provider output.
+- Render the detections as an overlay on the source image **and** as the same accessible ranked
+  table Classify Image uses, with each row naming the label, the score, and the region in words. The
+  overlay is an enhancement on a result that is already complete without it.
+- Let a visitor focus or hover a table row to highlight its box, and the reverse, so the two
+  representations are visibly one result rather than two.
+- Treat "no objects detected" as a successful run and say so, distinguishing it from a run that has
+  not happened and from a floor that hid everything.
+- Reuse the shared source-image picker, the ranked-result table, the model-settings pattern, Run
+  Details, and the session ledger. Share code, not tabs: this is a separate route from Classify
+  Image.
+- Offer a Create Image → Detect Objects handoff only if it is genuinely useful; it is secondary and
+  must not displace the primary result.
 
 ### Tests introduced
 
-- Detection-response normalization: a non-array output, an element missing a label or a box, a non-finite or negative coordinate, a box extending past the image bounds, and a score outside 0–1.
+- Detection-response normalization: a non-array output, an element missing a label or a box, a
+  non-finite or negative coordinate, a box extending past the image bounds, and a score outside 0–1.
 - Ordering and threshold edge cases, including ties, an inclusive floor, and an empty detection set.
-- Client overlay geometry: a box is positioned from the model's coordinates, is clamped to the image, and scales with a responsive preview rather than being pinned to the natural pixel size.
-- A guard asserting that removing every overlay box loses no information, matching the equivalent Classify Image guard: the table and its described regions remain the complete result.
-- Worker rejects a control unsupported by the selected model, and rejects a generative field with an explanation.
-- Integration coverage for authentication, the audience check, the body limit, identity refusal in body and header, and problem-details shape.
+- Client overlay geometry: a box is positioned from the model's coordinates, is clamped to the
+  image, and scales with a responsive preview rather than being pinned to the natural pixel size.
+- A guard asserting that removing every overlay box loses no information, matching the equivalent
+  Classify Image guard: the table and its described regions remain the complete result.
+- Worker rejects a control unsupported by the selected model, and rejects a generative field with an
+  explanation.
+- Integration coverage for authentication, the audience check, the body limit, identity refusal in
+  body and header, and problem-details shape.
 
 ### Exit criteria
 
-- A visitor can upload a picture and see located, labelled, scored regions, understandable without the overlay and without relying on colour.
-- Boxes are provably inside the image, and a malformed detection is refused with a logged reason rather than rendered.
+- A visitor can upload a picture and see located, labelled, scored regions, understandable without
+  the overlay and without relying on colour.
+- Boxes are provably inside the image, and a malformed detection is refused with a logged reason
+  rather than rendered.
 - Runs show gateway metrics and cost; nothing about this panel is exempt from the gateway rule.
-- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's own cause on failure, correlates every line by run ID, and logs neither the picture, a detected label, nor the verified email. Verified with one real deployed request per new panel. See [Cross-phase observability requirements](#cross-phase-observability-requirements).
+- Failures are diagnosable: the panel logs an attempt before calling the model, logs the provider's
+  own cause on failure, correlates every line by run ID, and logs neither the picture, a detected
+  label, nor the verified email. Verified with one real deployed request per new panel. See
+  [Cross-phase observability requirements](#cross-phase-observability-requirements).
 - `pnpm check` and `pnpm test` pass.
 
 ---
@@ -1235,55 +1664,119 @@ Also consider `@cf/meta/llama-3.2-11b-vision-instruct` as an alternative.  Note 
 
 ### Goal
 
-Turn the completed panels into a polished reference demo without changing the mandatory architecture.
+Turn the completed panels into a polished reference demo without changing the mandatory
+architecture.
 
 ### Deliverables
 
-1. Perform an accessibility review across all panels: headings/landmarks, focus order, keyboard media controls, form errors, status announcements, colour contrast, mobile layout, and motion preferences.
-2. Review security limits and error handling: JSON/media limits, unsafe URL policy, job ownership, run ownership, cancellation, input validation, no sensitive telemetry, and provider-error sanitisation.
+1. Perform an accessibility review across all panels: headings/landmarks, focus order, keyboard
+   media controls, form errors, status announcements, colour contrast, mobile layout, and motion
+   preferences.
+2. Review security limits and error handling: JSON/media limits, unsafe URL policy, job ownership,
+   run ownership, cancellation, input validation, no sensitive telemetry, and provider-error
+   sanitisation.
 3. Complete all JSDoc and README content:
    - task/panel catalogue;
    - architecture, four tiers, and the `src/worker/` layout;
    - AI Gateway invariant and exception register;
    - AI Gateway cost lifecycle and caveats;
-   - the authentication model: Access-protected throughout, open to any identity the provider accepts, with no application-level allowlist;
-   - the identity-attribution disclosure: the verified email is recorded in AI Gateway metadata, what that means for gateway logs and analytics, and where a user sees it stated in the UI;
+   - the authentication model: Access-protected throughout, open to any identity the provider
+     accepts, with no application-level allowlist;
+   - the identity-attribution disclosure: the verified email is recorded in AI Gateway metadata,
+     what that means for gateway logs and analytics, and where a user sees it stated in the UI;
    - Unified Billing/credit prerequisites for third-party models;
    - local development, deployment, teardown, and presenter walkthrough.
-4. Create `DEMO.md` describing the presenter sequence from Chat through View Tokens, Semantic Search, Evaluate Choices, image/video, music, translation/TTS, and Activity/Gateway cost comparison.
-5. Reconcile every model descriptor against the current catalog; remove unavailable models rather than leaving dead selectors.
-6. Verify clean-checkout developer journey with repository-root `.env` only: install, local Access, `pnpm start`, and no `.dev.vars` dependence.
-7. Perform an actual deploy/teardown smoke run in a deliberately approved account, checking that the account is clean afterwards. This is manual verification, not an offline test.
-8. Resolve [Finding 7a](#phase-8--create-video): decide whether the derived HMAC stays as the Workflow instance ID, given that the platform writes it into every log line automatically. Either keep it and narrow the README's privacy claim to "this application logs no identifying field", or switch to an opaque random instance ID and store the ownership mapping — which costs Finding 6's single-source-of-truth property. The toolkit's silent-`500` behaviour is filed upstream as [adrianhall/cloudflare-toolkit#209](https://github.com/adrianhall/cloudflare-toolkit/issues/209); if it ships a logging hook, drop the local `app.onError` wrapper in favour of it and keep the architecture guard pointed at whichever mechanism is in use.
-9. Audit observability across every panel against [Cross-phase observability requirements](#cross-phase-observability-requirements). Per-phase compliance does not guarantee consistency: confirm that event names follow one `<task>_run_started` / `<task>_run_failed` convention, that every panel correlates on the same run-ID field name, that no panel logs prompt content or the verified email, and that a single run ID search returns a complete story for each one. Inconsistent field names are the failure mode here — they make a cross-panel log search impossible while every individual panel looks correct.
-10. Add the **scheduled R2 reaper** that Phase 8 deferred, so generated video stops accumulating without that phase having to commit to a retention window. Add a `triggers.scheduled(...)` cron trigger and a `scheduled()` handler that lists the `generated-video/` prefix and deletes objects older than a documented age, using each object's `uploaded` timestamp as the authority rather than anything encoded in its key. Own the retention age in one exported constant, assert it in a test, and state it in the README and in the panel so the UI's wording and the reaper's behaviour cannot drift apart. This is also the point at which the panel may finally describe an expiry, because one now exists.
+4. Create `DEMO.md` describing the presenter sequence from Chat through View Tokens, Semantic
+   Search, Evaluate Choices, image/video, music, translation/TTS, and Activity/Gateway cost
+   comparison.
+5. Reconcile every model descriptor against the current catalog; remove unavailable models rather
+   than leaving dead selectors.
+6. Verify clean-checkout developer journey with repository-root `.env` only: install, local Access,
+   `pnpm start`, and no `.dev.vars` dependence.
+7. Perform an actual deploy/teardown smoke run in a deliberately approved account, checking that the
+   account is clean afterwards. This is manual verification, not an offline test.
+8. Resolve [Finding 7a](#phase-8--create-video): decide whether the derived HMAC stays as the
+   Workflow instance ID, given that the platform writes it into every log line automatically. Either
+   keep it and narrow the README's privacy claim to "this application logs no identifying field", or
+   switch to an opaque random instance ID and store the ownership mapping — which costs Finding 6's
+   single-source-of-truth property. The toolkit's silent-`500` behaviour is filed upstream as
+   [adrianhall/cloudflare-toolkit#209](https://github.com/adrianhall/cloudflare-toolkit/issues/209);
+   if it ships a logging hook, drop the local `app.onError` wrapper in favour of it and keep the
+   architecture guard pointed at whichever mechanism is in use.
+9. Audit observability across every panel against
+   [Cross-phase observability requirements](#cross-phase-observability-requirements). Per-phase
+   compliance does not guarantee consistency: confirm that event names follow one
+   `<task>_run_started` / `<task>_run_failed` convention, that every panel correlates on the same
+   run-ID field name, that no panel logs prompt content or the verified email, and that a single run
+   ID search returns a complete story for each one. Inconsistent field names are the failure mode
+   here — they make a cross-panel log search impossible while every individual panel looks correct.
+10. Add the **scheduled R2 reaper** that Phase 8 deferred, so generated video stops accumulating
+    without that phase having to commit to a retention window. Add a `triggers.scheduled(...)` cron
+    trigger and a `scheduled()` handler that lists the `generated-video/` prefix and deletes objects
+    older than a documented age, using each object's `uploaded` timestamp as the authority rather
+    than anything encoded in its key. Own the retention age in one exported constant, assert it in a
+    test, and state it in the README and in the panel so the UI's wording and the reaper's behaviour
+    cannot drift apart. This is also the point at which the panel may finally describe an expiry,
+    because one now exists.
 
-   Four details decide whether this is correct rather than merely present:
+Four details decide whether this is correct rather than merely present:
 
-   - **Deletion must be driven by what is in the bucket, not by what the application remembers.** A Workflow instance whose state has already aged out, or a run abandoned before it recorded anything, is exactly the object that most needs collecting. A reaper that only deletes objects it can still find a job for would leave precisely the orphans behind.
-   - **Bound the work per invocation.** `list()` returns at most 1000 keys and `delete()` accepts at most 1000 per call, so page with the returned cursor and stop at a fixed budget rather than looping until the prefix is exhausted. A cron invocation has a 15-minute wall-clock limit, and a reaper that tries to drain an arbitrarily large backlog in one firing fails at the worst possible moment — when there is most to clean up. Falling behind is recoverable; a handler that always times out is not.
-   - **Confine it to the prefix.** The reaper must refuse to operate outside `generated-video/`, so a future bucket user cannot have its objects collected by a job that predates it. Pair this with the Phase 8 write-prefix guard: one test proves nothing else is written there, the other proves nothing else is deleted.
-   - **Log a summary, never a key.** An object key is derived from a verified identity and a run ID, so keys are identifying and belong under the same rule as the email. Log counts, the oldest age collected, and whether the budget was hit — the last of these is the signal that the schedule is too slow, and without it the reaper fails silently by simply never catching up.
+- **Deletion must be driven by what is in the bucket, not by what the application remembers.** A
+  Workflow instance whose state has already aged out, or a run abandoned before it recorded
+  anything, is exactly the object that most needs collecting. A reaper that only deletes objects it
+  can still find a job for would leave precisely the orphans behind.
+- **Bound the work per invocation.** `list()` returns at most 1000 keys and `delete()` accepts at
+  most 1000 per call, so page with the returned cursor and stop at a fixed budget rather than
+  looping until the prefix is exhausted. A cron invocation has a 15-minute wall-clock limit, and a
+  reaper that tries to drain an arbitrarily large backlog in one firing fails at the worst possible
+  moment — when there is most to clean up. Falling behind is recoverable; a handler that always
+  times out is not.
+- **Confine it to the prefix.** The reaper must refuse to operate outside `generated-video/`, so a
+  future bucket user cannot have its objects collected by a job that predates it. Pair this with the
+  Phase 8 write-prefix guard: one test proves nothing else is written there, the other proves
+  nothing else is deleted.
+- **Log a summary, never a key.** An object key is derived from a verified identity and a run ID, so
+  keys are identifying and belong under the same rule as the email. Log counts, the oldest age
+  collected, and whether the budget was hit — the last of these is the signal that the schedule is
+  too slow, and without it the reaper fails silently by simply never catching up.
 
-   Verify it against the real deployed bucket during the smoke run in deliverable 7, with one object old enough to collect and one young enough to keep. A reaper only ever exercised against a fake is unverified in the same way Phase 4's logging was.
+Verify it against the real deployed bucket during the smoke run in deliverable 7, with one object
+old enough to collect and one young enough to keep. A reaper only ever exercised against a fake is
+unverified in the same way Phase 4's logging was.
 
 ### Tests introduced
 
-- Cross-panel keyboard/E2E-style DOM tests for route navigation, shared run details, history, session meter, and all handoffs.
+- Cross-panel keyboard/E2E-style DOM tests for route navigation, shared run details, history,
+  session meter, and all handoffs.
 - Exception-register checker test covering empty and non-empty fixture registers.
-- Privacy regression scan/assertions for absent prompt/media payloads from structured logs and metadata builders, and for the email appearing in gateway metadata but never in Worker structured logs.
-- A cross-panel observability test, driven from the task catalogue so a later panel is covered automatically, asserting that every delivered inference panel emits a start line before its model call, logs a bound cause on failure, and uses the shared run-ID field name.
-- A metadata-contract test that runs across every delivered inference task, so a panel added later cannot omit the verified email.
-- Terraform/config contract test confirming gateway lifecycle and Access audience output remain wired correctly, and that the cron trigger is declared with the intended schedule.
-- Reaper tests: an object past the retention age is deleted and one within it is kept; the boundary case is decided by the constant rather than by a hard-coded duplicate of it; paging follows the returned cursor; the per-invocation budget is honoured and reported; a key outside `generated-video/` is refused even when it is old; and no log line contains an object key. Drive the age cases from an injected clock so the suite stays offline and instant.
+- Privacy regression scan/assertions for absent prompt/media payloads from structured logs and
+  metadata builders, and for the email appearing in gateway metadata but never in Worker structured
+  logs.
+- A cross-panel observability test, driven from the task catalogue so a later panel is covered
+  automatically, asserting that every delivered inference panel emits a start line before its model
+  call, logs a bound cause on failure, and uses the shared run-ID field name.
+- A metadata-contract test that runs across every delivered inference task, so a panel added later
+  cannot omit the verified email.
+- Terraform/config contract test confirming gateway lifecycle and Access audience output remain
+  wired correctly, and that the cron trigger is declared with the intended schedule.
+- Reaper tests: an object past the retention age is deleted and one within it is kept; the boundary
+  case is decided by the constant rather than by a hard-coded duplicate of it; paging follows the
+  returned cursor; the per-invocation budget is honoured and reported; a key outside
+  `generated-video/` is refused even when it is old; and no log line contains an object key. Drive
+  the age cases from an injected clock so the suite stays offline and instant.
 
 ### Exit criteria
 
-- Every panel has its declared task type, safe validation, gateway/cost behaviour, help text, and test coverage.
-- Every inference task attributes its gateway metadata to the verified signed-in user, and the UI and README disclose that attribution.
+- Every panel has its declared task type, safe validation, gateway/cost behaviour, help text, and
+  test coverage.
+- Every inference task attributes its gateway metadata to the verified signed-in user, and the UI
+  and README disclose that attribution.
 - `AI-GATEWAY-EXCEPTIONS.md` is accurate and explicitly empty or complete.
-- Generated video is collected on a schedule, the retention age stated in the UI and README is the one the reaper enforces, and the deployed smoke run confirms it deletes an aged object while keeping a recent one.
-- `pnpm check`, `pnpm test`, `pnpm start`, `pnpm deploy`, and `pnpm teardown` satisfy the repository definition of done.
+- Generated video is collected on a schedule, the retention age stated in the UI and README is the
+  one the reaper enforces, and the deployed smoke run confirms it deletes an aged object while
+  keeping a recent one.
+- `pnpm check`, `pnpm test`, `pnpm start`, `pnpm deploy`, and `pnpm teardown` satisfy the repository
+  definition of done.
 
 ### Post-phase extension: Clef Flash as immutable target classification
 
@@ -1311,8 +1804,8 @@ text classification **when used with the right inbound schema**. Verified with t
 
 It returned `POSITIVE` with probability `0.9734`. The exact immutable schema classified the panel's
 neutral train-time example as `NEUTRAL` with probability `0.9711`, which makes the contrast with
-binary SST-2 concrete: neutral is an actual reviewed label rather than a near-even split forced
-into one of two labels.
+binary SST-2 concrete: neutral is an actual reviewed label rather than a near-even split forced into
+one of two labels.
 
 The fixed-label boundary remains intact. Clef ordinarily accepts caller-defined questions and
 criteria, but this panel's question and all three criteria are immutable Worker-side descriptor
@@ -1322,26 +1815,26 @@ control.
 
 ### Phase 13 contract review — Semantic Search
 
-Reviewed every registered model against the live account with `cf ai run` before adding it. All calls
-are Workers AI models and are routed through the existing AI Gateway client; no gateway exception was
-needed.
+Reviewed every registered model against the live account with `cf ai run` before adding it. All
+calls are Workers AI models and are routed through the existing AI Gateway client; no gateway
+exception was needed.
 
-| Model | Live input/output findings | Registered behaviour |
-| --- | --- | --- |
-| `@cf/baai/bge-m3` | `{ text: string[] }` accepted a 13-text batch. Returned `{ data, shape, pooling, meta, response }`; a two-text request returned `shape: [2, 1024]`. The same text on two calls returned bit-identical vectors. | Default multilingual embedding model, 1,024 dimensions, batched and cacheable. The response reader deliberately depends only on `data`, the one field shared by every reviewed embedding envelope. |
-| `@cf/google/embeddinggemma-300m` | `{ text: string[] }` returned `{ data, shape }` with `shape: [2, 768]`; no `usage`, `pooling`, or `meta` field. Repeat calls were bit-identical. | 768-dimensional cacheable embedding comparison, making score-space incompatibility visible. |
-| `@cf/baai/bge-small-en-v1.5` | `{ text: string[] }` returned `{ data, shape, pooling, usage }` with `shape: [2, 384]` and `pooling: "mean"`. | Small English 384-dimensional cacheable contrast. |
-| `@cf/baai/bge-reranker-base` | Requires `{ query, contexts, top_k }`; omitting `query` returned provider `400` saying required properties are `query,contexts`. With the password-reset set it returned `[{ id: 1, score: 0.984495 }, { id: 0, score: 0.0000374 }]`; `top_k: 2` returned exactly two entries. | Cross-encoder reranking model. `top_k` is genuinely provider-side and its scores are never presented as cosine similarity or probability. Generated `Ai_Cf_Baai_Bge_Reranker_Base_Input` still omits required `query` despite carrying its JSDoc, so the reviewed record is intentionally built as a plain `Record<string, unknown>`. |
+| Model                            | Live input/output findings                                                                                                                                                                                                                                                     | Registered behaviour                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@cf/baai/bge-m3`                | `{ text: string[] }` accepted a 13-text batch. Returned `{ data, shape, pooling, meta, response }`; a two-text request returned `shape: [2, 1024]`. The same text on two calls returned bit-identical vectors.                                                                 | Default multilingual embedding model, 1,024 dimensions, batched and cacheable. The response reader deliberately depends only on `data`, the one field shared by every reviewed embedding envelope.                                                                                                                                    |
+| `@cf/google/embeddinggemma-300m` | `{ text: string[] }` returned `{ data, shape }` with `shape: [2, 768]`; no `usage`, `pooling`, or `meta` field. Repeat calls were bit-identical.                                                                                                                               | 768-dimensional cacheable embedding comparison, making score-space incompatibility visible.                                                                                                                                                                                                                                           |
+| `@cf/baai/bge-small-en-v1.5`     | `{ text: string[] }` returned `{ data, shape, pooling, usage }` with `shape: [2, 384]` and `pooling: "mean"`.                                                                                                                                                                  | Small English 384-dimensional cacheable contrast.                                                                                                                                                                                                                                                                                     |
+| `@cf/baai/bge-reranker-base`     | Requires `{ query, contexts, top_k }`; omitting `query` returned provider `400` saying required properties are `query,contexts`. With the password-reset set it returned `[{ id: 1, score: 0.984495 }, { id: 0, score: 0.0000374 }]`; `top_k: 2` returned exactly two entries. | Cross-encoder reranking model. `top_k` is genuinely provider-side and its scores are never presented as cosine similarity or probability. Generated `Ai_Cf_Baai_Bge_Reranker_Base_Input` still omits required `query` despite carrying its JSDoc, so the reviewed record is intentionally built as a plain `Record<string, unknown>`. |
 
 Live behaviour also checked the panel's teaching examples:
 
 - For **"How do I reset my password?"**, BGE M3 ranked the semantic answer **0.7328**, above a
-  lexical password/reset decoy at **0.6777**, and the cafeteria at **0.4169**. The reranker made
-  the same distinction dramatically: **0.9845**, **0.00011**, and **0.000037** respectively.
+  lexical password/reset decoy at **0.6777**, and the cafeteria at **0.4169**. The reranker made the
+  same distinction dramatically: **0.9845**, **0.00011**, and **0.000037** respectively.
 - BGE M3 matched the English password query against a French support passage at **0.6797** and a
   Japanese support passage at **0.7040**, above an unrelated French lunch passage at **0.3919**.
-- The exact same text produced bit-identical vectors for BGE M3, Qwen3 Embedding, and
-  EmbeddingGemma on repeat calls, which is the contract fact that makes the cache safe.
+- The exact same text produced bit-identical vectors for BGE M3, Qwen3 Embedding, and EmbeddingGemma
+  on repeat calls, which is the contract fact that makes the cache safe.
 
 The cache is isolate-memory only and is scoped by verified Access `sub`, model identifier, and a
 content-derived hash. It stores vectors, never text; scoping is essential because a cross-user cache
@@ -1356,38 +1849,38 @@ credit-free choice and no third-party model was needed. Both were reviewed again
 with `cf ai run` before registration, and both route through the existing AI Gateway client, so no
 gateway exception was required.
 
-| Model | Live findings | Registered behaviour |
-| --- | --- | --- |
-| `@cf/cloudflare/clef` | 27B. `context_window = 65536`, priced `0.24` per M input tokens. Answered a three-question mixed payload in one call: `urgent` noul `0.9905`, `department` `ENGINEERING` at `0.7599`/confidence `0.4497`, `frustration` score `3.013`/confidence `0.2146`. | Default decision model, all three question types. |
-| `@cf/cloudflare/clef-flash` | 9B. Same context window, priced `0.09` per M input tokens. Same payload: `0.9573`, `ENGINEERING` `0.8588`/`0.6257`, score `3.5101`/`0.3462`. | The cheaper, faster comparison on identical questions. Also appears in Classify Text under an immutable application-owned schema; here the schema is the caller's. |
+| Model                       | Live findings                                                                                                                                                                                                                                              | Registered behaviour                                                                                                                                               |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@cf/cloudflare/clef`       | 27B. `context_window = 65536`, priced `0.24` per M input tokens. Answered a three-question mixed payload in one call: `urgent` noul `0.9905`, `department` `ENGINEERING` at `0.7599`/confidence `0.4497`, `frustration` score `3.013`/confidence `0.2146`. | Default decision model, all three question types.                                                                                                                  |
+| `@cf/cloudflare/clef-flash` | 9B. Same context window, priced `0.09` per M input tokens. Same payload: `0.9573`, `ENGINEERING` `0.8588`/`0.6257`, score `3.5101`/`0.3462`.                                                                                                               | The cheaper, faster comparison on identical questions. Also appears in Classify Text under an immutable application-owned schema; here the schema is the caller's. |
 
 Contract findings that would each have been a runtime failure if assumed rather than checked:
 
-- **The body carries its own `model` field and it must match the endpoint.** Sending `"clef"` to
-  the clef-flash endpoint fails with `Unsupported model 'clef'. Use 'clef-flash'.` The exact string
-  is recorded as `requestModelName` rather than derived from the identifier.
+- **The body carries its own `model` field and it must match the endpoint.** Sending `"clef"` to the
+  clef-flash endpoint fails with `Unsupported model 'clef'. Use 'clef-flash'.` The exact string is
+  recorded as `requestModelName` rather than derived from the identifier.
 - **A `score` question's criteria are an array; a `choice` question's are an object.** Sending a
   score legend as an object fails with `Input should be a valid list`. This was the first failure
   encountered and is the reason the two types are built separately.
 - **A `noul` answer carries no confidence field at all**, while `choice` and `score` both do. The
-  answer types are a discriminated union so a renderer cannot read a confidence that was never
-  sent.
+  answer types are a discriminated union so a renderer cannot read a confidence that was never sent.
 - **Confidence is genuinely independent of probability.** The same routing question answered
   `ENGINEERING` at `0.9831`/confidence `0.9334` for a clear state, and `0.7111`/confidence `0.1782`
   for the state `"Hello"`. That contrast is the panel's central lesson and the reason confidence is
   rendered as its own control rather than folded into a probability bar.
-- **`output_tokens` is `0` on every call**, which makes the asymmetric price shape concrete: a
-  typed decision is not generated text, so only the input is billable.
+- **`output_tokens` is `0` on every call**, which makes the asymmetric price shape concrete: a typed
+  decision is not generated text, so only the input is billable.
 - Provider-enforced bounds, reimplemented locally so a refusal names the question being edited:
   question names must match `^[A-Za-z0-9_.-]{1,100}$`; `choice` and `score` need at least two
-  entries (`Dictionary should have at least 2 items`, `List should have at least 2 items`);
-  `noul` criteria are optional. Twenty choice options and ten questions in one call both succeeded.
-- A structured state is read as structure rather than as text. Given `order.days_since_delivery:
-  40` against `policy.refund_window_days: 30`, the model answered `within_window` at `0.0195` and
+  entries (`Dictionary should have at least 2 items`, `List should have at least 2 items`); `noul`
+  criteria are optional. Twenty choice options and ten questions in one call both succeeded.
+- A structured state is read as structure rather than as text. Given `order.days_since_delivery: 40`
+  against `policy.refund_window_days: 30`, the model answered `within_window` at `0.0195` and
   `decision` as `DECLINE` at `0.7784`.
 
 Every prepared scenario was executed against the live model using payloads built by the demo's own
-`buildEvaluationInput()`, not hand-written JSON, so the verification covers the code path that ships.
+`buildEvaluationInput()`, not hand-written JSON, so the verification covers the code path that
+ships.
 
 One defect was found only by running the panel in a browser and is worth recording: the composable
 used `structuredClone()` on questions held in a `ref`, which throws `DataCloneError` on Vue's
@@ -1422,15 +1915,15 @@ classification, no new error type.
 deliberately invalid requests are rejected by the provider's validator without a charge, so the
 accepted field lists below were captured live rather than transcribed hopefully from documentation.
 
-| Model | Live findings | Registered behaviour |
-| --- | --- | --- |
-| `elevenlabs/music-v2` | Accepted fields: `prompt`, `composition_plan.chunks`, `music_length_ms`, `output_format`, `seed`, `force_instrumental`, `store_for_inpainting`, `sign_with_c2pa`. `music_length_ms` is **required when `composition_plan` is absent**, range `>=3000` and `<=600000`. `output_format` is a 17-value enum spanning MP3 and Opus. Instrumental control is `force_instrumental`, **not** `is_instrumental`. `seed` range is `0`–`4294967295`. Priced **$0.0025 per output audio second**. | The **default**, because it is two orders of magnitude cheaper to explore: a ten-second sketch is 2.5¢. `pricingUnit: 'audio-second'`. The length control is exposed in whole seconds and converted to milliseconds in the request builder. `lyrics: 'unsupported'`. |
-| `minimax/music-2.6` | Accepted fields: `prompt`, `lyrics`, `sample_rate`, `bitrate`, `format`, `lyrics_optimizer`, `is_instrumental`. **There is no duration or length field at all** — `duration` is rejected as unsupported. `format` enum is `mp3`/`wav`. `is_instrumental` and `lyrics_optimizer` are both **required**. Rejects with "When 'is_instrumental' is false and 'lyrics_optimizer' is false, 'lyrics' must be provided". Priced **$0.15 per track, plus $0.01 per lyrics generation**. | The comparison model. `pricingUnit: 'track'`. No length control is exposed, because the field does not exist and `additionalProperties: false` makes sending one a rejected request. The no-lyrics refusal is reimplemented locally so it costs nothing instead of 15¢. |
+| Model                 | Live findings                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Registered behaviour                                                                                                                                                                                                                                                    |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `elevenlabs/music-v2` | Accepted fields: `prompt`, `composition_plan.chunks`, `music_length_ms`, `output_format`, `seed`, `force_instrumental`, `store_for_inpainting`, `sign_with_c2pa`. `music_length_ms` is **required when `composition_plan` is absent**, range `>=3000` and `<=600000`. `output_format` is a 17-value enum spanning MP3 and Opus. Instrumental control is `force_instrumental`, **not** `is_instrumental`. `seed` range is `0`–`4294967295`. Priced **$0.0025 per output audio second**. | The **default**, because it is two orders of magnitude cheaper to explore: a ten-second sketch is 2.5¢. `pricingUnit: 'audio-second'`. The length control is exposed in whole seconds and converted to milliseconds in the request builder. `lyrics: 'unsupported'`.    |
+| `minimax/music-2.6`   | Accepted fields: `prompt`, `lyrics`, `sample_rate`, `bitrate`, `format`, `lyrics_optimizer`, `is_instrumental`. **There is no duration or length field at all** — `duration` is rejected as unsupported. `format` enum is `mp3`/`wav`. `is_instrumental` and `lyrics_optimizer` are both **required**. Rejects with "When 'is_instrumental' is false and 'lyrics_optimizer' is false, 'lyrics' must be provided". Priced **$0.15 per track, plus $0.01 per lyrics generation**.        | The comparison model. `pricingUnit: 'track'`. No length control is exposed, because the field does not exist and `additionalProperties: false` makes sending one a rejected request. The no-lyrics refusal is reimplemented locally so it costs nothing instead of 15¢. |
 
 **Both models are synchronous, and the panel is shaped accordingly.** Neither schema declares a job
 handle, a polling endpoint, or an operation identifier, and both document the result arriving from
 the call itself as `{ state: "Completed", result: { audio } }`. The phase brief said to reuse the
-job infrastructure *only* if the selected model is asynchronous and not to assume it is — so this
+job infrastructure _only_ if the selected model is asynchronous and not to assume it is — so this
 panel is a plain `POST` like Read Text rather than a Workflow like Create Video. It adds **no**
 Workflow, no storage product, no derived job key, and no polling route. The justification is
 recorded in a comment in both `src/worker/domain/models.ts` and
@@ -1466,16 +1959,17 @@ credentials, port, and exact hostname against the descriptor's `outputHosts`, re
 bounds the read during buffering, and establishes the media type by **sniffing the bytes** rather
 than trusting a `Content-Type`. The verified audio is returned in the response, so the browser never
 contacts the provider and never renders a link that may have expired. The panel discloses that the
-original is provider-hosted, names the host it came from, and makes no retention promise — nothing is
-stored, which is the opposite of Create Video's choice and for stated reasons.
+original is provider-hosted, names the host it came from, and makes no retention promise — nothing
+is stored, which is the opposite of Create Video's choice and for stated reasons.
 
 **What could not be verified, and is explicitly unverified.** No successful music generation was
-performed, because the account has no prepaid credits. Every assertion above about *request*
+performed, because the account has no prepaid credits. Every assertion above about _request_
 acceptance and rejection was captured live from the provider's validator; nothing below was:
 
 - The **output envelope** is implemented from both catalogue pages, which agree on
-  `{ state, result: { audio } }`. The reader also accepts a flattened `{ audio }` because the binding
-  sometimes unwraps a Unified Catalog envelope, but neither shape was observed from a paid call.
+  `{ state, result: { audio } }`. The reader also accepts a flattened `{ audio }` because the
+  binding sometimes unwraps a Unified Catalog envelope, but neither shape was observed from a paid
+  call.
 - The **`outputHosts` lists** are taken from each model's published examples
   (`examples.aig.cloudflare.com`, `storage.googleapis.com`,
   `minimax-algeng-chat-tts-us.oss-us-east-1.aliyuncs.com`). A provider serving from a different CDN
@@ -1501,33 +1995,33 @@ Classification, Text Embeddings, Text Generation, Text-to-Image, Text-to-Speech,
 Image-to-Video is not among them, so there was nothing that would have justified moving the phase
 back towards its original slot at 9. It stays where it is, as the **second credit-dependent panel**.
 
-**The account has no prepaid AI Gateway credits, and the exact failure was verified again.** A
-valid request to `alibaba/hh1.1-i2v` returns Gateway error **`2021` / HTTP `402`**: "Insufficient
-balance; add money to your gateway or use BYOK". This is the same known, expected, handled
-condition Create Video, Remix Image, and Generate Music already disclose. `provider-failures.ts`
-already classifies `402`/`2021` as `insufficient-credit`; this panel **reuses that path unchanged**
-and introduces no new failure classification and no new error type.
+**The account has no prepaid AI Gateway credits, and the exact failure was verified again.** A valid
+request to `alibaba/hh1.1-i2v` returns Gateway error **`2021` / HTTP `402`**: "Insufficient balance;
+add money to your gateway or use BYOK". This is the same known, expected, handled condition Create
+Video, Remix Image, and Generate Music already disclose. `provider-failures.ts` already classifies
+`402`/`2021` as `insufficient-credit`; this panel **reuses that path unchanged** and introduces no
+new failure classification and no new error type.
 
 **Schema validation runs before billing**, which is how every input contract below was mapped at
-zero cost: deliberately invalid requests are rejected by each provider's validator without a
-charge, so the accepted field lists were captured live rather than transcribed hopefully.
+zero cost: deliberately invalid requests are rejected by each provider's validator without a charge,
+so the accepted field lists were captured live rather than transcribed hopefully.
 
 #### The image-input question, which was the phase's real risk
 
 The brief flagged this as the item to resolve carefully, and it decided which models could be
-offered. **Every reviewed model types its source image as a URI, not as bytes** — `alibaba/hh1.1-i2v`
-rejects a non-URL value with `Invalid value at image: Invalid URL`. The question was therefore
-whether a `data:` URI counts, because if it did not, the panel would have had to publish the
-visitor's picture at a fetchable address and Phase 8's Finding 10 would have broken.
+offered. **Every reviewed model types its source image as a URI, not as bytes** —
+`alibaba/hh1.1-i2v` rejects a non-URL value with `Invalid value at image: Invalid URL`. The question
+was therefore whether a `data:` URI counts, because if it did not, the panel would have had to
+publish the visitor's picture at a fetchable address and Phase 8's Finding 10 would have broken.
 
 It was probed directly, and the answer differs by model:
 
-| Model | Image parameter | `data:` URI probe result |
-| --- | --- | --- |
-| `alibaba/hh1.1-i2v` | `image` | **Accepted** — passed validation and reached billing (`402`) |
-| `minimax/hailuo-2.3` | `first_frame_image` | **Accepted** — reached billing (`402`) |
-| `runwayml/gen-4.5` | `image_input` | **Accepted** — reached billing (`402`) |
-| `lightricks/ltx-2-5-fast` | `image_uri` | **Rejected** — `Validation error at image_uri: Must be an HTTPS URL` |
+| Model                     | Image parameter     | `data:` URI probe result                                             |
+| ------------------------- | ------------------- | -------------------------------------------------------------------- |
+| `alibaba/hh1.1-i2v`       | `image`             | **Accepted** — passed validation and reached billing (`402`)         |
+| `minimax/hailuo-2.3`      | `first_frame_image` | **Accepted** — reached billing (`402`)                               |
+| `runwayml/gen-4.5`        | `image_input`       | **Accepted** — reached billing (`402`)                               |
+| `lightricks/ltx-2-5-fast` | `image_uri`         | **Rejected** — `Validation error at image_uri: Must be an HTTPS URL` |
 
 A `402` is the decisive evidence here: billing is reached only after validation passes, so a probe
 that gets there has had its payload accepted in full.
@@ -1537,58 +2031,58 @@ Workflow instance state, and is written to no storage product. The R2 bucket rem
 video only.
 
 **`lightricks/ltx-2-5-fast` is not registered, and the reason is stated rather than omitted.**
-Offering it would mean uploading a visitor's picture to a publicly fetchable URL purely to satisfy
-a parameter type — publishing private input to a third party as a side effect of an implementation
+Offering it would mean uploading a visitor's picture to a publicly fetchable URL purely to satisfy a
+parameter type — publishing private input to a third party as a side effect of an implementation
 detail. The descriptor carries an explicit `imageDelivery: 'data-uri' | 'https-only'` field so the
 refusal is a recorded capability a future phase can revisit, and a test asserts every offered model
 declares `data-uri`.
 
 **`pruna/p-video-animate` was probed and skipped for an unrelated reason.** It returned
-`Required values missing: video, image` — it requires *both*, making it a motion-transfer model
-that animates a picture using an existing video's motion. That is a different task from this
-panel's and would need a second media input the panel does not collect.
+`Required values missing: video, image` — it requires _both_, making it a motion-transfer model that
+animates a picture using an existing video's motion. That is a different task from this panel's and
+would need a second media input the panel does not collect.
 
 #### Registered models
 
-| Model | Live findings | Registered behaviour |
-| --- | --- | --- |
-| `alibaba/hh1.1-i2v` | Valid fields: `image, prompt, negative_prompt, resolution, duration, seed, watermark`. `image` is **required**. `resolution` enum is `"720P"\|"1080P"` (uppercase, exactly as its t2v sibling). `duration` probed at both ends: `2` is refused with `Too small: expected number to be >=3`, `999` with `Too big: expected number to be <=15`. `seed` is `0`–`2147483647`. A probe carrying only the image reached billing, confirming the prompt is genuinely optional. Priced **$0.14/second @720p, $0.18/second @1080p**. | The **default**, and the natural counterpart to Create Video's `alibaba/hh1.1-t2v`: same vendor, same control vocabulary, so the reuse of the Phase 8 descriptor shape is visible when the two are read side by side. `pricingUnit: 'video-second'`, `durationRange: 3–15`, default `720P` at 5 s — the cheapest useful combination rather than the model's own default. |
-| `minimax/hailuo-2.3` | Valid fields: `prompt, first_frame_image, prompt_optimizer, fast_pretreatment, duration, resolution`. The image parameter is named **`first_frame_image`**. `resolution` enum is `"768P"\|"1080P"` — **no value in common with Alibaba's**. `duration` is an enum, not a range: probed one value at a time, **6 and 10 are accepted while 3, 4, 5, 8, and 12 are each refused** with `Invalid value at duration: Invalid input`. `prompt` is required. No seed field. Priced **per exact combination**: $0.28 for 6 s @768P, $0.56 for 10 s @768P, $0.49 for 6 s @1080P. | The comparison model. `durationChoices: [6, 10]`, `motionPromptRequired: true`, `seed: false`. Its prices are declared per combination because they **do not reduce to a rate** — see below. |
+| Model                | Live findings                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Registered behaviour                                                                                                                                                                                                                                                                                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `alibaba/hh1.1-i2v`  | Valid fields: `image, prompt, negative_prompt, resolution, duration, seed, watermark`. `image` is **required**. `resolution` enum is `"720P"\|"1080P"` (uppercase, exactly as its t2v sibling). `duration` probed at both ends: `2` is refused with `Too small: expected number to be >=3`, `999` with `Too big: expected number to be <=15`. `seed` is `0`–`2147483647`. A probe carrying only the image reached billing, confirming the prompt is genuinely optional. Priced **$0.14/second @720p, $0.18/second @1080p**.                                              | The **default**, and the natural counterpart to Create Video's `alibaba/hh1.1-t2v`: same vendor, same control vocabulary, so the reuse of the Phase 8 descriptor shape is visible when the two are read side by side. `pricingUnit: 'video-second'`, `durationRange: 3–15`, default `720P` at 5 s — the cheapest useful combination rather than the model's own default. |
+| `minimax/hailuo-2.3` | Valid fields: `prompt, first_frame_image, prompt_optimizer, fast_pretreatment, duration, resolution`. The image parameter is named **`first_frame_image`**. `resolution` enum is `"768P"\|"1080P"` — **no value in common with Alibaba's**. `duration` is an enum, not a range: probed one value at a time, **6 and 10 are accepted while 3, 4, 5, 8, and 12 are each refused** with `Invalid value at duration: Invalid input`. `prompt` is required. No seed field. Priced **per exact combination**: $0.28 for 6 s @768P, $0.56 for 10 s @768P, $0.49 for 6 s @1080P. | The comparison model. `durationChoices: [6, 10]`, `motionPromptRequired: true`, `seed: false`. Its prices are declared per combination because they **do not reduce to a rate** — see below.                                                                                                                                                                             |
 
-Two further models were probed and their field lists recorded for a future phase but not
-registered, since two models are enough to demonstrate the disagreement: `runwayml/gen-4.5`
+Two further models were probed and their field lists recorded for a future phase but not registered,
+since two models are enough to demonstrate the disagreement: `runwayml/gen-4.5`
 (`prompt, image_input, ratio, duration, seed, content_moderation.public_figure_threshold`; `ratio`
-enumerates `"1280:720"|"720:1280"|"1104:832"|"960:960"|"832:1104"|"1584:672"`; `duration` maxes at
-10) and `lightricks/ltx-2-5-fast` (`prompt, image_uri, last_frame_uri, duration, resolution, fps,
-generate_audio`; `resolution` enumerates explicit pixel dimensions such as `"1280x720"` rather than
-a shorthand).
+enumerates `"1280:720"|"720:1280"|"1104:832"|"960:960"|"832:1104"|"1584:672"`; `duration` maxes
+at 10) and `lightricks/ltx-2-5-fast`
+(`prompt, image_uri, last_frame_uri, duration, resolution, fps, generate_audio`; `resolution`
+enumerates explicit pixel dimensions such as `"1280x720"` rather than a shorthand).
 
 #### The disagreements, which are the phase's teaching point
 
 - **The source image has four different wire names** — `image`, `first_frame_image`, `image_uri`,
   `image_input`. One concept, four spellings, across four models from four vendors. This is exactly
-  the disagreement the descriptor-driven approach exists for, and it is made visible in the same
-  way Create Video made `quality` against `resolution` visible: the name travels in the descriptor
-  and `buildAnimateImageInput()` reads it at the last moment.
+  the disagreement the descriptor-driven approach exists for, and it is made visible in the same way
+  Create Video made `quality` against `resolution` visible: the name travels in the descriptor and
+  `buildAnimateImageInput()` reads it at the last moment.
 - **The resolution enums share no value at all**: `720P` against `768P`. Switching model resets the
   control rather than carrying a string the other would reject outright.
-- **One model takes a duration range and the other exactly two lengths.** Eight seconds is valid
-  for Alibaba and refused by MiniMax, so the control is a flattened option list driven by whichever
-  form the descriptor declares.
-- **The motion prompt is optional for one and required for the other**, so the panel marks the
-  field from the descriptor rather than picking one behaviour for both.
+- **One model takes a duration range and the other exactly two lengths.** Eight seconds is valid for
+  Alibaba and refused by MiniMax, so the control is a flattened option list driven by whichever form
+  the descriptor declares.
+- **The motion prompt is optional for one and required for the other**, so the panel marks the field
+  from the descriptor rather than picking one behaviour for both.
 - **The two price in incompatible shapes, and one of them is not a rate.** This is the sharpest
   finding of the phase. MiniMax's published figures work out at 4.67¢ a second at six seconds and
   5.6¢ at ten, so there is no per-second price to quote. `AnimateImageControlSupport` therefore
-  carries `pricePerSecondUsd` **or** `priceByCombinationUsd`, never both, and a test asserts
-  exactly one is declared per model.
+  carries `pricePerSecondUsd` **or** `priceByCombinationUsd`, never both, and a test asserts exactly
+  one is declared per model.
 
 **An unpublished combination is reported as unknown rather than interpolated.** The catalogue
 publishes no figure for MiniMax at ten seconds at 1080P. Deriving one from the two it does publish
-would be inventing a number and attributing it to the provider, in the panel whose subject is
-honest cost. The estimate therefore travels as `{ costUsd, estimateKnown }` all the way to the UI,
-which renders *"No published price … This run will still be charged; the amount simply is not
-knowable in advance"* rather than a `$0.00` that would read as free.
+would be inventing a number and attributing it to the provider, in the panel whose subject is honest
+cost. The estimate therefore travels as `{ costUsd, estimateKnown }` all the way to the UI, which
+renders _"No published price … This run will still be charged; the amount simply is not knowable in
+advance"_ rather than a `$0.00` that would read as free.
 
 #### Reuse, and what was deliberately not duplicated
 
@@ -1598,26 +2092,26 @@ parallel job mechanism. What is shared: the **R2 bucket** and its `generated-vid
 `MediaJobPort`, `WorkflowMediaJobs`, the derived-instance-ID ownership scheme (`deriveMediaJobId`
 keyed by `ACCESS_AUD`), `videoObjectKey`, both Workflow step policies, and the whole
 `provider-failures` classification. An architecture test asserts both services are constructed over
-the same bucket binding and the same derivation key, and that the configuration binds exactly one
-R2 bucket.
+the same bucket binding and the same derivation key, and that the configuration binds exactly one R2
+bucket.
 
 **A second Workflow class is the one piece that is duplicated, deliberately.** The two panels carry
-different payloads and apply different validation on arrival — this one re-verifies the picture
-from its own bytes — so a single class switching on a discriminator would have to accept a union
-payload and re-validate against whichever arm it guessed, while making the retries-disabled cost
-reasoning apply to two panels at once. The shared parts are shared as modules, which is the form of
-reuse that does not create a second thing to reason about.
+different payloads and apply different validation on arrival — this one re-verifies the picture from
+its own bytes — so a single class switching on a discriminator would have to accept a union payload
+and re-validate against whichever arm it guessed, while making the retries-disabled cost reasoning
+apply to two panels at once. The shared parts are shared as modules, which is the form of reuse that
+does not create a second thing to reason about.
 
 **`MAX_ANIMATE_SOURCE_BYTES` is 640 KiB, not the 1 MiB every other image panel allows, and the
 constraint is the Workflow rather than the image.** A Workflow event payload caps at 1 MiB and
 base64 expands by four thirds, so a 1 MiB picture becomes a 1.37 MiB parameter and `create()`
-rejects the instance — a failure arriving *after* the panel had accepted the picture. The limit is
+rejects the instance — a failure arriving _after_ the panel had accepted the picture. The limit is
 this demo's own and the refusal message says so.
 
 #### What could not be verified, and is explicitly unverified
 
 **No animation was generated, and no video was produced, stored, or played.** The account has no
-prepaid credits. Every assertion above about *request* acceptance and rejection was captured live
+prepaid credits. Every assertion above about _request_ acceptance and rejection was captured live
 from each provider's validator; none of the following was:
 
 - The **output envelope**. Implemented from both catalogue pages, which agree on
@@ -1626,9 +2120,9 @@ from each provider's validator; none of the following was:
   also accepts a flattened `{ video }`, but neither shape was observed from a paid call.
 - The **`outputHosts` allowlists**, taken from each model's published examples
   (`examples.aig.cloudflare.com` and `pub-04a6d208d361438ea01b797e6973bd19.r2.dev` for Alibaba,
-  `video-product.cdn.minimax.io` for MiniMax). A provider serving from a different CDN host would
-  be refused with a `502`, and the rejected host is logged so the list can be corrected from the
-  log rather than by guesswork.
+  `video-product.cdn.minimax.io` for MiniMax). A provider serving from a different CDN host would be
+  refused with a `502`, and the rejected host is logged so the list can be corrected from the log
+  rather than by guesswork.
 - Whether a **`data:` URI of a realistic size** is accepted. The probes used a 1×1 PNG; validation
   accepted it, but no provider has been asked to decode a 640 KB one, and a provider-side payload
   limit below this panel's own would only appear on a paid call.
@@ -1640,17 +2134,16 @@ from each provider's validator; none of the following was:
   adapter Create Video uses and is covered against fakes, but no object has been written by an
   Animate Image job.
 
-The exit criterion requiring "one real deployed request per new panel" is **not met for a
-successful run**, and that is stated here rather than implied as done. What was verified against
-the live providers is the complete input contract of four models, the data-URI question that
-decided which could be offered at all, and the exact billing failure including its code, status,
-and message.
+The exit criterion requiring "one real deployed request per new panel" is **not met for a successful
+run**, and that is stated here rather than implied as done. What was verified against the live
+providers is the complete input contract of four models, the data-URI question that decided which
+could be offered at all, and the exact billing failure including its code, status, and message.
 
 ### Phase 17 contract review — Detect Objects
 
 **Decision: build it.** `@cf/moondream/moondream3.1-9B-A2B` is Cloudflare-hosted, catalogued and
-non-beta, so this is a credit-free panel rather than another prepaid Unified Billing exception. It is
-priced at $0.30 per million input tokens and $1.00 per million output tokens
+non-beta, so this is a credit-free panel rather than another prepaid Unified Billing exception. It
+is priced at $0.30 per million input tokens and $1.00 per million output tokens
 (`pricingUnit: 'token'`) and is synchronous.
 
 Live calls confirmed the precise request: `task: "detect"`, a full base64 `data:` URI in `image`, a
@@ -1669,9 +2162,9 @@ limits before responsive percentage overlays are rendered. An empty `objects: []
 
 **The original score-and-label requirements do not apply.** Boxes have no label and no score. The
 label is the visitor's target phrase for every region; there is no score floor, confidence bar,
-ranking, tie policy, or inclusive score threshold to implement honestly. The accessible table instead
-names the target and describes its region in words, and remains complete without overlays. This is a
-contrast with Classify Image's fixed training labels and scores. `max_objects` is a real
+ranking, tie policy, or inclusive score threshold to implement honestly. The accessible table
+instead names the target and describes its region in words, and remains complete without overlays.
+This is a contrast with Classify Image's fixed training labels and scores. `max_objects` is a real
 `appliedBy: 'model'` control, unlike Classify Image's playground-applied result controls.
 
 Moondream is the single registered model. LLaVA 1.5 and Llama 3.2 Vision were excluded because they
@@ -1702,10 +2195,10 @@ name now carries the `(beta)` marker the two other beta models already use. A vi
 between three embedding models should be able to see which one carries a stability caveat.
 
 This is exactly the class of drift the reconciliation exists to catch: a descriptor fact that
-changes without anyone touching the repository, and that no test could have detected offline. A
-test now pins the *convention* rather than the list, since asserting which models are beta would
-mean depending on live infrastructure: any descriptor mentioning beta must spell it `(beta)` at the
-end of the display name, so the next correction is a one-word edit in a known shape.
+changes without anyone touching the repository, and that no test could have detected offline. A test
+now pins the _convention_ rather than the list, since asserting which models are beta would mean
+depending on live infrastructure: any descriptor mentioning beta must spell it `(beta)` at the end
+of the display name, so the next correction is a one-word edit in a known shape.
 
 ### Phase 18 deployment smoke run
 
@@ -1737,13 +2230,13 @@ Both constants were restored and the Worker redeployed at `0 * * * *` with the 2
 the test object was removed. The bucket ends empty.
 
 One thing could **not** be verified and is stated rather than implied: the reaper's
-`video_reaper_completed` log line was not read back from deployed logs. Neither the Log Explorer
-SQL dataset nor the Workers observability telemetry API returned any events for this account —
-including for a request deliberately made to produce one — so the channel itself was unavailable
-rather than the line being absent. The line *was* observed in local development against the real
-handler and the local R2 simulation, and that is where the `info`-level logging defect described
-below was found. The deployed evidence is the bucket's contents, which is the behaviour that
-matters most and is not inferable from anything else.
+`video_reaper_completed` log line was not read back from deployed logs. Neither the Log Explorer SQL
+dataset nor the Workers observability telemetry API returned any events for this account — including
+for a request deliberately made to produce one — so the channel itself was unavailable rather than
+the line being absent. The line _was_ observed in local development against the real handler and the
+local R2 simulation, and that is where the `info`-level logging defect described below was found.
+The deployed evidence is the bucket's contents, which is the behaviour that matters most and is not
+inferable from anything else.
 
 **A defect this found that no unit test would have.** `resolveLoggerConfig` returns `warn` both for
 production and for an absent `ENVIRONMENT`, so the reaper's summary — the only line carrying the
@@ -1752,3 +2245,59 @@ reports is precisely the failure mode that signal exists to make visible. The sc
 overrides its level to `info`, and only that handler does: a request-scoped logger keeps the level
 its environment chose, because a request already leaves an invocation log and a cron firing does
 not.
+
+## Follow-on items
+
+These changes come from [`03-follow-ons.md`](03-follow-ons.md), after all eighteen phases were
+delivered. Several reverse decisions recorded above; each reversal is deliberate and is described
+here rather than applied silently, because the earlier decisions were correct given what was known
+at the time.
+
+### Item 1 — collapsible sidebar groups
+
+Phase 1's deliverable 7 specified "non-interactive visual group labels only", and `tasks.ts`,
+`PanelNavigation.vue`, and a test named `renders group labels as headings, not controls` each said
+so in their own words. All four now say the opposite: a group heading contains a disclosure toggle,
+with an expand-all/collapse-all pair above the list.
+
+The reasoning that made groups non-interactive still holds and is unchanged — navigation must not
+become two levels deep. What changed is the recognition that collapsing is a _view preference_
+rather than a level: a group is still not a route, every panel keeps its own top-level path, and
+expand-all restores everything in one click. The collapsed set persists to `localStorage` so a
+presenter's tidying survives a reload.
+
+The test was **rewritten rather than deleted**, which matters: it was written specifically to
+prevent this change, so deleting it would have left the navigation with no pinned shape at all. It
+now asserts the disclosure contract — a real `<button>`, `aria-expanded` tracking the open state,
+and `aria-controls` naming the list it governs. The toggle sits _inside_ the `<h2>` rather than
+replacing it; replacing it would have dropped the panel list out of heading navigation entirely,
+trading a screen-reader user's fastest route to the panels for a disclosure they could already
+operate. The cross-panel accessibility contract gained a check pairing `aria-expanded` with
+`aria-controls` across the whole browser tier.
+
+### Item 2 — hosting badges, and the removal of the staged-delivery machinery
+
+The phase pill was conditional on `availability === 'planned'` and had therefore rendered nowhere
+since phase 17. Rather than only deleting the markup, the whole staged-delivery mechanism went:
+`TaskAvailability`, `TaskDescriptor.availability`, `TaskDescriptor.phase`, `PlannedPanelView.vue`,
+and the router's `?? PlannedPanelView` fallback. Every panel is built, and a future panel will
+arrive as one complete change rather than as a placeholder that fills in later, so the state was
+permanently unreachable. `PANEL_VIEWS` is now a total `Record<TaskId, …>`, which makes a panel
+without a view a compile error instead of something a visitor can reach.
+
+The badge slot now carries what a visitor actually needs to know: the Cloudflare mark when a panel
+has at least one hosted model, a **3P** mark when it has at least one third-party model, and both
+where both apply. The pair is the information — "works unfunded, and has paid options to compare
+against" — which neither mark alone conveys. Three panels show only the 3P mark (Create Video,
+Animate Image, Generate Music) and that is the presenter-critical case: those panels do nothing on
+an account without prepaid AI credits.
+
+`hosting` is declared on the task descriptor rather than read from `/api/catalogue`, because model
+descriptors live in the Worker's domain tier and making the sidebar wait on a fetch before it could
+draw navigation would be a poor trade for a badge. That makes it a copy of something the registry
+already knows, so two tests assert it has not drifted: one against `modelsForTask()` directly, and
+one checking the flags and models inside a single live `/api/catalogue` response. Both were
+confirmed to fail when a flag is deliberately falsified.
+
+Both marks carry an accessible name rather than only a `title`. The outgoing pill was text and so
+never needed one; a bare logo and a bare "3P" glyph both do.

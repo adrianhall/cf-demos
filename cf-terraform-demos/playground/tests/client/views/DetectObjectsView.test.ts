@@ -182,7 +182,8 @@ describe('Detect Objects is its own panel', () => {
 
     expect(task?.name).toBe('Detect Objects');
     expect(task?.taskType).toBe('Object detection');
-    expect(task?.availability).toBe('available');
+    // Cloudflare-hosted, so the panel runs on an account with no prepaid AI credits.
+    expect(task?.hosting).toEqual({ cloudflare: true, thirdParty: false });
   });
 });
 

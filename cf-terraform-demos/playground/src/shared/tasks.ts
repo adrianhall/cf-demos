@@ -48,14 +48,31 @@ export type TaskId =
 export type GatewayRequirement = 'required' | 'none';
 
 /**
- * Delivery phase of a panel, as defined by `specs/playground/02-implementation.md`.
+ * Which kinds of provider run the models a panel offers.
  *
- * Every panel appears in the navigation from the first phase, including the ones that are not built
- * yet. Hiding them would misrepresent the product and make each phase's progress invisible; an
- * honest "not built yet" placeholder is more useful to a visitor than a sidebar that silently
- * grows.
+ * This is the sidebar's badge data, and it exists here rather than being read from the model
+ * registry because the registry lives in the Worker's domain tier and reaches the browser only
+ * through `/api/catalogue`. Making the sidebar wait on a fetch before it could render navigation
+ * would be a poor trade for a badge, so the fact is declared alongside the panel and
+ * `tests/worker/domain/tasks.test.ts` asserts it still matches `modelsForTask()`. The badge cannot
+ * drift from the registry without failing that test.
+ *
+ * Both flags are false for a panel that runs no model at all, which is why this is a pair of
+ * booleans rather than an enum: "hosted and third-party", "third-party only", and "neither" are all
+ * real states.
  */
-export type TaskAvailability = 'available' | 'planned';
+export interface ModelHosting {
+  /**
+   * Whether the panel offers at least one Cloudflare-hosted model, and can therefore be
+   * demonstrated on an account with no prepaid AI credits.
+   */
+  cloudflare: boolean;
+  /**
+   * Whether the panel offers at least one third-party model. These bill against Unified Billing
+   * credits, so a panel where this is the _only_ option cannot be run on an unfunded account.
+   */
+  thirdParty: boolean;
+}
 
 /**
  * Grouping label for the sidebar.
@@ -100,14 +117,10 @@ export interface TaskDescriptor {
    */
   gateway: GatewayRequirement;
   /**
-   * Whether the panel is built yet, or still shows a placeholder.
+   * Which provider classes back this panel's models, badged in the sidebar; see
+   * {@link ModelHosting}.
    */
-  availability: TaskAvailability;
-  /**
-   * Implementation phase that delivers the panel, quoted in the placeholder so a visitor knows what
-   * is coming rather than only what is missing.
-   */
-  phase: number;
+  hosting: ModelHosting;
 }
 
 /**
@@ -124,8 +137,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Hold a short conversation with a text model and watch the answer stream in.',
     group: 'Generate',
     gateway: 'required',
-    availability: 'available',
-    phase: 3
+    hosting: { cloudflare: true, thirdParty: false }
   },
   {
     id: 'create-image',
@@ -134,8 +146,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Turn a written description into a picture.',
     group: 'Generate',
     gateway: 'required',
-    availability: 'available',
-    phase: 4
+    hosting: { cloudflare: true, thirdParty: false }
   },
   {
     id: 'describe-image',
@@ -144,8 +155,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Ask a vision model what is in a picture.',
     group: 'Understand',
     gateway: 'required',
-    availability: 'available',
-    phase: 5
+    hosting: { cloudflare: true, thirdParty: false }
   },
   {
     id: 'remix-image',
@@ -154,8 +164,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Transform a picture you supply using a written instruction.',
     group: 'Generate',
     gateway: 'required',
-    availability: 'available',
-    phase: 6
+    hosting: { cloudflare: true, thirdParty: true }
   },
   {
     id: 'classify-image',
@@ -164,8 +173,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Sort a picture into labels the model already knows, with confidence scores.',
     group: 'Understand',
     gateway: 'required',
-    availability: 'available',
-    phase: 7
+    hosting: { cloudflare: true, thirdParty: false }
   },
   {
     id: 'detect-objects',
@@ -174,8 +182,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Find where things are in a picture, not just what the picture is of.',
     group: 'Understand',
     gateway: 'required',
-    availability: 'available',
-    phase: 17
+    hosting: { cloudflare: true, thirdParty: false }
   },
   {
     id: 'create-video',
@@ -184,8 +191,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Generate a short video clip from a written description.',
     group: 'Generate',
     gateway: 'required',
-    availability: 'available',
-    phase: 8
+    hosting: { cloudflare: false, thirdParty: true }
   },
   {
     id: 'animate-image',
@@ -194,8 +200,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Bring a still picture to life as a short video clip.',
     group: 'Generate',
     gateway: 'required',
-    availability: 'available',
-    phase: 16
+    hosting: { cloudflare: false, thirdParty: true }
   },
   {
     id: 'generate-music',
@@ -204,8 +209,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Compose a short piece of music from a style description.',
     group: 'Generate',
     gateway: 'required',
-    availability: 'available',
-    phase: 15
+    hosting: { cloudflare: false, thirdParty: true }
   },
   {
     id: 'read-text',
@@ -214,8 +218,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Hear written text spoken aloud in a chosen voice.',
     group: 'Speech',
     gateway: 'required',
-    availability: 'available',
-    phase: 9
+    hosting: { cloudflare: true, thirdParty: false }
   },
   {
     id: 'transcribe-audio',
@@ -224,8 +227,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Turn recorded speech into written text.',
     group: 'Speech',
     gateway: 'required',
-    availability: 'available',
-    phase: 10
+    hosting: { cloudflare: true, thirdParty: false }
   },
   {
     id: 'translate-text',
@@ -234,8 +236,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Translate text between languages a model supports.',
     group: 'Understand',
     gateway: 'required',
-    availability: 'available',
-    phase: 11
+    hosting: { cloudflare: true, thirdParty: false }
   },
   {
     id: 'classify-text',
@@ -244,8 +245,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Sort text into a fixed set of labels such as sentiment or topic.',
     group: 'Understand',
     gateway: 'required',
-    availability: 'available',
-    phase: 12
+    hosting: { cloudflare: true, thirdParty: false }
   },
   {
     id: 'evaluate-choices',
@@ -256,8 +256,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
       + 'calibrated probabilities back rather than prose.',
     group: 'Reason',
     gateway: 'required',
-    availability: 'available',
-    phase: 14
+    hosting: { cloudflare: true, thirdParty: false }
   },
   {
     id: 'semantic-search',
@@ -266,8 +265,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Find passages by meaning rather than by matching words.',
     group: 'Reason',
     gateway: 'required',
-    availability: 'available',
-    phase: 13
+    hosting: { cloudflare: true, thirdParty: false }
   },
   {
     id: 'view-tokens',
@@ -280,8 +278,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     // AI-GATEWAY-EXCEPTIONS.md, which says so explicitly so the absence is a decision rather than
     // an oversight.
     gateway: 'none',
-    availability: 'available',
-    phase: 2
+    hosting: { cloudflare: false, thirdParty: false }
   }
 ];
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { TASK_DESCRIPTORS, type TaskDescriptor, type TaskGroup } from '../../../shared/tasks';
+import ModelHostingBadges from './ModelHostingBadges.vue';
 
 /**
  * `localStorage` key holding the groups a visitor has collapsed.
@@ -234,9 +235,7 @@ function listId(group: TaskGroup): string {
             active-class="panel-link--active"
           >
             <span class="panel-name">{{ task.name }}</span>
-            <span v-if="task.availability === 'planned'" class="panel-badge">
-              Phase {{ task.phase }}
-            </span>
+            <ModelHostingBadges :hosting="task.hosting" />
           </router-link>
         </li>
       </ul>
@@ -373,14 +372,5 @@ function listId(group: TaskGroup): string {
 
 .panel-name {
   flex: 1 1 auto;
-}
-
-.panel-badge {
-  border: 1px solid rgb(var(--v-theme-outline));
-  border-radius: 999px;
-  color: rgb(var(--v-theme-on-surface-variant));
-  flex: 0 0 auto;
-  font-size: 0.6875rem;
-  padding: 0.0625rem 0.5rem;
 }
 </style>

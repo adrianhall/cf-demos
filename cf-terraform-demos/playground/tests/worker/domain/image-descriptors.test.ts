@@ -198,11 +198,9 @@ describe('text-to-image descriptors', () => {
     }
   });
 
-  it('gives every delivered inference panel at least one reviewed model', () => {
-    const delivered = TASK_DESCRIPTORS.filter(
-      (task) => task.availability === 'available' && task.gateway === 'required'
-    );
-    for (const task of delivered) {
+  it('gives every inference panel at least one reviewed model', () => {
+    const inferencePanels = TASK_DESCRIPTORS.filter((task) => task.gateway === 'required');
+    for (const task of inferencePanels) {
       expect(modelsForTask(task.id).length, `${task.name} has no reviewed model`).toBeGreaterThan(
         0
       );

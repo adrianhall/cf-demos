@@ -17,7 +17,6 @@ import DescribeImageView from './views/DescribeImageView.vue';
 import DetectObjectsView from './views/DetectObjectsView.vue';
 import EvaluateChoicesView from './views/EvaluateChoicesView.vue';
 import GenerateMusicView from './views/GenerateMusicView.vue';
-import PlannedPanelView from './views/PlannedPanelView.vue';
 import ReadTextView from './views/ReadTextView.vue';
 import RemixImageView from './views/RemixImageView.vue';
 import SemanticSearchView from './views/SemanticSearchView.vue';
@@ -26,14 +25,16 @@ import TranslateTextView from './views/TranslateTextView.vue';
 import ViewTokensView from './views/ViewTokensView.vue';
 
 /**
- * Views for the panels that are built, keyed by task identifier.
+ * The view for every panel, keyed by task identifier.
  *
- * A panel absent from this map renders the placeholder. Each phase adds one entry rather than
- * restructuring the route table, and a panel marked `available` in the catalogue without a view
- * here would show a placeholder while the sidebar claimed otherwise — which
- * `tests/client/router.test.ts` treats as a failure.
+ * `Record` rather than `Partial<Record>`: every panel in the catalogue is built, and a panel added
+ * without a view is now a compile error rather than a visitor-facing placeholder. The placeholder
+ * existed while panels were delivered in phases and the sidebar listed ones that did not work yet;
+ * that state is permanently behind the product, because a new panel now arrives as a single
+ * complete change. `tests/client/router.test.ts` holds the same invariant at runtime, so a map
+ * keyed past the `TaskId` union cannot drift either.
  */
-const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
+const PANEL_VIEWS: Record<TaskId, NonNullable<RouteRecordRaw['component']>> = {
   // Its own top-level route, not a mode inside `create-video`. The two panels share their job
   // machinery on the server and nothing at all in the route table.
   'animate-image': AnimateImageView,
@@ -71,7 +72,7 @@ export function buildRoutes(): RouteRecordRaw[] {
   const panelRoutes: RouteRecordRaw[] = TASK_DESCRIPTORS.map((task) => ({
     path: `/${task.id}`,
     name: task.id,
-    component: DELIVERED_VIEWS[task.id] ?? PlannedPanelView,
+    component: PANEL_VIEWS[task.id],
     props: { taskId: task.id },
     meta: { taskId: task.id }
   }));

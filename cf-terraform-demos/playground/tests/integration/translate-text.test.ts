@@ -315,9 +315,9 @@ describe('error responses', () => {
 
 describe('the panel catalogue', () => {
   // The browser builds its selectors, its swap action, *and its predicted call count* from this
-  // response, so the panel being marked available without reviewed models would produce an empty
+  // response, so a panel listed without reviewed models would produce an empty
   // selector and no cost disclosure in the deployed UI.
-  it('advertises Translate Text as available with reviewed models', async () => {
+  it('advertises Translate Text with reviewed models', async () => {
     const token = await signDevJwt('alice@example.com', { audience: AUD });
     const response = await send(
       new Request('https://playground.example/api/catalogue', {
@@ -326,7 +326,11 @@ describe('the panel catalogue', () => {
     );
 
     const payload = (await response.json()) as {
-      tasks: { id: string; availability: string; gateway: string }[];
+      tasks: {
+        id: string;
+        gateway: string;
+        hosting: { cloudflare: boolean; thirdParty: boolean };
+      }[];
       models: {
         id: string;
         task: string;
@@ -344,7 +348,7 @@ describe('the panel catalogue', () => {
     };
 
     const task = payload.tasks.find((candidate) => candidate.id === 'translate-text');
-    expect(task).toMatchObject({ availability: 'available', gateway: 'required' });
+    expect(task).toMatchObject({ gateway: 'required' });
 
     const models = payload.models.filter((candidate) => candidate.task === 'translate-text');
     expect(models.length).toBeGreaterThan(0);

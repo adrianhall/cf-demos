@@ -65,16 +65,14 @@ async function listSourceFiles(directory: string): Promise<string[]> {
 }
 
 /**
- * Every panel that is built and performs inference.
+ * Every panel that performs inference.
  *
- * Driven from the catalogue rather than a hand-written list, so a panel delivered in a later phase
- * is covered by these guards the moment it is marked available.
+ * Driven from the catalogue rather than a hand-written list, so a panel added later is covered by
+ * these guards the moment its descriptor exists.
  */
-const deliveredInferencePanels = TASK_DESCRIPTORS.filter(
-  (task) => task.availability === 'available' && task.gateway === 'required'
-);
+const inferencePanels = TASK_DESCRIPTORS.filter((task) => task.gateway === 'required');
 
-describe.each(deliveredInferencePanels.map((task) => [task.name, task] as const))(
+describe.each(inferencePanels.map((task) => [task.name, task] as const))(
   '%s is gateway-routed by construction',
   (_name, task) => {
     it('is declared as requiring AI Gateway', () => {
@@ -99,7 +97,7 @@ describe.each(deliveredInferencePanels.map((task) => [task.name, task] as const)
 describe('the delivered inference panels', () => {
   // A guard on the guards: if this ever read zero, the suite above would pass by testing nothing.
   it('number at least two by this phase', () => {
-    expect(deliveredInferencePanels.length).toBeGreaterThanOrEqual(2);
+    expect(inferencePanels.length).toBeGreaterThanOrEqual(2);
   });
 
   it('registers only the reviewed FLUX multipart exception', () => {

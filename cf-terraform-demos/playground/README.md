@@ -63,9 +63,22 @@ list in a single click.
 | **Semantic Search**  | **Text embeddings / reranking**  | **Available now** |
 | **View Tokens**      | **Tokenization**                 | **Available now** |
 
-Panels that are not built yet are still listed, each stating the phase that delivers it. Hiding them
-would misrepresent the product; a sidebar that quietly grows tells a visitor nothing about where the
-work is going.
+Every panel in the catalogue is built, so the "not built yet" placeholder that carried the sidebar
+through staged delivery has been removed along with the phase pill that announced it. A panel listed
+without a view behind it is now a build error rather than something a visitor can reach.
+
+Each panel instead carries a mark for who runs its models: the Cloudflare logo when at least one
+Cloudflare-hosted model is available, and a **3P** mark when at least one third-party model is. Both
+appear where both apply. The distinction is a practical one rather than a branding one — a
+third-party model bills against Unified Billing credits, so the three panels showing only the 3P
+mark (Create Video, Animate Image, Generate Music) do nothing at all on an account with no prepaid
+AI credits. The marks say so before a visitor tries them.
+
+The flags live on the task descriptor rather than being read from `/api/catalogue`, so the sidebar
+renders without waiting on a fetch. Because that is a copy of something the model registry already
+knows, tests assert in both directions that it still matches `modelsForTask()` — at the unit level
+and against a live `/api/catalogue` response — so a badge cannot drift from the models actually
+offered.
 
 ### Panel layout
 

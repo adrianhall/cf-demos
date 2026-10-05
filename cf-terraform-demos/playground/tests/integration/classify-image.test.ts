@@ -284,9 +284,9 @@ describe('error responses', () => {
 });
 
 describe('the panel catalogue', () => {
-  // The browser builds its selector and its controls from this response, so the panel being
-  // marked available without a reviewed model would produce an empty selector in the deployed UI.
-  it('advertises Classify Image as available with a reviewed classifier', async () => {
+  // The browser builds its selector and its controls from this response, so a panel
+  // listed without a reviewed model would produce an empty selector in the deployed UI.
+  it('advertises Classify Image with a reviewed classifier', async () => {
     const token = await signDevJwt('alice@example.com', { audience: AUD });
     const response = await send(
       new Request('https://playground.example/api/catalogue', {
@@ -295,7 +295,11 @@ describe('the panel catalogue', () => {
     );
 
     const payload = (await response.json()) as {
-      tasks: { id: string; availability: string; gateway: string }[];
+      tasks: {
+        id: string;
+        gateway: string;
+        hosting: { cloudflare: boolean; thirdParty: boolean };
+      }[];
       models: {
         id: string;
         task: string;
@@ -304,7 +308,7 @@ describe('the panel catalogue', () => {
     };
 
     const task = payload.tasks.find((candidate) => candidate.id === 'classify-image');
-    expect(task).toMatchObject({ availability: 'available', gateway: 'required' });
+    expect(task).toMatchObject({ gateway: 'required' });
 
     const models = payload.models.filter((candidate) => candidate.task === 'classify-image');
     expect(models.length).toBeGreaterThan(0);

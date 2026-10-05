@@ -135,7 +135,9 @@ describe('Animate Image is its own panel, not a Create Video mode', () => {
 
     expect(task?.name).toBe('Animate Image');
     expect(task?.taskType).toBe('Image to video');
-    expect(task?.availability).toBe('available');
+    // Third-party only: this panel cannot be demonstrated without prepaid AI credits, which is
+    // what the sidebar's lone 3P mark is there to say before a visitor tries it.
+    expect(task?.hosting).toEqual({ cloudflare: false, thirdParty: true });
     // Distinct from Create Video's, so the sidebar and the document title can tell them apart.
     expect(task?.name).not.toBe(findTask('create-video')?.name);
   });

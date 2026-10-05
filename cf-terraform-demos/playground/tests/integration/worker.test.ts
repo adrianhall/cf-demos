@@ -79,13 +79,35 @@ describe('GET /api/catalogue', () => {
       expect.objectContaining({ id: 'flux-2-workers-ai-multipart-stream', panel: 'Remix Image' })
     ]);
 
-    // A reviewed model is only advertised for a panel that is built, so the catalogue never offers
-    // a choice that goes nowhere.
-    const delivered = new Set(
-      TASK_DESCRIPTORS.filter((task) => task.availability === 'available').map((task) => task.id)
-    );
+    // A reviewed model is only advertised against a panel in the catalogue, so the selector never
+    // offers a choice that goes nowhere.
+    const panels = new Set<string>(TASK_DESCRIPTORS.map((task) => task.id));
     for (const model of body.models) {
-      expect(delivered.has(model.task as (typeof TASK_DESCRIPTORS)[number]['id'])).toBe(true);
+      expect(panels.has(model.task)).toBe(true);
+    }
+  });
+
+  // The sidebar badges hosting from the static task catalogue rather than from this response, so
+  // the two could in principle disagree. Checking them against each other *inside one response*
+  // is the end-to-end form of that guard: whatever the browser is told about a panel's providers
+  // has to match the models it is offered for that panel in the same payload.
+  it('serves hosting flags that match the models in the same response', async () => {
+    const response = await send(await requestAs('alice@example.com', '/api/catalogue'));
+
+    const body = (await response.json()) as {
+      tasks: { id: string; name: string; hosting: { cloudflare: boolean; thirdParty: boolean } }[];
+      models: { task: string; provider: string }[];
+    };
+
+    for (const task of body.tasks) {
+      const models = body.models.filter((model) => model.task === task.id);
+
+      expect(task.hosting.cloudflare, `${task.name} cloudflare flag`).toBe(
+        models.some((model) => model.provider === 'workers-ai')
+      );
+      expect(task.hosting.thirdParty, `${task.name} thirdParty flag`).toBe(
+        models.some((model) => model.provider === 'third-party')
+      );
     }
   });
 

@@ -86,7 +86,9 @@ describe('View Tokens isolation', () => {
     expect(findTask('view-tokens')?.gateway).toBe('none');
   });
 
-  it('is declared available now that it is built', () => {
-    expect(findTask('view-tokens')?.availability).toBe('available');
+  // The only panel with no model behind it, so the sidebar shows it neither the Cloudflare mark
+  // nor the third-party one. Both flags false is a real state, not a missing value.
+  it('advertises no hosted or third-party models, because it runs none', () => {
+    expect(findTask('view-tokens')?.hosting).toEqual({ cloudflare: false, thirdParty: false });
   });
 });
