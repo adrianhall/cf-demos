@@ -44,7 +44,7 @@ came to use.
 | **Describe Image**   | **Image to text**                | **Available now** |
 | **Remix Image**      | **Image to image**               | **Available now** |
 | **Classify Image**   | **Image classification**         | **Available now** |
-| Detect Objects       | Object detection                 | Phase 17          |
+| **Detect Objects**   | **Object detection**             | **Available now** |
 | **Create Video**     | **Text to video**                | **Available now** |
 | **Animate Image**    | **Image to video**               | **Available now** |
 | **Generate Music**   | **Text to music**                | **Available now** |
@@ -629,10 +629,9 @@ Built to **phase 7** of
   cannot be reduced to a rate, and why this panel's image size limit is lower than every other image
   panel's for a reason that has nothing to do with images.
 
-Every remaining panel renders a placeholder stating the phase that delivers it. **Phase 14 completed
-every credit-free panel**, and phase 15 was therefore the first that could not be delivered without
-prepaid AI Gateway credits. The one that remains — Detect Objects — is blocked on a model that does
-not exist.
+Phase 17 delivered Detect Objects with a Cloudflare-hosted, credit-free model. It is not a scored
+classifier: Moondream localises the visitor's phrase and returns structured normalised boxes. The
+phrase becomes each table row's honest label; the model supplies neither a label nor a confidence.
 
 The remaining phases are ordered by **whether Cloudflare hosts a model for the task**, which is a
 practical constraint rather than a preference: a third-party model bills against prepaid AI Gateway
@@ -656,12 +655,18 @@ is third-party. It re-confirmed that at delivery and the answer had not changed 
 **Image-to-Video task type in the Workers AI catalogue at all**, so there was nothing to move it
 back for.
 
-**Detect Objects** stays last and is **blocked**: `@cf/facebook/detr-resnet-50`, the model it was
-planned around, has been removed from the catalogue, and no object-detection task type exists in
-either catalogue now. It could be faked by prompting a vision model for coordinates, which is the
-prose-parsing path the specification rules out — so the panel stays listed and unstarted rather than
-being delivered in a form that teaches the wrong lesson. It reuses Classify Image's ranked table and
-adds a validated overlay on top of it.
+### Detect Objects: phrase localisation, not scored classification
+
+Detect Objects uses Cloudflare-hosted `@cf/moondream/moondream3.1-9B-A2B` in its dedicated
+`task: "detect"` mode. It sends the byte-validated upload as a full `data:` URI, never an arbitrary
+URL. The model returns structured normalised boxes for a natural-language target and `max_objects`
+is a genuine provider-side limit. The overlay uses percentage coordinates and scales with the image;
+the accessible table remains a complete result if overlays are unavailable.
+
+This is intentionally not Classify Image with boxes. Moondream returns neither labels nor scores, so
+every region is honestly labelled with the visitor's target phrase, has a textual position such as
+“upper left”, and has no confidence bar or score floor. LLaVA and Llama Vision were excluded because
+they would require parsing prose into boxes; Llama Vision additionally requires a licence agreement.
 
 ## Create Video: storage and durable jobs
 

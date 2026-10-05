@@ -18,6 +18,7 @@ import type {
   CreateVideoStatusResponse
 } from '../../shared/create-video';
 import type { DescribeImageRequest, DescribeImageResponse } from '../../shared/describe-image';
+import type { DetectObjectsRequest, DetectObjectsResponse } from '../../shared/detect-objects';
 import type {
   EvaluateChoicesRequest,
   EvaluateChoicesResponse
@@ -291,7 +292,26 @@ export async function classifyImage(
 }
 
 /**
- * Speaks one passage of text.
+ * Runs structured object localisation. @param request Detection request. @param signal Optional
+ * cancellation signal. @returns Located regions and run receipt. @throws {ApiError} When the API
+ * rejects or cannot fulfil the request.
+ */
+export async function detectObjects(
+  request: DetectObjectsRequest,
+  signal?: AbortSignal
+): Promise<DetectObjectsResponse> {
+  const response = await fetch('/api/detect-objects', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+  if (!response.ok) throw new ApiError(response.status, await failureMessage(response));
+  return (await response.json()) as DetectObjectsResponse;
+}
+
+/**
+ * Speaks one passage of text,
  *
  * A single request/response rather than a stream, and unlike Create Video there is no job to poll:
  * a speech model returns its complete audio within the request, and the bytes travel in the

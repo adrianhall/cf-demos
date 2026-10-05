@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTaskId, TASK_DESCRIPTORS } from '../../../src/shared/tasks';
+import { isTaskId, TASK_DESCRIPTORS, type TaskId } from '../../../src/shared/tasks';
 import {
   defaultModelForTask,
   findModelForTask,
@@ -60,12 +60,8 @@ describe('MODEL_DESCRIPTORS', () => {
 });
 
 describe('modelsForTask', () => {
-  // `detect-objects` rather than `generate-music`, which phase 15 delivered. Detect Objects is the
-  // panel with genuinely no model: `@cf/facebook/detr-resnet-50` was removed from the catalogue and
-  // no Object Detection task type exists in either catalogue now, so it is the honest example of a
-  // panel whose selector would be empty.
-  it('returns an empty list for a panel with no reviewed model', () => {
-    expect(modelsForTask('detect-objects')).toEqual([]);
+  it('returns an empty list for an unknown task-like identifier', () => {
+    expect(modelsForTask('not-a-reviewable-task' as TaskId)).toEqual([]);
   });
 
   it('returns every reviewed model bound to a panel, in catalogue order', () => {
@@ -112,8 +108,8 @@ describe('defaultModelForTask', () => {
     expect(defaultModelForTask('chat')?.id).toBe(modelsForTask('chat')[0]?.id);
   });
 
-  it('returns undefined for a panel with no reviewed model', () => {
-    expect(defaultModelForTask('detect-objects')).toBeUndefined();
+  it('returns undefined for an unknown task-like identifier', () => {
+    expect(defaultModelForTask('not-a-reviewable-task' as TaskId)).toBeUndefined();
   });
 });
 

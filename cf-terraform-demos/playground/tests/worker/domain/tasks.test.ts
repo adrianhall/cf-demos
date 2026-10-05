@@ -61,6 +61,7 @@ describe('TASK_DESCRIPTORS', () => {
       'create-image',
       'create-video',
       'describe-image',
+      'detect-objects',
       'evaluate-choices',
       'generate-music',
       'read-text',
@@ -75,7 +76,7 @@ describe('TASK_DESCRIPTORS', () => {
   // The phase number is quoted in the placeholder, so a panel still marked planned for a phase
   // already delivered would tell a visitor to wait for something that exists.
   it('marks every panel from a delivered phase as available', () => {
-    const deliveredThroughPhase = 16;
+    const deliveredThroughPhase = 17;
     for (const task of TASK_DESCRIPTORS) {
       if (task.phase <= deliveredThroughPhase) {
         expect(task.availability, `${task.name} is in a delivered phase`).toBe('available');
@@ -113,7 +114,7 @@ describe('TASK_DESCRIPTORS', () => {
   // delivered *before* everything free", and that is what is asserted below. The weaker reading
   // would have made the test expire the moment it mattered most.
   it('schedules credit-dependent panels after every credit-free one', () => {
-    const creditDependent = new Set<TaskId>(['generate-music', 'animate-image', 'detect-objects']);
+    const creditDependent = new Set<TaskId>(['generate-music', 'animate-image']);
 
     const freePhases = TASK_DESCRIPTORS.filter((task) => !creditDependent.has(task.id)).map(
       (task) => task.phase
@@ -129,7 +130,21 @@ describe('TASK_DESCRIPTORS', () => {
     // it from the whole catalogue is what keeps it meaningful now that some paid panels are
     // delivered: a reshuffle that moved Animate Image ahead of a credit-free panel would fail here
     // whether or not either had shipped.
-    expect(Math.min(...paidPhases)).toBeGreaterThan(Math.max(...freePhases));
+    //
+    // **Phase 17 is a genuine, named exception to the rule, not a loosening of it.** Detect Objects
+    // is credit-free and still sits after both paid panels, because the model that made it
+    // deliverable at all — `@cf/moondream/moondream3.1-9B-A2B` — was not in the catalogue when the
+    // sequence was ordered; the panel was blocked on a *missing* model rather than on credit. The
+    // exception is therefore listed by name. Expressing it as a filter over phase numbers was tried
+    // and rejected: `freePhases.filter((phase) => phase < min(paidPhases))` makes the assertion
+    // describe whatever the data already says, so it would pass for any ordering whatsoever. A
+    // named exemption keeps the rule falsifiable — adding a *new* credit-free panel after a paid
+    // one still fails here, which is exactly the regression worth catching.
+    const sequencedFreePhases = TASK_DESCRIPTORS.filter(
+      (task) => !creditDependent.has(task.id) && task.id !== 'detect-objects'
+    ).map((task) => task.phase);
+
+    expect(Math.min(...paidPhases)).toBeGreaterThan(Math.max(...sequencedFreePhases));
 
     // Every credit-free panel is delivered, which is the precondition that made delivering a paid
     // one legitimate at all. If this ever fails, a credit-dependent panel has been built while a
@@ -155,17 +170,21 @@ describe('TASK_DESCRIPTORS', () => {
     }
   });
 
-  // Detect Objects has no model at all: `@cf/facebook/detr-resnet-50` was removed from the
-  // catalogue, and neither catalogue declares an Object Detection task type. It stays listed so the
-  // product's shape is visible, but it must remain the *last* panel phase — delivering it would
-  // mean prompting a vision model for coordinates, which is the prose-parsing path the
-  // specification rules out.
-  it('keeps the panel with no available model last', () => {
+  // Detect Objects was listed for nine phases as "blocked: no model", because
+  // `@cf/facebook/detr-resnet-50` had been removed from the catalogue and nothing replaced it.
+  // Moondream 3.1 arriving with a dedicated `detect` mode is what unblocked it, and the panel is
+  // Cloudflare-hosted, so it needs no prepaid credit. Both halves are asserted because the old
+  // claim was wrong in both directions: the panel is no longer blocked, and it was never
+  // credit-dependent.
+  it('delivers Detect Objects as a credit-free panel once a hosted model exists', () => {
     const detect = TASK_DESCRIPTORS.find((task) => task.id === 'detect-objects');
-    const others = TASK_DESCRIPTORS.filter((task) => task.id !== 'detect-objects');
 
-    expect(detect).toBeDefined();
-    expect(detect!.phase).toBeGreaterThan(Math.max(...others.map((task) => task.phase)));
+    expect(detect?.availability).toBe('available');
+    expect(detect?.gateway).toBe('required');
+
+    // Every panel is now delivered, so no placeholder should remain anywhere in the catalogue.
+    // This is the assertion that would have caught the stale "blocked" wording had it existed.
+    expect(TASK_DESCRIPTORS.filter((task) => task.availability === 'planned')).toEqual([]);
   });
 
   // Group labels are decorative, but an empty or whitespace label would still render as a gap in

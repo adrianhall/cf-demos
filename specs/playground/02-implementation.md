@@ -1375,9 +1375,8 @@ reactive proxies and left a run hanging. The unit tests passed because they asse
 than completing a run. It is fixed with a JSON round-trip and covered by a regression test that
 loads a scenario and runs it.
 
-Phase 14 completes every credit-free panel. The three that remain — Generate Music, Animate Image,
-and Detect Objects — are blocked on prepaid AI Gateway credits or, for Detect Objects, on a model
-that is not catalogued at all.
+Phase 14 completed every then-known credit-free panel. Phase 17 later found and delivered a
+Cloudflare-hosted structured detector; its review is recorded below.
 
 ### Phase 15 contract review — Generate Music
 
@@ -1626,3 +1625,36 @@ successful run**, and that is stated here rather than implied as done. What was 
 the live providers is the complete input contract of four models, the data-URI question that
 decided which could be offered at all, and the exact billing failure including its code, status,
 and message.
+
+### Phase 17 contract review — Detect Objects
+
+**Decision: build it.** `@cf/moondream/moondream3.1-9B-A2B` is Cloudflare-hosted, catalogued and
+non-beta, so this is a credit-free panel rather than another prepaid Unified Billing exception. It is
+priced at $0.30 per million input tokens and $1.00 per million output tokens
+(`pricingUnit: 'token'`) and is synchronous.
+
+Live calls confirmed the precise request: `task: "detect"`, a full base64 `data:` URI in `image`, a
+natural-language `target`, `max_objects` from 1 through 500 (default 150), and `stream: false`.
+`detect` does not stream. A data URI worked end-to-end; public HTTPS URLs repeatedly returned HTTP
+500 / `[8008] AiError: Internal server error`, so the panel deliberately offers uploads only. A bare
+base64 string was not confirmed. Early `{}` probes were truncated shell arguments, not model output;
+manual probes must use `cf ai run --body @file.json`.
+
+The returned envelope is `{ result: { objects }, usage }`; `objects` is optional in the published
+schema and null for non-detect modes, so a missing/null value on a detect run is refused as a
+contract violation. Each element has exactly `x_min`, `y_min`, `x_max`, and `y_max`, normalised to
+0..1. Geometry is checked for finite coordinates, strict positive width and height, and in-bounds
+limits before responsive percentage overlays are rendered. An empty `objects: []` is a successful
+“no objects detected” result.
+
+**The original score-and-label requirements do not apply.** Boxes have no label and no score. The
+label is the visitor's target phrase for every region; there is no score floor, confidence bar,
+ranking, tie policy, or inclusive score threshold to implement honestly. The accessible table instead
+names the target and describes its region in words, and remains complete without overlays. This is a
+contrast with Classify Image's fixed training labels and scores. `max_objects` is a real
+`appliedBy: 'model'` control, unlike Classify Image's playground-applied result controls.
+
+Moondream is the single registered model. LLaVA 1.5 and Llama 3.2 Vision were excluded because they
+would require prohibited prose parsing to recover boxes; Llama 3.2 Vision additionally returned 403
+until a licence agreement prompt was submitted. Logs omit the picture, target content, boxes, and
+verified email; target length is retained only for diagnostics.

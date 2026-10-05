@@ -64,21 +64,8 @@ describe('PanelNavigation', () => {
     }
   });
 
-  // Panels that are not built yet are still listed, with their phase stated. Hiding them would
-  // misrepresent the product; labelling them is what makes the list honest rather than broken.
-  // Driven from the catalogue rather than naming a panel, so delivering a phase does not require
-  // editing this test to point at whichever panel became "next". Hard-coding one meant every phase
-  // broke this assertion for a reason that had nothing to do with navigation.
-  it('labels the next unbuilt panel with the phase that delivers it', () => {
-    const next = [...TASK_DESCRIPTORS]
-      .filter((task) => task.availability === 'planned')
-      .sort((left, right) => left.phase - right.phase)[0];
-
-    expect(next, 'there is still an unbuilt panel to label').toBeDefined();
-
-    const wrapper = mountNavigation();
-    const link = wrapper.find(`a[data-task="${next!.id}"]`);
-    expect(link.text()).toContain(`Phase ${next!.phase}`);
+  it('has no phase label when every listed panel is delivered', () => {
+    expect(TASK_DESCRIPTORS.some((task) => task.availability === 'planned')).toBe(false);
   });
 
   // A delivered panel carries no phase label. Leaving one behind would make the sidebar read as if

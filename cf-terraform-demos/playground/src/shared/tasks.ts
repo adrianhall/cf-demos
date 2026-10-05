@@ -170,7 +170,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Find where things are in a picture, not just what the picture is of.',
     group: 'Understand',
     gateway: 'required',
-    availability: 'planned',
+    availability: 'available',
     phase: 17
   },
   {

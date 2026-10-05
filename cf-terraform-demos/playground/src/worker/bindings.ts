@@ -6,6 +6,7 @@ import type { ClassifyTextService } from './application/classify-text/classify-t
 import type { CreateImageService } from './application/create-image/create-image-service';
 import type { CreateVideoService } from './application/create-video/create-video-service';
 import type { DescribeImageService } from './application/describe-image/describe-image-service';
+import type { DetectObjectsService } from './application/detect-objects/detect-objects-service';
 import type { EvaluateChoicesService } from './application/evaluate-choices/evaluate-choices-service';
 import type { GenerateMusicService } from './application/generate-music/generate-music-service';
 import type { MetricsService } from './application/metrics/metrics-service';
@@ -59,6 +60,10 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * The Classify Image use case, sharing this request's gateway client and run store.
    */
   CLASSIFY_IMAGE_SERVICE: ClassifyImageService;
+  /**
+   * Detect Objects use case.
+   */
+  DETECT_OBJECTS_SERVICE: DetectObjectsService;
   /**
    * The Generate Music use case, sharing this request's gateway client and run store, plus the
    * provider-audio retrieval client.

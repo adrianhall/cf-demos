@@ -13,6 +13,7 @@ import { ClassifyTextService } from './application/classify-text/classify-text-s
 import { CreateImageService } from './application/create-image/create-image-service';
 import { CreateVideoService } from './application/create-video/create-video-service';
 import { DescribeImageService } from './application/describe-image/describe-image-service';
+import { DetectObjectsService } from './application/detect-objects/detect-objects-service';
 import { EvaluateChoicesService } from './application/evaluate-choices/evaluate-choices-service';
 import { GenerateMusicService } from './application/generate-music/generate-music-service';
 import { MetricsService } from './application/metrics/metrics-service';
@@ -38,6 +39,7 @@ import { classifyTextRouter } from './routes/classify-text';
 import { createImageRouter } from './routes/create-image';
 import { createVideoRouter } from './routes/create-video';
 import { describeImageRouter } from './routes/describe-image';
+import { detectObjectsRouter } from './routes/detect-objects';
 import { evaluateChoicesRouter } from './routes/evaluate-choices';
 import { generateMusicRouter } from './routes/generate-music';
 import { readTextRouter } from './routes/read-text';
@@ -134,6 +136,10 @@ app.use('/api/*', async (context, next) => {
     new ClassifyImageService({ inference, runs, logger: context.var.LOGGER })
   );
   context.set(
+    'DETECT_OBJECTS_SERVICE',
+    new DetectObjectsService({ inference, runs, logger: context.var.LOGGER })
+  );
+  context.set(
     'GENERATE_MUSIC_SERVICE',
     new GenerateMusicService({
       inference,
@@ -189,6 +195,7 @@ app.route('/api/classify-image', classifyImageRouter);
 app.route('/api/create-image', createImageRouter);
 app.route('/api/create-video', createVideoRouter);
 app.route('/api/describe-image', describeImageRouter);
+app.route('/api/detect-objects', detectObjectsRouter);
 app.route('/api/generate-music', generateMusicRouter);
 app.route('/api/read-text', readTextRouter);
 app.route('/api/remix-image', remixImageRouter);

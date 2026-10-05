@@ -14,6 +14,7 @@ import ClassifyTextView from './views/ClassifyTextView.vue';
 import CreateImageView from './views/CreateImageView.vue';
 import CreateVideoView from './views/CreateVideoView.vue';
 import DescribeImageView from './views/DescribeImageView.vue';
+import DetectObjectsView from './views/DetectObjectsView.vue';
 import EvaluateChoicesView from './views/EvaluateChoicesView.vue';
 import GenerateMusicView from './views/GenerateMusicView.vue';
 import PlannedPanelView from './views/PlannedPanelView.vue';
@@ -41,6 +42,7 @@ const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
   'create-image': CreateImageView,
   'create-video': CreateVideoView,
   'describe-image': DescribeImageView,
+  'detect-objects': DetectObjectsView,
   'generate-music': GenerateMusicView,
   'read-text': ReadTextView,
   'remix-image': RemixImageView,

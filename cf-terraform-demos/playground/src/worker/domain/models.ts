@@ -20,6 +20,7 @@ import {
 } from '../../shared/classify-text';
 import type { VideoControlSupport } from '../../shared/create-video';
 import type { VisionControlSupport } from '../../shared/describe-image';
+import type { DetectionControlSupport } from '../../shared/detect-objects';
 import type { EvaluationControlSupport } from '../../shared/evaluate-choices';
 import {
   MAX_MUSIC_LENGTH_SECONDS,
@@ -324,7 +325,13 @@ export interface ModelDescriptor {
    */
   classificationControls?: ClassificationControlSupport;
   /**
-   * Which controls a text-to-video model accepts, how it spells them, and what it charges.
+   * Controls for structured phrase localisation. Unlike classifiers, this model returns boxes with
+   * neither labels nor scores: every box is labelled with the requested target and no score floor
+   * exists to forward or apply.
+   */
+  detectionControls?: DetectionControlSupport;
+  /**
+   * Which controls a text-to-video model accepts, how it spells them, and what it charges,
    *
    * Present only for a text-to-video descriptor. The reviewed models disagree about the wire name
    * _and_ the spelling of the values for the same conceptual control, so both are declared per
@@ -670,6 +677,24 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       minimumConfidence: { min: 0, max: 1, step: 0.01, default: 0 },
       // The model's schema has no ranking fields at all, so these are applied to its response.
       appliedBy: 'playground'
+    }
+  },
+  // Moondream's dedicated detect mode is the sole reviewed detector: LLaVA and Llama Vision only
+  // offer prose, and parsing prose into geometry would be unsafe and dishonest (Llama also needs a licence).
+  {
+    id: '@cf/moondream/moondream3.1-9B-A2B',
+    name: 'Moondream 3.1 9B A2B',
+    provider: 'workers-ai',
+    task: 'detect-objects',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/moondream3.1-9B-A2B/',
+    detectionControls: {
+      target: { required: true },
+      maxObjects: { min: 1, max: 500, step: 1, default: 150 },
+      appliedBy: 'model',
+      scoreFloor: false
     }
   },
   // Every text-to-video model in the catalogue is third-party, so this panel inherits the prepaid

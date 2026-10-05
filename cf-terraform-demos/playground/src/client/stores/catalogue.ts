@@ -4,6 +4,7 @@ import type { ClassificationControlSupport } from '../../shared/classify-image';
 import type { TextClassificationControlSupport } from '../../shared/classify-text';
 import type { VideoControlSupport } from '../../shared/create-video';
 import type { VisionControlSupport } from '../../shared/describe-image';
+import type { DetectionControlSupport } from '../../shared/detect-objects';
 import type { EvaluationControlSupport } from '../../shared/evaluate-choices';
 import type { MusicControlSupport } from '../../shared/generate-music';
 import type { ImageControlSupport } from '../../shared/images';
@@ -115,6 +116,18 @@ export interface CatalogueModel {
    * is why the length slider exists for one model and cannot exist for the other.
    */
   musicControls?: MusicControlSupport;
+  /**
+   * Controls an object-detection model accepts, and the two absences that shape the panel.
+   *
+   * `maxObjects` is the demo's first genuinely **provider-applied** result limit: the model honours
+   * it, so the panel forwards the number rather than trimming a longer list afterwards as Classify
+   * Image does. The field the browser needs most, though, is the one declared `false`:
+   * `scoreFloor`. Moondream returns four coordinates per box and nothing else — no label, no
+   * confidence — so there is no score to filter on, and a panel that rendered a confidence control
+   * would be offering a setting that could not do anything. Carrying the absence explicitly is what
+   * lets the UI say so instead of quietly omitting a control the visitor might go looking for.
+   */
+  detectionControls?: DetectionControlSupport;
   /**
    * Controls a text-to-speech model accepts, how it spells them, and what it charges per character.
    *
