@@ -14,7 +14,7 @@ import { createLogCapture } from '../support/mount';
 /**
  * The reviewed text classifiers, in catalogue order.
  */
-const [DISTILBERT, LLAMA_GUARD] = modelsForTask('classify-text');
+const [DISTILBERT, LLAMA_GUARD, CLEF_FLASH] = modelsForTask('classify-text');
 
 /**
  * Run identifier used by the tests.
@@ -139,6 +139,34 @@ describe('the two outcome shapes', () => {
     }
     expect(result.outcome.labels[0]?.name).toBe('Positive');
     expect(result.outcome.totalLabels).toBe(2);
+  });
+
+  it('produces a three-way ranking from the immutable Clef choice', async () => {
+    const { service } = build({
+      output: () => ({
+        model: 'clef-flash',
+        answers: {
+          sentiment: {
+            type: 'choice',
+            choice: 'NEUTRAL',
+            probabilities: { POSITIVE: 0.1, NEGATIVE: 0.1, NEUTRAL: 0.8 },
+            confidence: 0.7
+          }
+        },
+        usage: { input_tokens: 10, output_tokens: 0 }
+      })
+    });
+    const result = await service.classify(request({ model: CLEF_FLASH!.id }), ACTOR);
+
+    if (result.outcome.kind !== 'scored-labels') {
+      throw new Error('expected a scored outcome');
+    }
+    expect(result.outcome.labels[0]).toMatchObject({
+      label: 'NEUTRAL',
+      name: 'Neutral',
+      score: 0.8
+    });
+    expect(result.outcome.totalLabels).toBe(3);
   });
 
   it('produces a verdict for the safety model', async () => {

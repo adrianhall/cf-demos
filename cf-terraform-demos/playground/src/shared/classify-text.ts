@@ -68,11 +68,15 @@ export type ClassificationOutcomeKind = 'scored-labels' | 'verdict';
  * - `messages` — a chat-style `messages[]` array. Llama Guard needs this because it is a fine-tuned
  *   chat model rather than a classification head, which is also why its declared task type is Text
  *   Generation.
+ * - `clef-choice` — a Clef `state` plus one application-owned `choice` question. Clef is a decision
+ *   model: its normal contract lets a caller define questions and criteria, which belongs in
+ *   Evaluate Choices. Here the question and all three criteria are immutable reviewed model
+ *   configuration, so this remains a closed label set rather than becoming a generic decision API.
  *
  * Declared per model rather than inferred, so the request builder reads the shape from the reviewed
  * descriptor instead of branching on a model identifier.
  */
-export type ClassificationInputShape = 'text' | 'messages';
+export type ClassificationInputShape = 'text' | 'messages' | 'clef-choice';
 
 /**
  * Where a result control is applied.

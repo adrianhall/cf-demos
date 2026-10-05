@@ -1,14 +1,14 @@
 /**
  * @file Stateful composable behind the Classify Text panel: the text, the ranking controls where a
  *   model has them, running the classification, and handing the result to {@link useRun} for cost
- *   resolution. The thing that makes this panel's state unusual is that **the two reviewed models
- *   do not return the same kind of answer**. One scores its labels; the other returns a verdict
- *   with no score for anything. So the controls are rendered from the model's declaration rather
- *   than always present, and `outcomeKind` tells the view which renderer to use. A panel that
- *   assumed a score would draw a bar of width `NaN` against a perfectly valid safety verdict.
- *   Switching model therefore has to discard controls the new model does not have. A retained
- *   `minimumConfidence` would be sent to a model whose output has no score to compare it against —
- *   a request the server correctly refuses, and one the visitor never knowingly made.
+ *   resolution. The thing that makes this panel's state unusual is that **the reviewed models do
+ *   not all return the same kind of answer**. DistilBERT and Clef Flash score labels; Llama Guard
+ *   returns a verdict with no score for anything. So the controls are rendered from the model's
+ *   declaration rather than always present, and `outcomeKind` tells the view which renderer to use.
+ *   A panel that assumed a score would draw a bar of width `NaN` against a perfectly valid safety
+ *   verdict. Switching model therefore has to discard controls the new model does not have. A
+ *   retained `minimumConfidence` would be sent to a model whose output has no score to compare it
+ *   against — a request the server correctly refuses, and one the visitor never knowingly made.
  */
 
 import { computed, ref, shallowRef, watch, type Ref } from 'vue';

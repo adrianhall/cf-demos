@@ -889,7 +889,7 @@ mistake is a general one.
 recorded. So the failure was entirely on this side of the boundary. Running the model directly
 through `cf ai run` showed why:
 
-```
+```bash
 $ cf ai run @cf/meta/llama-guard-3-8b --body '{"messages":[...]}'
 { "response": "\n\nsafe" }
 
@@ -961,7 +961,7 @@ Classify Text because it does not classify a text — it scores the *relevance b
 list of passages*, which is exactly this panel's operation. Verified with `cf ai run` during phase
 12:
 
-```
+```text
 query:    "How do I reset my password?"
 contexts: ["Our office is open Monday to Friday, 9am to 5pm.",
            "To change your credentials, visit Account Settings and select Reset.",
@@ -1272,3 +1272,38 @@ Turn the completed panels into a polished reference demo without changing the ma
 - `AI-GATEWAY-EXCEPTIONS.md` is accurate and explicitly empty or complete.
 - Generated video is collected on a schedule, the retention age stated in the UI and README is the one the reaper enforces, and the deployed smoke run confirms it deletes an aged object while keeping a recent one.
 - `pnpm check`, `pnpm test`, `pnpm start`, `pnpm deploy`, and `pnpm teardown` satisfy the repository definition of done.
+
+### Post-phase extension: Clef Flash as immutable target classification
+
+Added after phase delivery at the user's request to show that an Evaluate Choices model can perform
+text classification **when used with the right inbound schema**. Verified with the live model using
+`cf ai run @cf/cloudflare/clef-flash`:
+
+```json
+{
+  "model": "clef-flash",
+  "state": "The staff were wonderful and the food arrived faster than we expected.",
+  "questions": {
+    "sentiment": {
+      "type": "choice",
+      "instructions": "Classify the sentiment expressed by the text.",
+      "criteria": {
+        "POSITIVE": "The text expresses favourable sentiment.",
+        "NEGATIVE": "The text expresses unfavourable sentiment.",
+        "NEUTRAL": "The text is factual, mixed, or expresses no clear sentiment."
+      }
+    }
+  }
+}
+```
+
+It returned `POSITIVE` with probability `0.9734`. The exact immutable schema classified the panel's
+neutral train-time example as `NEUTRAL` with probability `0.9711`, which makes the contrast with
+binary SST-2 concrete: neutral is an actual reviewed label rather than a near-even split forced
+into one of two labels.
+
+The fixed-label boundary remains intact. Clef ordinarily accepts caller-defined questions and
+criteria, but this panel's question and all three criteria are immutable Worker-side descriptor
+configuration. The browser request has no field for them and the existing regression guard refuses
+any attempt to add one. Changing a criterion remains Evaluate Choices work, not a Classify Text
+control.

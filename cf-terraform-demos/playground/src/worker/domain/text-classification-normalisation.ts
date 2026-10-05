@@ -170,7 +170,60 @@ export function readTextClassification(
     return readVerdict(output, request.model);
   }
 
+  if (controls?.inputShape === 'clef-choice') {
+    return readClefChoice(output, request);
+  }
+
   return readScoredLabels(output, request);
+}
+
+/**
+ * Reads Clef Flash's immutable sentiment choice answer as scored labels.
+ *
+ * Clef's normal API lets its caller supply arbitrary questions and criteria. This panel does not:
+ * `buildClassifyTextInput()` sends one reviewed, immutable sentiment question, then this reader
+ * accepts only the matching `answers.sentiment` choice envelope. That is the exact boundary that
+ * lets a decision model demonstrate target classification without becoming Evaluate Choices.
+ *
+ * @param output The provider's raw output.
+ * @param request The validated request, whose reviewed labels filter and rank the probabilities.
+ * @returns A scored-label outcome, or a refusal when Clef changed its declared choice envelope.
+ */
+function readClefChoice(
+  output: unknown,
+  request: ValidatedClassifyTextRequest
+): ReadClassificationOutcome {
+  const root = plainObject(output);
+  const answers = root === undefined ? undefined : plainObject(root['answers']);
+  const answer = answers === undefined ? undefined : plainObject(answers['sentiment']);
+  const probabilities = answer === undefined ? undefined : plainObject(answer['probabilities']);
+
+  if (answer?.['type'] !== 'choice' || probabilities === undefined) {
+    return { ok: false, reason: 'unrecognised_shape' };
+  }
+
+  const allowed = request.model.textClassificationControls?.labelSet ?? [];
+  const labels: { label: string; score: number }[] = [];
+  for (const label of allowed) {
+    const score = probabilities[label.code];
+    if (typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 1) {
+      labels.push({ label: label.code, score });
+    }
+  }
+
+  if (labels.length === 0) {
+    return { ok: false, reason: 'no_usable_labels' };
+  }
+
+  return {
+    ok: true,
+    outcome: {
+      kind: 'scored-labels',
+      labels: rankTextClassificationLabels(labels, request),
+      totalLabels: labels.length
+    },
+    diagnostics: { returned: allowed.length, skipped: allowed.length - labels.length }
+  };
 }
 
 /**

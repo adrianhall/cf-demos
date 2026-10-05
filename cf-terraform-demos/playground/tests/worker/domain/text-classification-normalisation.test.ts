@@ -12,7 +12,7 @@ import { readTextClassification } from '../../../src/worker/domain/text-classifi
 /**
  * The reviewed text classifiers, in catalogue order.
  */
-const [DISTILBERT, LLAMA_GUARD] = modelsForTask('classify-text');
+const [DISTILBERT, LLAMA_GUARD, CLEF_FLASH] = modelsForTask('classify-text');
 
 /**
  * Builds a validated request against the scoring model.
@@ -26,6 +26,19 @@ function scoredRequest(overrides: Record<string, unknown> = {}) {
     model: DISTILBERT!.id,
     runId: 'a1b2c3d4-1111-4222-8333-444455556666',
     ...overrides
+  });
+}
+
+/**
+ * Builds a validated request against the reviewed Clef sentiment mode.
+ *
+ * @returns The validated request.
+ */
+function clefRequest() {
+  return validateClassifyTextRequest({
+    text: 'The staff were wonderful.',
+    model: CLEF_FLASH!.id,
+    runId: 'a1b2c3d4-1111-4222-8333-444455556666'
   });
 }
 
@@ -180,6 +193,58 @@ describe('the scored-label response', () => {
     );
 
     expect(read.ok && read.outcome.kind === 'scored-labels' && read.outcome.totalLabels).toBe(2);
+  });
+});
+
+describe('the reviewed Clef choice response', () => {
+  it('turns the immutable sentiment choice probabilities into ranked labels', () => {
+    const read = readTextClassification(
+      {
+        model: 'clef-flash',
+        answers: {
+          sentiment: {
+            type: 'choice',
+            choice: 'POSITIVE',
+            probabilities: { POSITIVE: 0.9734, NEGATIVE: 0.026, NEUTRAL: 0.0006 },
+            confidence: 0.8963
+          }
+        },
+        usage: { input_tokens: 151, output_tokens: 0 }
+      },
+      clefRequest()
+    );
+
+    expect(read.ok).toBe(true);
+    if (!read.ok || read.outcome.kind !== 'scored-labels') {
+      throw new Error('expected scored labels');
+    }
+
+    expect(read.outcome.labels.map((label) => [label.label, label.score])).toEqual([
+      ['POSITIVE', 0.9734],
+      ['NEGATIVE', 0.026],
+      ['NEUTRAL', 0.0006]
+    ]);
+    expect(read.outcome.totalLabels).toBe(3);
+  });
+
+  // The model may include other answer fields for Evaluate Choices. This panel reads exactly the
+  // reviewed immutable `sentiment` key rather than discovering an arbitrary answer.
+  it('refuses when the reviewed sentiment answer is absent', () => {
+    expect(
+      readTextClassification(
+        { answers: { topic: { type: 'choice', probabilities: {} } } },
+        clefRequest()
+      )
+    ).toEqual({ ok: false, reason: 'unrecognised_shape' });
+  });
+
+  it('refuses an arbitrary probability key instead of rendering it as a label', () => {
+    const read = readTextClassification(
+      { answers: { sentiment: { type: 'choice', probabilities: { CALLER_DEFINED: 1 } } } },
+      clefRequest()
+    );
+
+    expect(read).toEqual({ ok: false, reason: 'no_usable_labels' });
   });
 });
 

@@ -31,6 +31,11 @@ const DISTILBERT = '@cf/huggingface/distilbert-sst-2-int8';
 const LLAMA_GUARD = '@cf/meta/llama-guard-3-8b';
 
 /**
+ * A decision model used as fixed-label classification through the Worker's immutable schema.
+ */
+const CLEF_FLASH = '@cf/cloudflare/clef-flash';
+
+/**
  * A well-formed run identifier.
  */
 const RUN_ID = 'c0ffee00-2222-4333-8444-555566667777';
@@ -225,6 +230,13 @@ describe('request validation at the deployed surface', () => {
     expect(problem.detail).toMatch(/nothing to rank or filter/u);
   });
 
+  it('accepts Clef Flash with no caller-defined criteria', async () => {
+    const response = await send(await postAs('alice@example.com', body({ model: CLEF_FLASH })));
+
+    // Not a 400: it is valid, and fails later at the unavailable `AI` binding.
+    expect(response.status).not.toBe(400);
+  });
+
   it('accepts the verdict model with no controls', async () => {
     const response = await send(await postAs('alice@example.com', body({ model: LLAMA_GUARD })));
 
@@ -351,7 +363,7 @@ describe('the panel catalogue', () => {
     expect(task).toMatchObject({ availability: 'available', gateway: 'required' });
 
     const models = payload.models.filter((candidate) => candidate.task === 'classify-text');
-    expect(models.length).toBeGreaterThan(0);
+    expect(models).toHaveLength(3);
 
     // Every reviewed model is Cloudflare-hosted, which is why this panel could be delivered
     // without prepaid AI Gateway credit.
@@ -398,6 +410,14 @@ describe('the panel catalogue', () => {
       'POSITIVE',
       'NEGATIVE'
     ]);
+    const clef = models.find((model) => model.id === CLEF_FLASH);
+    expect(clef?.textClassificationControls?.labelSet.map((label) => label.code)).toEqual([
+      'POSITIVE',
+      'NEGATIVE',
+      'NEUTRAL'
+    ]);
+    expect(clef?.textClassificationControls?.inputShape).toBe('clef-choice');
+
     expect(guard?.textClassificationControls?.labelSet).toHaveLength(14);
     expect(guard?.textClassificationControls?.labelSet.map((l) => l.code)).toContain('S10');
     // The category AI Gateway Guardrails does not evaluate, which this model can still emit.

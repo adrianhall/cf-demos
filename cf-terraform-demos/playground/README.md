@@ -961,22 +961,31 @@ request type has no field for a label, and a body carrying `labels`, `categories
 Refusing rather than dropping matters: someone sending `labels` has a real need and would otherwise
 believe their categories were applied and that the model chose none of them.
 
-|                         | DistilBERT SST-2     | Llama Guard 3 8B                 |
-| ----------------------- | -------------------- | -------------------------------- |
-| Declared task type      | Text Classification  | **Text Generation**              |
-| Request shape           | `{ text }`           | `{ messages[] }`                 |
-| Answer                  | `[{ label, score }]` | `{ safe, categories[] }`         |
-| Scores                  | yes                  | **none, for anything**           |
-| Ranking controls        | top-k, score floor   | **none — nothing to rank**       |
-| Label set               | 2 sentiment labels   | 14 hazard categories             |
-| Needs `response_format` | no                   | **yes — or it answers in prose** |
+|                         | DistilBERT SST-2     | Clef Flash                   | Llama Guard 3 8B                 |
+| ----------------------- | -------------------- | ---------------------------- | -------------------------------- |
+| Declared task type      | Text Classification  | **Text Generation**          | **Text Generation**              |
+| Request shape           | `{ text }`           | `state` + immutable choice   | `{ messages[] }`                 |
+| Answer                  | `[{ label, score }]` | choice probabilities         | `{ safe, categories[] }`         |
+| Scores                  | yes                  | yes, one per reviewed choice | **none, for anything**           |
+| Ranking controls        | top-k, score floor   | top-k, score floor           | **none — nothing to rank**       |
+| Label set               | 2 sentiment labels   | **3 sentiment labels**       | 14 hazard categories             |
+| Criteria owner          | model                | **application, immutable**   | model                            |
+| Needs `response_format` | no                   | no                           | **yes — or it answers in prose** |
 
 ### The finding that shaped the panel
 
-The two models disagree about **whether a classification has a score at all**. DistilBERT returns a
-scored ranking. Llama Guard returns a verdict — a boolean plus violated category codes — with no
-number anywhere. There is nothing to put in a confidence bar, and inventing one would be the worst
-possible response, so:
+The three models demonstrate two routes to classification. DistilBERT is a conventional scored
+classification head. Llama Guard returns a verdict — a boolean plus violated category codes — with
+no number anywhere. Clef Flash is the bridge: a decision model can classify when the **application
+owns one immutable choice schema**, yielding a three-way Positive / Negative / Neutral ranking.
+
+Clef's normal API permits caller-defined questions and criteria, which belongs in Evaluate Choices.
+This panel never sends browser-provided criteria: its one sentiment question is reviewed Worker
+configuration, and the endpoint still refuses a body that adds labels or criteria. That keeps Clef
+Flash a closed label set here instead of turning Classify Text into a generic decision API.
+
+Llama Guard has no number to put in a confidence bar, and inventing one would be the worst possible
+response, so:
 
 - the outcome is a **discriminated union**, and the browser switches renderer on `outcome.kind`
   rather than assuming a shape. A panel that assumed a score would render `NaN%` against a perfectly
@@ -1011,12 +1020,17 @@ report unsafe content as _safe_. The same reasoning applies to a missing `safe` 
 to `true` would announce unverified content as safe, and defaulting to `false` would accuse it on
 the strength of a malformed response. Both refuse.
 
-### Why there are only two models
+### Why a decision model is a third classifier
 
-Unlike every other panel, this one could not be given a third model. The account's live catalogue
-holds 69 models, of which **two** are typed Text Classification — and one of those is the reranker
-excluded below. Reaching outside the task type is how Llama Guard, typed _Text Generation_, came to
-be here at all.
+The account's live catalogue holds 69 models, of which **two** are typed Text Classification — and
+one of those is the reranker excluded below. Clef Flash, like Llama Guard, is typed _Text
+Generation_. The difference is that Clef's contract deliberately accepts a state plus a typed
+question schema, so it can perform target classification **when the target schema is owned by the
+application rather than the caller**.
+
+A live `cf ai run` against the exact immutable schema used here classified the neutral train-time
+sentence as `NEUTRAL` with probability `0.9711`. That is the useful contrast with binary SST-2:
+neutral is an actual reviewed label rather than a near-even split forced into one of two answers.
 
 The obvious further candidates are Meta's other safety models, and both are unavailable rather than
 unsuitable: `@cf/meta/prompt-guard-2-86m` and `@cf/meta/llama-guard-3-1b` exist but return

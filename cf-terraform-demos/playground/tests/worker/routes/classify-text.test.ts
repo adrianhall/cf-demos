@@ -21,7 +21,7 @@ import { createLogCapture, mountRoute, type LogCapture } from '../support/mount'
 /**
  * The reviewed text classifiers, in catalogue order.
  */
-const [DISTILBERT, LLAMA_GUARD] = modelsForTask('classify-text');
+const [DISTILBERT, LLAMA_GUARD, CLEF_FLASH] = modelsForTask('classify-text');
 
 /**
  * Run identifier used by the tests.
@@ -128,6 +128,36 @@ describe('classifying text', () => {
       throw new Error('expected a scored outcome');
     }
     expect(payload.outcome.labels[0]).toMatchObject({ rank: 1, name: 'Positive' });
+  });
+
+  it('returns a three-way sentiment ranking from Clef Flash', async () => {
+    const { app, inference } = mount({
+      output: () => ({
+        model: 'clef-flash',
+        answers: {
+          sentiment: {
+            type: 'choice',
+            choice: 'NEUTRAL',
+            probabilities: { POSITIVE: 0.1, NEGATIVE: 0.1, NEUTRAL: 0.8 },
+            confidence: 0.7
+          }
+        },
+        usage: { input_tokens: 10, output_tokens: 0 }
+      })
+    });
+    const payload = (await (
+      await post(app, body({ model: CLEF_FLASH!.id }))
+    ).json()) as ClassifyTextResponse;
+
+    expect(payload.outcome.kind).toBe('scored-labels');
+    if (payload.outcome.kind !== 'scored-labels') {
+      throw new Error('expected a scored outcome');
+    }
+    expect(payload.outcome.labels[0]).toMatchObject({ label: 'NEUTRAL', score: 0.8 });
+    expect(inference.requests[0]?.input).toMatchObject({
+      model: 'clef-flash',
+      state: 'The staff were wonderful.'
+    });
   });
 
   it('returns a verdict for the safety model', async () => {

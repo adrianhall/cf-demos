@@ -34,6 +34,29 @@ const SCORING: CatalogueModel = {
 /**
  * A verdict model with no ranking controls, matching Llama Guard.
  */
+const CLEF_SENTIMENT: CatalogueModel = {
+  id: '@cf/cloudflare/clef-flash',
+  name: 'Clef Flash (three-way sentiment)',
+  provider: 'workers-ai',
+  task: 'classify-text',
+  pricingUnit: 'token',
+  documentationUrl: 'https://example.invalid/clef',
+  textClassificationControls: {
+    outcomeKind: 'scored-labels',
+    inputShape: 'clef-choice',
+    labelSetName: 'Sentiment (reviewed Clef choice)',
+    labelSet: [
+      { code: 'POSITIVE', name: 'Positive' },
+      { code: 'NEGATIVE', name: 'Negative' },
+      { code: 'NEUTRAL', name: 'Neutral' }
+    ],
+    topK: { min: 1, max: 10, step: 1, default: 3 },
+    minimumConfidence: { min: 0, max: 1, step: 0.01, default: 0 },
+    appliedBy: 'playground',
+    contextWindowTokens: 65_536
+  }
+};
+
 const VERDICT: CatalogueModel = {
   id: '@cf/test/verdict',
   name: 'Test Verdict',
@@ -231,6 +254,15 @@ describe('publishing the label set before any run', () => {
     expect(entries.join(' ')).toContain('S10');
   });
 
+  it('shows Clef Flash as a three-way sentiment alternative', async () => {
+    const { wrapper } = await render([SCORING, CLEF_SENTIMENT, VERDICT]);
+    await wrapper.find('#classify-model').setValue(CLEF_SENTIMENT.id);
+
+    expect(wrapper.text()).toContain('Neutral');
+    expect(wrapper.text()).toMatch(/owned by this application rather than the browser/iu);
+    expect(wrapper.text()).toMatch(/exactly these three/iu);
+  });
+
   it('shows a description where the reviewed label carries one', async () => {
     const { wrapper } = await render();
     expect(wrapper.text()).toContain('Favourable sentiment.');
@@ -263,6 +295,14 @@ describe('the per-model controls', () => {
 
   // The distinction the contract publishes: asking a model for its top 3 is a different operation
   // from asking for everything and keeping three.
+  it('explains that Clef creates probabilities for immutable choices', async () => {
+    const { wrapper } = await render([SCORING, CLEF_SENTIMENT, VERDICT]);
+    await wrapper.find('#classify-model').setValue(CLEF_SENTIMENT.id);
+
+    expect(wrapper.text()).toMatch(/probability for each immutable reviewed choice/iu);
+    expect(wrapper.text()).toMatch(/model was asked to decide between them/iu);
+  });
+
   it('states that this application applies the controls, not the model', async () => {
     const { wrapper } = await render();
     expect(wrapper.text()).toMatch(/applied by\s+this application/iu);

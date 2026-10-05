@@ -287,6 +287,27 @@ export function buildClassifyTextInput(
 ): Record<string, unknown> {
   const controls = request.model.textClassificationControls;
 
+  if (controls?.inputShape === 'clef-choice') {
+    return {
+      model: 'clef-flash',
+      state: request.text,
+      // Immutable application-owned schema. It is intentionally not assembled from the browser
+      // request: allowing a caller to change any criterion would turn this endpoint into Evaluate
+      // Choices under another name.
+      questions: {
+        sentiment: {
+          type: 'choice',
+          instructions: 'Classify the sentiment expressed by the text.',
+          criteria: {
+            POSITIVE: 'The text expresses favourable sentiment.',
+            NEGATIVE: 'The text expresses unfavourable sentiment.',
+            NEUTRAL: 'The text is factual, mixed, or expresses no clear sentiment.'
+          }
+        }
+      }
+    };
+  }
+
   if (controls?.inputShape === 'messages') {
     return {
       messages: [{ role: 'user', content: request.text }],

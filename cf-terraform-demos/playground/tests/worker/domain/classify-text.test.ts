@@ -15,7 +15,7 @@ import { modelsForTask } from '../../../src/worker/domain/models';
 /**
  * The reviewed text classifiers, in catalogue order.
  */
-const [DISTILBERT, LLAMA_GUARD] = modelsForTask('classify-text');
+const [DISTILBERT, LLAMA_GUARD, CLEF_FLASH] = modelsForTask('classify-text');
 
 /**
  * Run identifier used by the tests.
@@ -38,9 +38,9 @@ function body(overrides: Record<string, unknown> = {}): Record<string, unknown> 
 }
 
 describe('the reviewed classification models', () => {
-  it('registers two Cloudflare-hosted models', () => {
+  it('registers three Cloudflare-hosted models', () => {
     const models = modelsForTask('classify-text');
-    expect(models).toHaveLength(2);
+    expect(models).toHaveLength(3);
     for (const model of models) {
       expect(model.provider, `${model.id} is Cloudflare-hosted`).toBe('workers-ai');
     }
@@ -83,8 +83,20 @@ describe('the reviewed classification models', () => {
 
   it('declares each model\u2019s own request shape', () => {
     expect(DISTILBERT?.textClassificationControls?.inputShape).toBe('text');
+    // A decision model used as a classifier through one immutable application-owned choice schema.
+    expect(CLEF_FLASH?.textClassificationControls?.inputShape).toBe('clef-choice');
     // A chat model underneath, which is also why its declared task type is Text Generation.
     expect(LLAMA_GUARD?.textClassificationControls?.inputShape).toBe('messages');
+  });
+
+  it('publishes Clef Flash as a three-way sentiment alternative', () => {
+    expect(CLEF_FLASH?.id).toBe('@cf/cloudflare/clef-flash');
+    expect(CLEF_FLASH?.textClassificationControls?.outcomeKind).toBe('scored-labels');
+    expect(CLEF_FLASH?.textClassificationControls?.labelSet.map((label) => label.code)).toEqual([
+      'POSITIVE',
+      'NEGATIVE',
+      'NEUTRAL'
+    ]);
   });
 
   // Neither model has a ranking field in its schema, so this demo does the filtering and says so.
@@ -347,6 +359,45 @@ describe('building the model input', () => {
     const input = buildClassifyTextInput(validateClassifyTextRequest(body({ text: 'hello' })));
 
     expect(input).toEqual({ text: 'hello' });
+  });
+
+  /**
+   * The regression guard for the narrow Clef bridge.
+   *
+   * Clef's ordinary contract accepts caller-defined questions and criteria. This endpoint must not:
+   * the one choice schema is immutable application configuration, so Clef demonstrates target
+   * classification without becoming Evaluate Choices under another name.
+   */
+  it('sends Clef Flash one immutable three-way sentiment choice', () => {
+    const input = buildClassifyTextInput(
+      validateClassifyTextRequest(
+        body({ model: CLEF_FLASH!.id, text: 'A factual train timetable.' })
+      )
+    );
+
+    expect(input).toEqual({
+      model: 'clef-flash',
+      state: 'A factual train timetable.',
+      questions: {
+        sentiment: {
+          type: 'choice',
+          instructions: 'Classify the sentiment expressed by the text.',
+          criteria: {
+            POSITIVE: 'The text expresses favourable sentiment.',
+            NEGATIVE: 'The text expresses unfavourable sentiment.',
+            NEUTRAL: 'The text is factual, mixed, or expresses no clear sentiment.'
+          }
+        }
+      }
+    });
+  });
+
+  it('does not take Clef criteria from the request body', () => {
+    expect(() =>
+      validateClassifyTextRequest(
+        body({ model: CLEF_FLASH!.id, criteria: { POSITIVE: 'caller text' } })
+      )
+    ).toThrow(/cannot be supplied by the caller/u);
   });
 
   // A chat model underneath, so the text travels as a single user message.

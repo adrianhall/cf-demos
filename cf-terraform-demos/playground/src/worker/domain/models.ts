@@ -160,6 +160,25 @@ const SST2_LABELS: readonly ReviewedLabel[] = [
 ];
 
 /**
+ * The immutable sentiment choices Classify Text asks Clef Flash to decide between.
+ *
+ * Clef is normally a decision model: its caller supplies questions and criteria. This is the one
+ * narrow, reviewed exception that keeps it a **fixed-label** classifier: these three choices live
+ * in the descriptor, never in the request body or the browser, and every run receives exactly this
+ * question. The resulting model can be compared honestly with DistilBERT: both choose sentiment,
+ * but Clef includes the neutral class SST-2 lacks.
+ */
+const CLEF_SENTIMENT_LABELS: readonly ReviewedLabel[] = [
+  { code: 'POSITIVE', name: 'Positive', description: 'The text expresses favourable sentiment.' },
+  { code: 'NEGATIVE', name: 'Negative', description: 'The text expresses unfavourable sentiment.' },
+  {
+    code: 'NEUTRAL',
+    name: 'Neutral',
+    description: 'The text is factual, mixed, or expresses no clear sentiment.'
+  }
+];
+
+/**
  * The Llama Guard 3 hazard taxonomy, as Cloudflare publishes it.
  *
  * Names transcribed from the AI Gateway Guardrails documentation, which publishes the mapping for
@@ -1163,6 +1182,32 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       // A Llama 3.1 derivative, so the window is far larger than this panel's character limit and
       // truncation is not a concern for it.
       contextWindowTokens: 131_072
+    }
+  },
+  // Clef Flash demonstrates the deliberately narrow bridge to Evaluate Choices: a decision model
+  // can classify text when the *application*, not the caller, owns one immutable choice schema.
+  // The three labels below are reviewed descriptor data, never request fields, so this does not
+  // weaken the fixed-label boundary this endpoint enforces.
+  {
+    id: '@cf/cloudflare/clef-flash',
+    name: 'Clef Flash (three-way sentiment)',
+    provider: 'workers-ai',
+    task: 'classify-text',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/clef-flash/',
+    textClassificationControls: {
+      outcomeKind: 'scored-labels',
+      inputShape: 'clef-choice',
+      labelSetName: 'Sentiment (reviewed Clef choice)',
+      labelSet: CLEF_SENTIMENT_LABELS,
+      // Clef produces per-option probabilities itself; it has no top-k request field for choice
+      // answers, so the panel's display controls remain application-side just as for DistilBERT.
+      topK: { min: 1, max: MAX_TEXT_CLASSIFICATION_LABELS, step: 1, default: 3 },
+      minimumConfidence: { min: 0, max: 1, step: 0.01, default: 0 },
+      appliedBy: 'playground',
+      contextWindowTokens: 65_536
     }
   }
 ];

@@ -12,9 +12,9 @@
  * caller's. The two are cross-linked here but share no API: the request type has no field for a
  * label, and the server refuses a body that adds one.
  *
- * The two reviewed models return genuinely different kinds of answer — one a scored ranking, one a
- * verdict with no score for anything — so the result area switches renderer on the outcome's
- * discriminant rather than assuming a shape.
+ * The reviewed models return two genuinely different kinds of answer — scored rankings from
+ * DistilBERT and Clef Flash, and a verdict with no score from Llama Guard — so the result area
+ * switches renderer on the outcome's discriminant rather than assuming a shape.
  */
 import { computed, onMounted, ref } from 'vue';
 import { MAX_CLASSIFICATION_TEXT_CHARACTERS } from '../../shared/classify-text';
@@ -252,8 +252,15 @@ onMounted(() => {
                 </li>
               </ul>
               <p class="settings-note">
-                {{ labelSet.length }} {{ labelSet.length === 1 ? 'category' : 'categories' }}, and
-                the model cannot return anything outside them.
+                <template v-if="controls?.inputShape === 'clef-choice'">
+                  {{ labelSet.length }} reviewed choices, owned by this application rather than the
+                  browser. Clef normally accepts caller-defined criteria; this mode always sends
+                  exactly these three, so it remains fixed-label classification.
+                </template>
+                <template v-else>
+                  {{ labelSet.length }} {{ labelSet.length === 1 ? 'category' : 'categories' }}, and
+                  the model cannot return anything outside them.
+                </template>
               </p>
             </div>
 
@@ -296,8 +303,15 @@ onMounted(() => {
             </template>
 
             <p v-if="scoresLabels" class="settings-note">
-              This model's request schema has no ranking fields, so these controls are applied by
-              this application to the response it received — the model was not asked to filter.
+              <template v-if="controls?.inputShape === 'clef-choice'">
+                Clef returns a probability for each immutable reviewed choice. The model was asked
+                to decide between them, but this application applies the display controls after the
+                response.
+              </template>
+              <template v-else>
+                This model's request schema has no ranking fields, so these controls are applied by
+                this application to the response it received — the model was not asked to filter.
+              </template>
             </p>
             <p v-else class="settings-note">
               This model returns a verdict with no confidence score, so there is nothing to rank or

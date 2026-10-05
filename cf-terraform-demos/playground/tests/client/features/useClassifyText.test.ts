@@ -41,6 +41,29 @@ const SCORING: CatalogueModel = {
  * The absence of `topK` and `minimumConfidence` is the point: it is what proves the composable
  * clears controls the new model cannot accept.
  */
+const CLEF_SENTIMENT: CatalogueModel = {
+  id: '@cf/cloudflare/clef-flash',
+  name: 'Clef Flash (three-way sentiment)',
+  provider: 'workers-ai',
+  task: 'classify-text',
+  pricingUnit: 'token',
+  documentationUrl: 'https://example.invalid/clef',
+  textClassificationControls: {
+    outcomeKind: 'scored-labels',
+    inputShape: 'clef-choice',
+    labelSetName: 'Sentiment (reviewed Clef choice)',
+    labelSet: [
+      { code: 'POSITIVE', name: 'Positive' },
+      { code: 'NEGATIVE', name: 'Negative' },
+      { code: 'NEUTRAL', name: 'Neutral' }
+    ],
+    topK: { min: 1, max: 10, step: 1, default: 3 },
+    minimumConfidence: { min: 0, max: 1, step: 0.01, default: 0 },
+    appliedBy: 'playground',
+    contextWindowTokens: 65_536
+  }
+};
+
 const VERDICT: CatalogueModel = {
   id: '@cf/test/verdict',
   name: 'Test Verdict',
@@ -141,6 +164,32 @@ describe('selecting a model', () => {
 
   it('exposes the selected model descriptor', () => {
     expect(build().selectedModel.value?.name).toBe('Test Scoring');
+  });
+});
+
+describe('the Clef fixed-label bridge', () => {
+  it('publishes the reviewed neutral label', () => {
+    const panel = build([CLEF_SENTIMENT]);
+
+    expect(panel.labelSet.value.map((label) => label.code)).toEqual([
+      'POSITIVE',
+      'NEGATIVE',
+      'NEUTRAL'
+    ]);
+  });
+
+  // The browser sends no criteria: Clef's normal API permits them, but the one choice schema is
+  // immutable Worker configuration so this remains fixed-label classification.
+  it('sends no caller-defined Clef question or criteria', async () => {
+    const panel = build([CLEF_SENTIMENT]);
+    panel.text.value = 'The train departs from platform four.';
+    await panel.run();
+
+    const sent = panel.transport.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(sent.model).toBe(CLEF_SENTIMENT.id);
+    for (const field of ['question', 'questions', 'criteria', 'labels', 'choices']) {
+      expect(sent, field).not.toHaveProperty(field);
+    }
   });
 });
 
