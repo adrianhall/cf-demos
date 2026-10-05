@@ -13,6 +13,7 @@ import ClassifyTextView from './views/ClassifyTextView.vue';
 import CreateImageView from './views/CreateImageView.vue';
 import CreateVideoView from './views/CreateVideoView.vue';
 import DescribeImageView from './views/DescribeImageView.vue';
+import EvaluateChoicesView from './views/EvaluateChoicesView.vue';
 import PlannedPanelView from './views/PlannedPanelView.vue';
 import ReadTextView from './views/ReadTextView.vue';
 import RemixImageView from './views/RemixImageView.vue';
@@ -41,6 +42,7 @@ const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
   'translate-text': TranslateTextView,
   'classify-text': ClassifyTextView,
   'semantic-search': SemanticSearchView,
+  'evaluate-choices': EvaluateChoicesView,
   'view-tokens': ViewTokensView
 };
 

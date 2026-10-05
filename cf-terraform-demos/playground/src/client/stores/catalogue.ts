@@ -3,6 +3,7 @@ import type { ClassificationControlSupport } from '../../shared/classify-image';
 import type { TextClassificationControlSupport } from '../../shared/classify-text';
 import type { VideoControlSupport } from '../../shared/create-video';
 import type { VisionControlSupport } from '../../shared/describe-image';
+import type { EvaluationControlSupport } from '../../shared/evaluate-choices';
 import type { ImageControlSupport } from '../../shared/images';
 import type { SpeechControlSupport } from '../../shared/read-text';
 import type { RemixImageControlSupport } from '../../shared/remix-image';
@@ -135,6 +136,15 @@ export interface CatalogueModel {
    * clearest evidence that two models' scores are not comparable.
    */
   semanticSearchControls?: SemanticSearchControlSupport;
+  /**
+   * What a decision model accepts, and what it charges for.
+   *
+   * The browser needs `supportedQuestionTypes` so the question builder offers only types the
+   * selected model answers — an unsupported type should be unconstructible rather than rejected
+   * after a visitor has written it. `contextWindowTokens` drives the View Tokens handoff: the panel
+   * counts the state's tokens in the browser and shows how much of the window it occupies.
+   */
+  evaluationControls?: EvaluationControlSupport;
 }
 
 /**

@@ -52,7 +52,7 @@ came to use.
 | **Transcribe Audio** | **Automatic speech recognition** | **Available now** |
 | **Translate Text**   | **Translation**                  | **Available now** |
 | **Classify Text**    | **Text classification**          | **Available now** |
-| Evaluate Choices     | Structured evaluation            | Phase 14          |
+| **Evaluate Choices** | **Structured evaluation**        | **Available now** |
 | **Semantic Search**  | **Text embeddings / reranking**  | **Available now** |
 | **View Tokens**      | **Tokenization**                 | **Available now** |
 
@@ -603,7 +603,16 @@ Built to **phase 7** of
   why similarity is never presented as a probability, why scores cannot be compared between models,
   and why a repeat embedding search can make no model calls at all.
 
-Every remaining panel renders a placeholder stating the phase that delivers it.
+- **Phase 14** delivered Evaluate Choices, the typed-decision panel and the exact inverse of
+  Classify Text. See
+  [Evaluate Choices: a typed contract, not a prompt](#evaluate-choices-a-typed-contract-not-a-prompt)
+  for why the caller supplies the questions here but cannot supply a prompt, why confidence is
+  rendered separately from every probability, and why one of the three question types has no
+  confidence at all.
+
+Every remaining panel renders a placeholder stating the phase that delivers it. **Phase 14 completed
+every credit-free panel**: the three that remain — Generate Music, Animate Image, and Detect Objects
+— are blocked on prepaid AI Gateway credits or on a model that does not exist.
 
 The remaining phases are ordered by **whether Cloudflare hosts a model for the task**, which is a
 practical constraint rather than a preference: a third-party model bills against prepaid AI Gateway
@@ -1155,3 +1164,98 @@ score belongs to a specific query/passage pair. This is the retrieve-then-rerank
 production RAG systems make: embeddings are cheap to reuse and broad to retrieve with; a
 cross-encoder is a more discriminating second stage whose work scales with the collection on each
 query.
+
+## Evaluate Choices: a typed contract, not a prompt
+
+Evaluate Choices asks a decision model **typed questions** about a situation and gets calibrated
+probabilities back. It is the exact inverse of
+[Classify Text](#classify-text-a-closed-set-of-answers), and the pair is deliberate: there the label
+set belongs to the trained model and a caller-supplied label is refused; here the questions, the
+types, the instructions, and the criteria are all the caller's.
+
+What the caller cannot supply is a **prompt**. There is no `prompt`, `system`, `messages`,
+`temperature`, or `response_format` field, and the server refuses a body carrying one with a `400`
+that names the Chat panel instead. The panel's request preview shows the whole payload so the claim
+is checkable rather than asserted. Nothing here parses text in either direction: there is no JSON
+mode, no schema prompt-engineering, and no "please respond only with valid JSON" incantation.
+
+`typesafe/jev` — the originally specified model — is not in the catalogue. Cloudflare's Clef models
+are, which makes the purpose-built decision model the credit-free choice as well as the better one.
+
+### Two reviewed models, one contract
+
+| Model          | Size | Context       | Input price      | Output price |
+| -------------- | ---- | ------------- | ---------------- | ------------ |
+| **Clef**       | 27B  | 65,536 tokens | $0.24 / M tokens | none         |
+| **Clef Flash** | 9B   | 65,536 tokens | $0.09 / M tokens | none         |
+
+Running the same questions against both is the point of having two: the panel discards the previous
+result when the model changes, because two models' probabilities for one question are different
+judgements rather than interchangeable ones.
+
+The **no output charge** is not a rounding convenience. Every verified call reported
+`output_tokens: 0`, because a typed decision is not generated text — there is nothing to bill on the
+way out. Beside a generative panel in the same session meter, that is a genuinely different cost
+model rather than a cheaper version of the same one.
+
+### Three question types, and one of them has no confidence
+
+- **`noul`** — a truth-valued judgement returning a probability, never a boolean. `0.52` and `0.99`
+  are different findings and the panel refuses to round either into "yes".
+- **`choice`** — selection from named options, returning the chosen option, a probability for
+  _every_ option, and a separate confidence.
+- **`score`** — a graded rating over an ordered legend, returning a continuous score, a distribution
+  across the legend, and a separate confidence.
+
+A `noul` answer carries **no confidence field at all** in the reviewed contract, while the other two
+do. That asymmetry is real, so the answer types are a discriminated union rather than one shape with
+optional fields: a renderer cannot display a confidence that was never sent, because it would not
+compile. The card says so in words rather than leaving a blank where a reader would expect one.
+
+### Confidence is not the answer
+
+The single most important thing this panel shows is that **the answer and the certainty are
+independent**. Verified live against the same `choice` question:
+
+| State                                                | Chosen        | Probability | Confidence |
+| ---------------------------------------------------- | ------------- | ----------- | ---------- |
+| "The server is on fire, total outage, nothing works" | `ENGINEERING` | 0.9831      | **0.9334** |
+| "Hello"                                              | `ENGINEERING` | 0.7111      | **0.1782** |
+
+The second answer looks decisive and is the model saying it is guessing. Prose output cannot express
+that distinction at all — it reads as a confident sentence either way. So confidence is rendered as
+its own control, below a dashed rule, with its own wording ("Very low confidence — treat this as a
+guess"), and it is never folded into a probability bar or used to shade one.
+
+### Several questions, one model call
+
+Asking five questions about one state is **one gateway request**, not five. That is what a decision
+model buys over a loop of classifier calls, and the panel shows the question count and the call
+count side by side so the claim is visible rather than described.
+
+### Structured state
+
+The state can be free text or a JSON document, and the structured case is the more interesting one
+because question instructions can reference fields by name. Given an order 40 days old and a policy
+with a 30-day refund window, the model answered `within_window` at `0.0195` and `decision` as
+`DECLINE` at `0.7784` — it compared two fields rather than matching words. The state's token count
+is computed in the browser, borrowed from [View Tokens](#view-tokens), and shown against the model's
+65,536-token window so a large state's cost is visible before anything is spent on it.
+
+### Contract details worth knowing
+
+Several rules below belong to the provider and are reimplemented in the domain layer so a refusal
+can name the question a visitor is editing rather than a field in a payload they never saw:
+
+- A `score` question's criteria are an **array**, while a `choice` question's are an **object**.
+  Sending a legend as an object fails with `Input should be a valid list`.
+- The body carries its own `model` field which must agree with the endpoint. Sending `"clef"` to the
+  clef-flash endpoint fails with `Unsupported model 'clef'. Use 'clef-flash'.`
+- Question names must match `^[A-Za-z0-9_.-]{1,100}$`, and `choice` and `score` need at least two
+  entries. Criteria are optional for `noul`.
+- Duplicate question names and duplicate option names are refused rather than deduplicated: the
+  provider keys both by name, so a duplicate would silently discard one and return fewer answers
+  than questions asked.
+
+If the model answers some questions usably and one not, the usable answers are shown and the missing
+one is **named** — a shorter card list with no comment is indistinguishable from never having asked.

@@ -252,7 +252,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
       + 'calibrated probabilities back rather than prose.',
     group: 'Reason',
     gateway: 'required',
-    availability: 'planned',
+    availability: 'available',
     phase: 14
   },
   {

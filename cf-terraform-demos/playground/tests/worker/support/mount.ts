@@ -14,6 +14,7 @@ import type { ClassifyTextService } from '../../../src/worker/application/classi
 import type { CreateImageService } from '../../../src/worker/application/create-image/create-image-service';
 import type { CreateVideoService } from '../../../src/worker/application/create-video/create-video-service';
 import type { DescribeImageService } from '../../../src/worker/application/describe-image/describe-image-service';
+import type { EvaluateChoicesService } from '../../../src/worker/application/evaluate-choices/evaluate-choices-service';
 import type { MetricsService } from '../../../src/worker/application/metrics/metrics-service';
 import type { ReadTextService } from '../../../src/worker/application/read-text/read-text-service';
 import type { SemanticSearchService } from '../../../src/worker/application/semantic-search/semantic-search-service';
@@ -92,6 +93,10 @@ export interface MountOptions {
    * Semantic Search service the route should use.
    */
   semanticSearchService?: SemanticSearchService;
+  /**
+   * Evaluate Choices service the route should use.
+   */
+  evaluateChoicesService?: EvaluateChoicesService;
   /**
    * Logger to place on the context, so a caller can share one recorder between the route and the
    * services it calls — which is how the composition root wires them. Defaults to a fresh one.
@@ -197,6 +202,9 @@ export function mountRoute(
     }
     if (options.semanticSearchService !== undefined) {
       context.set('SEMANTIC_SEARCH_SERVICE', options.semanticSearchService);
+    }
+    if (options.evaluateChoicesService !== undefined) {
+      context.set('EVALUATE_CHOICES_SERVICE', options.evaluateChoicesService);
     }
     await next();
   });

@@ -19,6 +19,7 @@ import {
 } from '../../shared/classify-text';
 import type { VideoControlSupport } from '../../shared/create-video';
 import type { VisionControlSupport } from '../../shared/describe-image';
+import type { EvaluationControlSupport } from '../../shared/evaluate-choices';
 import type { ImageControlSupport } from '../../shared/images';
 import type { SpeechControlSupport } from '../../shared/read-text';
 import type { RemixImageControlSupport } from '../../shared/remix-image';
@@ -378,6 +379,16 @@ export interface ModelDescriptor {
    * 768-dimension space and in a 2,048-dimension one are unrelated numbers.
    */
   semanticSearchControls?: SemanticSearchControlSupport;
+  /**
+   * What a reviewed decision model accepts, and what it charges for.
+   *
+   * The browser needs this for two things no earlier panel required. `supportedQuestionTypes`
+   * decides which question types the builder may offer, so an unsupported type is never
+   * constructible rather than merely rejected on submit. `contextWindowTokens` is shown beside a
+   * live token count of the state — the View Tokens handoff this panel owes — because a large
+   * structured state consumes the window quickly and the only honest way to say so is a number.
+   */
+  evaluationControls?: EvaluationControlSupport;
   /**
    * The field a vision model puts its answer in.
    *
@@ -1341,6 +1352,61 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       // 0.00004, so a proportional bar would render every non-match as an identical empty bar —
       // implying the model could not tell them apart when in fact it separated them emphatically.
       collapsesIrrelevantScores: true
+    }
+  },
+  // Evaluate Choices. Both descriptors were verified against the live models with `cf ai run`, and
+  // three findings below would each be a runtime failure if guessed rather than checked.
+  //
+  // 1. The request body carries its own `model` field which must agree with the endpoint. Sending
+  //    `"clef"` to the clef-flash endpoint fails with `Unsupported model 'clef'. Use
+  //    'clef-flash'.` — hence `requestModelName` rather than deriving it from the identifier.
+  // 2. A `score` question's criteria are an **array**, while a `choice` question's are an object.
+  //    Sending a score legend as an object fails with `Input should be a valid list`.
+  // 3. `noul` answers carry **no confidence field** at all, while `choice` and `score` do. That
+  //    asymmetry is modelled in the answer union rather than smoothed over.
+  //
+  // The catalogue types these as Text Generation, which is exactly the misreading this panel
+  // exists to correct: they take a state and a typed question schema, and return calibrated
+  // probabilities. There is no prose in either direction.
+  {
+    id: '@cf/cloudflare/clef',
+    name: 'Clef (27B decision model)',
+    provider: 'workers-ai',
+    task: 'evaluate-choices',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/clef/',
+    evaluationControls: {
+      requestModelName: 'clef',
+      supportedQuestionTypes: ['noul', 'choice', 'score'],
+      reportsConfidence: true,
+      contextWindowTokens: 65_536,
+      // Catalogue figure, for explaining the asymmetric price shape rather than for computing a
+      // charge: every verified call reported `output_tokens: 0`, so only the input is billable.
+      // The authoritative cost of a run remains the one AI Gateway reports.
+      inputPricePerMillionTokens: 0.24
+    }
+  },
+  {
+    id: '@cf/cloudflare/clef-flash',
+    name: 'Clef Flash (9B decision model)',
+    provider: 'workers-ai',
+    task: 'evaluate-choices',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/clef-flash/',
+    evaluationControls: {
+      requestModelName: 'clef-flash',
+      supportedQuestionTypes: ['noul', 'choice', 'score'],
+      reportsConfidence: true,
+      contextWindowTokens: 65_536,
+      // Roughly a third of Clef's price for the same question schema, which is the latency and
+      // cost trade-off this panel lets a visitor run twice and compare. The same model also
+      // appears in Classify Text under an immutable application-owned schema; here the schema is
+      // the caller's, which is the entire difference between the two panels.
+      inputPricePerMillionTokens: 0.09
     }
   }
 ];

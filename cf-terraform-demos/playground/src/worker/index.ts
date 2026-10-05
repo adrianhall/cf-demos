@@ -12,6 +12,7 @@ import { ClassifyTextService } from './application/classify-text/classify-text-s
 import { CreateImageService } from './application/create-image/create-image-service';
 import { CreateVideoService } from './application/create-video/create-video-service';
 import { DescribeImageService } from './application/describe-image/describe-image-service';
+import { EvaluateChoicesService } from './application/evaluate-choices/evaluate-choices-service';
 import { MetricsService } from './application/metrics/metrics-service';
 import { ReadTextService } from './application/read-text/read-text-service';
 import { RemixImageService } from './application/remix-image/remix-image-service';
@@ -33,6 +34,7 @@ import { classifyTextRouter } from './routes/classify-text';
 import { createImageRouter } from './routes/create-image';
 import { createVideoRouter } from './routes/create-video';
 import { describeImageRouter } from './routes/describe-image';
+import { evaluateChoicesRouter } from './routes/evaluate-choices';
 import { readTextRouter } from './routes/read-text';
 import { remixImageRouter } from './routes/remix-image';
 import { runsRouter } from './routes/runs';
@@ -140,6 +142,10 @@ app.use('/api/*', async (context, next) => {
       logger: context.var.LOGGER
     })
   );
+  context.set(
+    'EVALUATE_CHOICES_SERVICE',
+    new EvaluateChoicesService({ inference, runs, logger: context.var.LOGGER })
+  );
   context.set('METRICS_SERVICE', new MetricsService({ inference, runs }));
 
   await next();
@@ -158,6 +164,7 @@ app.route('/api/transcribe-audio', transcribeAudioRouter);
 app.route('/api/translate-text', translateTextRouter);
 app.route('/api/classify-text', classifyTextRouter);
 app.route('/api/semantic-search', semanticSearchRouter);
+app.route('/api/evaluate-choices', evaluateChoicesRouter);
 app.route('/api/runs', runsRouter);
 
 /**

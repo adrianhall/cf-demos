@@ -1335,3 +1335,54 @@ The cache is isolate-memory only and is scoped by verified Access `sub`, model i
 content-derived hash. It stores vectors, never text; scoping is essential because a cross-user cache
 hit would reveal that someone else submitted byte-identical content even if the content itself were
 never returned. No KV, D1, R2, or Vectorize resource was added.
+
+### Phase 14 contract review — Evaluate Choices
+
+`typesafe/jev` is **not** in the account catalogue; `@cf/cloudflare/clef` and
+`@cf/cloudflare/clef-flash` are, so the phase goal's instruction to default to Clef is also the
+credit-free choice and no third-party model was needed. Both were reviewed against the live account
+with `cf ai run` before registration, and both route through the existing AI Gateway client, so no
+gateway exception was required.
+
+| Model | Live findings | Registered behaviour |
+| --- | --- | --- |
+| `@cf/cloudflare/clef` | 27B. `context_window = 65536`, priced `0.24` per M input tokens. Answered a three-question mixed payload in one call: `urgent` noul `0.9905`, `department` `ENGINEERING` at `0.7599`/confidence `0.4497`, `frustration` score `3.013`/confidence `0.2146`. | Default decision model, all three question types. |
+| `@cf/cloudflare/clef-flash` | 9B. Same context window, priced `0.09` per M input tokens. Same payload: `0.9573`, `ENGINEERING` `0.8588`/`0.6257`, score `3.5101`/`0.3462`. | The cheaper, faster comparison on identical questions. Also appears in Classify Text under an immutable application-owned schema; here the schema is the caller's. |
+
+Contract findings that would each have been a runtime failure if assumed rather than checked:
+
+- **The body carries its own `model` field and it must match the endpoint.** Sending `"clef"` to
+  the clef-flash endpoint fails with `Unsupported model 'clef'. Use 'clef-flash'.` The exact string
+  is recorded as `requestModelName` rather than derived from the identifier.
+- **A `score` question's criteria are an array; a `choice` question's are an object.** Sending a
+  score legend as an object fails with `Input should be a valid list`. This was the first failure
+  encountered and is the reason the two types are built separately.
+- **A `noul` answer carries no confidence field at all**, while `choice` and `score` both do. The
+  answer types are a discriminated union so a renderer cannot read a confidence that was never
+  sent.
+- **Confidence is genuinely independent of probability.** The same routing question answered
+  `ENGINEERING` at `0.9831`/confidence `0.9334` for a clear state, and `0.7111`/confidence `0.1782`
+  for the state `"Hello"`. That contrast is the panel's central lesson and the reason confidence is
+  rendered as its own control rather than folded into a probability bar.
+- **`output_tokens` is `0` on every call**, which makes the asymmetric price shape concrete: a
+  typed decision is not generated text, so only the input is billable.
+- Provider-enforced bounds, reimplemented locally so a refusal names the question being edited:
+  question names must match `^[A-Za-z0-9_.-]{1,100}$`; `choice` and `score` need at least two
+  entries (`Dictionary should have at least 2 items`, `List should have at least 2 items`);
+  `noul` criteria are optional. Twenty choice options and ten questions in one call both succeeded.
+- A structured state is read as structure rather than as text. Given `order.days_since_delivery:
+  40` against `policy.refund_window_days: 30`, the model answered `within_window` at `0.0195` and
+  `decision` as `DECLINE` at `0.7784`.
+
+Every prepared scenario was executed against the live model using payloads built by the demo's own
+`buildEvaluationInput()`, not hand-written JSON, so the verification covers the code path that ships.
+
+One defect was found only by running the panel in a browser and is worth recording: the composable
+used `structuredClone()` on questions held in a `ref`, which throws `DataCloneError` on Vue's
+reactive proxies and left a run hanging. The unit tests passed because they asserted on state rather
+than completing a run. It is fixed with a JSON round-trip and covered by a regression test that
+loads a scenario and runs it.
+
+Phase 14 completes every credit-free panel. The three that remain — Generate Music, Animate Image,
+and Detect Objects — are blocked on prepaid AI Gateway credits or, for Detect Objects, on a model
+that is not catalogued at all.

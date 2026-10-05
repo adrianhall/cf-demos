@@ -13,6 +13,10 @@ import type {
   CreateVideoStatusResponse
 } from '../../shared/create-video';
 import type { DescribeImageRequest, DescribeImageResponse } from '../../shared/describe-image';
+import type {
+  EvaluateChoicesRequest,
+  EvaluateChoicesResponse
+} from '../../shared/evaluate-choices';
 import type { CreateImageRequest, CreateImageResponse } from '../../shared/images';
 import type { ReadTextRequest, ReadTextResponse } from '../../shared/read-text';
 import type { RemixImageRequest, RemixImageResponse } from '../../shared/remix-image';
@@ -464,6 +468,47 @@ export async function semanticSearch(
   }
 
   return (await response.json()) as SemanticSearchResponse;
+}
+
+/**
+ * Asks a decision model typed questions about one state.
+ *
+ * **However many questions are asked, this is one gateway call.** That is the property a decision
+ * model exists for, and the reason this is not a loop over a classifier.
+ *
+ * The request carries the caller's own questions, types, instructions, and criteria — the inverse
+ * of Classify Text, whose labels belong to the trained model. What it carries no field for is a
+ * prompt: there is no `prompt`, `system`, `temperature`, or `response_format`, and the server
+ * refuses a body that adds one. The answers are a typed contract rather than prose parsed into
+ * JSON, so there is nothing for those controls to act on.
+ *
+ * @param request The evaluation request, carrying the state, its format, and the typed questions.
+ * @param signal Abort signal, so the caller's Cancel button aborts the HTTP request itself rather
+ *   than merely ignoring the result. The provider call already made is not cancelled, and the panel
+ *   says so.
+ * @returns The typed answers, the names of any questions that came back unusable, the model's own
+ *   token usage, the run receipt, and the controls the server applied.
+ * @throws {ApiError} When the server rejects the request (`400` for an empty or over-long state,
+ *   unparseable JSON, no questions, too many, a duplicate or badly formed question name, a question
+ *   malformed for its type, or an attempt to supply a prompt; `401` for an expired Access session)
+ *   or when the provider fails or returns no usable answer (`502`).
+ */
+export async function evaluateChoices(
+  request: EvaluateChoicesRequest,
+  signal?: AbortSignal
+): Promise<EvaluateChoicesResponse> {
+  const response = await fetch('/api/evaluate-choices', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+
+  return (await response.json()) as EvaluateChoicesResponse;
 }
 
 /**

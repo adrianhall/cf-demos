@@ -60,6 +60,7 @@ describe('TASK_DESCRIPTORS', () => {
       'create-image',
       'create-video',
       'describe-image',
+      'evaluate-choices',
       'read-text',
       'remix-image',
       'semantic-search',
@@ -72,7 +73,7 @@ describe('TASK_DESCRIPTORS', () => {
   // The phase number is quoted in the placeholder, so a panel still marked planned for a phase
   // already delivered would tell a visitor to wait for something that exists.
   it('marks every panel from a delivered phase as available', () => {
-    const deliveredThroughPhase = 13;
+    const deliveredThroughPhase = 14;
     for (const task of TASK_DESCRIPTORS) {
       if (task.phase <= deliveredThroughPhase) {
         expect(task.availability, `${task.name} is in a delivered phase`).toBe('available');
@@ -112,9 +113,18 @@ describe('TASK_DESCRIPTORS', () => {
       .filter((task) => creditDependent.has(task.id))
       .map((task) => task.phase);
 
-    expect(freePhases.length).toBeGreaterThan(0);
     expect(paidPhases.length).toBeGreaterThan(0);
-    expect(Math.min(...paidPhases)).toBeGreaterThan(Math.max(...freePhases));
+
+    // Phase 14 completed every credit-free panel, so there is no longer a free phase left to
+    // order the paid ones after. That is the ordering constraint having done its job rather than
+    // having lapsed: the assertion below still holds it, and the branch keeps the original
+    // comparison meaningful if a credit-free panel is ever added back.
+    if (freePhases.length > 0) {
+      expect(Math.min(...paidPhases)).toBeGreaterThan(Math.max(...freePhases));
+    }
+
+    const delivered = TASK_DESCRIPTORS.filter((task) => task.availability === 'available');
+    expect(delivered.some((task) => creditDependent.has(task.id))).toBe(false);
   });
 
   // Detect Objects has no model at all: `@cf/facebook/detr-resnet-50` was removed from the

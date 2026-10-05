@@ -5,6 +5,7 @@ import type { ClassifyTextService } from './application/classify-text/classify-t
 import type { CreateImageService } from './application/create-image/create-image-service';
 import type { CreateVideoService } from './application/create-video/create-video-service';
 import type { DescribeImageService } from './application/describe-image/describe-image-service';
+import type { EvaluateChoicesService } from './application/evaluate-choices/evaluate-choices-service';
 import type { MetricsService } from './application/metrics/metrics-service';
 import type { ReadTextService } from './application/read-text/read-text-service';
 import type { RemixImageService } from './application/remix-image/remix-image-service';
@@ -69,6 +70,10 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * isolate's embedding cache.
    */
   SEMANTIC_SEARCH_SERVICE: SemanticSearchService;
+  /**
+   * The Evaluate Choices use case, sharing this request's gateway client and run store.
+   */
+  EVALUATE_CHOICES_SERVICE: EvaluateChoicesService;
   /**
    * The run-metrics use case, sharing this request's gateway client and run store.
    */
