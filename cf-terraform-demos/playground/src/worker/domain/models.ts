@@ -12,6 +12,11 @@ import {
   MAX_CLASSIFICATION_LABELS,
   type ClassificationControlSupport
 } from '../../shared/classify-image';
+import {
+  MAX_TEXT_CLASSIFICATION_LABELS,
+  type ReviewedLabel,
+  type TextClassificationControlSupport
+} from '../../shared/classify-text';
 import type { VideoControlSupport } from '../../shared/create-video';
 import type { VisionControlSupport } from '../../shared/describe-image';
 import type { ImageControlSupport } from '../../shared/images';
@@ -135,6 +140,55 @@ const INDICTRANS2_LANGUAGES: readonly TranslationLanguage[] = [
   { code: 'tel_Telu', name: 'Telugu (Telugu)' },
   { code: 'urd_Arab', name: 'Urdu (Arabic)' },
   { code: 'unr_Deva', name: 'Mundari (Devanagari)' }
+];
+
+/**
+ * The complete label set DistilBERT SST-2 can emit.
+ *
+ * Genuinely complete rather than a reviewed subset, and that is what makes it worth publishing: the
+ * model was fine-tuned on SST-2, a binary sentiment corpus, so these two labels are _all_ it can
+ * ever return. A visitor can see the entire space of possible answers before submitting anything,
+ * which is precisely the property a fixed-label classifier has and a text generator does not.
+ *
+ * The codes are upper-case because that is exactly how the model emits them; the response is
+ * matched against these without case normalisation, so a change in the model's own spelling
+ * surfaces as an unrecognised label rather than being quietly absorbed.
+ */
+const SST2_LABELS: readonly ReviewedLabel[] = [
+  { code: 'POSITIVE', name: 'Positive', description: 'The text expresses favourable sentiment.' },
+  { code: 'NEGATIVE', name: 'Negative', description: 'The text expresses unfavourable sentiment.' }
+];
+
+/**
+ * The Llama Guard 3 hazard taxonomy, as Cloudflare publishes it.
+ *
+ * Transcribed from the AI Gateway Guardrails documentation, which names the same `S1`–`S13`
+ * categories this model emits and is the authoritative mapping for them. The model returns bare
+ * codes, so without this list a result would read `S1` with no indication of what that means.
+ *
+ * `S14` (Code interpreter abuse) is a real Llama Guard 3 category that Cloudflare's published table
+ * does not cover. It is deliberately **not invented here**: a code outside this list is reported as
+ * unrecognised rather than given a name this demo made up, which is the honest response to a
+ * taxonomy that has moved.
+ *
+ * These are emphatically **not** general-purpose topic labels, and the panel says so. They are the
+ * categories of a content-safety model, and reading "S6 Specialized Advice" as a topic
+ * classification would be a serious misreading.
+ */
+const LLAMA_GUARD_CATEGORIES: readonly ReviewedLabel[] = [
+  { code: 'S1', name: 'Violent Crimes' },
+  { code: 'S2', name: 'Non-Violent Crimes' },
+  { code: 'S3', name: 'Sex-Related Crimes' },
+  { code: 'S4', name: 'Child Sexual Exploitation' },
+  { code: 'S5', name: 'Defamation' },
+  { code: 'S6', name: 'Specialized Advice' },
+  { code: 'S7', name: 'Privacy' },
+  { code: 'S8', name: 'Intellectual Property' },
+  { code: 'S9', name: 'Indiscriminate Weapons' },
+  { code: 'S10', name: 'Hate' },
+  { code: 'S11', name: 'Suicide & Self-Harm' },
+  { code: 'S12', name: 'Sexual Content' },
+  { code: 'S13', name: 'Elections' }
 ];
 
 /**
@@ -274,6 +328,16 @@ export interface ModelDescriptor {
    * the other.
    */
   translationControls?: TranslationControlSupport;
+  /**
+   * What a text classifier can emit, how it wants its input, and whether it scores anything.
+   *
+   * Present only for a text-classification descriptor. The disagreement that matters most is not
+   * about controls but about **whether there is a score at all**: one reviewed model returns a
+   * scored ranking and the other returns a boolean verdict with no confidence for anything. That is
+   * why the ranking controls are declared per model rather than assumed, and why the outcome is a
+   * discriminated union rather than one shape with optional fields.
+   */
+  textClassificationControls?: TextClassificationControlSupport;
   /**
    * The field a vision model puts its answer in.
    *
@@ -995,6 +1059,96 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       // travels in a single call.
       batchesSegments: true,
       outputField: 'translations'
+    }
+  },
+  // Both reviewed text classifiers are Cloudflare-hosted, so this panel carries no prepaid AI
+  // Gateway credit prerequisite. The phase brief expected that: the hosted options cover the task,
+  // and the lesson here is the fixed-label contract rather than model quality.
+  //
+  // `@cf/baai/bge-reranker-base` was a listed candidate and is **not registered**. The brief asked
+  // for it only if the panel could express its contract honestly, and it cannot. Despite being
+  // typed Text Classification, it does not classify a text at all: it scores the *relevance between
+  // a query and a list of passages*, taking `{ query, contexts[] }` and returning `{ id, score }`
+  // pairs indexed into the caller's own array. There is no label set — the "labels" would be the
+  // caller's own passages, which is the precise opposite of the fixed-label contract this panel
+  // exists to teach, and much closer to Semantic Search in phase 13. Offering it behind a model
+  // selector labelled "Classify Text" would teach that a classifier's categories are something a
+  // caller supplies.
+  //
+  // Worth recording separately: the generated platform types for that model are **wrong**. The
+  // `Ai_Cf_Baai_Bge_Reranker_Base_Input` interface carries the JSDoc for `query` but omits the
+  // field itself, while the published JSON schema lists it as required. Code written against those
+  // types would not compile with a `query`, and would fail at the provider without one.
+  {
+    id: '@cf/huggingface/distilbert-sst-2-int8',
+    name: 'DistilBERT SST-2',
+    provider: 'workers-ai',
+    task: 'classify-text',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/distilbert-sst-2-int8/',
+    textClassificationControls: {
+      // A genuine classification head: it scores its labels and returns a number for each.
+      outcomeKind: 'scored-labels',
+      inputShape: 'text',
+      labelSetName: 'Sentiment (SST-2)',
+      // Two labels, and that is the entire set. A binary classifier makes the closed-set property
+      // impossible to miss: whatever is submitted, the answer is one of these two.
+      labelSet: SST2_LABELS,
+      // Its schema is `{ text }` and nothing else — no ranking fields at all — so both controls
+      // below are applied by this application to the response it received.
+      topK: { min: 1, max: MAX_TEXT_CLASSIFICATION_LABELS, step: 1, default: 2 },
+      // Zero by default, so nothing is hidden until a visitor chooses to hide it. With only two
+      // labels the second score is the informative one: a 51/49 split and a 99/1 split are very
+      // different answers, and a default floor would hide exactly that distinction.
+      minimumConfidence: { min: 0, max: 1, step: 0.01, default: 0 },
+      appliedBy: 'playground',
+      // A BERT derivative, so 512 tokens. Text beyond it is truncated *by the model*, which
+      // returns a confident score for the prefix with nothing in the response to say so. The
+      // panel's character limit is set to stay inside this window.
+      contextWindowTokens: 512
+    }
+  },
+  // Llama Guard is the model that makes the per-model declaration do visible work, and it differs
+  // from DistilBERT in every way this panel is about.
+  //
+  // Its declared task type is **Text Generation**, not Text Classification — it is a chat model
+  // fine-tuned for safety classification, which is why it takes `messages[]` rather than `{ text }`.
+  // Most importantly it returns **no scores at all**: a boolean plus a list of violated category
+  // codes. There is nothing to rank, nothing to put in a confidence bar, and the ranking controls
+  // are therefore refused rather than ignored.
+  //
+  // The phase brief allowed it only if the panel could present its categories without implying they
+  // are general-purpose labels. The panel names the taxonomy wherever a result appears, and the
+  // categories carry their published names, so a result reads as a safety verdict rather than as a
+  // topic classification.
+  {
+    id: '@cf/meta/llama-guard-3-8b',
+    name: 'Llama Guard 3 8B',
+    provider: 'workers-ai',
+    task: 'classify-text',
+    contractVersion: 1,
+    // Priced per token in both directions, unlike DistilBERT's input-only rate: it generates its
+    // answer rather than scoring a head, which is the same fact as `inputShape: 'messages'` seen
+    // from the billing side.
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/llama-guard-3-8b/',
+    textClassificationControls: {
+      // A verdict, not a ranking. The output schema declares `{ safe, categories[] }` with no score
+      // field anywhere, so there is no number this panel could honestly put in a bar.
+      outcomeKind: 'verdict',
+      // A chat model underneath, so the text travels as a single user message.
+      inputShape: 'messages',
+      labelSetName: 'Llama Guard 3 hazard taxonomy',
+      labelSet: LLAMA_GUARD_CATEGORIES,
+      // No `topK` and no `minimumConfidence`: both are meaningless without scores, and validation
+      // refuses them for this model rather than accepting and dropping them.
+      appliedBy: 'playground',
+      // A Llama 3.1 derivative, so the window is far larger than this panel's character limit and
+      // truncation is not a concern for it.
+      contextWindowTokens: 131_072
     }
   }
 ];

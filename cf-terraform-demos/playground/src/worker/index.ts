@@ -8,6 +8,7 @@ import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-deta
 import { createMeRouter } from '@demos/worker-common';
 import { ChatService } from './application/chat/chat-service';
 import { ClassifyImageService } from './application/classify-image/classify-image-service';
+import { ClassifyTextService } from './application/classify-text/classify-text-service';
 import { CreateImageService } from './application/create-image/create-image-service';
 import { CreateVideoService } from './application/create-video/create-video-service';
 import { DescribeImageService } from './application/describe-image/describe-image-service';
@@ -26,6 +27,7 @@ import { accessMiddleware } from './middleware/access';
 import { catalogueRouter } from './routes/catalogue';
 import { chatRouter } from './routes/chat';
 import { classifyImageRouter } from './routes/classify-image';
+import { classifyTextRouter } from './routes/classify-text';
 import { createImageRouter } from './routes/create-image';
 import { createVideoRouter } from './routes/create-video';
 import { describeImageRouter } from './routes/describe-image';
@@ -120,6 +122,10 @@ app.use('/api/*', async (context, next) => {
     'TRANSLATE_TEXT_SERVICE',
     new TranslateTextService({ inference, runs, logger: context.var.LOGGER })
   );
+  context.set(
+    'CLASSIFY_TEXT_SERVICE',
+    new ClassifyTextService({ inference, runs, logger: context.var.LOGGER })
+  );
   context.set('METRICS_SERVICE', new MetricsService({ inference, runs }));
 
   await next();
@@ -136,6 +142,7 @@ app.route('/api/read-text', readTextRouter);
 app.route('/api/remix-image', remixImageRouter);
 app.route('/api/transcribe-audio', transcribeAudioRouter);
 app.route('/api/translate-text', translateTextRouter);
+app.route('/api/classify-text', classifyTextRouter);
 app.route('/api/runs', runsRouter);
 
 /**

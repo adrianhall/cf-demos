@@ -1,6 +1,7 @@
 import type { CloudflareToolkitVariables } from '@adrianhall/cloudflare-toolkit/hono';
 import type { ChatService } from './application/chat/chat-service';
 import type { ClassifyImageService } from './application/classify-image/classify-image-service';
+import type { ClassifyTextService } from './application/classify-text/classify-text-service';
 import type { CreateImageService } from './application/create-image/create-image-service';
 import type { CreateVideoService } from './application/create-video/create-video-service';
 import type { DescribeImageService } from './application/describe-image/describe-image-service';
@@ -58,6 +59,10 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * The Translate Text use case, sharing this request's gateway client and run store.
    */
   TRANSLATE_TEXT_SERVICE: TranslateTextService;
+  /**
+   * The Classify Text use case, sharing this request's gateway client and run store.
+   */
+  CLASSIFY_TEXT_SERVICE: ClassifyTextService;
   /**
    * The run-metrics use case, sharing this request's gateway client and run store.
    */

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import type { ClassificationControlSupport } from '../../shared/classify-image';
+import type { TextClassificationControlSupport } from '../../shared/classify-text';
 import type { VideoControlSupport } from '../../shared/create-video';
 import type { VisionControlSupport } from '../../shared/describe-image';
 import type { ImageControlSupport } from '../../shared/images';
@@ -112,6 +113,17 @@ export interface CatalogueModel {
    * panel can quote in advance.
    */
   translationControls?: TranslationControlSupport;
+  /**
+   * What a text classifier can emit, and whether it scores anything.
+   *
+   * The browser needs this for three things. `outcomeKind` decides **which renderer to use at all**
+   * — a verdict model has no scores, so a confidence bar would show `NaN%` against a perfectly
+   * valid answer. `labelSet` lets the panel publish the complete, closed set of possible answers
+   * _before_ any run, which is the clearest way to show what a fixed-label classifier is. And the
+   * ranking controls are rendered only where they exist, rather than always present and sometimes
+   * inert.
+   */
+  textClassificationControls?: TextClassificationControlSupport;
 }
 
 /**

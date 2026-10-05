@@ -9,6 +9,7 @@ import { TASK_DESCRIPTORS, type TaskId } from '../shared/tasks';
 import ActivityView from './views/ActivityView.vue';
 import ChatView from './views/ChatView.vue';
 import ClassifyImageView from './views/ClassifyImageView.vue';
+import ClassifyTextView from './views/ClassifyTextView.vue';
 import CreateImageView from './views/CreateImageView.vue';
 import CreateVideoView from './views/CreateVideoView.vue';
 import DescribeImageView from './views/DescribeImageView.vue';
@@ -37,6 +38,7 @@ const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
   'remix-image': RemixImageView,
   'transcribe-audio': TranscribeAudioView,
   'translate-text': TranslateTextView,
+  'classify-text': ClassifyTextView,
   'view-tokens': ViewTokensView
 };
 

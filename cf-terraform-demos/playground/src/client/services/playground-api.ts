@@ -6,6 +6,7 @@
 
 import type { ChatRequest, ChatStreamEvent } from '../../shared/chat';
 import type { ClassifyImageRequest, ClassifyImageResponse } from '../../shared/classify-image';
+import type { ClassifyTextRequest, ClassifyTextResponse } from '../../shared/classify-text';
 import type {
   CreateVideoAcceptedResponse,
   CreateVideoRequest,
@@ -383,6 +384,43 @@ export async function translateText(
   }
 
   return (await response.json()) as TranslateTextResponse;
+}
+
+/**
+ * Classifies one text against a reviewed model's own label set.
+ *
+ * The request carries no labels and has no field for them: the categories belong to the trained
+ * model, and the server refuses a body that tries to supply them. For caller-defined questions,
+ * Evaluate Choices is the separate task.
+ *
+ * @param request The classification request, carrying the text and any ranking controls the
+ *   selected model declares.
+ * @param signal Abort signal, so the caller's Cancel button aborts the HTTP request itself rather
+ *   than merely ignoring the result. The provider call already made is not cancelled, and the panel
+ *   says so.
+ * @returns The outcome — a scored ranking or a verdict, depending on the model — with the run
+ *   receipt and the controls the server applied.
+ * @throws {ApiError} When the server rejects the request (`400` for text that is too long, a
+ *   ranking control on a model that reports no scores, or an attempt to supply labels; `401` for an
+ *   expired Access session) or when the provider fails or returns no usable classification
+ *   (`502`).
+ */
+export async function classifyText(
+  request: ClassifyTextRequest,
+  signal?: AbortSignal
+): Promise<ClassifyTextResponse> {
+  const response = await fetch('/api/classify-text', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+
+  return (await response.json()) as ClassifyTextResponse;
 }
 
 /**

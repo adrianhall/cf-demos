@@ -51,7 +51,7 @@ came to use.
 | **Read Text**        | **Text to speech**               | **Available now** |
 | **Transcribe Audio** | **Automatic speech recognition** | **Available now** |
 | **Translate Text**   | **Translation**                  | **Available now** |
-| Classify Text        | Text classification              | Phase 12          |
+| **Classify Text**    | **Text classification**          | **Available now** |
 | Evaluate Choices     | Structured evaluation            | Phase 14          |
 | Semantic Search      | Text embeddings                  | Phase 13          |
 | **View Tokens**      | **Tokenization**                 | **Available now** |
@@ -592,8 +592,13 @@ Built to **phase 7** of
   why the limit is on lines rather than length, and why the swap action exists for one model and
   cannot exist for the other.
 
-Every remaining panel renders a placeholder stating the phase that delivers it. **Classify Text**,
-in phase 12, is next.
+- **Phase 12** delivered Classify Text, whose models disagree about whether there is a _score at
+  all_. See [Classify Text: a closed set of answers](#classify-text-a-closed-set-of-answers) for why
+  the result is a discriminated union, and why one refusal in this panel is a security decision
+  rather than a validation one.
+
+Every remaining panel renders a placeholder stating the phase that delivers it. **Semantic Search**,
+in phase 13, is next.
 
 The remaining phases are ordered by **whether Cloudflare hosts a model for the task**, which is a
 practical constraint rather than a preference: a third-party model bills against prepaid AI Gateway
@@ -942,3 +947,83 @@ row without labels reads as alternating fragments of two languages.
 
 The download is encoded with `encodeURIComponent` rather than base64: a naive `btoa` throws on any
 character outside Latin-1, which is _every_ language one of these two models targets.
+
+## Classify Text: a closed set of answers
+
+This panel exists to teach the **fixed-label contract**: a classifier sorts text into categories it
+was trained on, and the caller cannot invent them. So the panel publishes the complete label set
+_before_ any run — a visitor can see every answer the model is capable of giving without submitting
+anything, which is exactly the property a text generator does not have.
+
+That is also the boundary with Evaluate Choices, and it is enforced rather than documented. The
+request type has no field for a label, and a body carrying `labels`, `categories`, `criteria`,
+`question`, or any of nine other spellings is **refused with a `400` that names Evaluate Choices**.
+Refusing rather than dropping matters: someone sending `labels` has a real need and would otherwise
+believe their categories were applied and that the model chose none of them.
+
+|                    | DistilBERT SST-2     | Llama Guard 3 8B           |
+| ------------------ | -------------------- | -------------------------- |
+| Declared task type | Text Classification  | **Text Generation**        |
+| Request shape      | `{ text }`           | `{ messages[] }`           |
+| Answer             | `[{ label, score }]` | `{ safe, categories[] }`   |
+| Scores             | yes                  | **none, for anything**     |
+| Ranking controls   | top-k, score floor   | **none — nothing to rank** |
+| Label set          | 2 sentiment labels   | 13 hazard categories       |
+
+### The finding that shaped the panel
+
+The two models disagree about **whether a classification has a score at all**. DistilBERT returns a
+scored ranking. Llama Guard returns a verdict — a boolean plus violated category codes — with no
+number anywhere. There is nothing to put in a confidence bar, and inventing one would be the worst
+possible response, so:
+
+- the outcome is a **discriminated union**, and the browser switches renderer on `outcome.kind`
+  rather than assuming a shape. A panel that assumed a score would render `NaN%` against a perfectly
+  valid answer;
+- the ranking controls are **declared per model** and refused for the verdict model rather than
+  accepted and ignored, because a visitor who sets a confidence floor on a model that reports no
+  confidence has formed a belief that is simply wrong;
+- the verdict renderer contains **no percentage anywhere**, and a test asserts that.
+
+### One refusal is a security decision
+
+Llama Guard's output type declares `response` as `string | { safe, categories }`. The structured
+branch is read. The string branch is **refused, not parsed**.
+
+A safety verdict extracted from prose by pattern-matching would be a security control resting on a
+regular expression, and the failure mode runs in the dangerous direction: a parse that missed would
+report unsafe content as _safe_. The same reasoning applies to a missing `safe` boolean — defaulting
+to `true` would announce unverified content as safe, and defaulting to `false` would accuse it on
+the strength of a malformed response. Both refuse.
+
+### Why the reranker was excluded
+
+`@cf/baai/bge-reranker-base` is typed Text Classification and is deliberately **not registered**. It
+does not classify a text: it scores the _relevance between a query and a list of passages_, taking
+`{ query, contexts[] }` and returning `{ id, score }` pairs indexed into the caller's own array. Its
+"labels" would be the caller's own passages — the precise opposite of the fixed-label contract, and
+much closer to Semantic Search in phase 13.
+
+Worth recording separately: **the generated platform types for that model are wrong.** The
+`Ai_Cf_Baai_Bge_Reranker_Base_Input` interface carries the JSDoc comment for `query` but omits the
+field itself, while the published JSON schema lists it as required. Code written against those types
+would not compile with a `query` and would fail at the provider without one.
+
+### Smaller text limit, for a model reason
+
+This panel accepts 1,500 characters where the other text panels accept more. DistilBERT is a BERT
+derivative with a 512-token window, and text beyond it is **truncated by the model** — which returns
+a confident-looking score for a prefix, with nothing in the response to say so. The limit keeps the
+text inside that window, and the refusal explains why rather than letting the number look arbitrary.
+
+### Reading the scores honestly
+
+The reviewed classifier has no ranking fields in its schema, so top-k and the confidence floor are
+applied by this application to the response, and the panel says so rather than implying the model
+was asked to filter. The scores are never rescaled after filtering: a set that no longer sums to 1
+is the honest consequence of hiding some, and adjusting them would be inventing output the model did
+not produce.
+
+The most instructive prepared passage is the neutral one. A binary classifier has no "neutral"
+label, so neutral text produces a near-even split rather than a third answer — which is what a
+closed label set really means, and exactly what a confidence bar can obscure.

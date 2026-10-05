@@ -240,7 +240,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Sort text into a fixed set of labels such as sentiment or topic.',
     group: 'Understand',
     gateway: 'required',
-    availability: 'planned',
+    availability: 'available',
     phase: 12
   },
   {

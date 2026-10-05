@@ -56,6 +56,7 @@ describe('TASK_DESCRIPTORS', () => {
     expect(available.map((task) => task.id).sort()).toEqual([
       'chat',
       'classify-image',
+      'classify-text',
       'create-image',
       'create-video',
       'describe-image',
@@ -70,7 +71,7 @@ describe('TASK_DESCRIPTORS', () => {
   // The phase number is quoted in the placeholder, so a panel still marked planned for a phase
   // already delivered would tell a visitor to wait for something that exists.
   it('marks every panel from a delivered phase as available', () => {
-    const deliveredThroughPhase = 11;
+    const deliveredThroughPhase = 12;
     for (const task of TASK_DESCRIPTORS) {
       if (task.phase <= deliveredThroughPhase) {
         expect(task.availability, `${task.name} is in a delivered phase`).toBe('available');

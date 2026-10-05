@@ -10,6 +10,7 @@ import type { CloudflareAccessIdentity } from '@adrianhall/cloudflare-toolkit/ho
 import type { Logger } from '@adrianhall/cloudflare-toolkit/logging';
 import type { ChatService } from '../../../src/worker/application/chat/chat-service';
 import type { ClassifyImageService } from '../../../src/worker/application/classify-image/classify-image-service';
+import type { ClassifyTextService } from '../../../src/worker/application/classify-text/classify-text-service';
 import type { CreateImageService } from '../../../src/worker/application/create-image/create-image-service';
 import type { CreateVideoService } from '../../../src/worker/application/create-video/create-video-service';
 import type { DescribeImageService } from '../../../src/worker/application/describe-image/describe-image-service';
@@ -82,6 +83,10 @@ export interface MountOptions {
    * Translate Text service the route should use.
    */
   translateTextService?: TranslateTextService;
+  /**
+   * Classify Text service the route should use.
+   */
+  classifyTextService?: ClassifyTextService;
   /**
    * Logger to place on the context, so a caller can share one recorder between the route and the
    * services it calls — which is how the composition root wires them. Defaults to a fresh one.
@@ -181,6 +186,9 @@ export function mountRoute(
     }
     if (options.translateTextService !== undefined) {
       context.set('TRANSLATE_TEXT_SERVICE', options.translateTextService);
+    }
+    if (options.classifyTextService !== undefined) {
+      context.set('CLASSIFY_TEXT_SERVICE', options.classifyTextService);
     }
     await next();
   });
