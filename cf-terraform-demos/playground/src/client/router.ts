@@ -103,6 +103,21 @@ export function createAppRouter(history: RouterHistory = createWebHistory()): Ro
   router.afterEach((route) => {
     const task = TASK_DESCRIPTORS.find((candidate) => candidate.id === route.meta['taskId']);
     document.title = task === undefined ? 'Playground' : `${task.name} — Playground`;
+
+    // Focus is moved to the new panel, which a single-page application has to do for itself. A
+    // full page load resets focus to the top of the document; a client-side route change does
+    // not, so without this a keyboard user who activates a sidebar link is left with focus still
+    // on that link, and a screen-reader user hears the title change while their reading position
+    // stays in a navigation list they have already left. Tabbing onward would walk the remaining
+    // fifteen panel links before reaching the panel they chose.
+    //
+    // `main` carries `tabindex="-1"` for exactly this: programmatically focusable, but not
+    // inserted into the tab order where it would add a stop nobody asked for.
+    //
+    // Deliberately *not* paired with a `scrollBehavior` that scrolls to top — focusing an element
+    // already scrolls it into view, and doing both makes the two fight on a short panel.
+    const main = document.querySelector<HTMLElement>('#main-content');
+    main?.focus();
   });
 
   return router;

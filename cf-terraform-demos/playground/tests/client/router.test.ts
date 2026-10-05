@@ -104,6 +104,34 @@ describe('createAppRouter', () => {
     expect(document.title).toBe('Chat — Playground');
   });
 
+  // A single-page application has to move focus itself. A full page load resets focus to the top
+  // of the document; a client-side route change does not, so without this a keyboard user who
+  // activates a sidebar link keeps focus on that link and would tab through the remaining panel
+  // links before reaching the panel they chose. A screen-reader user hears the title change while
+  // their reading position stays in the navigation list.
+  it('moves focus to the main landmark on navigation', async () => {
+    const main = document.createElement('main');
+    main.id = 'main-content';
+    main.tabIndex = -1;
+    // `appendChild` rather than `append`: this project's generated Workers types put a global
+    // `append` in scope whose signature expects a `Response`, so the DOM call does not type-check.
+    document.body.appendChild(main);
+
+    const link = document.createElement('a');
+    link.href = '#';
+    document.body.appendChild(link);
+    link.focus();
+    expect(document.activeElement).toBe(link);
+
+    const router = await readyRouter();
+    await router.push('/classify-image');
+
+    expect(document.activeElement).toBe(main);
+
+    main.remove();
+    link.remove();
+  });
+
   // Activity is not a task descriptor, so it keeps the application-level title rather than being
   // assigned a stale panel name from the route that preceded it.
   it('uses the application title for a non-panel route', async () => {
