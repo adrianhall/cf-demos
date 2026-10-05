@@ -407,6 +407,26 @@ whether to keep the derivation as the instance ID or move to an opaque random ID
 mapping stored** — the latter trades Finding 6's no-second-store property for a cleaner log, which
 is a real trade rather than an obvious improvement.
 
+**Resolved in phase 18: the derivation stays.** Examining it closely narrowed the exposure below
+what this finding assumed. The digest is keyed over the email *and* the run identifier together,
+so it is **per run, not per visitor**: two runs by the same person produce unrelated values that
+cannot be grouped, counted, or linked to each other. What reaches the log is functionally an
+opaque per-run token that happens to be derived rather than randomly generated, and it is not
+reversible to an address because the key is one a visitor cannot read. The phrase
+"per-visitor-per-run identifier" above overstates it — there is no per-visitor component to
+recover.
+
+The alternative would mean adding a KV namespace or D1 table purely to hold an ownership mapping,
+re-introducing exactly the second source of truth for job state that Finding 6 ruled out. That is
+a real regression for a marginal gain. The residual risk is that someone who can already read
+Worker logs *and* holds the Access audience tag could confirm a guessed email; that same person
+can read the account's AI Gateway metadata, where the email is recorded deliberately.
+
+The README's claim is narrowed as this finding requires, and the per-run property is now asserted
+in `tests/worker/domain/media-job-identity.test.ts` rather than left in prose — a future change
+keying on the email alone would pass every ownership test while turning each log line into a
+stable per-visitor identifier, which is the outcome this decision rejects.
+
 **Finding 9 — this panel can bill several dollars per click.** Pricing is per second of output and
 varies sharply by resolution: `hh1-t2v` is $0.28/s at 1080p, so a 15-second render is **$4.20**,
 while PixVerse `v6` is $0.025/s at 360p, or about $0.13 for five seconds. The defaults must be the

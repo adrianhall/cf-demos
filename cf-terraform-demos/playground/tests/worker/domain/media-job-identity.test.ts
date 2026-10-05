@@ -80,6 +80,42 @@ describe('deriveMediaJobId', () => {
     expect(id).toMatch(/^[0-9a-f]{64}$/u);
   });
 
+  // Phase 8's Finding 7a, resolved in phase 18 in favour of keeping the derivation. The platform
+  // writes this value into every Workflow log line as `$workers.instanceId` and no application
+  // code can suppress it, so what the digest reveals is a privacy property rather than only an
+  // ownership one — and the property that made keeping it the right call is asserted here rather
+  // than left in prose.
+  //
+  // The value is per *run*, not per visitor: keyed over the email and the run identifier
+  // together, so two runs by one person share nothing and cannot be grouped, counted, or linked.
+  // A future change that keyed on the email alone would still pass every ownership test above
+  // while turning each log line into a stable per-visitor identifier, which is exactly the
+  // outcome the decision rejected.
+  it('leaks no link between two runs by the same visitor', async () => {
+    const first = await deriveMediaJobId('alice@example.com', RUN_ID, KEY);
+    const second = await deriveMediaJobId(
+      'alice@example.com',
+      '8d0f7780-8536-51ef-a55c-f18fd2fa1bf8',
+      KEY
+    );
+
+    // Asserted on every prefix length a reader might eyeball, because "unrelated" is the claim
+    // and a shared leading segment would quietly make the two groupable by inspection.
+    for (const length of [4, 8, 16, 32]) {
+      expect(first.slice(0, length)).not.toBe(second.slice(0, length));
+    }
+  });
+
+  // The other half of the claim: the digest must not contain the address it was derived from.
+  // Trivially true of an HMAC, and asserted anyway because the cost is a line and the failure
+  // would be a verified email written into a log line on every job.
+  it('contains no part of the email it was derived from', async () => {
+    const id = await deriveMediaJobId('alice@example.com', RUN_ID, KEY);
+
+    expect(id).not.toContain('alice');
+    expect(id).not.toContain('example');
+  });
+
   it.each([
     ['an empty email', '', RUN_ID, KEY],
     ['an empty run identifier', 'alice@example.com', '', KEY],

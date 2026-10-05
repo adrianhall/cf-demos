@@ -333,8 +333,14 @@ naming its tokenizer is a number people will quote.
   gateway metadata, so spending in a shared demo can be traced to the person who caused it. This is
   a deliberate departure from logging nothing personal, and the Activity page states it plainly
   before you send anything. It is the only personal field recorded.
-- **Worker logs record neither.** Structured logs carry request identifiers, task and model
-  identifiers, duration, and outcome — no prompts, no content, and not the email.
+- **This application's log lines record neither.** Its structured logs carry request identifiers,
+  task and model identifiers, duration, and outcome — no prompts, no content, and not the email. The
+  wording is deliberately "this application's" rather than "the logs": a Workflow log line also
+  carries a platform-written `$workers.instanceId`, which for the two video panels is a per-run
+  value derived from the verified email. It cannot be grouped across a visitor's runs or reversed to
+  an address, but it is not nothing, and claiming the log as a whole holds nothing identifying would
+  be a claim this demo is not in a position to keep. See
+  [The derived identifier is in the logs](#the-derived-identifier-is-in-the-logs-and-that-was-a-decision).
 
 ## Diagnosing a failure
 
@@ -713,6 +719,31 @@ visitor asking after someone else's run derives a different identifier, finds no
 a `404` — not a "forbidden", which would itself confirm the job exists. Ownership becomes
 unforgeable because it is not stored anywhere to be tampered with. See
 `src/worker/domain/media-job-identity.ts`.
+
+#### The derived identifier is in the logs, and that was a decision
+
+Every Workflow log line carries `$workers.instanceId` automatically, and that value _is_ the HMAC.
+No application code can suppress it. Phase 8 found this in deployed logs and left the choice open;
+phase 18 resolved it in favour of **keeping the derivation**, for a reason worth stating precisely
+rather than overstating in either direction.
+
+The digest is **per run, not per visitor**. It is keyed over the email _and_ the run identifier
+together, so two runs by the same person produce entirely unrelated values — they cannot be grouped,
+counted, or linked to each other. What is in the log is functionally an opaque per-run token that
+happens to be derived rather than randomly generated, and it is not reversible to an email because
+the key is one a visitor cannot read.
+
+The alternative — a random instance ID with the ownership mapping stored — would mean adding a KV
+namespace or D1 table purely to hold that mapping, which re-introduces the second source of truth
+for job state that the section above exists to avoid. That is a real regression traded for a
+marginal gain. The residual exposure is that someone who can already read Worker logs _and_ holds
+the Access audience tag could confirm a guessed email; that same person can read the account's AI
+Gateway metadata, where the email is recorded deliberately.
+
+What did change is the claim. This README previously implied Worker logs contain nothing
+identifying. The accurate statement is narrower: **this application logs no identifying field.** The
+platform's own metadata is not this application's to control, and a per-run derived identifier does
+appear in it.
 
 ### A failure a Workflow boundary silently erased
 
