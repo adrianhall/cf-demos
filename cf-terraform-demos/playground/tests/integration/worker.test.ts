@@ -116,3 +116,32 @@ describe('unknown routes', () => {
     expect(text).not.toContain('.ts:');
   });
 });
+
+describe('the scheduled reaper is not a request surface', () => {
+  // The reaper deletes stored video, so a request that could trigger it would be a destructive
+  // operation reachable by anyone who can authenticate. It is invoked by the platform's cron
+  // trigger alone, and nothing routes to it — asserted rather than assumed, because the handler
+  // and the router live in the same module and adding a convenience route to "run it now" would
+  // be an easy and very expensive mistake.
+  it.each([
+    '/api/scheduled',
+    '/api/reap',
+    '/api/video-reaper',
+    '/api/create-video/reap',
+    '/scheduled'
+  ])('does not expose the reaper at %s', async (route) => {
+    for (const method of ['GET', 'POST', 'DELETE']) {
+      const token = await signDevJwt('alice@example.com', { audience: AUD });
+      const response = await send(
+        new Request(`https://playground.example${route}`, {
+          method,
+          headers: { [JWT_HEADER]: token }
+        })
+      );
+
+      // A `404` from the API router, or a `405` where the path exists with another method. What
+      // must never appear is a `2xx`, which would mean the invocation had been accepted.
+      expect(response.status, `${method} ${route}`).toBeGreaterThanOrEqual(400);
+    }
+  });
+});
