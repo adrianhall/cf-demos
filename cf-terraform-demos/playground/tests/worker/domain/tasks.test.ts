@@ -62,6 +62,7 @@ describe('TASK_DESCRIPTORS', () => {
       'describe-image',
       'read-text',
       'remix-image',
+      'semantic-search',
       'transcribe-audio',
       'translate-text',
       'view-tokens'
@@ -71,7 +72,7 @@ describe('TASK_DESCRIPTORS', () => {
   // The phase number is quoted in the placeholder, so a panel still marked planned for a phase
   // already delivered would tell a visitor to wait for something that exists.
   it('marks every panel from a delivered phase as available', () => {
-    const deliveredThroughPhase = 12;
+    const deliveredThroughPhase = 13;
     for (const task of TASK_DESCRIPTORS) {
       if (task.phase <= deliveredThroughPhase) {
         expect(task.availability, `${task.name} is in a delivered phase`).toBe('available');

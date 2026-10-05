@@ -53,7 +53,7 @@ came to use.
 | **Translate Text**   | **Translation**                  | **Available now** |
 | **Classify Text**    | **Text classification**          | **Available now** |
 | Evaluate Choices     | Structured evaluation            | Phase 14          |
-| Semantic Search      | Text embeddings                  | Phase 13          |
+| **Semantic Search**  | **Text embeddings / reranking**  | **Available now** |
 | **View Tokens**      | **Tokenization**                 | **Available now** |
 
 Panels that are not built yet are still listed, each stating the phase that delivers it. Hiding them
@@ -597,8 +597,13 @@ Built to **phase 7** of
   the result is a discriminated union, and why one refusal in this panel is a security decision
   rather than a validation one.
 
-Every remaining panel renders a placeholder stating the phase that delivers it. **Semantic Search**,
-in phase 13, is next.
+- **Phase 13** delivered Semantic Search, whose reviewed models disagree about whether they produce
+  a reusable vector or a query/passage relevance score. See
+  [Semantic Search: retrieval before generation](#semantic-search-retrieval-before-generation) for
+  why similarity is never presented as a probability, why scores cannot be compared between models,
+  and why a repeat embedding search can make no model calls at all.
+
+Every remaining panel renders a placeholder stating the phase that delivers it.
 
 The remaining phases are ordered by **whether Cloudflare hosts a model for the task**, which is a
 practical constraint rather than a preference: a third-party model bills against prepaid AI Gateway
@@ -1075,3 +1080,78 @@ not produce.
 The most instructive prepared passage is the neutral one. A binary classifier has no "neutral"
 label, so neutral text produces a near-even split rather than a third answer — which is what a
 closed label set really means, and exactly what a confidence bar can obscure.
+
+## Semantic Search: retrieval before generation
+
+Semantic Search ranks a small collection by **meaning**, not by matching words. It is deliberately a
+retrieval demonstration rather than a miniature chat-with-documents product: the response names
+passages by their position in the collection, never generates prose from them, and makes the vector
+operation inspectable before anyone is invited to build on it.
+
+The prepared **Meaning beats keywords** collection makes the distinction testable. The query is "How
+do I reset my password?". The intended passage says "change your credentials" and shares no
+important query word; a decoy says "password-protected" and "reset" but is about a door alarm. Live
+BGE M3 testing ranked the intended answer at `0.7328`, the lexical decoy at `0.6777`, and the
+cafeteria at `0.4169`. The cross-encoder makes the same judgement much more sharply: `0.9845`,
+`0.00011`, and `0.000037`.
+
+### Four reviewed contracts
+
+| Model                   | Operation               | Live contract                                                                                    | What the panel teaches                                                                                                                                      |
+| ----------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **BGE M3**              | Multilingual embedding  | `{ text: string[] }` → `{ data, shape, pooling, meta, response }`; `data` rows are 1,024 numbers | Default. An English password query matched French and Japanese support passages, so a vector can represent meaning across languages.                        |
+| **EmbeddingGemma 300M** | Embedding               | `{ text: string[] }` → `{ data, shape }`; rows are 768 numbers                                   | Different dimension count means a cosine score cannot be compared with BGE M3's, even when both look like `0.7`.                                            |
+| **BGE Small EN v1.5**   | English embedding       | `{ text: string[] }` → `{ data, shape, pooling, usage }`; rows are 384 numbers                   | A smaller vector space is another useful comparison, not a lower-resolution version of another model's score.                                               |
+| **BGE Reranker Base**   | Cross-encoder reranking | `{ query, contexts, top_k }` → `{ response: [{ id, score }] }`                                   | It reads each query/passage pair together and returns relevance directly. It produces **no vector** to cache, and its score scale is not cosine similarity. |
+
+Every model was invoked with `cf ai run` before registration. The embedding envelopes differ — in
+particular, only BGE M3 emits `meta`, and only some emit `usage` or `pooling` — so the Worker reads
+only `data`, the common reviewed field. Each embedding model accepted a batch and returned one
+vector per submitted text. Repeating the exact same text returned bit-identical vectors on every
+reviewed embedding model, which establishes the cache's correctness rather than assuming it.
+
+The reranker's generated platform type remains defective: its JSDoc describes `query`, but
+`Ai_Cf_Baai_Bge_Reranker_Base_Input` omits the required field. The live provider rejects an omitted
+query with `required properties at '/' are 'query,contexts'`; the Worker therefore sends the
+reviewed plain record rather than trusting the generated interface.
+
+### Similarity is not confidence
+
+An embedding search maps the query and each passage into the selected model's vector space, then the
+Worker ranks them locally with cosine similarity. The displayed number is a **relative position in
+that one vector space**. It is not a probability that a passage is correct, a factual-confidence
+measure, or something that can be compared to another model's score. The panel intentionally offers
+no metric selector: the reviewed models return unit vectors, for which cosine similarity, dot
+product, and Euclidean distance all give the same ranking. A selector would visibly do nothing.
+
+The result includes a limited vector disclosure: dimension count, magnitude, and the first eight
+components. It makes the representation concrete without pretending that one individual component
+has a human-readable meaning. The full result JSON remains behind a disclosure for precise checking.
+
+The cross-encoder's irrelevant scores collapse around `0.00004`; a matching password-reset passage
+scored `0.9845`. Its proportional bars therefore leave most non-matches apparently empty. That is
+not rescaled away: it is the result's real scale, explained in text, and a useful contrast with
+cosine similarity's closer scores.
+
+### Cache and cost shape
+
+For an embedding model, the Worker embeds the query and only the passages it has not seen before,
+then compares all vectors locally. A later unchanged search can make **zero** model calls; the panel
+labels that as `not applicable` for cost, not `unavailable`, because there was truly nothing new to
+measure. It reports the query/passage cache state per result and the actual aggregate inference-call
+count in Run Details.
+
+The cache is intentionally isolate-memory only: it demonstrates reuse in the current application
+session without introducing KV, D1, R2, Vectorize, Terraform, a retention policy, or a new privacy
+commitment. It stores vectors, never text; keys combine a content-derived hash, model identifier,
+and the verified Access `sub`. That identity scope matters: sharing a cache across visitors would
+reveal through a hit that someone else submitted byte-identical content, even if neither the text
+nor the vector were displayed. An isolate recycle simply turns a later run into a cache miss, never
+into an incorrect result.
+
+The reranker has the opposite cost shape. It performs one request containing the query and whole
+collection on every search and applies its own `top_k`; it cannot cache a passage score because a
+score belongs to a specific query/passage pair. This is the retrieve-then-rerank trade-off
+production RAG systems make: embeddings are cheap to reuse and broad to retrieve with; a
+cross-encoder is a more discriminating second stage whose work scales with the collection on each
+query.

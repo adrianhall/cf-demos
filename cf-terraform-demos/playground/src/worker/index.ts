@@ -15,10 +15,12 @@ import { DescribeImageService } from './application/describe-image/describe-imag
 import { MetricsService } from './application/metrics/metrics-service';
 import { ReadTextService } from './application/read-text/read-text-service';
 import { RemixImageService } from './application/remix-image/remix-image-service';
+import { SemanticSearchService } from './application/semantic-search/semantic-search-service';
 import { TranscribeAudioService } from './application/transcribe-audio/transcribe-audio-service';
 import { TranslateTextService } from './application/translate-text/translate-text-service';
 import type { AppBindings } from './bindings';
 import { GatewayInferenceClient } from './infrastructure/ai/gateway-inference-client';
+import { createMemoryEmbeddingCache } from './infrastructure/embeddings/memory-embedding-cache';
 import { WorkflowMediaJobs } from './infrastructure/jobs/workflow-media-jobs';
 import { ProviderImageClient } from './infrastructure/media/provider-image-client';
 import { R2VideoStorage } from './infrastructure/media/r2-video-storage';
@@ -34,6 +36,7 @@ import { describeImageRouter } from './routes/describe-image';
 import { readTextRouter } from './routes/read-text';
 import { remixImageRouter } from './routes/remix-image';
 import { runsRouter } from './routes/runs';
+import { semanticSearchRouter } from './routes/semantic-search';
 import { transcribeAudioRouter } from './routes/transcribe-audio';
 import { translateTextRouter } from './routes/translate-text';
 
@@ -126,6 +129,17 @@ app.use('/api/*', async (context, next) => {
     'CLASSIFY_TEXT_SERVICE',
     new ClassifyTextService({ inference, runs, logger: context.var.LOGGER })
   );
+  context.set(
+    'SEMANTIC_SEARCH_SERVICE',
+    new SemanticSearchService({
+      inference,
+      runs,
+      // Module-scoped like the run store, so a vector embedded by one request is reused by the
+      // next within the same isolate — which is the entire point of caching it.
+      embeddings: createMemoryEmbeddingCache(),
+      logger: context.var.LOGGER
+    })
+  );
   context.set('METRICS_SERVICE', new MetricsService({ inference, runs }));
 
   await next();
@@ -143,6 +157,7 @@ app.route('/api/remix-image', remixImageRouter);
 app.route('/api/transcribe-audio', transcribeAudioRouter);
 app.route('/api/translate-text', translateTextRouter);
 app.route('/api/classify-text', classifyTextRouter);
+app.route('/api/semantic-search', semanticSearchRouter);
 app.route('/api/runs', runsRouter);
 
 /**

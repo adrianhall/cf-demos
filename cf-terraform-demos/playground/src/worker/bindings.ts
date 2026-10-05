@@ -8,6 +8,7 @@ import type { DescribeImageService } from './application/describe-image/describe
 import type { MetricsService } from './application/metrics/metrics-service';
 import type { ReadTextService } from './application/read-text/read-text-service';
 import type { RemixImageService } from './application/remix-image/remix-image-service';
+import type { SemanticSearchService } from './application/semantic-search/semantic-search-service';
 import type { TranscribeAudioService } from './application/transcribe-audio/transcribe-audio-service';
 import type { TranslateTextService } from './application/translate-text/translate-text-service';
 
@@ -63,6 +64,11 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * The Classify Text use case, sharing this request's gateway client and run store.
    */
   CLASSIFY_TEXT_SERVICE: ClassifyTextService;
+  /**
+   * The Semantic Search use case, sharing this request's gateway client and run store, plus the
+   * isolate's embedding cache.
+   */
+  SEMANTIC_SEARCH_SERVICE: SemanticSearchService;
   /**
    * The run-metrics use case, sharing this request's gateway client and run store.
    */

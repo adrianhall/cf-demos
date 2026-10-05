@@ -262,7 +262,7 @@ export const TASK_DESCRIPTORS: readonly TaskDescriptor[] = [
     summary: 'Find passages by meaning rather than by matching words.',
     group: 'Reason',
     gateway: 'required',
-    availability: 'planned',
+    availability: 'available',
     phase: 13
   },
   {

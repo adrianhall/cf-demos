@@ -6,6 +6,7 @@ import type { VisionControlSupport } from '../../shared/describe-image';
 import type { ImageControlSupport } from '../../shared/images';
 import type { SpeechControlSupport } from '../../shared/read-text';
 import type { RemixImageControlSupport } from '../../shared/remix-image';
+import type { SemanticSearchControlSupport } from '../../shared/semantic-search';
 import type { TaskId } from '../../shared/tasks';
 import type { TranscriptionControlSupport } from '../../shared/transcribe-audio';
 import type { TranslationControlSupport } from '../../shared/translate-text';
@@ -124,6 +125,16 @@ export interface CatalogueModel {
    * inert.
    */
   textClassificationControls?: TextClassificationControlSupport;
+  /**
+   * What a search model does, and what a repeat search against it will cost.
+   *
+   * The browser needs this for something no earlier panel required. `strategy` and `cacheable`
+   * decide what the panel can honestly promise _before_ a run: searching the same collection again
+   * is free for an embedding model and charged in full for a cross-encoder, and that is the
+   * trade-off the panel exists to teach. `dimensions` is published before any run because it is the
+   * clearest evidence that two models' scores are not comparable.
+   */
+  semanticSearchControls?: SemanticSearchControlSupport;
 }
 
 /**

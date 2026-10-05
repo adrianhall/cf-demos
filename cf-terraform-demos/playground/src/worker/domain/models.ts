@@ -22,6 +22,10 @@ import type { VisionControlSupport } from '../../shared/describe-image';
 import type { ImageControlSupport } from '../../shared/images';
 import type { SpeechControlSupport } from '../../shared/read-text';
 import type { RemixImageControlSupport } from '../../shared/remix-image';
+import {
+  MAX_SEMANTIC_SEARCH_PASSAGES,
+  type SemanticSearchControlSupport
+} from '../../shared/semantic-search';
 import type { TaskId } from '../../shared/tasks';
 import {
   MAX_INPUT_AUDIO_BYTES,
@@ -363,6 +367,17 @@ export interface ModelDescriptor {
    * discriminated union rather than one shape with optional fields.
    */
   textClassificationControls?: TextClassificationControlSupport;
+  /**
+   * What a reviewed search model does, and how it must be asked.
+   *
+   * The browser needs this for something no earlier panel required: `strategy` and `cacheable`
+   * decide **what a repeat search costs**. An embedding model's passage vectors are reusable, so
+   * searching the same collection again is free; a cross-encoder re-reads every passage against the
+   * new query and is charged in full each time. `dimensions` is published before any run because it
+   * is the clearest evidence that scores from two models are not comparable — a cosine of 0.7 in a
+   * 768-dimension space and in a 2,048-dimension one are unrelated numbers.
+   */
+  semanticSearchControls?: SemanticSearchControlSupport;
   /**
    * The field a vision model puts its answer in.
    *
@@ -1208,6 +1223,124 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       minimumConfidence: { min: 0, max: 1, step: 0.01, default: 0 },
       appliedBy: 'playground',
       contextWindowTokens: 65_536
+    }
+  },
+  // Semantic Search. Every field below was read from the model's schema and then verified against
+  // the live model with `cf ai run`, because the published envelopes disagree in ways the docs do
+  // not mention: bge-m3 answers `{ data, shape, pooling, meta, response }`, qwen3 answers
+  // `{ data, shape, usage }`, and EmbeddingGemma answers `{ data, shape }`. Only `data` is common
+  // to all three, which is why the reader depends on nothing else.
+  {
+    id: '@cf/baai/bge-m3',
+    name: 'BGE M3 (multilingual)',
+    provider: 'workers-ai',
+    task: 'semantic-search',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/bge-m3/',
+    semanticSearchControls: {
+      strategy: 'embedding',
+      // Verified: a two-text request returned `shape: [2, 1024]`.
+      dimensions: 1_024,
+      // Verified deterministic: the same text embedded twice returned bit-identical vectors, so a
+      // cached vector is the same answer the model would give rather than an approximation.
+      cacheable: true,
+      // Verified: a thirteen-text request returned thirteen vectors in one call.
+      batchesTexts: true,
+      topK: { min: 1, max: MAX_SEMANTIC_SEARCH_PASSAGES, step: 1, default: 5 },
+      // No ranking field exists in an embedding model's schema, because the ranking does not
+      // happen inside the model at all — this application computes it from the vectors.
+      appliedBy: 'playground',
+      contextWindowTokens: 8_192
+    }
+  },
+  {
+    id: '@cf/google/embeddinggemma-300m',
+    name: 'EmbeddingGemma 300M',
+    provider: 'workers-ai',
+    task: 'semantic-search',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/embeddinggemma-300m/',
+    semanticSearchControls: {
+      strategy: 'embedding',
+      // A different dimension count from the model above, and that is precisely why it is here:
+      // 768 and 1,024 are different spaces, so a cosine of 0.7 in each means unrelated things.
+      dimensions: 768,
+      cacheable: true,
+      batchesTexts: true,
+      topK: { min: 1, max: MAX_SEMANTIC_SEARCH_PASSAGES, step: 1, default: 5 },
+      appliedBy: 'playground',
+      contextWindowTokens: 2_048
+    }
+  },
+  {
+    id: '@cf/baai/bge-small-en-v1.5',
+    name: 'BGE Small EN v1.5',
+    provider: 'workers-ai',
+    task: 'semantic-search',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/bge-small-en-v1.5/',
+    semanticSearchControls: {
+      strategy: 'embedding',
+      // The smallest reviewed space, and the third distinct dimension count in this panel. A
+      // visitor can run one query against 384, 768, and 1,024 dimensions and watch the numbers
+      // change while the ordering largely does not — which is the clearest way to show that the
+      // score is a relative position rather than a measurement of anything.
+      dimensions: 384,
+      cacheable: true,
+      batchesTexts: true,
+      topK: { min: 1, max: MAX_SEMANTIC_SEARCH_PASSAGES, step: 1, default: 5 },
+      appliedBy: 'playground',
+      // A BERT derivative, so 512 tokens. MAX_SEMANTIC_SEARCH_PASSAGE_CHARACTERS sits inside it.
+      contextWindowTokens: 512
+    }
+  },
+  // The cross-encoder, and the reason this panel has two strategies rather than three embedding
+  // models. Phase 12 excluded it from Classify Text because it does not classify a text — it
+  // scores the relevance *between* a query and a list of passages, which is exactly this panel's
+  // operation.
+  //
+  // Its generated platform types are wrong: `Ai_Cf_Baai_Bge_Reranker_Base_Input` carries the
+  // JSDoc for `query` but omits the field itself, while the published schema requires it. Verified
+  // against the live model, which rejects a request without it: "required properties at '/' are
+  // 'query,contexts'". The input is therefore built as a plain record in the domain rather than
+  // against the generated interface.
+  {
+    id: '@cf/baai/bge-reranker-base',
+    name: 'BGE Reranker Base (cross-encoder)',
+    provider: 'workers-ai',
+    task: 'semantic-search',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/bge-reranker-base/',
+    semanticSearchControls: {
+      strategy: 'cross-encoder',
+      // No `dimensions`: this model produces no vector at all. It reads the query and a passage
+      // together and emits a relevance score directly, which is both why it is more accurate and
+      // why nothing it produces can be reused.
+      cacheable: false,
+      // One call carries the query and every passage together, so a search is always exactly one
+      // gateway request regardless of collection size — but it is a request whose *size* grows
+      // with the collection, and it recurs on every query rather than once per passage.
+      batchesTexts: true,
+      topK: { min: 1, max: MAX_SEMANTIC_SEARCH_PASSAGES, step: 1, default: 5 },
+      // The only `model` value in the panel. Its schema declares `top_k`, so unlike every
+      // embedding model the provider applies the requested result count itself. The response's
+      // `totalRanked` reports how many entries the provider actually returned, rather than
+      // claiming omitted passages were scored and then hidden. See `buildRerankerInput()`.
+      appliedBy: 'model',
+      contextWindowTokens: 512,
+      // Verified against the live model: a relevant passage scored 0.9845 while two irrelevant
+      // ones scored 0.0000374 and 0.0000373. Everything irrelevant collapses onto a floor around
+      // 0.00004, so a proportional bar would render every non-match as an identical empty bar —
+      // implying the model could not tell them apart when in fact it separated them emphatically.
+      collapsesIrrelevantScores: true
     }
   }
 ];

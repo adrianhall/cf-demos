@@ -1307,3 +1307,31 @@ criteria, but this panel's question and all three criteria are immutable Worker-
 configuration. The browser request has no field for them and the existing regression guard refuses
 any attempt to add one. Changing a criterion remains Evaluate Choices work, not a Classify Text
 control.
+
+### Phase 13 contract review — Semantic Search
+
+Reviewed every registered model against the live account with `cf ai run` before adding it. All calls
+are Workers AI models and are routed through the existing AI Gateway client; no gateway exception was
+needed.
+
+| Model | Live input/output findings | Registered behaviour |
+| --- | --- | --- |
+| `@cf/baai/bge-m3` | `{ text: string[] }` accepted a 13-text batch. Returned `{ data, shape, pooling, meta, response }`; a two-text request returned `shape: [2, 1024]`. The same text on two calls returned bit-identical vectors. | Default multilingual embedding model, 1,024 dimensions, batched and cacheable. The response reader deliberately depends only on `data`, the one field shared by every reviewed embedding envelope. |
+| `@cf/google/embeddinggemma-300m` | `{ text: string[] }` returned `{ data, shape }` with `shape: [2, 768]`; no `usage`, `pooling`, or `meta` field. Repeat calls were bit-identical. | 768-dimensional cacheable embedding comparison, making score-space incompatibility visible. |
+| `@cf/baai/bge-small-en-v1.5` | `{ text: string[] }` returned `{ data, shape, pooling, usage }` with `shape: [2, 384]` and `pooling: "mean"`. | Small English 384-dimensional cacheable contrast. |
+| `@cf/baai/bge-reranker-base` | Requires `{ query, contexts, top_k }`; omitting `query` returned provider `400` saying required properties are `query,contexts`. With the password-reset set it returned `[{ id: 1, score: 0.984495 }, { id: 0, score: 0.0000374 }]`; `top_k: 2` returned exactly two entries. | Cross-encoder reranking model. `top_k` is genuinely provider-side and its scores are never presented as cosine similarity or probability. Generated `Ai_Cf_Baai_Bge_Reranker_Base_Input` still omits required `query` despite carrying its JSDoc, so the reviewed record is intentionally built as a plain `Record<string, unknown>`. |
+
+Live behaviour also checked the panel's teaching examples:
+
+- For **"How do I reset my password?"**, BGE M3 ranked the semantic answer **0.7328**, above a
+  lexical password/reset decoy at **0.6777**, and the cafeteria at **0.4169**. The reranker made
+  the same distinction dramatically: **0.9845**, **0.00011**, and **0.000037** respectively.
+- BGE M3 matched the English password query against a French support passage at **0.6797** and a
+  Japanese support passage at **0.7040**, above an unrelated French lunch passage at **0.3919**.
+- The exact same text produced bit-identical vectors for BGE M3, Qwen3 Embedding, and
+  EmbeddingGemma on repeat calls, which is the contract fact that makes the cache safe.
+
+The cache is isolate-memory only and is scoped by verified Access `sub`, model identifier, and a
+content-derived hash. It stores vectors, never text; scoping is essential because a cross-user cache
+hit would reveal that someone else submitted byte-identical content even if the content itself were
+never returned. No KV, D1, R2, or Vectorize resource was added.

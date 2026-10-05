@@ -17,6 +17,7 @@ import type { CreateImageRequest, CreateImageResponse } from '../../shared/image
 import type { ReadTextRequest, ReadTextResponse } from '../../shared/read-text';
 import type { RemixImageRequest, RemixImageResponse } from '../../shared/remix-image';
 import type { RunMetrics } from '../../shared/runs';
+import type { SemanticSearchRequest, SemanticSearchResponse } from '../../shared/semantic-search';
 import { parseSseBuffer } from '../../shared/sse';
 import type {
   TranscribeAudioRequest,
@@ -421,6 +422,48 @@ export async function classifyText(
   }
 
   return (await response.json()) as ClassifyTextResponse;
+}
+
+/**
+ * Ranks a collection of passages against a query by meaning.
+ *
+ * One call here may become several gateway requests, or none at all: the server embeds the query
+ * and whichever passages it has not embedded before, so a repeat search over an unchanged
+ * collection is free. The response reports exactly how many calls were made rather than leaving the
+ * cost meter to guess.
+ *
+ * The request carries no scoring rule and has no field for one. Relevance is what the model
+ * understands the texts to mean, and the server refuses a body carrying a metric, a weighting, or a
+ * keyword list — offering a similarity metric would be especially misleading, because every
+ * reviewed model returns unit vectors and all the usual metrics then produce the same ranking.
+ *
+ * @param request The search request, carrying the query, the collection, and the result count.
+ * @param signal Abort signal, so the caller's Cancel button aborts the HTTP request itself rather
+ *   than merely ignoring the result. Provider calls already made are not cancelled, and the panel
+ *   says so.
+ * @returns The ranking, a limited vector disclosure, the run receipt, and what the search cost in
+ *   model calls.
+ * @throws {ApiError} When the server rejects the request (`400` for an empty or over-long query, an
+ *   empty or over-large collection, a blank passage, or an attempt to supply a scoring rule; `401`
+ *   for an expired Access session) or when the provider fails or returns no usable ranking
+ *   (`502`).
+ */
+export async function semanticSearch(
+  request: SemanticSearchRequest,
+  signal?: AbortSignal
+): Promise<SemanticSearchResponse> {
+  const response = await fetch('/api/semantic-search', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    ...(signal === undefined ? {} : { signal })
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await failureMessage(response));
+  }
+
+  return (await response.json()) as SemanticSearchResponse;
 }
 
 /**

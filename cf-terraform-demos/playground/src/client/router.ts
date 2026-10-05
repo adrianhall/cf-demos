@@ -16,6 +16,7 @@ import DescribeImageView from './views/DescribeImageView.vue';
 import PlannedPanelView from './views/PlannedPanelView.vue';
 import ReadTextView from './views/ReadTextView.vue';
 import RemixImageView from './views/RemixImageView.vue';
+import SemanticSearchView from './views/SemanticSearchView.vue';
 import TranscribeAudioView from './views/TranscribeAudioView.vue';
 import TranslateTextView from './views/TranslateTextView.vue';
 import ViewTokensView from './views/ViewTokensView.vue';
@@ -39,6 +40,7 @@ const DELIVERED_VIEWS: Partial<Record<TaskId, RouteRecordRaw['component']>> = {
   'transcribe-audio': TranscribeAudioView,
   'translate-text': TranslateTextView,
   'classify-text': ClassifyTextView,
+  'semantic-search': SemanticSearchView,
   'view-tokens': ViewTokensView
 };
 
