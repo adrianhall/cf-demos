@@ -783,11 +783,42 @@ have to read every byte back out of storage to make the call — the bottleneck 
 disappearing — and it would add a retention surface this demo otherwise does not have to explain.
 The 1 MB image cap comes from base64-in-JSON, not from missing storage.
 
-**Nothing deletes a finished video yet.** A scheduled reaper arrives in phase 18; until then the
-bucket grows in a demo account and `pnpm teardown` is what keeps that account clean (it runs
-`empty-r2-bucket` before Terraform destroys the bucket, because R2 refuses to delete a bucket that
-still holds objects). The panel therefore says the video is _stored_ and makes no expiry claim — a
-countdown this demo could not honour would be worse than none.
+**A finished video is deleted 24 hours after it is stored.** An hourly cron trigger runs a
+`scheduled()` handler that lists the `generated-video/` prefix and collects anything past the
+window. `pnpm teardown` still empties the bucket before Terraform destroys it, because R2 refuses to
+delete a bucket that still holds objects — the reaper keeps a _running_ demo clean, teardown keeps
+the account clean.
+
+Four details make it correct rather than merely present, and each is a test:
+
+- **It is driven by the bucket, not by what the application remembers.** Each object's own
+  `uploaded` timestamp is the authority — never anything encoded in a key. The objects most in need
+  of collecting are exactly the ones nothing remembers: a Workflow instance whose state has aged
+  out, or a run abandoned before it recorded anything. A reaper that deleted only objects it could
+  still find a job for would leave precisely the orphans behind while appearing to work.
+- **The work per invocation is bounded**, at 500 objects, below R2's 1000-key ceiling for a single
+  `list()` and a single `delete()`. A cron invocation has a fifteen-minute wall clock, and a reaper
+  that tried to drain an arbitrary backlog in one firing would fail exactly when there is most to
+  do. Falling behind is recoverable; a handler that always times out is not. The run reports whether
+  it hit the budget, which is the only signal that the schedule is too slow — without it the reaper
+  fails silently by never catching up.
+- **It is confined to the prefix.** The storage adapter refuses any key outside `generated-video/`,
+  so a future user of this bucket cannot have its objects collected by a job that predates it. That
+  pairs with the write guard: one test proves nothing else is written there, another proves nothing
+  else is deleted.
+- **It logs a summary and never a key.** An object key is derived from a verified identity and a run
+  identifier, so keys are identifying and fall under the same rule as the email.
+
+**The retention window is written down once.** `VIDEO_RETENTION_HOURS` in
+`src/shared/create-video.ts` is the only place the figure exists; the reaper derives its own
+milliseconds from it, both panels display it, and a test asserts the panels quote the constant
+rather than the number. Phase 8 deliberately refused to let the UI claim any expiry, because nothing
+enforced one and a countdown this demo could not honour would have been worse than silence. That
+constraint is lifted in one direction only: the UI may state the figure _because_ the reaper
+enforces it.
+
+There is deliberately **no R2 bucket lifecycle rule**. It would be a second owner of object
+lifetime, expiring objects on a schedule no test could check against the constant.
 
 ## Animate Image: sharing an implementation, not a tab
 

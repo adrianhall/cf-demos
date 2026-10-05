@@ -4,6 +4,7 @@ import {
   notFoundHandler,
   problemDetailsErrorHandler
 } from '@adrianhall/cloudflare-toolkit/hono';
+import { createLogger, resolveLoggerConfig } from '@adrianhall/cloudflare-toolkit/logging';
 import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-details';
 import { createMeRouter } from '@demos/worker-common';
 import { AnimateImageService } from './application/animate-image/animate-image-service';
@@ -16,6 +17,7 @@ import { DescribeImageService } from './application/describe-image/describe-imag
 import { DetectObjectsService } from './application/detect-objects/detect-objects-service';
 import { EvaluateChoicesService } from './application/evaluate-choices/evaluate-choices-service';
 import { GenerateMusicService } from './application/generate-music/generate-music-service';
+import { REAP_BUDGET, VIDEO_RETENTION_MS, VideoReaper } from './application/media/video-reaper';
 import { MetricsService } from './application/metrics/metrics-service';
 import { ReadTextService } from './application/read-text/read-text-service';
 import { RemixImageService } from './application/remix-image/remix-image-service';
@@ -249,7 +251,77 @@ app.onError((error, context) => {
 });
 app.notFound(notFoundHandler());
 
-export default app;
+/**
+ * Collects generated video that has outlived {@link VIDEO_RETENTION_MS}.
+ *
+ * This is the one handler that runs with no request behind it, which changes two things. There is
+ * no Hono context, so the request-scoped `LOGGER` does not exist and a logger is built here
+ * instead; and there is no caller to return a problem document to, so a failure is logged and
+ * swallowed rather than thrown. A cron handler that throws produces a platform-level error with
+ * none of this demo's own context attached, which is precisely the undiagnosable failure the
+ * observability rules exist to prevent.
+ *
+ * The reaper is bounded per invocation and reports whether it hit that bound, so a schedule too
+ * slow for the rate of generation is visible in the logs rather than only in a growing bucket.
+ *
+ * @param _controller The scheduled event, unused: the reaper's behaviour depends on each object's
+ *   own stored timestamp rather than on which cron fired it, so there is nothing here to branch on.
+ *   Taking it and ignoring it is deliberate — reading `scheduledTime` instead of the wall clock
+ *   would make a delayed invocation collect against the time it was _meant_ to run.
+ * @param env The Worker's bindings, supplying the R2 bucket and the environment name the logger
+ *   resolves its level from.
+ * @returns A promise fulfilled once the run has finished and reported, successfully or not.
+ */
+async function scheduled(
+  _controller: ScheduledController,
+  env: Env & { ENVIRONMENT?: string }
+): Promise<void> {
+  // `level: 'info'` overrides the resolved default deliberately, and this was found by running the
+  // handler rather than by reading the code. `resolveLoggerConfig` returns `warn` for production
+  // *and* for an absent `ENVIRONMENT`, so the summary below would have been discarded in both
+  // deployed and local runs — a reaper that silently never reports is exactly the failure mode its
+  // budget-exhausted flag exists to make visible, so suppressing the one line that carries it
+  // would have defeated the design.
+  //
+  // Overriding here rather than raising the Worker-wide level keeps the change to the one handler
+  // that needs it: a request-scoped logger stays at the level its environment chose, because a
+  // request already leaves an invocation log and this does not.
+  const logger = createLogger({ ...resolveLoggerConfig(env.ENVIRONMENT, 'worker'), level: 'info' });
+  const reaper = new VideoReaper({
+    storage: new R2VideoStorage(env.VIDEO_BUCKET),
+    logger
+  });
+
+  try {
+    const summary = await reaper.reap();
+
+    // Logged at `info` because a clean run is ordinary. The fields are counts and durations only:
+    // an object key is derived from a verified email and a run identifier, so keys are identifying
+    // and belong under the same rule as the email itself.
+    logger.info('video_reaper_completed', {
+      ...summary,
+      retentionMs: VIDEO_RETENTION_MS,
+      budget: REAP_BUDGET
+    });
+  } catch (cause) {
+    logger.error('video_reaper_failed', {
+      errorName: cause instanceof Error ? cause.name : typeof cause,
+      errorMessage: cause instanceof Error ? cause.message : String(cause),
+      cause:
+        cause instanceof Error && cause.cause instanceof Error
+          ? `${cause.cause.name}: ${cause.cause.message}`
+          : undefined
+    });
+  }
+}
+
+// An object with both handlers rather than the Hono app itself, because this Worker now answers
+// two kinds of event. `app.fetch` is passed through unchanged, so every route behaves exactly as
+// before and the integration suite's `exports.default.fetch(...)` keeps working.
+export default {
+  fetch: app.fetch,
+  scheduled
+};
 
 // The Workflow classes are exported from the Worker's entry module because `cloudflare.config.ts`
 // declares them as named exports of this Worker. They are deliberately the only exports besides

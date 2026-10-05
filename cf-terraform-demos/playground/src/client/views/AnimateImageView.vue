@@ -28,6 +28,7 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { MAX_MOTION_PROMPT_CHARACTERS } from '../../shared/animate-image';
+import { VIDEO_RETENTION_HOURS } from '../../shared/create-video';
 import { findTask } from '../../shared/tasks';
 import InfoButton from '../components/InfoButton.vue';
 import InfoDialog from '../components/InfoDialog.vue';
@@ -223,8 +224,8 @@ function loadExample(example: AnimateExample): void {
         The generated video is handled differently and deliberately so. The model returns a
         short-lived link on the provider's own servers, so the video is copied once into this demo's
         storage and served back from this site — which is what lets the player seek, and what keeps
-        the result working after the provider's link has expired. Nothing deletes it automatically
-        yet.
+        the result working after the provider's link has expired. A scheduled job deletes it
+        {{ VIDEO_RETENTION_HOURS }} hours after it is stored.
       </p>
     </template>
 

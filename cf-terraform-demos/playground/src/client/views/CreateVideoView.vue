@@ -15,7 +15,7 @@
  * is stored and stops there. A countdown this demo could not honour would be worse than silence.
  */
 import { computed, onMounted, ref } from 'vue';
-import { MAX_VIDEO_PROMPT_CHARACTERS } from '../../shared/create-video';
+import { MAX_VIDEO_PROMPT_CHARACTERS, VIDEO_RETENTION_HOURS } from '../../shared/create-video';
 import { findTask } from '../../shared/tasks';
 import InfoButton from '../components/InfoButton.vue';
 import InfoDialog from '../components/InfoDialog.vue';
@@ -186,8 +186,8 @@ function loadExample(example: VideoExample): void {
         Unlike the other panels, the result is stored rather than held in your browser. The model
         returns a short-lived link on the provider's own servers, so this demo copies the video once
         into its own storage and serves it back from this site — which is what lets the player seek,
-        and what keeps the result working after the provider's link has expired. Nothing deletes it
-        automatically yet.
+        and what keeps the result working after the provider's link has expired. A scheduled job
+        deletes it {{ VIDEO_RETENTION_HOURS }} hours after it is stored.
       </p>
     </template>
 
@@ -488,8 +488,9 @@ function loadExample(example: VideoExample): void {
               </dl>
 
               <p class="storage-note">
-                This video is stored in the demo's own bucket and served from this site. It is not
-                deleted automatically yet.
+                This video is stored in the demo's own bucket and served from this site. A scheduled
+                job deletes it {{ VIDEO_RETENTION_HOURS }} hours after it is stored, so download it
+                if you want to keep it.
               </p>
             </template>
           </section>

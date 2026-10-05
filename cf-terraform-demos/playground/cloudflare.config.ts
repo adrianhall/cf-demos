@@ -13,7 +13,7 @@
  * Terraform state and stay fast and offline-friendly.
  */
 
-import { bindings, defineConfig, defineWorker, exports } from 'cf/config';
+import { bindings, defineConfig, defineWorker, exports, triggers } from 'cf/config';
 import { requireTerraformOutputs } from '@adrianhall/cloudflare-toolkit/vite';
 import { OUTPUT_KEYS, type TerraformOutputs } from './infra/outputs.ts';
 import * as entrypoint from './src/worker/index.ts' with { type: 'cf-worker' };
@@ -40,6 +40,18 @@ export default defineConfig({
       previewUrls: false,
 
       domains: isProduction ? [values.hostname] : [],
+
+      triggers: [
+        // The scheduled reaper phase 8 deferred: generated video is collected once an hour, and
+        // `VIDEO_RETENTION_MS` in `src/worker/application/media/video-reaper.ts` owns how old an
+        // object must be before it qualifies.
+        //
+        // Hourly rather than daily even though the retention window is a day, because the
+        // invocation is cheap and the budget is bounded. A daily firing would have to clear a
+        // whole day's backlog in one run, which is exactly the shape that fails when there is
+        // most to do; an hourly one catches up gradually and reports when it cannot.
+        triggers.scheduled({ schedule: '0 * * * *' })
+      ],
 
       exports: {
         // Create Video's generation runs here rather than in the request that starts it. An HTTP

@@ -117,13 +117,31 @@ describe('video storage infrastructure', () => {
     expect(outputs).toMatch(/value\s*=\s*cloudflare_r2_bucket\.video\.name/u);
   });
 
-  // Deliberately absent in this phase. Ongoing cleanup is phase 18's scheduled reaper, so phase 8
-  // ships no retention window and the UI makes no expiry claim. This asserts the *absence* so the
-  // two halves of that decision cannot drift apart: a lifecycle rule added here without updating
-  // the panel's copy would leave the UI silent about an expiry that had started happening.
-  it('ships no lifecycle rule, deferring cleanup to the scheduled reaper', async () => {
+  // Still no bucket-level lifecycle rule, and now for a sharper reason than deferral. Phase 18
+  // collects expired video with a scheduled handler instead, because an R2 lifecycle rule would
+  // be a *second* owner of object lifetime: the retention window is stated in the README and in
+  // two panels, and it can only be guaranteed to match the code while exactly one mechanism
+  // enforces it. A rule added here would expire objects on a schedule no test could check
+  // against `VIDEO_RETENTION_MS`.
+  it('expires video through the scheduled reaper rather than a bucket lifecycle rule', async () => {
     const tf = await readDemoFile('infra/playground.tf');
     expect(tf).not.toMatch(/cloudflare_r2_bucket_lifecycle/u);
+  });
+
+  it('declares the cron trigger that drives the reaper', async () => {
+    const config = await readDemoFile('cloudflare.config.ts');
+
+    expect(config).toMatch(/triggers\.scheduled\(\{\s*schedule:\s*'0 \* \* \* \*'\s*\}\)/u);
+  });
+
+  // The handler and the trigger are separate declarations in separate files, and either without
+  // the other is silently useless: a trigger with no handler invokes nothing, and a handler with
+  // no trigger never runs. Neither produces an error.
+  it('exports a scheduled handler for that trigger to invoke', async () => {
+    const worker = await readDemoFile('src/worker/index.ts');
+
+    expect(worker).toMatch(/async function scheduled\(/u);
+    expect(worker).toMatch(/export default \{[\s\S]*\bscheduled\b/u);
   });
 
   // R2 refuses to delete a bucket that still holds objects, so teardown has to empty it first or

@@ -15,12 +15,28 @@
  *   primary result depend on an external host's retention, leak the visitor's IP to it, and break
  *   when a run is reopened from history. The bytes are therefore copied once into this demo's R2
  *   bucket and served from an authenticated route — which is also what lets `<video>` seek, since a
- *   `Range` request cannot be answered by base64 in a JSON body. There is deliberately **no expiry
- *   field here**: until the scheduled reaper arrives in phase 18 nothing deletes a stored object,
- *   and a countdown this demo could not honour would be worse than none.
+ *   `Range` request cannot be answered by base64 in a JSON body. **Phase 18 added the scheduled
+ *   reaper, so the panel may finally state an expiry** — see {@link VIDEO_RETENTION_HOURS}, which
+ *   is the one place that figure is written down.
  */
 
 import type { RunReceipt } from './runs.ts';
+
+/**
+ * How long a generated video is kept, in whole hours.
+ *
+ * Lives in the shared tier because three places have to agree on it and two of them are in the
+ * browser: the Create Video panel, the Animate Image panel, and the README. The reaper's own
+ * `VIDEO_RETENTION_MS` is derived from this value rather than declared separately, so the number a
+ * visitor reads and the number the scheduled handler enforces are the same number — a test asserts
+ * the derivation.
+ *
+ * Phase 8 deliberately refused to state any expiry, because nothing enforced one and a countdown
+ * this demo could not honour would have been worse than silence. That constraint is now lifted, and
+ * it is lifted in exactly one direction: the UI may claim this figure _because_ the reaper exists,
+ * not the other way round.
+ */
+export const VIDEO_RETENTION_HOURS = 24;
 
 /**
  * Longest prompt the panel accepts, in characters.

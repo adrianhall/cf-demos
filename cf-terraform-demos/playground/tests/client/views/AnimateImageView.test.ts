@@ -17,6 +17,7 @@ import { buildRoutes } from '../../../src/client/router';
 import { useCatalogueStore, type CatalogueModel } from '../../../src/client/stores/catalogue';
 import AnimateImageView from '../../../src/client/views/AnimateImageView.vue';
 import CreateVideoView from '../../../src/client/views/CreateVideoView.vue';
+import { VIDEO_RETENTION_HOURS } from '../../../src/shared/create-video';
 import { findTask, TASK_DESCRIPTORS } from '../../../src/shared/tasks';
 import {
   clickTeleported,
@@ -211,11 +212,20 @@ describe('the panel\u2019s disclosures', () => {
     expect(text).not.toMatch(/\bnever (?:stored|retained)\b/iu);
   });
 
-  it('says the generated video is kept and promises no expiry', async () => {
+  // Phase 8 asserted the opposite of this: that the panel promised *no* expiry, because nothing
+  // enforced one and an unenforced countdown is a claim a visitor might act on. Phase 18 added
+  // the scheduled reaper, so the honest wording is now the one that states the window — and the
+  // assertion is inverted rather than deleted, because "says nothing about expiry" and "states
+  // the enforced expiry" are both correct only at the right time.
+  it('states the expiry the scheduled reaper now enforces', async () => {
     const text = await disclosures();
 
     expect(text).toMatch(/copied once into this demo's storage/iu);
-    expect(text).toMatch(/nothing deletes it automatically yet/iu);
+    expect(text).toMatch(
+      new RegExp(`deletes it ${VIDEO_RETENTION_HOURS} hours after it is stored`, 'iu')
+    );
+    // The phase 8 wording, which is now false.
+    expect(text).not.toMatch(/nothing deletes it automatically yet/iu);
   });
 });
 
