@@ -4,7 +4,7 @@ import { ProblemDetailsError } from '@adrianhall/cloudflare-toolkit/problem-deta
 import { currentIdentity, jsonBodyLimit, readJsonBody } from '@demos/worker-common';
 import type { ChatCompletedEvent, ChatProblemEvent, ChatStreamEvent } from '../../shared/chat';
 import type { AppBindings } from '../bindings';
-import { validateChatRequest } from '../domain/chat';
+import { validateChatRequest, type ValidatedChatRequest } from '../domain/chat';
 
 /**
  * Largest Chat request body accepted.
@@ -62,6 +62,36 @@ function toProblemEvent(cause: unknown): ChatProblemEvent {
 }
 
 /**
+ * Describes a Chat attempt for the log, carrying shape rather than content.
+ *
+ * Turn count and total character count are recorded instead of the conversation: the messages are
+ * the visitor's content, while the counts still distinguish a real request from an empty-looking
+ * one and explain a token charge that looks surprising. The bounded sampling controls are named
+ * only when the caller set them, because "the caller chose a temperature" and "the model default
+ * applied" are different facts and a log that printed a default for both could not tell them
+ * apart.
+ *
+ * @param request The validated Chat request.
+ * @returns Log fields describing the attempt, free of prompt text.
+ */
+function describeAttempt(request: ValidatedChatRequest): Record<string, unknown> {
+  return {
+    model: request.model.id,
+    contractVersion: request.model.contractVersion,
+    turnCount: request.messages.length,
+    // Spread rather than `.length`, so an astral-plane character counts once rather than twice and
+    // the figure matches what the domain's own limit counted.
+    characterCount: request.messages.reduce((total, turn) => total + [...turn.content].length, 0),
+    requestedControls: [
+      ...(request.temperature === undefined ? [] : ['temperature']),
+      ...(request.maxTokens === undefined ? [] : ['maxTokens'])
+    ],
+    ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
+    ...(request.maxTokens === undefined ? {} : { maxTokens: request.maxTokens })
+  };
+}
+
+/**
  * Streams a Chat answer as typed server-sent events.
  *
  * The event order is `start`, zero or more `delta`, then exactly one of `completed` or `problem`.
@@ -90,6 +120,15 @@ chatRouter.post('/stream', async (context) => {
 
   const logger = context.var.LOGGER;
   const service = context.var.CHAT_SERVICE;
+
+  // Logged before the model is called, not only after. Chat is the panel where this matters most:
+  // it is the only one that streams, so a connection dropped halfway through an answer ends the
+  // request without reaching either terminal log line. Without this, the one panel most likely to
+  // fail mid-flight would be the one leaving no record of what it attempted.
+  logger.info('chat_run_started', {
+    runId: request.runId,
+    ...describeAttempt(request)
+  });
 
   const run = await service.streamChat(request, actor);
 
@@ -127,10 +166,22 @@ chatRouter.post('/stream', async (context) => {
       });
     } catch (cause) {
       const problem = toProblemEvent(cause);
+      // The attempt shape is repeated here rather than left to be joined against the start line.
+      // A failure is the line someone reads first, and making it self-contained means the
+      // parameters are present even when the start line has aged out of the retention window.
       logger.warn('chat_run_failed', {
         runId: request.runId,
-        model: request.model.id,
-        status: problem.status
+        status: problem.status,
+        ...describeAttempt(request),
+        // The provider's own description of what went wrong, which the visitor-facing event
+        // deliberately replaces with generic wording. Sanitising for the browser and discarding
+        // the cause are different things, and only the first is wanted.
+        errorName: cause instanceof Error ? cause.name : typeof cause,
+        errorMessage: cause instanceof Error ? cause.message : String(cause),
+        cause:
+          cause instanceof Error && cause.cause instanceof Error
+            ? `${cause.cause.name}: ${cause.cause.message}`
+            : undefined
       });
       await send(problem);
     }
