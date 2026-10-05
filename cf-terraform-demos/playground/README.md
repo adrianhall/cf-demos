@@ -374,6 +374,25 @@ prompt fragments and internal endpoint names. An earlier version discarded it en
 deployed `502` undiagnosable; an architecture test now fails the build if a `try` around a provider
 call swallows its cause again.
 
+### The same convention in every panel
+
+Create Image is the example above, but the shape is identical in all fifteen inference panels:
+`<task>_run_started` before the call, `<task>_run_failed` after it, and `runId` as the correlation
+field in both. That consistency is what makes a cross-panel log search possible, and it is enforced
+rather than merely intended — a contract test driven from the task catalogue asserts every delivered
+panel follows it, so a panel added later is covered the moment it is marked available.
+
+The failure mode that test exists for is subtle. A panel spelling the field `run_id` would log
+correctly, read correctly, and pass every test it had of its own, while falling out of every search
+that joins panels together. The search would still return results — just not all of them, which is
+considerably worse than returning none. The test therefore asserts the _absence_ of alternative
+spellings as well as the presence of the right one.
+
+Phase 18's audit found exactly one gap, and it was in the oldest panel: Chat had no start line. It
+was written before the rule existed and never retrofitted, which left the hole in the worst place —
+Chat is the only panel that streams, so a connection dropped mid-answer ends the request without
+reaching either terminal log line.
+
 ## Authentication
 
 The whole application is behind Cloudflare Access. There is **no application-level allowlist**:
@@ -471,26 +490,32 @@ Vue UI  →  routes  →  application  →  domain / infrastructure
 
 ```text
 src/
-├── tasks.ts         # Panel catalogue, shared by both tiers
-├── runs.ts          # Run, receipt, and cost contracts, shared by both tiers
-├── chat.ts          # Chat request and stream-event contracts, shared by both tiers
-├── sse.ts           # Server-sent events framing, shared by both tiers
-├── access-policies.ts
-├── client/          # Vue 3 single-page application
-│   ├── components/runs/   # Run details, shared by every inference panel
+├── access-policies.ts     # One policy list, used by the Worker and by the dev-mode Vite plugin
+├── shared/                # Wire contracts both tiers import: one per panel, plus the three below
+│   ├── tasks.ts           # Panel catalogue
+│   ├── runs.ts            # Run, receipt, and cost contracts
+│   └── sse.ts             # Server-sent events framing
+├── client/                # Vue 3 single-page application
+│   ├── components/        # Shared presentation: run details, media players, result tables
 │   ├── composables/       # useRun: metrics polling, shared by every inference panel
-│   ├── features/chat/     # Conversation state, transcript, examples
+│   ├── features/          # Per-panel state and presentation, one directory per panel
 │   ├── services/          # The browser's only route to the API
-│   └── stores/            # Session identity, model catalogue, cost ledger
+│   ├── stores/            # Session identity, model catalogue, cost ledger
+│   └── views/             # One view per panel, routed directly
 └── worker/
-    ├── index.ts     # Worker entry point and composition root
-    ├── routes/      # Thin Hono/SSE handlers
-    ├── middleware/  # Access, limits, errors
-    ├── application/ # Use cases and ports
-    ├── domain/      # Model descriptors, validation, cost rules, exception register
+    ├── index.ts           # Worker entry point, composition root, and the scheduled reaper
+    ├── routes/            # Thin Hono/SSE handlers
+    ├── middleware/        # Access, limits, errors
+    ├── application/       # Use cases and ports, one directory per panel
+    │   ├── media/         # The scheduled video reaper
+    │   └── ports/         # The interfaces the application tier depends on
+    ├── domain/            # Model descriptors, validation, cost rules, exception register
     └── infrastructure/
-        ├── ai/      # The only module that talks to Workers AI
-        └── runs/    # In-memory run records
+        ├── ai/            # The only module that talks to Workers AI
+        ├── embeddings/    # In-isolate embedding cache
+        ├── jobs/          # The two Workflows and their shared job adapter
+        ├── media/         # Provider media clients and R2 video storage
+        └── runs/          # In-memory run records
 ```
 
 `sse.ts` is shared because two different places parse the same wire format: the Worker parses what
@@ -510,11 +535,19 @@ obvious and stops browser code importing Worker-only bindings. `src/worker/index
 composition root and the only module allowed to depend on every tier — composing them is its single
 responsibility.
 
-`tasks.ts`, `runs.ts`, `chat.ts`, `sse.ts`, `images.ts`, `describe-image.ts`, `remix-image.ts`, and
-`classify-image.ts` sit at `src/` because they are genuinely shared wire contracts. They contain
-types and constants only: no bindings, no secrets, no model contracts. Model descriptors stay in the
-Worker's domain tier and reach the browser only through `/api/catalogue` — which is how the browser
-learns each image model's control capabilities without being able to decide them.
+`src/shared/` holds one wire contract per panel plus `tasks.ts`, `runs.ts`, and `sse.ts`. Everything
+there is types and constants only: no bindings, no secrets, no model contracts. Model descriptors
+stay in the Worker's domain tier and reach the browser only through `/api/catalogue` — which is how
+the browser learns each model's control capabilities without being able to decide them.
+
+The one thing in `src/shared/` that is neither a type nor a wire field is `VIDEO_RETENTION_HOURS`,
+and it is there for the same reason: two panels display it and the scheduled reaper enforces it, so
+it has to be one number rather than three that agree today.
+
+`access-policies.ts` sits at the top rather than in `shared/` because its consumers are not the two
+runtime tiers — it is imported by the Worker's Access middleware and by the Vite plugin that
+emulates Access in development, which is what keeps the local and deployed authorization paths
+identical rather than merely similar.
 
 ## API
 
@@ -565,8 +598,10 @@ Classify Image extend the same rule to fields that would describe their picture 
 
 ## Implementation status
 
-Built to **phase 7** of
-[`specs/playground/02-implementation.md`](../../specs/playground/02-implementation.md).
+**Complete.** All eighteen phases of
+[`specs/playground/02-implementation.md`](../../specs/playground/02-implementation.md) are
+delivered, and every panel in the catalogue is built — there is no "coming in a later phase"
+placeholder left in the application.
 
 - **Phase 1** delivered the shell, the Terraform lifecycle, Access, the mandatory-gateway
   foundation, the shared contracts, and the test harness.
@@ -639,15 +674,21 @@ Phase 17 delivered Detect Objects with a Cloudflare-hosted, credit-free model. I
 classifier: Moondream localises the visitor's phrase and returns structured normalised boxes. The
 phrase becomes each table row's honest label; the model supplies neither a label nor a confidence.
 
-The remaining phases are ordered by **whether Cloudflare hosts a model for the task**, which is a
+**Phase 18** was the capstone: an accessibility and security review across every panel, a
+cross-panel observability audit, the scheduled R2 reaper that phase 8 deferred, a descriptor
+reconciliation against the live catalogue, and the resolution of the derived-instance-ID question
+phase 8 left open. It added one panel-level behaviour — generated video now expires — and otherwise
+hardened what was already there.
+
+The phase order was driven by **whether Cloudflare hosts a model for the task**, which was a
 practical constraint rather than a preference: a third-party model bills against prepaid AI Gateway
 credits, so a panel with only third-party options cannot be built or demonstrated on an unfunded
 account. Phases 9–14 — Read Text, Transcribe Audio, Translate Text, Classify Text, Semantic Search,
-and Evaluate Choices — all have Cloudflare-hosted models and need no credits. Phases 9, 10, and 11
-confirmed that for Read Text, Transcribe Audio, and Translate Text: every reviewed model in all
-three runs on Cloudflare. Generate Music (15) and Animate Image (16) have no hosted option in the
-catalogue, so they come after. Each phase records its candidate hosted and third-party models, and
-asks for the hosting to be re-confirmed before it starts, because the catalogue changes.
+and Evaluate Choices — all had Cloudflare-hosted models and needed no credits. Generate Music (15)
+and Animate Image (16) had no hosted option, so they came after. Each phase recorded its candidate
+hosted and third-party models and re-confirmed the hosting before it started, because the catalogue
+changes — and it did: phase 17 found a hosted detector that had not existed when the sequence was
+written, which is why a credit-free panel ends up after two paid ones.
 
 Generate Music re-confirmed it at delivery, and the answer had not changed: `cf ai models list`
 returns 69 Cloudflare-hosted models across ten task types, and **Music Generation is not one of
