@@ -1191,16 +1191,16 @@ working.
 ## Read Text: models that agree on nothing
 
 Every earlier panel's models disagreed about _degree_ — a different step ceiling, a wider token
-range, an extra parameter. Read Text's three reviewed models disagree about _kind_, and that is the
+range, an extra parameter. Read Text's four reviewed models disagree about _kind_, and that is the
 reason this panel is worth reading.
 
-|               | Aura 2 / Aura 1           | MeloTTS                  |
-| ------------- | ------------------------- | ------------------------ |
-| Text field    | `text`                    | `prompt`                 |
-| Voice         | 40 / 12 named speakers    | **no speaker parameter** |
-| Language      | **no language parameter** | `lang`                   |
-| Output format | `mp3` or `wav`            | always MP3               |
-| Billing       | per 1,000 characters      | per minute of audio      |
+|               | Aura 2 EN / ES / Aura 1     | MeloTTS                  |
+| ------------- | --------------------------- | ------------------------ |
+| Text field    | `text`                      | `prompt`                 |
+| Voice         | 40 / 10 / 12 named speakers | **no speaker parameter** |
+| Language      | **no language parameter**   | `lang`                   |
+| Output format | `mp3` or `wav`              | always MP3               |
+| Billing       | per 1,000 characters        | per minute of audio      |
 
 There is no intersection. A single hardcoded form could not drive both families, and every one of
 these differences is load-bearing:
@@ -1215,6 +1215,12 @@ these differences is load-bearing:
 - **The two Aura generations overlap only partially.** They share eight voice names and differ on
   eight more, so switching model resets a voice unless the new model also publishes it. Carrying it
   over blindly would stage a request the server refuses.
+- **Aura 2 English and Aura 2 Spanish share no voice at all.** Same generation, same `text` field,
+  same formats, same $0.03 per 1,000 characters — and an intersection of exactly zero between forty
+  English speakers and ten Spanish ones. Sending the Spanish model `asteria`, a valid English voice,
+  is rejected against its own enum. If the partial overlap above shows why voices are declared per
+  model, this pair proves it: two descriptors identical in every other respect still cannot share a
+  list.
 - **One output format is two provider fields.** Aura spells a choice as `encoding` plus `container`,
   and the legal pairings are in its prose rather than its schema. This demo exposes one name and
   expands it, so a visitor cannot assemble a pair the provider accepts and the browser cannot play.

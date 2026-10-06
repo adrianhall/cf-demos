@@ -16,7 +16,12 @@ import { createLogCapture, mountRoute, type LogCapture } from '../support/mount'
 /**
  * The reviewed speech models, in catalogue order.
  */
-const [AURA_2, AURA_1, MELO] = modelsForTask('read-text');
+// By identifier, not by position: adding Aura 2 Spanish to the reviewed list shifted every
+// positional binding by one.
+const speechModels = modelsForTask('read-text');
+const AURA_2 = speechModels.find((model) => model.id === '@cf/deepgram/aura-2-en');
+const AURA_1 = speechModels.find((model) => model.id === '@cf/deepgram/aura-1');
+const MELO = speechModels.find((model) => model.id === '@cf/myshell-ai/melotts');
 
 /**
  * Run identifier used by the tests.

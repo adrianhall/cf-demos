@@ -15,7 +15,14 @@ import {
 /**
  * The reviewed speech models, in catalogue order.
  */
-const [AURA_2, AURA_1, MELO] = modelsForTask('read-text');
+// By identifier, not by position. Inserting Aura 2 Spanish after Aura 2 English rebound `AURA_1`
+// to the Spanish model and `MELO` to Aura 1, so assertions about "the two Aura generations" were
+// silently comparing two Aura 2 variants instead.
+const speechModels = modelsForTask('read-text');
+const AURA_2 = speechModels.find((model) => model.id === '@cf/deepgram/aura-2-en');
+const AURA_2_ES = speechModels.find((model) => model.id === '@cf/deepgram/aura-2-es');
+const AURA_1 = speechModels.find((model) => model.id === '@cf/deepgram/aura-1');
+const MELO = speechModels.find((model) => model.id === '@cf/myshell-ai/melotts');
 
 /**
  * Run identifier used by the tests.
@@ -33,9 +40,9 @@ function body(overrides: Record<string, unknown> = {}): Record<string, unknown> 
 }
 
 describe('the reviewed speech models', () => {
-  it('registers three Cloudflare-hosted models', () => {
+  it('registers four Cloudflare-hosted models', () => {
     const models = modelsForTask('read-text');
-    expect(models).toHaveLength(3);
+    expect(models).toHaveLength(4);
     for (const model of models) {
       expect(model.provider, `${model.id} is Cloudflare-hosted`).toBe('workers-ai');
     }
@@ -87,6 +94,29 @@ describe('the reviewed speech models', () => {
     expect(second).toContain('amalthea');
     expect(second).not.toContain('angus');
     expect(first).toContain('angus');
+  });
+
+  // The strongest evidence in the demo that a voice name is a per-model contract rather than a
+  // shared vocabulary. The two Aura 2 models are otherwise identical — same text field, same
+  // formats, same price — and share not one speaker between them. Verified against the live
+  // model, which rejects `asteria` for the Spanish descriptor against its own ten-name enum.
+  //
+  // Pinned as an empty intersection rather than a spot check, so a future edit cannot quietly
+  // merge the two lists and leave the panel offering voices the provider refuses.
+  it('shares no voice between the English and Spanish Aura 2 models', () => {
+    const english = new Set(AURA_2?.speechControls?.voices ?? []);
+    const spanish = AURA_2_ES?.speechControls?.voices ?? [];
+
+    expect(spanish.length).toBeGreaterThan(0);
+    expect(spanish.filter((voice) => english.has(voice))).toEqual([]);
+  });
+
+  // Same contract and same rate in both languages. Worth pinning because the interesting claim is
+  // the negative one: a non-English voice is not sold as a premium product.
+  it('prices both Aura 2 languages identically', () => {
+    expect(AURA_2_ES?.speechControls?.pricePerThousandCharactersUsd).toBe(
+      AURA_2?.speechControls?.pricePerThousandCharactersUsd
+    );
   });
 
   it('declares each model default inside its own published list', () => {

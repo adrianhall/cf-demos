@@ -1385,6 +1385,54 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       pricePerThousandCharactersUsd: 0.03
     }
   },
+  // The Spanish Aura 2, and the clearest possible evidence that a voice name is a per-model
+  // contract rather than a shared vocabulary. Its contract is byte-identical to the English
+  // model's — same `text` field, same formats, same $0.03 per thousand characters — and its ten
+  // speakers overlap the English forty **not at all**. Verified against the live model: sending
+  // `asteria`, a perfectly valid Aura 2 English voice, is rejected outright:
+  //
+  //   enum asteria not in sirio,nestor,carina,celeste,alvaro,diana,aquila,selena,estrella,javier
+  //
+  // That is why `speechControls.voices` is declared per model and why the panel resets the voice
+  // when the model changes. A shared list would produce a selector offering values the provider
+  // refuses, and the two models here are the pair that proves it.
+  {
+    id: '@cf/deepgram/aura-2-es',
+    name: 'Aura 2 (Spanish)',
+    provider: 'workers-ai',
+    task: 'read-text',
+    contractVersion: 1,
+    pricingUnit: 'provider-reported',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/aura-2-es/',
+    speechControls: {
+      textParameterName: 'text',
+      // The complete enum from its schema, transcribed rather than curated for the same reason as
+      // the English model: the provider validates against the full list, so a trimmed one would
+      // make a legal request look invalid.
+      voices: [
+        'sirio',
+        'nestor',
+        'carina',
+        'celeste',
+        'alvaro',
+        'diana',
+        'aquila',
+        'selena',
+        'estrella',
+        'javier'
+      ],
+      // The model's own documented default.
+      defaultVoice: 'aquila',
+      // No `languages`, exactly as for the English model: the language is a property of this
+      // descriptor rather than a parameter the caller may set.
+      formats: ['mp3', 'wav'],
+      defaultFormat: 'mp3',
+      // $0.03 per 1,000 characters — the same rate as Aura 2 English, which is itself worth
+      // seeing. A non-English voice is not a premium product.
+      pricePerThousandCharactersUsd: 0.03
+    }
+  },
   // The previous Aura generation, kept as the comparison within the same family: same contract
   // shape, a different and smaller speaker list, and half the price. It is the cleanest
   // demonstration in the demo that a "newer model" choice is a cost decision as much as a quality
