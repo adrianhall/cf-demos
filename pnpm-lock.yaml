@@ -213,8 +213,8 @@ importers:
         specifier: ^5.3.1
         version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vuetify:
-        specifier: ^4.2.2
-        version: 4.2.2(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
+        specifier: 4.2.3
+        version: 4.2.3(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
@@ -292,8 +292,8 @@ importers:
         specifier: ^5.3.1
         version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vuetify:
-        specifier: ^4.2.2
-        version: 4.2.2(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
+        specifier: 4.2.3
+        version: 4.2.3(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
@@ -377,8 +377,8 @@ importers:
         specifier: ^5.3.1
         version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vuetify:
-        specifier: ^4.2.2
-        version: 4.2.2(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
+        specifier: 4.2.3
+        version: 4.2.3(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
@@ -474,8 +474,8 @@ importers:
         specifier: ^5.3.1
         version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vuetify:
-        specifier: ^4.2.2
-        version: 4.2.2(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
+        specifier: 4.2.3
+        version: 4.2.3(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
@@ -553,8 +553,8 @@ importers:
         specifier: ^5.3.1
         version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vuetify:
-        specifier: ^4.2.2
-        version: 4.2.2(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
+        specifier: 4.2.3
+        version: 4.2.3(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
@@ -4109,8 +4109,8 @@ packages:
       typescript:
         optional: true
 
-  vuetify@4.2.2:
-    resolution: {integrity: sha512-6PYw9V5bA1ug+r1gWOs+ztMnz4qJDue3WLiz5VJN/y1blW9e/oeh0D8eCw7jqc8ufjm8XSN7hf6x2odJXtzw0Q==}
+  vuetify@4.2.3:
+    resolution: {integrity: sha512-guUzwFh5LhIKgt0iBaxo1d7UJg2X3P6L4OhnthGwXeGLO/sIOzpn1E2E9uh5bYPm5CgeARuuFmIaG50QPoeNKQ==}
     peerDependencies:
       typescript: '>=4.7'
       vite-plugin-vuetify: '>=2.1.0'
@@ -6991,7 +6991,7 @@ snapshots:
     optionalDependencies:
       typescript: 7.0.2
 
-  vuetify@4.2.2(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)):
+  vuetify@4.2.3(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)):
     dependencies:
       '@vuetify/v0': 1.2.3(vue@3.5.43(typescript@7.0.2))
       vue: 3.5.43(typescript@7.0.2)
