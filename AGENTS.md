@@ -44,8 +44,7 @@ directly from a demo script.
   }
   ```
 
-- Run `migrate:local` before `cf dev`, and start `cf dev` with
-  `--persist-to .cloudflare/state`.
+- Run `migrate:local` before `cf dev`, and start `cf dev` with `--persist-to .cloudflare/state`.
 - Run `migrate:remote` after Terraform writes `infra/outputs.json` and before building/deploying the
   Worker.
 - Use `readD1Migrations()` from `@cloudflare/vitest-plugin` and `applyD1Migrations()` from
@@ -195,8 +194,8 @@ rather than type errors:
 - The Hibernation API completes the protocol switch against the incoming request itself, so the
   request has to reach the object.
 
-Every *other* call into the object should still be a typed RPC method. The upgrade is the
-exception, not the pattern.
+Every _other_ call into the object should still be a typed RPC method. The upgrade is the exception,
+not the pattern.
 
 Because the upgrade travels as a request, the verified identity has to travel as a request header,
 and that carries an obvious hazard — a client can send the same header. Handle it explicitly:
@@ -207,8 +206,8 @@ and that carries an obvious hazard — a client can send the same header. Handle
 - Test that a smuggled header is ignored, at both the unit level (including a differently-cased
   spelling, since header names are case-insensitive) and in the Workers-runtime suite.
 - Pin the identity to the socket with `serializeAttachment()` and read the author back from the
-  attachment on every message. Never take an author from the frame; the wire protocol should have
-  no author field at all, and the domain should reject a payload that adds one.
+  attachment on every message. Never take an author from the frame; the wire protocol should have no
+  author field at all, and the domain should reject a payload that adds one.
 - State in a comment why the object may trust the header: it has no route of its own, so the only
   way to reach it is through a Worker that authenticated the caller first.
 
@@ -218,8 +217,8 @@ needed.
 
 Other rules that follow from the transport:
 
-- Put the upgrade route under the same path prefix the Access policies already cover, so it is
-  gated by the same rule as every other API route rather than needing its own.
+- Put the upgrade route under the same path prefix the Access policies already cover, so it is gated
+  by the same rule as every other API route rather than needing its own.
 - Use `redirect: false` for that policy. A browser's `WebSocket` constructor cannot follow a
   redirect to a login page, so redirecting an unauthenticated upgrade surfaces as an unexplained
   connection failure instead of an authentication error.
@@ -295,8 +294,8 @@ keeps tests for its policy choices, routes, authorization, and end-to-end wiring
   count only when the endpoint has a documented larger payload contract.
 - Use `upgradeRequired(detail)` for an HTTP request made to a WebSocket-only endpoint.
 - If a need is not covered by this package, first decide whether it belongs in
-  `@adrianhall/cloudflare-toolkit`; when it is repository-specific and needed by multiple demos,
-  add it to `packages/worker-common` with complete JSDoc and unit tests rather than duplicating it.
+  `@adrianhall/cloudflare-toolkit`; when it is repository-specific and needed by multiple demos, add
+  it to `packages/worker-common` with complete JSDoc and unit tests rather than duplicating it.
 
 ## Infrastructure lifecycle
 

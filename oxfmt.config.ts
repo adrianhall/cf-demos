@@ -1,12 +1,12 @@
-import { defineConfig } from "oxfmt";
+import { defineConfig } from 'oxfmt';
 
 /**
- * Configuration for oxfmt.  Note that all settings EXCEPT those configured
- * in `.editorconfig` are set here.
+ * Configuration for oxfmt. Note that all settings EXCEPT those configured in `.editorconfig` are
+ * set here.
  */
 export default defineConfig({
   // Include parentheses around a sole arrow function parameter.
-  arrowParens: "always",
+  arrowParens: 'always',
 
   // Put the > of a multi-line HTML (HTML, JSX, Vue, Angular) element at the end of the
   // last line, instead of being alone on the next line.
@@ -15,16 +15,16 @@ export default defineConfig({
   // Print spaces between brackets in object literals.
   bracketSpacing: true,
 
-  // Control whether to format embedded parts (For example, CSS-in-JS, or JS-in-Vue, 
+  // Control whether to format embedded parts (For example, CSS-in-JS, or JS-in-Vue,
   // etc.) in the file.
-  embeddedLanguageFormatting: "auto",
+  embeddedLanguageFormatting: 'auto',
 
   // When expressions wrap lines, print operators at the start of new lines ("start")
   // or at the end of previous lines ("end").
-  experimentalOperatorPosition: "start",
+  experimentalOperatorPosition: 'start',
 
   // Specify the global whitespace sensitivity for HTML, Vue, Angular, and Handlebars.
-  htmlWhitespaceSensitivity: "css",
+  htmlWhitespaceSensitivity: 'css',
 
   // Ignore files matching these glob patterns. Patterns use gitignore-style matching,
   // rooted at the directory containing the configuration file. Files outside that directory
@@ -36,11 +36,11 @@ export default defineConfig({
     addDefaultToDescription: true,
     bracketSpacing: false,
     capitalizeDescriptions: true,
-    commentLineStrategy: "multiline",
+    commentLineStrategy: 'multiline',
     descriptionTag: false,
     descriptionWithDot: true,
     keepUnparsableExampleIndent: false,
-    lineWrappingStyle: "greedy",
+    lineWrappingStyle: 'greedy',
     preferCodeFences: true,
     separateReturnsFromParam: false,
     separateTagGroups: false
@@ -50,16 +50,16 @@ export default defineConfig({
   jsxSingleQuote: false,
 
   // How to wrap object literals when they could fit on one line or span multiple lines.
-  objectWrap: "preserve",
+  objectWrap: 'preserve',
 
   // By default, formatter will not change wrapping in markdown text since some services
   // use a linebreak-sensitive renderer, e.g. GitHub comments and BitBucket. To wrap prose
   // to the print width, change this option to "always". If you want to force all prose blocks
   // to be on a single line and rely on editor/viewer soft wrapping instead, you can use "never".
-  proseWrap: "always",
+  proseWrap: 'always',
 
   // Change when properties in objects are quoted.
-  quoteProps: "consistent",
+  quoteProps: 'consistent',
 
   // Print semicolons at the ends of statements.
   semi: true,
@@ -73,17 +73,17 @@ export default defineConfig({
   // Sort import statements using the similar algorithm as eslint-plugin-perfectionist/sort-imports.
   sortImports: {
     groups: [
-      "builtin", 
-      "external", 
-      ["internal", "subpath"], 
-      ["parent", "sibling", "index"], 
-      "style", 
-      "unknown"
+      'builtin',
+      'external',
+      ['internal', 'subpath'],
+      ['parent', 'sibling', 'index'],
+      'style',
+      'unknown'
     ],
     ignoreCase: true,
-    internalPattern: [ "~/", "@", "#" ],
+    internalPattern: ['~/', '@', '#'],
     newlinesBetween: false,
-    order: "asc",
+    order: 'asc',
     partitionByComment: true,
     partitionByNewline: false,
     sortSideEffects: false
@@ -95,7 +95,7 @@ export default defineConfig({
   },
 
   // Print trailing commas wherever possible in multi-line comma-separated syntactic structures.
-  trailingComma: "none",
+  trailingComma: 'none',
 
   // Whether or not to indent the code inside <script> and <style> tags in Vue files.
   vueIndentScriptAndStyle: false

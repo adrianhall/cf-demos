@@ -429,8 +429,8 @@ Two corrections to the request itself:
 - **`@cf/utter-project/eurollm-9b-it` is listed but not runnable.** Every call returns
   `[4003] AI model does not have config`, through both the CLI and the AI binding. It is a
   platform-side fault, not a schema mismatch — nothing in the demo can fix it. It should be excluded
-  and recorded, and re-probed later rather than retried at implementation time.
-  **DECISION**: Exclude `eurollm-9b-it`
+  and recorded, and re-probed later rather than retried at implementation time. **DECISION**:
+  Exclude `eurollm-9b-it`
 
 **A trap worth recording, because it would have produced the opposite conclusion.** The first probe
 round sent `max_tokens: 200` and several models rendered an **empty answer** — `gemma-4-26b-a4b-it`
@@ -475,8 +475,8 @@ Each entry probed through the real AI binding, which is what the panels use.
 
 Beyond the six requested, these were probed and render cleanly with no code change:
 `llama-3.1-8b-instruct-fp8`, `mistral-small-3.1-24b-instruct`, `granite-4.0-h-micro`,
-`gemma-sea-lion-v4-27b-it`, `qwen3-30b-a3b-fp8`, `gpt-oss-120b`.
-**DECISION**: Include `mistral-small-3.1-24b-instruct` in chat panel
+`gemma-sea-lion-v4-27b-it`, `qwen3-30b-a3b-fp8`, `gpt-oss-120b`. **DECISION**: Include
+`mistral-small-3.1-24b-instruct` in chat panel
 
 `gpt-oss-120b` deserves a note, because [Concern 2](#concern-2--input-schemas-genuinely-differ)
 flagged it: its four mutually exclusive input shapes are real, but `messages` is among them and it
@@ -577,13 +577,13 @@ The spec's instinct — **well-chosen breadth, not exhaustiveness** — survives
 numbers are much better than feared. Of 42 missing models, **6 are structurally or terminally
 excludable, 5 are editorially excludable, and most of the rest need no code change at all.**
 
-| Panel            | Now | Recommended | Added                                                                | Comparison it buys                                   |
-| ---------------- | --: | ----------: | -------------------------------------------------------------------- | ---------------------------------------------------- |
+| Panel            | Now | Recommended | Added                                                                                                | Comparison it buys                                   |
+| ---------------- | --: | ----------: | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | Chat             |   2 |       **7** | glm-5.3-flash, glm-5.3, deepseek-v4-pro, gemma-4-26b, kimi-k2.7-code, mistral-small-3.1-24b-instruct | cheap vs premium reasoning; 1M-token context windows |
-| Semantic Search  |   4 |       **8** | bge-base, bge-large, qwen3-embedding, plamo-embedding-1b             | a fourth vector space (2,048) at 384/768/1,024/2,048 |
-| Create Image     |   2 |       **6** | sdxl-lightning, dreamshaper-8-lcm, phoenix-1.0, lucid-origin         | JPEG vs PNG vs base64; per-tile vs per-step pricing  |
-| Read Text        |   3 |       **4** | aura-2-es                                                            | disjoint voice enums; a non-English voice            |
-| Transcribe Audio |   3 |       **4** | whisper-tiny-en                                                      | `array` vs `base64` audio encoding, side by side     |
+| Semantic Search  |   4 |       **8** | bge-base, bge-large, qwen3-embedding, plamo-embedding-1b                                             | a fourth vector space (2,048) at 384/768/1,024/2,048 |
+| Create Image     |   2 |       **6** | sdxl-lightning, dreamshaper-8-lcm, phoenix-1.0, lucid-origin                                         | JPEG vs PNG vs base64; per-tile vs per-step pricing  |
+| Read Text        |   3 |       **4** | aura-2-es                                                                                            | disjoint voice enums; a non-English voice            |
+| Transcribe Audio |   3 |       **4** | whisper-tiny-en                                                                                      | `array` vs `base64` audio encoding, side by side     |
 
 That is **+16 models across five panels, with no parser or UI change required.** Chat's price spread
 becomes genuinely instructive: `glm-5.3-flash` at \$0.15/M input against `glm-5.3` at \$1.40/M and

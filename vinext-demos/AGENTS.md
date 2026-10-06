@@ -24,10 +24,10 @@ Use Vinext with the Cloudflare Vite plugin. This is the canonical plugin orderin
 an App Router project:
 
 ```ts
-import { cloudflare } from '@cloudflare/vite-plugin';
-import { cloudflareAccessPlugin } from '@adrianhall/cloudflare-toolkit/vite';
 import vinext from 'vinext';
 import { defineConfig } from 'vite';
+import { cloudflareAccessPlugin } from '@adrianhall/cloudflare-toolkit/vite';
+import { cloudflare } from '@cloudflare/vite-plugin';
 import { accessPolicies } from './src/access-policies.ts';
 
 export default defineConfig({
@@ -59,10 +59,10 @@ export default defineConfig({
 ## Routing and tier boundaries
 
 - Use `app/page.tsx` for the public root document and `app/<route>/page.tsx` for pages. A public
-  root must render a genuinely public page; do not redirect it automatically to an
-  Access-protected route, because that immediately turns a public visit into an authentication
-  challenge. Link to the protected route instead. If a product genuinely requires a protected root,
-  protect `/` explicitly and use a server-side/document redirect rather than client-only navigation.
+  root must render a genuinely public page; do not redirect it automatically to an Access-protected
+  route, because that immediately turns a public visit into an authentication challenge. Link to the
+  protected route instead. If a product genuinely requires a protected root, protect `/` explicitly
+  and use a server-side/document redirect rather than client-only navigation.
 - Implement HTTP endpoints as `app/api/**/route.ts` handlers. These are delivery-tier adapters: they
   parse framework route inputs, obtain Worker bindings with `env`, and delegate to the
   application/API layer. They must not construct repositories.
@@ -92,15 +92,16 @@ Flagged here per the rule above, so product teams can address them rather than e
 rediscovering the workaround. Both are exercised by [`chat`](./chat).
 
 **A WebSocket upgrade cannot be served from an `app/api/**/route.ts` handler.** Vinext 1.0.0's
-route-handler pipeline reconstructs every handler response — `new Response(body, { status, headers })`
-— to apply cache-control and cookie policy. A `101 Switching Protocols` cannot survive that:
-`new Response()` rejects the status outright (*"Responses may only be constructed with status codes
-in the range 200 to 599"*), reconstruction drops the `webSocket` property, and the pipeline's
-`response.clone()` throws *"Cannot clone a response to a WebSocket handshake."*
+route-handler pipeline reconstructs every handler response —
+`new Response(body, { status, headers })` — to apply cache-control and cookie policy. A
+`101 Switching Protocols` cannot survive that: `new Response()` rejects the status outright
+(_"Responses may only be constructed with status codes in the range 200 to 599"_), reconstruction
+drops the `webSocket` property, and the pipeline's `response.clone()` throws _"Cannot clone a
+response to a WebSocket handshake."_
 
 Until Vinext passes a `101` through untouched, a demo needing WebSockets must dispatch the upgrade
-from its own Worker entrypoint module before Vinext sees it. Keep that exception minimal and make
-it provable:
+from its own Worker entrypoint module before Vinext sees it. Keep that exception minimal and make it
+provable:
 
 - Key it on the **`Upgrade` header**, never on a path, so the framework keeps ownership of routing
   and a non-upgrade request to the socket route still travels the ordinary Vinext route.
@@ -108,10 +109,10 @@ it provable:
   middleware authenticates it. Bypassing the framework must never mean bypassing authentication.
 - Unit-test the dispatch so a later change cannot widen the exception unnoticed.
 
-**A Durable Object class must be exported from the Worker entrypoint module.** `exports.durableObject`
-binds a namespace to a named class export on the entry module, and `vinext/server/app-router-entry`
-exports only its handler. Such a demo therefore names its own module as the `cf` entrypoint and
-re-exports both Vinext's handler and the class.
+**A Durable Object class must be exported from the Worker entrypoint module.**
+`exports.durableObject` binds a namespace to a named class export on the entry module, and
+`vinext/server/app-router-entry` exports only its handler. Such a demo therefore names its own
+module as the `cf` entrypoint and re-exports both Vinext's handler and the class.
 
 **`new Request(request, { headers })` fails under Vinext.** The incoming object is Vinext's own
 `Request` subclass, so passing it as the first argument makes the constructor stringify it as a URL
