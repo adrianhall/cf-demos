@@ -358,3 +358,269 @@ throwaway probing is needed.
   must be revisited in the same phase. The claim has to match what the code does.
 - Keep the per-task summary the original item asks for; it is a good reporting format and should
   survive into the spike's output.
+
+---
+
+## Item 4 spike results
+
+> **Run:** 2026-10-06, against the live account. Conducted on branch
+> `cf-terraform/playground-model-spike` in a separate worktree; **no application code was changed**
+> and that branch holds no commits. Everything below is observed behaviour, not inference from
+> catalog pages.
+
+### How the probing was actually done, and why it had to change
+
+The method in [The spike](#the-spike) specified `cf ai run <model> --body @file.json`. That works
+for eliciting a validator's field list, and it produced the input-schema findings below. **It cannot
+observe the thing that decides the Text Generation question.** Two limits, both hit immediately:
+
+- **`cf ai run` cannot show a streamed response.** Asking any model for `stream: true` through the
+  CLI prints `{}`. Chat _only_ streams, so the non-streamed envelope the CLI does show is not the
+  envelope the panel consumes.
+- **`cf ai run` cannot show a binary response.** Every image and audio model also prints `{}`,
+  because the output is a byte stream or a bare base64 string rather than JSON.
+
+`remote: true` on the AI binding was tried next, so local `cf dev` could reach real models. **That
+does not work on this account:** Cloudflare Access is mandatory here, so the remote-binding proxy
+cannot authenticate. The configuration change was reverted immediately and is not in any branch.
+
+What worked, and what any repeat of this spike should do: **deploy a throwaway probe Worker to the
+`cfapps.uk` zone with its own Access bypass application.** The probe reimplemented
+`extractStreamedText` from `gateway-inference-client.ts` byte-for-byte, so its `renderedText` is
+exactly what the Playground would have put in a visitor's transcript — the question stopped being
+"what does the model emit" and became "what would our parser render", which is the question that
+matters.
+
+All probe infrastructure has been destroyed: Worker `spike-model-probe`, Access application
+`spike probe`, its bypass policy, and the `spike-probe.cfapps.uk` DNS record. Verified by
+`cf workers list`, `cf zero-trust access applications list`, and `cf dns records list` — the account
+contains only `playground` and `architect`.
+
+### The headline: the reasoning concern was real, but it is not where the spec expected
+
+[Concern 1](#concern-1--reasoning-models-would-visibly-break-chat) predicted that reasoning models
+would stream their monologue into the transcript. **That prediction was correct in general and wrong
+about the specific models the spec named**, and the difference is the single most useful finding of
+this spike.
+
+**The six requested models are safe to add, and need no parser change.** Every one of them puts
+reasoning in `choices[0].delta.reasoning_content`, a field `extractStreamedText` already ignores
+because it reads only `delta.content`. The existing parser discards reasoning _by construction_.
+
+Verified over 15 clean streamed runs (3 trials × 5 runnable models), plus a deliberately
+reasoning-heavy prompt (the wolf/goat/cabbage puzzle) where each model produced 2,530–8,195
+characters of separate reasoning and still rendered a clean answer:
+
+| Requested model                        | Streamed render   | Reasoning                 | Verdict                      |
+| -------------------------------------- | ----------------- | ------------------------- | ---------------------------- |
+| `@cf/zai-org/glm-5.3-flash`            | clean, 3/3 trials | `delta.reasoning_content` | **Include as-is**            |
+| `@cf/zai-org/glm-5.3`                  | clean, 3/3 trials | `delta.reasoning_content` | **Include as-is**            |
+| `@cf/deepseek-ai/deepseek-v4-pro-0813` | clean, 3/3 trials | `delta.reasoning_content` | **Include as-is**            |
+| `@cf/google/gemma-4-26b-a4b-it`        | clean, 3/3 trials | `delta.reasoning_content` | **Include as-is**            |
+| `@cf/moonshotai/kimi-k2.7-code`        | clean, 3/3 trials | `delta.reasoning_content` | **Include as-is**            |
+| `@cf/utter-project/eurollm-9b-it`      | **cannot run**    | —                         | **Exclude, broken upstream** |
+
+Two corrections to the request itself:
+
+- **`@cf/moonshotai/kimi-k2.7` does not exist.** The catalogue has `@cf/moonshotai/kimi-k2.7-code`
+  and `@cf/moonshotai/kimi-k2.6`; `kimi-k2.7` returns `[5007] No such model`. The `-code` variant
+  was probed and is clean. Which of the two is wanted is a product choice, not a technical one.
+  **DECISION**: Include `kimi-k2.7-code`
+- **`@cf/utter-project/eurollm-9b-it` is listed but not runnable.** Every call returns
+  `[4003] AI model does not have config`, through both the CLI and the AI binding. It is a
+  platform-side fault, not a schema mismatch — nothing in the demo can fix it. It should be excluded
+  and recorded, and re-probed later rather than retried at implementation time.
+  **DECISION**: Exclude `eurollm-9b-it`
+
+**A trap worth recording, because it would have produced the opposite conclusion.** The first probe
+round sent `max_tokens: 200` and several models rendered an **empty answer** — `gemma-4-26b-a4b-it`
+spent all 256 tokens reasoning and returned `content: ""` with `finish_reason: "length"`. That looks
+exactly like a broken model. **Chat sends no `max_tokens` at all**, and with the real input every
+model finished its reasoning and produced an answer. A probe that does not match the panel's actual
+request will mis-classify a reasoning model as broken.
+
+A second trap: `chat_template_kwargs.enable_thinking: false` is **not** a safe mitigation. GLM-5.3
+_ignores_ it and then leaks the monologue into `content` with a stray `</think>`, reproducibly (2/2
+trials, 374 and 91 characters of leak). The generated types state it plainly — "Reasoning is always
+enabled for this model and cannot be disabled" — so the flag should not be sent to any GLM model.
+For `gemma-4` and `deepseek-v4-pro` it does work, but it is unnecessary: leaving reasoning on and
+letting the parser drop it gives a clean answer anyway.
+
+### Two models genuinely do leak, and they are not on the request list
+
+These are the models [Concern 1](#concern-1--reasoning-models-would-visibly-break-chat) was right
+about. Both leak into the field the transcript renders, and `enable_thinking: false` does not help
+(2/2 trials each):
+
+| Model                                          | What a visitor would see                               |
+| ---------------------------------------------- | ------------------------------------------------------ |
+| `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b` | 659–1,171 chars of `<think>…` monologue, in `response` |
+| `@cf/qwen/qwq-32b`                             | 943–1,006 chars of monologue with **no tags at all**   |
+
+QwQ-32B is the worse of the two and the reason a tag-stripping workaround should not be built: there
+is no marker to strip. **Both are `Exclude, editorial`** — the demo has five clean reasoning models
+available, so there is no reason to carry the two that need UI work to be presentable.
+
+This resolves the spec's requirement for "a written proposal for reasoning-model output: suppress,
+disclose, or exclude" — **the answer is "no change needed, plus exclude the two leakers"**.
+Reasoning is already suppressed, by a parser that was written before any of these models existed and
+happens to be correct for all of them. A disclosure UI can be considered later on its own merits;
+nothing in this item requires it.
+
+### Per-task findings
+
+Each entry probed through the real AI binding, which is what the panels use.
+
+#### Chat — Text Generation
+
+Beyond the six requested, these were probed and render cleanly with no code change:
+`llama-3.1-8b-instruct-fp8`, `mistral-small-3.1-24b-instruct`, `granite-4.0-h-micro`,
+`gemma-sea-lion-v4-27b-it`, `qwen3-30b-a3b-fp8`, `gpt-oss-120b`.
+**DECISION**: Include `mistral-small-3.1-24b-instruct` in chat panel
+
+`gpt-oss-120b` deserves a note, because [Concern 2](#concern-2--input-schemas-genuinely-differ)
+flagged it: its four mutually exclusive input shapes are real, but `messages` is among them and it
+streams cleanly with reasoning in a separate field. It is includable as-is. The concern was valid
+and the outcome is benign.
+
+One subtlety the spec did not anticipate: `granite-4.0-h-micro` and `gemma-sea-lion-v4-27b-it`
+return **no `response` field** in the non-streamed envelope, only `choices[0].message.content`.
+Harmless for Chat, which streams, but it means a non-streaming panel could not reuse the same
+assumption.
+
+#### Semantic Search — Text Embeddings (4 missing, all clean)
+
+| Model                           | Dimensions | Envelope                      | Verdict           |
+| ------------------------------- | ---------: | ----------------------------- | ----------------- |
+| `@cf/baai/bge-base-en-v1.5`     |        768 | `data, shape, pooling, usage` | **Include as-is** |
+| `@cf/baai/bge-large-en-v1.5`    |      1,024 | `data, shape, pooling, usage` | **Include as-is** |
+| `@cf/qwen/qwen3-embedding-0.6b` |      1,024 | `data, shape, usage`          | **Include as-is** |
+| `@cf/pfnet/plamo-embedding-1b`  |  **2,048** | `data, shape`                 | **Include as-is** |
+
+All four batch correctly (a two-text request returned two vectors). All expose `data`, which is the
+only field the existing reader depends on — the panel's deliberate design, and it pays off here.
+
+`plamo-embedding-1b` is the most interesting addition in the whole spike: at **2,048 dimensions** it
+would give the panel a fourth distinct vector space alongside 384/768/1,024, strengthening exactly
+the lesson that file already documents — that a cosine score is a relative position, not a
+measurement. It is also the second-cheapest embedding model in the catalogue.
+
+#### Create Image — Text-to-Image (4 includable, 1 structural exclude)
+
+| Model                                           | Output shape          | Verdict                 |
+| ----------------------------------------------- | --------------------- | ----------------------- |
+| `@cf/bytedance/stable-diffusion-xl-lightning`   | JPEG `ReadableStream` | **Include as-is**       |
+| `@cf/lykon/dreamshaper-8-lcm`                   | PNG `ReadableStream`  | **Include as-is**       |
+| `@cf/leonardo/phoenix-1.0`                      | JPEG `ReadableStream` | **Include as-is**       |
+| `@cf/leonardo/lucid-origin`                     | `{ image: base64 }`   | **Include as-is**       |
+| `@cf/runwayml/stable-diffusion-v1-5-inpainting` | —                     | **Exclude, structural** |
+
+Every shape is one `extractBytes` in `create-image-service.ts` already handles — byte streams and
+`{ image }` were both normalised for the two existing models, and that normalisation covers all four
+newcomers for free. Magic bytes were captured to confirm the format rather than trusting the
+declared type (`ff d8 ff e0` JPEG, `89 50 4e 47` PNG).
+
+All four accepted the full control set — `negative_prompt`, `num_steps`, `width`, `height`,
+`guidance`, `seed` — in a live call. **Per-model ranges still need pinning before implementation**;
+the spec is right that a catalog page is not reliable evidence, and this spike verified acceptance
+rather than bounds.
+
+The inpainting model is confirmed structurally excluded by the model itself:
+`3030: Model input is not valid: missing required input mask_image`. The spec's reasoning was
+correct and is now evidence rather than judgement.
+
+#### Read Text — Text-to-Speech (1 missing, clean)
+
+`@cf/deepgram/aura-2-es` is **Include as-is**: byte-identical contract to the registered
+`aura-2-en`, returning an MP3 stream. Its voices are a **completely disjoint ten-name enum**
+(`sirio`, `nestor`, `carina`, …) — verified by sending `asteria`, an English voice, and having the
+model reject it against the Spanish list. The per-model `speechControls.voices` declaration already
+in the descriptor shape handles this exactly as designed; no new field is needed.
+
+#### Transcribe Audio — ASR (1 includable, 1 structural exclude)
+
+Probed with real audio, generated in-Worker by synthesising a sentence with `aura-2-en` and feeding
+those bytes to each transcriber, so no fixture had to be committed.
+
+- **`@cf/openai/whisper-tiny-en` — Include as-is.** Returns
+  `text, word_count, vtt, words, segments, usage`. Critically, it requires the **`array`** audio
+  encoding, not `base64`: a base64 string is rejected. That matches the registered
+  `@cf/openai/whisper` exactly (also verified: `whisper` accepts `array` and rejects `base64`, while
+  `whisper-large-v3-turbo` is the reverse). The existing per-model `audioEncoding` field covers this
+  with no change — this is the clearest vindication in the spike of declaring the contract per model
+  rather than per panel.
+- **`@cf/deepgram/flux` — Exclude, structural.**
+  `8006: @cf/deepgram/flux only supports websocket connections`, on all three encodings. It is a
+  real-time streaming transcription model; the panel uploads a file. Its output is turn-event
+  messages, not a transcript.
+
+#### Panels with nothing to add
+
+Image Classification, Image-to-Text, Text Classification, and Translation are at full catalogue
+coverage already (1/1, 2/2, 2/2, 2/2). No work.
+
+#### Dumb Pipe
+
+`@cf/pipecat-ai/smart-turn-v2` — **Exclude, structural**, as the spec anticipated. Confirmed to
+require audio input for conversational turn detection; no panel corresponds to it.
+
+#### LoRA adapters
+
+Five adapters remain **Exclude, editorial**. `@cf/google/gemma-2b-it-lora` was probed and does
+answer a `messages` request, so the exclusion is genuinely editorial rather than technical: these
+are fine-tuning base models, and offering them beside instruction-tuned models invites a comparison
+that teaches the wrong thing.
+
+### Recommendation
+
+The spec's instinct — **well-chosen breadth, not exhaustiveness** — survives the spike, and the
+numbers are much better than feared. Of 42 missing models, **6 are structurally or terminally
+excludable, 5 are editorially excludable, and most of the rest need no code change at all.**
+
+| Panel            | Now | Recommended | Added                                                                | Comparison it buys                                   |
+| ---------------- | --: | ----------: | -------------------------------------------------------------------- | ---------------------------------------------------- |
+| Chat             |   2 |       **7** | glm-5.3-flash, glm-5.3, deepseek-v4-pro, gemma-4-26b, kimi-k2.7-code, mistral-small-3.1-24b-instruct | cheap vs premium reasoning; 1M-token context windows |
+| Semantic Search  |   4 |       **8** | bge-base, bge-large, qwen3-embedding, plamo-embedding-1b             | a fourth vector space (2,048) at 384/768/1,024/2,048 |
+| Create Image     |   2 |       **6** | sdxl-lightning, dreamshaper-8-lcm, phoenix-1.0, lucid-origin         | JPEG vs PNG vs base64; per-tile vs per-step pricing  |
+| Read Text        |   3 |       **4** | aura-2-es                                                            | disjoint voice enums; a non-English voice            |
+| Transcribe Audio |   3 |       **4** | whisper-tiny-en                                                      | `array` vs `base64` audio encoding, side by side     |
+
+That is **+16 models across five panels, with no parser or UI change required.** Chat's price spread
+becomes genuinely instructive: `glm-5.3-flash` at \$0.15/M input against `glm-5.3` at \$1.40/M and
+`kimi-k2.7-code` at \$4.00/M output, which is exactly the "materially different figure in the
+session total" argument `models.ts` already makes, with a far wider spread than 70B-versus-3B gives.
+
+**On [Concern 4](#concern-4--it-contradicts-the-demos-stated-thesis), the thesis objection.** It is
+answered rather than overridden: every model above was individually probed and would carry its
+observed contract in its descriptor, so "reviewed" stays literally true. A seven-entry Chat dropdown
+of models that each demonstrably render cleanly is a stronger artifact than two, and nothing in the
+recommendation is exhaustive — 29 of 35 text-generation models are still deliberately left out.
+
+### Implementation estimate
+
+Materially smaller than
+[the spec's reading](#review-the-scope-is-roughly-four-times-what-the-text-implies), because the
+parser work the Text Generation risk implied is not needed.
+
+- **Chat (5 descriptors)** — ~1 hour. Ten lines each, no code change. Decide `kimi-k2.7-code` versus
+  `kimi-k2.6` first.
+- **Semantic Search (4)** — ~1 hour. Dimensions are verified; `plamo` has no published context
+  window, so that needs one reviewed value.
+- **Create Image (4)** — ~3 hours, the real work. Each needs verified `steps`/dimension/guidance
+  bounds and a `rejectsUndeclaredParameters` determination, which is a probe per bound.
+- **Read Text (1) + Transcribe Audio (1)** — ~1 hour. Both reuse existing per-model fields.
+- **Exclusion register + docs + tests** — ~2 hours. A `MODEL-EXCLUSIONS.md` in the
+  `AI-GATEWAY-EXCEPTIONS.md` style, the README model tables, and the hosting-badge counts.
+
+**Roughly one working day**, excluding the Create Image bound-verification probes which dominate it.
+
+### Carried forward
+
+- **Decide `kimi-k2.7-code` vs `kimi-k2.6`.** `kimi-k2.7` does not exist; both alternatives are
+  clean. A code-specialised model in a general Chat dropdown may be the wrong teaching choice.
+- **`eurollm-9b-it` is excluded as upstream-broken**, not declined. Worth re-probing occasionally.
+- **The two leakers must be named in the exclusion register**, with the observed leak lengths. This
+  is the clearest case the register exists for: declined for a demonstrated defect, not an
+  oversight.
+- **Create Image control bounds are the only genuinely unfinished probing.** Acceptance was proven;
+  ranges were not.
