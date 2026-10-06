@@ -32,12 +32,42 @@ describe('Terraform outputs', () => {
     }
   });
 
+  // Outputs that exist for a consumer other than `cloudflare.config.ts`, and so deliberately have
+  // no entry in `OUTPUT_KEYS`. Enumerated rather than allowed as a blanket excess, because the
+  // check above only proves every *expected* output exists — this one is what stops an output
+  // being added for no reason, or a stale one outliving the thing that read it.
+  const NON_WORKER_OUTPUTS = new Set([
+    // Read by the toolkit's `empty-r2-bucket --terraform` CLI during `pnpm teardown`, which looks
+    // up exactly `account_id`. It duplicates `cloudflare_account_id` rather than replacing it:
+    // that name is bound into the Worker through `OUTPUT_KEYS`, so renaming it would break the
+    // build, and the CLI accepts no alternative spelling.
+    'account_id'
+  ]);
+
   it('documents every declared output', async () => {
     const outputsTf = await readDemoFile('infra/outputs.tf');
     const declared = [...outputsTf.matchAll(/output "([a-z0-9_]+)" \{([\s\S]*?)\n\}/gu)];
-    expect(declared.length).toBe(Object.keys(OUTPUT_KEYS).length);
+
+    expect(declared.length).toBe(Object.keys(OUTPUT_KEYS).length + NON_WORKER_OUTPUTS.size);
     for (const [, name, body] of declared) {
       expect(body, `output "${name}" needs a description`).toContain('description =');
+    }
+  });
+
+  // The counterpart to the count above: every declared output is either consumed by the Worker or
+  // listed as a deliberate exception. Without this, raising the expected count would be enough to
+  // let an undocumented, unexplained output through.
+  it('declares no output that nothing consumes', async () => {
+    const outputsTf = await readDemoFile('infra/outputs.tf');
+    const declared = [...outputsTf.matchAll(/output "([a-z0-9_]+)" \{/gu)].map(([, name]) => name);
+    const expected = new Set<string>(Object.values(OUTPUT_KEYS));
+
+    for (const name of declared) {
+      expect(
+        expected.has(name!) || NON_WORKER_OUTPUTS.has(name!),
+        `output "${name}" is consumed by nothing: add it to OUTPUT_KEYS or document it as a `
+          + 'non-Worker consumer'
+      ).toBe(true);
     }
   });
 
