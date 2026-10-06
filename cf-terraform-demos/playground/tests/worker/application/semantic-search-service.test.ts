@@ -14,7 +14,12 @@ import {
 import { FakeInference, type FakeInferenceOptions } from '../support/fake-inference';
 import { createLogCapture } from '../support/mount';
 
-const [BGE_M3, _GEMMA, _SMALL, RERANKER] = modelsForTask('semantic-search');
+// By identifier, not by position: the follow-on inserted four embedding models ahead of the
+// reranker, and a positional binding would have pointed `RERANKER` at an embedding model while
+// still type-checking.
+const models = modelsForTask('semantic-search');
+const BGE_M3 = models.find((model) => model.id === '@cf/baai/bge-m3');
+const RERANKER = models.find((model) => model.id === '@cf/baai/bge-reranker-base');
 const RUN_ID = 'a1b2c3d4-1111-4222-8333-444455556666';
 const ACTOR = { email: 'alice@example.com', sub: 'alice-sub' };
 

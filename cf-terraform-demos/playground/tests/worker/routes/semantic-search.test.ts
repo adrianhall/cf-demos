@@ -8,7 +8,12 @@ import { semanticSearchRouter } from '../../../src/worker/routes/semantic-search
 import { FakeInference, type FakeInferenceOptions } from '../support/fake-inference';
 import { createLogCapture, mountRoute } from '../support/mount';
 
-const [BGE_M3, _GEMMA, _SMALL, RERANKER] = modelsForTask('semantic-search');
+// By identifier, not by position: the follow-on inserted four embedding models ahead of the
+// reranker, and a positional binding would have pointed `RERANKER` at an embedding model while
+// still type-checking.
+const models = modelsForTask('semantic-search');
+const BGE_M3 = models.find((model) => model.id === '@cf/baai/bge-m3');
+const RERANKER = models.find((model) => model.id === '@cf/baai/bge-reranker-base');
 const IDENTITY = { email: 'alice@example.com', sub: 'alice-sub' };
 
 function body(overrides: Record<string, unknown> = {}): Record<string, unknown> {

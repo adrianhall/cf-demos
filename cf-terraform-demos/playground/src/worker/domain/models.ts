@@ -1769,6 +1769,120 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       contextWindowTokens: 512
     }
   },
+  // PLaMo is the most valuable addition this panel has had, and the reason is a single number:
+  // 2,048 dimensions. With it the panel spans four distinct vector spaces — 384, 768, 1,024, and
+  // 2,048 — and a visitor can run one query against all four and watch the cosine scores move
+  // while the ordering largely does not. That is the clearest possible demonstration of the lesson
+  // this panel exists to teach: a similarity score is a position within one space, not a
+  // measurement of anything transferable between them.
+  //
+  // It is also the second-cheapest embedding model in the catalogue, which makes the widest vector
+  // space here very nearly the cheapest option — a useful corrective to the assumption that more
+  // dimensions must cost more.
+  {
+    id: '@cf/pfnet/plamo-embedding-1b',
+    name: 'PLaMo Embedding 1B',
+    provider: 'workers-ai',
+    task: 'semantic-search',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/plamo-embedding-1b/',
+    semanticSearchControls: {
+      strategy: 'embedding',
+      // Verified against the live model: a two-text request returned `shape: [2, 2048]`. Its
+      // envelope is `{ data, shape }` with no `usage` at all, which is a third distinct shape in
+      // this panel and exactly why the reader depends on `data` and nothing else.
+      dimensions: 2_048,
+      cacheable: true,
+      batchesTexts: true,
+      topK: { min: 1, max: MAX_SEMANTIC_SEARCH_PASSAGES, step: 1, default: 5 },
+      appliedBy: 'playground'
+      // No `contextWindowTokens`: neither the catalogue nor the model's documentation page
+      // publishes a context window or a maximum input-token figure for it. Every other descriptor
+      // here carries a number taken from a published source, and inventing one for this model
+      // would make a reviewed registry assert something nobody reviewed. The field is optional
+      // precisely so an unpublished limit can be left unstated rather than guessed.
+    }
+  },
+  // BGE Base and BGE Large are registered as a pair, and only as a pair. Individually each would
+  // be a near-duplicate of a space the panel already covers — base is 768 like EmbeddingGemma,
+  // large is 1,024 like BGE M3. Together they are the panel's only controlled comparison: same
+  // family, same training recipe, same contract, differing in nothing but size and the resulting
+  // dimension count. Every other pairing here changes several variables at once.
+  {
+    id: '@cf/baai/bge-base-en-v1.5',
+    name: 'BGE Base EN v1.5',
+    provider: 'workers-ai',
+    task: 'semantic-search',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/bge-base-en-v1.5/',
+    semanticSearchControls: {
+      strategy: 'embedding',
+      // Verified: a two-text request returned `shape: [2, 768]`.
+      dimensions: 768,
+      cacheable: true,
+      batchesTexts: true,
+      topK: { min: 1, max: MAX_SEMANTIC_SEARCH_PASSAGES, step: 1, default: 5 },
+      appliedBy: 'playground',
+      // 512, not the 153,600 the catalogue reports as a context window. The documentation page
+      // publishes both, and they describe different things: 153,600 is the batching budget across
+      // a request, while 512 is the point at which an individual passage is truncated. This panel
+      // embeds passages one at a time, so the truncation limit is the one a visitor can actually
+      // hit — and the smaller figure is the honest one to disclose. BGE M3's 60,000-token
+      // catalogue figure sits in the same relationship to its own descriptor.
+      contextWindowTokens: 512
+    }
+  },
+  {
+    id: '@cf/baai/bge-large-en-v1.5',
+    name: 'BGE Large EN v1.5',
+    provider: 'workers-ai',
+    task: 'semantic-search',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/bge-large-en-v1.5/',
+    semanticSearchControls: {
+      strategy: 'embedding',
+      // Verified: a two-text request returned `shape: [2, 1024]` — the same width as BGE M3 from a
+      // different model, which is itself worth seeing. Equal dimensions do not make two models'
+      // scores comparable; they only make the numbers look comparable.
+      dimensions: 1_024,
+      cacheable: true,
+      batchesTexts: true,
+      topK: { min: 1, max: MAX_SEMANTIC_SEARCH_PASSAGES, step: 1, default: 5 },
+      appliedBy: 'playground',
+      // Same 512-token truncation limit as its Base sibling, and roughly three times the price per
+      // million tokens for it.
+      contextWindowTokens: 512
+    }
+  },
+  {
+    id: '@cf/qwen/qwen3-embedding-0.6b',
+    name: 'Qwen3 Embedding 0.6B',
+    provider: 'workers-ai',
+    task: 'semantic-search',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/qwen3-embedding-0.6b/',
+    semanticSearchControls: {
+      strategy: 'embedding',
+      // Verified: a two-text request returned `shape: [2, 1024]`.
+      dimensions: 1_024,
+      cacheable: true,
+      batchesTexts: true,
+      topK: { min: 1, max: MAX_SEMANTIC_SEARCH_PASSAGES, step: 1, default: 5 },
+      appliedBy: 'playground',
+      // The cheapest embedding model in the panel, at roughly a seventeenth of BGE Large's rate
+      // for the same 1,024-dimension output. Those two side by side are the panel's sharpest
+      // cost comparison, because the thing being bought looks identical from the outside.
+      contextWindowTokens: 8_192
+    }
+  },
   // The cross-encoder, and the reason this panel has two strategies rather than three embedding
   // models. Phase 12 excluded it from Classify Text because it does not classify a text — it
   // scores the relevance *between* a query and a list of passages, which is exactly this panel's

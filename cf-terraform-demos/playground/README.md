@@ -1517,14 +1517,27 @@ BGE M3 testing ranked the intended answer at `0.7328`, the lexical decoy at `0.6
 cafeteria at `0.4169`. The cross-encoder makes the same judgement much more sharply: `0.9845`,
 `0.00011`, and `0.000037`.
 
-### Four reviewed contracts
+### Eight reviewed contracts, four vector spaces
 
-| Model                   | Operation               | Live contract                                                                                    | What the panel teaches                                                                                                                                      |
-| ----------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **BGE M3**              | Multilingual embedding  | `{ text: string[] }` → `{ data, shape, pooling, meta, response }`; `data` rows are 1,024 numbers | Default. An English password query matched French and Japanese support passages, so a vector can represent meaning across languages.                        |
-| **EmbeddingGemma 300M** | Embedding               | `{ text: string[] }` → `{ data, shape }`; rows are 768 numbers                                   | Different dimension count means a cosine score cannot be compared with BGE M3's, even when both look like `0.7`.                                            |
-| **BGE Small EN v1.5**   | English embedding       | `{ text: string[] }` → `{ data, shape, pooling, usage }`; rows are 384 numbers                   | A smaller vector space is another useful comparison, not a lower-resolution version of another model's score.                                               |
-| **BGE Reranker Base**   | Cross-encoder reranking | `{ query, contexts, top_k }` → `{ response: [{ id, score }] }`                                   | It reads each query/passage pair together and returns relevance directly. It produces **no vector** to cache, and its score scale is not cosine similarity. |
+| Model                    | Operation               | Live contract                                                                                    | What the panel teaches                                                                                                                                      |
+| ------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **BGE M3**               | Multilingual embedding  | `{ text: string[] }` → `{ data, shape, pooling, meta, response }`; `data` rows are 1,024 numbers | Default. An English password query matched French and Japanese support passages, so a vector can represent meaning across languages.                        |
+| **EmbeddingGemma 300M**  | Embedding               | `{ text: string[] }` → `{ data, shape }`; rows are 768 numbers                                   | Different dimension count means a cosine score cannot be compared with BGE M3's, even when both look like `0.7`.                                            |
+| **BGE Small EN v1.5**    | English embedding       | `{ text: string[] }` → `{ data, shape, pooling, usage }`; rows are 384 numbers                   | A smaller vector space is another useful comparison, not a lower-resolution version of another model's score.                                               |
+| **PLaMo Embedding 1B**   | Embedding               | `{ text: string[] }` → `{ data, shape }`; rows are **2,048** numbers                             | The widest space in the panel and nearly the cheapest model in it, which breaks the assumption that more dimensions must cost more.                         |
+| **BGE Base EN v1.5**     | English embedding       | `{ text: string[] }` → `{ data, shape, pooling, usage }`; rows are 768 numbers                   | Registered as a pair with BGE Large: same family and recipe, differing only in size. The panel's one controlled comparison.                                 |
+| **BGE Large EN v1.5**    | English embedding       | `{ text: string[] }` → `{ data, shape, pooling, usage }`; rows are 1,024 numbers                 | Same width as BGE M3 from an unrelated model. Equal dimensions make two models' numbers _look_ comparable without making them so.                           |
+| **Qwen3 Embedding 0.6B** | Embedding               | `{ text: string[] }` → `{ data, shape, usage }`; rows are 1,024 numbers                          | Roughly a seventeenth of BGE Large's price for the same output width — the sharpest cost comparison here, because the product looks identical.              |
+| **BGE Reranker Base**    | Cross-encoder reranking | `{ query, contexts, top_k }` → `{ response: [{ id, score }] }`                                   | It reads each query/passage pair together and returns relevance directly. It produces **no vector** to cache, and its score scale is not cosine similarity. |
+
+The seven embedding models span **four distinct vector widths — 384, 768, 1,024, and 2,048**.
+Running one query across all four is the clearest demonstration of the panel's central claim: the
+scores move while the ordering largely does not, because a cosine value is a position inside one
+space rather than a measurement that transfers between them.
+
+PLaMo is the one descriptor with **no context window**, and the omission is deliberate. Neither its
+catalogue entry nor its documentation page publishes one, and a reviewed registry should not invent
+a limit nobody reviewed. A test pins the absence so it reads as a finding rather than an oversight.
 
 Every model was invoked with `cf ai run` before registration. The embedding envelopes differ — in
 particular, only BGE M3 emits `meta`, and only some emit `usage` or `pooling` — so the Worker reads
