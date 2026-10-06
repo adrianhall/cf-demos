@@ -108,8 +108,17 @@ The first panel that calls a model, and so the first that puts a figure in the s
 It streams its answer over server-sent events and shows what the request actually cost once AI
 Gateway has written its log.
 
-- **Two reviewed models** to compare: Llama 3.3 70B and Llama 3.2 3B. The same prompt against both
-  shows that the larger model costs materially more per token and is not always the better value.
+- **Eight reviewed models** to compare, spanning a roughly 30× price spread and context windows from
+  24,000 to 1,048,576 tokens. The same prompt against Llama 3.3 70B and Llama 3.2 3B shows that the
+  larger model costs materially more per token and is not always the better value; GLM-5.3 Flash
+  against GLM-5.3 makes the same point more sharply, because the two share a contract and a
+  million-token window and differ in input price by roughly nine times.
+- **Five of the eight reason, and the transcript stays clean anyway.** A reasoning model emits an
+  internal monologue as well as an answer. These five put it in
+  `choices[0].delta.reasoning_content`, which the stream parser never reads — so reasoning is
+  discarded by construction rather than by suppression code. Two catalogue models that leak their
+  monologue into the rendered field are deliberately excluded; see
+  [`MODEL-EXCLUSIONS.md`](./MODEL-EXCLUSIONS.md).
 - **A familiar two-state chat interface.** The first visit centres one question box beneath
   suggested prompts. After the first send, the transcript starts at the top and the same composer
   stays at the bottom, with the model selector and the active model's full ID inside it. New chat

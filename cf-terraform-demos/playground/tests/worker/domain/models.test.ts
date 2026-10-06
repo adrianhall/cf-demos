@@ -87,6 +87,22 @@ describe('modelsForTask', () => {
     expect(modelsForTask('chat').length).toBeGreaterThanOrEqual(2);
   });
 
+  // The two models the follow-on spike found streaming their chain-of-thought into the field the
+  // transcript renders. Both were probed, both leak reproducibly, and `enable_thinking: false`
+  // suppresses neither. QwQ emits no `<think>` tags at all, so there is not even a marker a
+  // workaround could strip.
+  //
+  // This is pinned as a test rather than left to MODEL-EXCLUSIONS.md alone because the failure is
+  // invisible at review time: the descriptor would look exactly like the five reasoning models
+  // that are safe, and the defect would only appear in front of an audience.
+  it('registers no Chat model known to leak reasoning into the transcript', () => {
+    const leaking = ['@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', '@cf/qwen/qwq-32b'];
+    const registered = modelsForTask('chat').map((model) => model.id);
+    for (const id of leaking) {
+      expect(registered, `${id} streams its monologue into delta.content`).not.toContain(id);
+    }
+  });
+
   // Chat streams, and a non-streaming descriptor on a streaming route would surface as an answer
   // that arrives all at once after a long pause.
   it('declares every Chat model as streamed', () => {

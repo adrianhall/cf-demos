@@ -442,10 +442,34 @@ export interface ModelDescriptor {
 /**
  * Every reviewed model, grouped by nothing: panels filter this list by `task`.
  *
- * Two Chat models rather than one, because having something to compare is what makes the cost meter
- * interesting: the same prompt against a 70B and a 3B model produces visibly different latency and
- * a materially different figure in the session total. Both were read against their catalog pages,
- * both accept the `messages` array this demo sends, and both stream.
+ * Chat carries eight models rather than one, because having something to compare is what makes the
+ * cost meter interesting: the same prompt against a 70B and a 3B model produces visibly different
+ * latency and a materially different figure in the session total. Every one accepts the `messages`
+ * array this demo sends and every one streams.
+ *
+ * **Five of them reason, and that is safe here for a specific, verified reason rather than by
+ * luck.** A reasoning model emits its internal monologue as well as its answer, and the follow-on
+ * spike confirmed that these five put that monologue in `choices[0].delta.reasoning_content` — a
+ * field `extractStreamedText()` in ../infrastructure/ai/gateway-inference-client.ts never reads,
+ * because it takes only `response` and `delta.content`. The transcript therefore shows the answer
+ * and nothing else, with no suppression code anywhere: the parser discards reasoning by
+ * construction.
+ *
+ * Two findings from that spike are recorded here because both would otherwise be rediscovered the
+ * expensive way:
+ *
+ * 1. **Never send `chat_template_kwargs.enable_thinking: false` to these models.** It looks like the
+ *    obvious safety measure and it makes things worse. GLM-5.3 ignores the flag and then leaks its
+ *    monologue into `content` complete with a stray `</think>`, reproducibly. Chat does not send
+ *    it, and must not start.
+ * 2. **Chat deliberately sends no `max_tokens`.** A reasoning model spends tokens thinking before it
+ *    writes anything, so a small cap can be exhausted entirely by reasoning and return an empty
+ *    answer with `finish_reason: "length"`. That looks exactly like a broken model and is not one.
+ *
+ * Two catalogue reasoning models are deliberately **absent**:
+ * `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b` and `@cf/qwen/qwq-32b`. Both stream their
+ * monologue into the field the transcript renders, so a visitor would watch the model think. QwQ
+ * emits no `<think>` tags at all, so there is not even a marker to strip. See MODEL-EXCLUSIONS.md.
  */
 export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
   {
@@ -470,6 +494,90 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
     invocation: 'streamed',
     documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/llama-3.2-3b-instruct/',
     contextWindowTokens: 80_000
+  },
+  // The cheapest reasoning model in the catalogue, and the one that makes this panel's price
+  // spread worth looking at: $0.15 per million input tokens against GLM-5.3's $1.40 for the same
+  // family and the same contract. A 1M-token context window at that price is the clearest
+  // demonstration the selector offers that "newer and larger" and "more expensive" are
+  // independent axes.
+  {
+    id: '@cf/zai-org/glm-5.3-flash',
+    name: 'GLM-5.3 Flash',
+    provider: 'workers-ai',
+    task: 'chat',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'streamed',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/glm-5.3-flash/',
+    contextWindowTokens: 1_048_576
+  },
+  // The full GLM-5.3 beside its Flash sibling: same contract, same million-token window, roughly
+  // nine times the input price. Comparing these two is the single most instructive pair in the
+  // panel, because nothing about the request changes between them.
+  {
+    id: '@cf/zai-org/glm-5.3',
+    name: 'GLM-5.3',
+    provider: 'workers-ai',
+    task: 'chat',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'streamed',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/glm-5.3/',
+    contextWindowTokens: 1_048_576
+  },
+  {
+    id: '@cf/deepseek-ai/deepseek-v4-pro-0813',
+    name: 'DeepSeek V4 Pro',
+    provider: 'workers-ai',
+    task: 'chat',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'streamed',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/deepseek-v4-pro-0813/',
+    contextWindowTokens: 1_048_576
+  },
+  {
+    id: '@cf/google/gemma-4-26b-a4b-it',
+    name: 'Gemma 4 26B',
+    provider: 'workers-ai',
+    task: 'chat',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'streamed',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/gemma-4-26b-a4b-it/',
+    contextWindowTokens: 256_000
+  },
+  // Registered as `kimi-k2.7-code`, not `kimi-k2.7`: the latter is not in the catalogue at all and
+  // returns `[5007] No such model`. A code-specialised model in a general chat selector is a
+  // deliberate choice — it answers ordinary prompts perfectly well, and the most expensive output
+  // rate in the panel is a useful thing for a visitor to spend once and see in the meter.
+  {
+    id: '@cf/moonshotai/kimi-k2.7-code',
+    name: 'Kimi K2.7 Code',
+    provider: 'workers-ai',
+    task: 'chat',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'streamed',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/kimi-k2.7-code/',
+    contextWindowTokens: 262_144
+  },
+  // The one non-reasoning addition, and it is here as the control case. It answers immediately
+  // with no monologue to discard, so a visitor switching to it from GLM-5.3 sees the latency
+  // difference reasoning actually costs. Replaces `@cf/utter-project/eurollm-9b-it`, which the
+  // follow-on requested but which cannot run on this platform at all — every call returns
+  // `[4003] AI model does not have config`. See MODEL-EXCLUSIONS.md.
+  {
+    id: '@cf/mistralai/mistral-small-3.1-24b-instruct',
+    name: 'Mistral Small 3.1 24B',
+    provider: 'workers-ai',
+    task: 'chat',
+    contractVersion: 1,
+    pricingUnit: 'token',
+    invocation: 'streamed',
+    documentationUrl:
+      'https://developers.cloudflare.com/workers-ai/models/mistral-small-3.1-24b-instruct/',
+    contextWindowTokens: 128_000
   },
   // The two image models were chosen because they *disagree*, not in spite of it. One takes a
   // prompt and up to 8 steps and returns base64 JSON; the other takes a negative prompt,
