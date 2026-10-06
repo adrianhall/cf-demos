@@ -31,7 +31,7 @@
     "@types/node": "26.6.4",
     "cf": "1.0.0-beta.12",
     "chalk": "6.0.1",
-    "oxlint": "^1.86.0",
+    "oxlint": "1.87.0",
     "oxlint-tsgolint": "^7.0.2003",
     "commander": "15.0.0"
   },
