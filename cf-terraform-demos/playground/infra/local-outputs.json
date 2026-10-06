@@ -1,4 +1,9 @@
 {
+  "account_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "00000000000000000000000000000000"
+  },
   "access_aud": {
     "sensitive": false,
     "type": "string",

@@ -8,6 +8,11 @@ output "ai_gateway_id" {
   value       = cloudflare_ai_gateway.demo.id
 }
 
+output "account_id" {
+  description = "Cloudflare account identifier under the exact name the toolkit's `empty-r2-bucket --terraform` mode reads. Deliberately a second output carrying the same value as `cloudflare_account_id`: that one is consumed by `cloudflare.config.ts` through `OUTPUT_KEYS`, so renaming it would break the Worker build, while the CLI looks up `account_id` and nothing else. Without this, `pnpm teardown` fails to empty the bucket and the following `terraform destroy` can only succeed while the bucket happens to be empty."
+  value       = local.cloudflare_account_id
+}
+
 output "cloudflare_account_id" {
   description = "Cloudflare account identifier, used to build the AI Gateway dashboard link shown on the Activity page."
   value       = local.cloudflare_account_id
