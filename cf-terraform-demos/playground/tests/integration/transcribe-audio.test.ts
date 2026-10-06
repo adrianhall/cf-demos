@@ -393,7 +393,7 @@ describe('the panel catalogue', () => {
         transcriptionControls?: {
           audioEncoding: string;
           maxAudioBytes: number;
-          pricePerAudioMinuteUsd: number;
+          pricePerAudioMinuteUsd?: number;
         };
       }[];
     };
@@ -415,12 +415,13 @@ describe('the panel catalogue', () => {
         model.transcriptionControls?.maxAudioBytes,
         `${model.id} publishes a size ceiling`
       ).toBeGreaterThan(0);
-      // The panel's whole comparison is cost per audio minute, so a model with no published rate
-      // could not be presented honestly beside one that has one.
-      expect(
-        model.transcriptionControls?.pricePerAudioMinuteUsd,
-        `${model.id} publishes a rate`
-      ).toBeGreaterThan(0);
+      // A rate is optional, because one reviewed model genuinely publishes none — but a rate that
+      // is present must be real. Zero would format as `$0.0000` and read as "free", which is a
+      // false claim where an absent value is an honest one the panel states in words.
+      const rate = model.transcriptionControls?.pricePerAudioMinuteUsd;
+      if (rate !== undefined) {
+        expect(rate, `${model.id} publishes a positive rate`).toBeGreaterThan(0);
+      }
     }
 
     // The three encodings are the reason this panel exists in the shape it does, so the catalogue

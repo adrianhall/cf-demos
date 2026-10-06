@@ -13,9 +13,15 @@ import {
 } from '../../../src/worker/domain/transcript-normalisation';
 
 /**
- * The reviewed transcription models, in catalogue order.
+ * The reviewed transcription models, looked up by identifier.
+ *
+ * Deliberately not positional. Registering a fourth model shifts every index, and a positional
+ * binding would keep type-checking while silently asserting the wrong model's contract.
  */
-const [TURBO, NOVA, WHISPER] = modelsForTask('transcribe-audio');
+const transcriptionModels = modelsForTask('transcribe-audio');
+const TURBO = transcriptionModels.find((model) => model.id === '@cf/openai/whisper-large-v3-turbo');
+const NOVA = transcriptionModels.find((model) => model.id === '@cf/deepgram/nova-3');
+const WHISPER = transcriptionModels.find((model) => model.id === '@cf/openai/whisper');
 
 /**
  * A response in Whisper large v3 turbo's shape: flat `text` with `segments[]`.
@@ -97,9 +103,9 @@ function expectOk(outcome: ReturnType<typeof normaliseTranscript>) {
 }
 
 describe('the reviewed transcription models', () => {
-  it('registers three Cloudflare-hosted models', () => {
+  it('registers four Cloudflare-hosted models', () => {
     const models = modelsForTask('transcribe-audio');
-    expect(models).toHaveLength(3);
+    expect(models).toHaveLength(4);
     for (const model of models) {
       expect(model.provider, `${model.id} is Cloudflare-hosted`).toBe('workers-ai');
     }
@@ -156,16 +162,33 @@ describe('the reviewed transcription models', () => {
     expect(WHISPER?.transcriptionControls?.confidenceScale).toBeUndefined();
   });
 
-  // Every model must have a rate: the panel's whole comparison is cost per audio minute, and a
-  // model with no published price could not be presented honestly beside one that has one. This is
-  // why `@cf/openai/whisper-tiny-en` was not registered despite being in the plan.
-  it('publishes a price per audio minute for every model', () => {
+  // A published rate must be a real rate. Phase 10 required one for *every* model and excluded
+  // `@cf/openai/whisper-tiny-en` for lacking one; the follow-on registered that model and the
+  // panel now states the absence instead of hiding it. So the rule is no longer "every model has
+  // a price" but the stricter and more useful "no model has a fake price": a rate is either
+  // genuinely published and positive, or absent and reported as absent.
+  //
+  // Zero is the value worth forbidding. It would format as `$0.0000` and read as "free", which is
+  // a specific false claim where `undefined` is an honest one.
+  it('publishes either a real rate or none at all, never a placeholder', () => {
     for (const model of modelsForTask('transcribe-audio')) {
-      expect(
-        model.transcriptionControls?.pricePerAudioMinuteUsd,
-        `${model.id} publishes a rate`
-      ).toBeGreaterThan(0);
+      const rate = model.transcriptionControls?.pricePerAudioMinuteUsd;
+      if (rate !== undefined) {
+        expect(rate, `${model.id} publishes a positive rate`).toBeGreaterThan(0);
+      }
     }
+  });
+
+  // The one model with no published price, pinned so the gap reads as a recorded finding rather
+  // than a descriptor somebody forgot to finish. Its catalogue entry carries no pricing property
+  // and its documentation page has no Unit Pricing row.
+  it('leaves Whisper Tiny EN unpriced because the catalogue publishes no rate', () => {
+    const tiny = modelsForTask('transcribe-audio').find(
+      (model) => model.id === '@cf/openai/whisper-tiny-en'
+    );
+
+    expect(tiny).toBeDefined();
+    expect(tiny?.transcriptionControls?.pricePerAudioMinuteUsd).toBeUndefined();
   });
 
   it('shows a tenfold price difference across the reviewed models', () => {

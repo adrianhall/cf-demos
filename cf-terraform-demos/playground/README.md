@@ -1264,16 +1264,16 @@ given, and it removes any doubt about what was actually read.
 Read Text's models disagreed about _controls_. Transcribe Audio's disagree about the **payload** —
 they want the same bytes in three different shapes, and return the answer in three unrelated ones.
 
-|                | Whisper large v3 turbo | Nova 3                                           | Whisper (original)       |
-| -------------- | ---------------------- | ------------------------------------------------ | ------------------------ |
-| Audio in       | base64 string          | `{ body, contentType }`                          | `number[]`, one per byte |
-| Max file       | 4 MB                   | 4 MB                                             | **1 MB**                 |
-| Transcript out | `text` + `segments[]`  | `results.channels[0].alternatives[0].transcript` | `text` + `words[]`       |
-| Language       | ISO 639-1              | **BCP-47**                                       | no parameter at all      |
-| Quality figure | `avg_logprob`          | `confidence` (0–1)                               | none                     |
-| Price          | $0.0005/min            | $0.0052/min                                      | $0.0005/min              |
+|                | Whisper large v3 turbo | Nova 3                                           | Whisper (original)       | Whisper Tiny EN                   |
+| -------------- | ---------------------- | ------------------------------------------------ | ------------------------ | --------------------------------- |
+| Audio in       | base64 string          | `{ body, contentType }`                          | `number[]`, one per byte | `number[]`, one per byte          |
+| Max file       | 4 MB                   | 4 MB                                             | **1 MB**                 | **1 MB**                          |
+| Transcript out | `text` + `segments[]`  | `results.channels[0].alternatives[0].transcript` | `text` + `words[]`       | `text` + `words[]` + `segments[]` |
+| Language       | ISO 639-1              | **BCP-47**                                       | no parameter at all      | no parameter at all               |
+| Quality figure | `avg_logprob`          | `confidence` (0–1)                               | none                     | none                              |
+| Price          | $0.0005/min            | $0.0052/min                                      | $0.0005/min              | **none published**                |
 
-Four of those rows change what the panel does:
+Five of those rows change what the panel does:
 
 - **The file size limit is per model.** This is the first panel where that is true. A 4 MB file
   becomes four million JSON numbers for the byte-array model, and the measurements recorded for
@@ -1292,6 +1292,18 @@ Four of those rows change what the panel does:
 - **The envelope is read from the reviewed descriptor, never guessed.** Probing for keys would be
   more forgiving and considerably worse: a changed contract would find some other string field and
   present it as a transcript. Reading the declared shape turns that same break into a logged `502`.
+- **One model has no price, and the panel says so.** Whisper Tiny EN is in the catalogue with no
+  pricing property and no rate on its documentation page. Phase 10 excluded it for exactly that
+  reason; the follow-on registered it and inverted the reasoning instead, because an unpriced model
+  is a real thing to meet and the interesting question is what a careful application does about it.
+  The descriptor's rate is `undefined` rather than `0`, and the panel states that no rate is
+  published. Rendering `$0.0000` would be the easy alternative and a false one — it reads as "free".
+  A test asserts the sentence appears and the zero does not.
+
+  It also completes the encoding comparison. Whisper Tiny EN demands a byte array and rejects
+  base64; `whisper-large-v3-turbo` is the exact reverse. Two models from one family disagreeing
+  about how to carry identical bytes is why `audioEncoding` is declared per model, and adding this
+  one required no code change at all.
 
 ### The microphone is optional, and stays optional
 

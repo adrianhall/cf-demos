@@ -1610,9 +1610,10 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
   // what that costs in a 128 MB isolate. The lower limit here is a property of the contract, not an
   // arbitrary restriction, and the panel says so when this model is selected.
   //
-  // Reviewed *instead of* `@cf/openai/whisper-tiny-en`, which the plan listed. That model is marked
-  // Beta and publishes no price at all, and a panel whose whole point is comparing cost per audio
-  // minute cannot honestly include a model with no rate.
+  // Phase 10 reviewed this model *instead of* `@cf/openai/whisper-tiny-en`, on the grounds that a
+  // panel comparing cost per audio minute cannot honestly include a model with no published rate.
+  // The follow-on registered that model after all, and the reasoning changed rather than being
+  // overruled: the panel now *states* the absence instead of hiding it. See its descriptor below.
   {
     id: '@cf/openai/whisper',
     name: 'Whisper (original)',
@@ -1645,6 +1646,49 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
       // $0.0005 per audio minute at review time — the same rate as turbo, which is itself worth
       // seeing: the newer model is not more expensive.
       pricePerAudioMinuteUsd: 0.000_5
+    }
+  },
+  // Whisper Tiny EN, and the reason it is here is the thing phase 10 excluded it for: it publishes
+  // no price at all. The catalogue carries no pricing property for it and its documentation page
+  // has no Unit Pricing row.
+  //
+  // That was originally judged dishonest on a panel whose selector is a cost comparison, and the
+  // judgement has been inverted rather than ignored. A model with no published rate is a real
+  // thing to meet in a live catalogue, and the useful lesson is what a careful application does
+  // about it: TranscribeAudioView states that no rate is published instead of formatting an absent
+  // number, which would render `$0.0000` and read as "free". Absence is reported as absence.
+  //
+  // It also completes the panel's encoding comparison. It demands `byte-array` like the original
+  // Whisper and rejects base64 outright, while `whisper-large-v3-turbo` is the exact reverse —
+  // verified against all three live models. Two models from one family disagreeing about how to
+  // carry identical bytes is why `audioEncoding` is per-model, and this descriptor needed no code
+  // change to express it.
+  {
+    id: '@cf/openai/whisper-tiny-en',
+    name: 'Whisper Tiny EN',
+    provider: 'workers-ai',
+    task: 'transcribe-audio',
+    contractVersion: 1,
+    pricingUnit: 'audio-second',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/whisper-tiny-en/',
+    transcriptionControls: {
+      // Verified: a base64 string is rejected with `oneOf at '/' not met`, and the same bytes as a
+      // number array succeed.
+      audioEncoding: 'byte-array',
+      // The same 1 MiB ceiling as the original Whisper, and for the same reason: one JSON number
+      // per byte is a large expansion inside a 128 MB isolate.
+      maxAudioBytes: 1_024 * 1_024,
+      // No `languages`: it is the English-only Whisper variant, so the language is a property of
+      // the model rather than a parameter. No detection flag, diarization, punctuation, or context
+      // prompt either — none are in its schema.
+      //
+      // Returns `text, word_count, vtt, words, segments, usage`, verified live.
+      timestampGranularity: 'word'
+      // No `confidenceScale`: it declares no confidence or log-probability field.
+      //
+      // No `pricePerAudioMinuteUsd`, which is the entire point of this descriptor. The field is
+      // optional precisely so an unpublished rate can be left unstated rather than invented.
     }
   },
   // Both reviewed translation models are Cloudflare-hosted, so this panel carries no prepaid AI

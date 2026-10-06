@@ -69,6 +69,26 @@ const SMALL: CatalogueModel = {
 };
 
 /**
+ * A model publishing no rate at all, matching Whisper Tiny EN.
+ *
+ * The catalogue carries no pricing property for that model and its documentation page has no Unit
+ * Pricing row, so the panel has to describe the absence rather than format it.
+ */
+const UNPRICED: CatalogueModel = {
+  id: '@cf/test/unpriced',
+  name: 'Test Unpriced',
+  provider: 'workers-ai',
+  task: 'transcribe-audio',
+  pricingUnit: 'audio-second',
+  documentationUrl: 'https://example.invalid/unpriced',
+  transcriptionControls: {
+    audioEncoding: 'byte-array',
+    maxAudioBytes: 1_024 * 1_024,
+    timestampGranularity: 'word'
+  }
+};
+
+/**
  * Mounts the view with a stubbed catalogue.
  *
  * @param models Models the catalogue should report.
@@ -213,6 +233,17 @@ describe('the cost disclosure', () => {
   // absent.
   it('explains that the cost depends on a length it can rarely measure in advance', async () => {
     expect((await render()).text()).toMatch(/only measure for WAV files before sending/iu);
+  });
+
+  // The regression this guards is a formatting one with a factual consequence. An absent rate run
+  // through `toFixed(4)` throws, and "fixing" that with `?? 0` would render `$0.0000` — which a
+  // visitor reads as "this model is free". The panel must say no rate is published instead.
+  it('states that an unpriced model publishes no rate rather than showing a zero', async () => {
+    const wrapper = await render([TURBO, UNPRICED]);
+    await wrapper.find('#transcribe-model').setValue(UNPRICED.id);
+
+    expect(wrapper.text()).toMatch(/publishes no per-minute rate/iu);
+    expect(wrapper.text()).not.toMatch(/\$0\.0000/u);
   });
 });
 

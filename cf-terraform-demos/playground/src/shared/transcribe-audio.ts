@@ -242,16 +242,23 @@ export interface TranscriptionControlSupport {
    */
   confidenceScale?: ConfidenceScale;
   /**
-   * Price in US dollars per minute of submitted audio.
+   * Price in US dollars per minute of submitted audio, or `undefined` when the model publishes no
+   * rate at all.
    *
    * Present so the panel can estimate before the request _when the duration is knowable_, which it
    * is only for a container declaring it. The reviewed models differ by a factor of ten here, which
    * is the single most useful thing a visitor can learn from this panel's model selector.
    *
+   * **Optional because one reviewed model genuinely has no published price.** Whisper Tiny EN is in
+   * the catalogue with no pricing property and no rate on its documentation page. The honest
+   * response is to say so, exactly as Read Text already does for a model billed in a unit it cannot
+   * estimate — not to invent a plausible figure, and not to print `$0.0000`, which would be a
+   * specific and false claim rather than an absence.
+   *
    * The figure shown after a run always comes from the AI Gateway log; this is only ever labelled
    * as an estimate.
    */
-  pricePerAudioMinuteUsd: number;
+  pricePerAudioMinuteUsd?: number;
 }
 
 /**

@@ -117,9 +117,14 @@ const limitSentence = computed(() => {
 /**
  * A sentence stating what this model charges and why the cost cannot be quoted in advance.
  *
- * Every reviewed model bills per audio minute, and a compressed file's duration is not readable in
+ * Most reviewed models bill per audio minute, and a compressed file's duration is not readable in
  * the browser — so unlike Read Text, this panel usually cannot estimate before the run. Saying so
  * is better than leaving a visitor to wonder why the figure is missing.
+ *
+ * One model publishes no rate at all, and that case is stated rather than papered over. Formatting
+ * an absent price would print `$0.0000`, which reads as "this model is free" — a specific claim,
+ * and a false one. "No published rate" is the honest sentence and is itself worth seeing, because
+ * an unpriced model in a live catalogue is a real thing to encounter.
  *
  * @returns The sentence, or an empty string before a model has been selected.
  */
@@ -128,6 +133,14 @@ const costSentence = computed(() => {
   const name = selectedModel.value?.name;
   if (support === undefined || name === undefined) {
     return '';
+  }
+
+  if (support.pricePerAudioMinuteUsd === undefined) {
+    return (
+      `${name} publishes no per-minute rate in the Cloudflare catalogue, so this panel cannot `
+      + 'estimate its cost even for a file whose duration it can read. The run details will show '
+      + 'what AI Gateway reported.'
+    );
   }
 
   return (
