@@ -72,6 +72,32 @@ async function createTask(email: string, title: string): Promise<{ id: string; t
 }
 
 /**
+ * Waits long enough for two consecutively created tasks to receive distinct `created_at` values.
+ *
+ * `created_at` is an ISO-8601 string, so its resolution is one millisecond, and the list query
+ * breaks a tie on `id` — which is a random UUID. Two tasks created inside the same millisecond
+ * therefore come back in an arbitrary order, and the ordering assertion below fails roughly half
+ * the time that happens. Measured in this runtime, an ordinary `await` boundary leaves the two
+ * creates inside the same millisecond about 3% of the time, which made the failure look like
+ * unexplained flakiness rather than a timing collision.
+ *
+ * Twenty milliseconds rather than the one millisecond strictly required: the margin costs nothing
+ * in a suite that already performs HTTP round trips, and a one-millisecond sleep would sit exactly
+ * on the boundary it is meant to clear.
+ *
+ * This is a deliberate test-only accommodation of a product behaviour, not a fix for it. A user who
+ * creates two tasks within the same millisecond still sees them in an arbitrary order; making that
+ * impossible needs a monotonic tiebreaker in the schema, which both chat demos already have by
+ * ordering on an integer key.
+ *
+ * @returns A promise that settles once the clock has certainly advanced past the current
+ *   millisecond.
+ */
+async function waitForDistinctTimestamp(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+
+/**
  * List one identity's tasks.
  *
  * @param email Identity whose tasks are listed.
@@ -189,6 +215,9 @@ describe('Tasks API application', () => {
 
     it('lists newest first', async () => {
       await createTask(ALICE, 'First');
+      // Without this the two tasks can share a `created_at` millisecond, and the tie is broken on
+      // a random UUID. See waitForDistinctTimestamp().
+      await waitForDistinctTimestamp();
       await createTask(ALICE, 'Second');
 
       expect((await listTasks(ALICE)).map((task) => task.title)).toEqual(['Second', 'First']);
