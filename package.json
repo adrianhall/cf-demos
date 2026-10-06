@@ -4,8 +4,10 @@
   "description": "A set of demos for the Cloudflare Workers platform.",
   "main": "index.js",
   "scripts": {
+    "check": "pnpm --recursive --workspace-concurrency=1 check",
     "create-env": "node scripts/create-env.ts",
-    "d1-migrate": "node scripts/d1-migrate.ts"
+    "d1-migrate": "node scripts/d1-migrate.ts",
+    "test": "pnpm --recursive --workspace-concurrency=1 test"
   },
   "keywords": [
     "cloudflare",
