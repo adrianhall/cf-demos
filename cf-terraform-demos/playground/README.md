@@ -150,14 +150,33 @@ answer that legitimately costs nothing new, labelled as such rather than as an u
 
 ## Create Image
 
-The panel that shows why a model's _contract_ matters more than its name. Its two reviewed models
+The panel that shows why a model's _contract_ matters more than its name. Its six reviewed models
 disagree about almost everything, and the panel handles that honestly rather than hiding it behind a
 single lowest-common-denominator form.
 
-|          | FLUX.1 \[schnell]         | Stable Diffusion XL                                                        |
-| -------- | ------------------------- | -------------------------------------------------------------------------- |
-| Controls | prompt, steps (max **8**) | prompt, negative prompt, width, height, steps (max **20**), guidance, seed |
-| Returns  | `{ image: "<base64>" }`   | a raw PNG byte stream                                                      |
+|                         | Controls                                                                   | Returns                 |
+| ----------------------- | -------------------------------------------------------------------------- | ----------------------- |
+| **FLUX.1 \[schnell]**   | prompt, steps (max **8**)                                                  | `{ image: "<base64>" }` |
+| **Stable Diffusion XL** | prompt, negative prompt, width, height, steps (max **20**), guidance, seed | a raw PNG byte stream   |
+| **SDXL Lightning**      | identical to Stable Diffusion XL                                           | a raw **JPEG** stream   |
+| **DreamShaper 8 LCM**   | identical to Stable Diffusion XL                                           | a raw PNG byte stream   |
+| **Phoenix 1.0**         | as above, but steps to **50** and guidance starting at **2**               | a raw JPEG stream       |
+| **Lucid Origin**        | as above, **no negative prompt**, up to **2,500px**, default 1,120         | `{ image: "<base64>" }` |
+
+Three of these are worth selecting deliberately:
+
+- **SDXL Lightning against Stable Diffusion XL** is the panel's one controlled comparison. The
+  request is byte-for-byte identical, so the only variable is the model — which is what makes the
+  latency difference attributable to it. It also returns JPEG where its twin returns PNG, and
+  nothing in the demo was changed to cope: the media type is sniffed from the returned bytes.
+- **Phoenix 1.0** is the only model whose guidance range does not start at zero. A value every other
+  model accepts is invalid here, which is precisely why ranges are declared per model.
+- **Lucid Origin** publishes a 2,500-pixel ceiling and a 1,120-pixel default — neither a power of
+  two. Both look like typos and both are what its schema says.
+
+**DreamShaper 8 LCM publishes no price at all**, and it is registered anyway. Create Image never
+estimates before a run; it reports what AI Gateway logged afterwards. An unpriced model is therefore
+honest here in a way it would not be on Transcribe Audio, whose whole selector is a cost comparison.
 
 That has two consequences the panel makes visible:
 

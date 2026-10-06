@@ -188,6 +188,55 @@ describe('text-to-image descriptors', () => {
     });
   });
 
+  // The three bounds below are the ones a careless copy-paste would get wrong, because every other
+  // model in the panel disagrees with them. The generic range check above proves each is
+  // *coherent*; these prove each is the *right* value, transcribed from that model's own schema.
+  describe('the per-model bounds that diverge from the rest of the panel', () => {
+    /**
+     * Looks a reviewed image model up by identifier.
+     *
+     * @param id Model identifier as registered.
+     * @returns The descriptor, or `undefined` when it is not registered.
+     */
+    const byId = (id: string) => imageModels.find((model) => model.id === id);
+
+    // Phoenix rejects a guidance below 2. Every other model in the panel accepts 0, so a shared
+    // floor would produce a form that builds a request its own provider refuses.
+    it('starts Phoenix 1.0 guidance at 2 rather than 0', () => {
+      expect(byId('@cf/leonardo/phoenix-1.0')?.imageControls?.guidance?.min).toBe(2);
+    });
+
+    // 2,500 is not a power of two and neither is the 1,120 default, which is exactly why they are
+    // worth pinning: both look like typos and both are what the schema publishes.
+    it('allows Lucid Origin up to 2,500 pixels with a 1,120 default', () => {
+      const dimensions = byId('@cf/leonardo/lucid-origin')?.imageControls?.dimensions;
+      expect(dimensions?.max).toBe(2_500);
+      expect(dimensions?.default).toBe(1_120);
+    });
+
+    // The widest step ceiling in the panel: 50 against 20 for the SDXL family and 8 for FLUX.
+    it('allows Phoenix 1.0 fifty diffusion steps', () => {
+      expect(byId('@cf/leonardo/phoenix-1.0')?.imageControls?.steps?.max).toBe(50);
+    });
+
+    // Lucid Origin is the only Leonardo model without a negative prompt, despite the two being
+    // close relatives with otherwise near-identical schemas. Declaring one it does not have would
+    // send the provider a field it never agreed to accept.
+    it('declares no negative prompt for Lucid Origin', () => {
+      expect(byId('@cf/leonardo/lucid-origin')?.imageControls?.negativePrompt).toBe(false);
+    });
+
+    // Registered as Cloudflare-hosted despite being catalogue `partner` models, because they need
+    // no AI credits. Misclassifying them would put a "requires credits" badge on a panel that
+    // requires none, which is the only thing the provider class is used to communicate.
+    it.each(['@cf/leonardo/phoenix-1.0', '@cf/leonardo/lucid-origin'])(
+      'treats %s as Cloudflare-hosted because it needs no AI credits',
+      (id) => {
+        expect(byId(id)?.provider).toBe('workers-ai');
+      }
+    );
+  });
+
   // Image controls belong to image models. A text model carrying them would mean the reviewed list
   // had been edited by copy-paste, and the Chat panel would start publishing controls it never uses.
   it('declares image controls only for text-to-image models', () => {

@@ -622,6 +622,130 @@ export const MODEL_DESCRIPTORS: readonly ModelDescriptor[] = [
     },
     stepsParameterName: 'num_steps'
   },
+  // SDXL Lightning shares Stable Diffusion XL's schema exactly — same controls, same ranges, same
+  // wire names — and that identity is the reason it is worth having rather than an argument
+  // against it. Holding the request constant isolates the variable: it is a distilled model built
+  // to produce a comparable image in a fraction of the steps, so switching between the two shows
+  // what the *model* contributes to latency with nothing else changing.
+  //
+  // It also quietly makes a second point. It returns JPEG where Stable Diffusion XL returns PNG,
+  // and nothing in this demo was changed to accommodate that: the media type is sniffed from the
+  // returned bytes rather than assumed from the model, so a format change is absorbed silently.
+  {
+    id: '@cf/bytedance/stable-diffusion-xl-lightning',
+    name: 'SDXL Lightning',
+    provider: 'workers-ai',
+    task: 'create-image',
+    contractVersion: 1,
+    pricingUnit: 'image',
+    invocation: 'synchronous',
+    documentationUrl:
+      'https://developers.cloudflare.com/workers-ai/models/stable-diffusion-xl-lightning/',
+    imageControls: {
+      negativePrompt: true,
+      seed: true,
+      // Transcribed from the published schema: both dimensions are bounded 256–2048, and
+      // `num_steps` declares a maximum of 20 with a default of 20 but no explicit minimum, so 1 is
+      // used as the floor exactly as for Stable Diffusion XL.
+      dimensions: { min: 256, max: 2_048, step: 64, default: 1_024 },
+      steps: { min: 1, max: 20, step: 1, default: 20 },
+      // `guidance` declares a 7.5 default and no bounds at all. The same 0–20 range as Stable
+      // Diffusion XL is applied as a reviewed restriction rather than a transcribed one — an
+      // unbounded numeric control in a UI is a way to send a provider something absurd.
+      guidance: { min: 0, max: 20, step: 0.5, default: 7.5 }
+    },
+    stepsParameterName: 'num_steps'
+  },
+  // Same schema family again, and registered for what it costs rather than what it accepts. This
+  // is the only reviewed image model with no published price at all — the catalogue carries no
+  // pricing property for it — which is a genuine state of the catalogue worth seeing rather than
+  // hiding. The panel never estimates image cost before a run and reports the AI Gateway figure
+  // afterwards, so an unpriced model is honest here in a way it would not be on Transcribe Audio,
+  // whose entire selector is a cost comparison.
+  {
+    id: '@cf/lykon/dreamshaper-8-lcm',
+    name: 'DreamShaper 8 LCM',
+    provider: 'workers-ai',
+    task: 'create-image',
+    contractVersion: 1,
+    pricingUnit: 'image',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/dreamshaper-8-lcm/',
+    imageControls: {
+      negativePrompt: true,
+      seed: true,
+      dimensions: { min: 256, max: 2_048, step: 64, default: 1_024 },
+      steps: { min: 1, max: 20, step: 1, default: 20 },
+      guidance: { min: 0, max: 20, step: 0.5, default: 7.5 }
+    },
+    stepsParameterName: 'num_steps'
+  },
+  // The Leonardo pair are `partner` models in the catalogue, and they are nonetheless registered
+  // as `workers-ai` deliberately. `ProviderClass` exists to tell a visitor which account
+  // prerequisites apply, and these need none: they carry `@cf/` identifiers, run on the same
+  // Workers AI binding as every other model here, and bill as Workers AI rather than drawing on
+  // the Unified Billing credits a genuine third-party model requires. Classifying them as
+  // `third-party` would put a "needs AI credits" badge on a panel that needs no credits, which is
+  // the one thing that distinction exists to communicate.
+  //
+  // Phoenix 1.0 is the first reviewed image model whose guidance range does not start at zero.
+  {
+    id: '@cf/leonardo/phoenix-1.0',
+    name: 'Phoenix 1.0',
+    provider: 'workers-ai',
+    task: 'create-image',
+    contractVersion: 1,
+    pricingUnit: 'image',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/phoenix-1.0/',
+    imageControls: {
+      negativePrompt: true,
+      seed: true,
+      // Transcribed from the published schema, which bounds both dimensions 0–2048 with a 1024
+      // default. The floor is raised to 256 as a reviewed restriction: a zero-pixel image is a
+      // legal request and a useless one, and the panel's other models already agree on 256.
+      dimensions: { min: 256, max: 2_048, step: 64, default: 1_024 },
+      // 50 steps, the highest ceiling in the panel — against 20 for the SDXL family and 8 for
+      // FLUX. Default 25, both from the schema.
+      steps: { min: 1, max: 50, step: 1, default: 25 },
+      // Minimum 2, not 0. The schema says so explicitly, and it is the reason the guidance range
+      // is declared per model rather than shared: a value this panel happily sends to every other
+      // model is invalid here.
+      guidance: { min: 2, max: 10, step: 0.5, default: 2 }
+    },
+    stepsParameterName: 'num_steps'
+  },
+  // Lucid Origin is the only reviewed image model that answers with a JSON envelope —
+  // `{ image: <base64> }` — rather than a byte stream. `extractBytes()` in
+  // ../../application/create-image/create-image-service.ts already normalised both shapes for the
+  // two original models, so this one needed no code at all: the existing seam absorbed it.
+  {
+    id: '@cf/leonardo/lucid-origin',
+    name: 'Lucid Origin',
+    provider: 'workers-ai',
+    task: 'create-image',
+    contractVersion: 1,
+    pricingUnit: 'image',
+    invocation: 'synchronous',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/models/lucid-origin/',
+    imageControls: {
+      // No `negative_prompt` anywhere in its schema — the only model in the Leonardo pair without
+      // one, despite the two being otherwise close relatives. Declared false so the control is
+      // never rendered and never forwarded.
+      negativePrompt: false,
+      seed: true,
+      // 2,500 pixels, the widest ceiling in the panel, with a 1,120 default that is not a power of
+      // two. Both are transcribed from the schema; the floor is raised from 0 to 256 for the same
+      // reason as Phoenix.
+      dimensions: { min: 256, max: 2_500, step: 64, default: 1_120 },
+      steps: { min: 1, max: 40, step: 1, default: 25 },
+      guidance: { min: 0, max: 10, step: 0.5, default: 4.5 }
+    },
+    // Its schema declares *both* `num_steps` and `steps` with identical descriptions and ranges.
+    // `num_steps` is sent because it is the name every other model in this panel's family uses,
+    // and sending one rather than both avoids relying on the provider to reconcile a duplicate.
+    stepsParameterName: 'num_steps'
+  },
   // Default first: FLUX.2 Klein 4B is the fastest and least expensive Cloudflare-hosted member of
   // this editing family. All three share the multipart stream contract and 512px reference limit.
   {
