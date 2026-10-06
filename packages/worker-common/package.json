@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@adrianhall/cloudflare-toolkit": "^2.7.0",
-    "@cloudflare/workers-types": "^5.20260930.1",
+    "@cloudflare/workers-types": "5.20261005.1",
     "@types/node": "26.6.4",
     "@vitest/coverage-istanbul": "^4.1.11",
     "hono": "4.13.13",
