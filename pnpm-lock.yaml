@@ -196,7 +196,7 @@ importers:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -211,14 +211,14 @@ importers:
         version: 3.5.43(typescript@7.0.2)
       vue-router:
         specifier: ^5.3.1
-        version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
+        version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vuetify:
         specifier: ^4.2.2
         version: 4.2.2(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
-        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
+        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
       '@cloudflare/vitest-plugin':
         specifier: 1.3.3
         version: 1.3.3(@cloudflare/workers-types@5.20260930.1)(@types/node@26.6.4)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11)
@@ -233,7 +233,7 @@ importers:
         version: 26.6.4
       '@vitejs/plugin-vue':
         specifier: ^6.0.9
-        version: 6.0.9(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))
+        version: 6.0.9(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))
       '@vitest/coverage-istanbul':
         specifier: ^4.1.11
         version: 4.1.11(supports-color@10.2.2)(vitest@4.1.11)
@@ -265,17 +265,17 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       vite:
-        specifier: ^8.2.2
-        version: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+        specifier: 8.3.2
+        version: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
 
   cf-terraform-demos/link:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -290,14 +290,14 @@ importers:
         version: 3.5.43(typescript@7.0.2)
       vue-router:
         specifier: ^5.3.1
-        version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
+        version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vuetify:
         specifier: ^4.2.2
         version: 4.2.2(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
-        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260908.1)
+        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260908.1)
       '@cloudflare/vitest-plugin':
         specifier: 1.3.3
         version: 1.3.3(@cloudflare/workers-types@5.20260930.1)(@types/node@26.6.4)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11)
@@ -312,7 +312,7 @@ importers:
         version: 26.6.4
       '@vitejs/plugin-vue':
         specifier: ^6.0.9
-        version: 6.0.9(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))
+        version: 6.0.9(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))
       '@vitest/coverage-istanbul':
         specifier: ^4.1.11
         version: 4.1.11(supports-color@10.2.2)(vitest@4.1.11)
@@ -341,17 +341,17 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       vite:
-        specifier: ^8.2.2
-        version: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+        specifier: 8.3.2
+        version: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
 
   cf-terraform-demos/playground:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -375,14 +375,14 @@ importers:
         version: 3.5.43(typescript@7.0.2)
       vue-router:
         specifier: ^5.3.1
-        version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
+        version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vuetify:
         specifier: ^4.2.2
         version: 4.2.2(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
-        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
+        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
       '@cloudflare/vitest-plugin':
         specifier: 1.3.3
         version: 1.3.3(@cloudflare/workers-types@5.20260930.1)(@types/node@26.6.4)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11)
@@ -397,7 +397,7 @@ importers:
         version: 26.6.4
       '@vitejs/plugin-vue':
         specifier: ^6.0.9
-        version: 6.0.9(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))
+        version: 6.0.9(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))
       '@vitest/coverage-istanbul':
         specifier: ^4.1.11
         version: 4.1.11(supports-color@10.2.2)(vitest@4.1.11)
@@ -429,17 +429,17 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       vite:
-        specifier: ^8.2.2
-        version: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+        specifier: 8.3.2
+        version: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
 
   cf-terraform-demos/swapi:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -472,14 +472,14 @@ importers:
         version: 3.5.43(typescript@7.0.2)
       vue-router:
         specifier: ^5.3.1
-        version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
+        version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vuetify:
         specifier: ^4.2.2
         version: 4.2.2(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
-        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
+        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
       '@cloudflare/vitest-plugin':
         specifier: 1.3.3
         version: 1.3.3(@cloudflare/workers-types@5.20260930.1)(@types/node@26.6.4)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11)
@@ -494,7 +494,7 @@ importers:
         version: 26.6.4
       '@vitejs/plugin-vue':
         specifier: ^6.0.9
-        version: 6.0.9(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))
+        version: 6.0.9(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))
       '@vitest/coverage-istanbul':
         specifier: ^4.1.11
         version: 4.1.11(supports-color@10.2.2)(vitest@4.1.11)
@@ -526,17 +526,17 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       vite:
-        specifier: ^8.2.2
-        version: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+        specifier: 8.3.2
+        version: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
 
   cf-terraform-demos/todo:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -551,14 +551,14 @@ importers:
         version: 3.5.43(typescript@7.0.2)
       vue-router:
         specifier: ^5.3.1
-        version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
+        version: 5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vuetify:
         specifier: ^4.2.2
         version: 4.2.2(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
-        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
+        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
       '@cloudflare/vitest-plugin':
         specifier: 1.3.3
         version: 1.3.3(@cloudflare/workers-types@5.20260930.1)(@types/node@26.6.4)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11)
@@ -573,7 +573,7 @@ importers:
         version: 26.6.4
       '@vitejs/plugin-vue':
         specifier: ^6.0.9
-        version: 6.0.9(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))
+        version: 6.0.9(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))
       '@vitest/coverage-istanbul':
         specifier: ^4.1.11
         version: 4.1.11(supports-color@10.2.2)(vitest@4.1.11)
@@ -605,17 +605,17 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       vite:
-        specifier: ^8.2.2
-        version: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+        specifier: 8.3.2
+        version: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
 
   packages/worker-common:
     devDependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@cloudflare/workers-types':
         specifier: ^5.20260930.1
         version: 5.20260930.1
@@ -645,13 +645,13 @@ importers:
         version: 7.0.2
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.1)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.1)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
 
   vinext-demos/chat:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -669,11 +669,11 @@ importers:
         version: 19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vinext:
         specifier: 1.0.1
-        version: 1.0.1(@types/node@26.6.4)(@vitejs/plugin-react@6.1.1(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(@vitejs/plugin-rsc@0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 1.0.1(@types/node@26.6.4)(@vitejs/plugin-react@6.1.1(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(@vitejs/plugin-rsc@0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
-        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
+        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
       '@cloudflare/vitest-plugin':
         specifier: 1.3.3
         version: 1.3.3(@cloudflare/workers-types@5.20260930.1)(@types/node@26.6.4)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11)
@@ -700,7 +700,7 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-rsc':
         specifier: 0.5.35
-        version: 0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@vitest/coverage-istanbul':
         specifier: ^4.1.11
         version: 4.1.11(supports-color@10.2.2)(vitest@4.1.11)
@@ -729,17 +729,17 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       vite:
-        specifier: ^8.2.2
-        version: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+        specifier: 8.3.2
+        version: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
 
   vinext-demos/link:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -757,11 +757,11 @@ importers:
         version: 19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vinext:
         specifier: 1.0.1
-        version: 1.0.1(@types/node@26.6.4)(@vitejs/plugin-react@6.1.1(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(@vitejs/plugin-rsc@0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 1.0.1(@types/node@26.6.4)(@vitejs/plugin-react@6.1.1(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(@vitejs/plugin-rsc@0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
-        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
+        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
       '@cloudflare/vitest-plugin':
         specifier: 1.3.3
         version: 1.3.3(@cloudflare/workers-types@5.20260930.1)(@types/node@26.6.4)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11)
@@ -788,7 +788,7 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-rsc':
         specifier: 0.5.35
-        version: 0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@vitest/coverage-istanbul':
         specifier: ^4.1.11
         version: 4.1.11(supports-color@10.2.2)(vitest@4.1.11)
@@ -814,17 +814,17 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       vite:
-        specifier: ^8.2.2
-        version: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+        specifier: 8.3.2
+        version: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
 
   vinext-demos/swapi:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -860,11 +860,11 @@ importers:
         version: 19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vinext:
         specifier: 1.0.1
-        version: 1.0.1(@types/node@26.6.4)(@vitejs/plugin-react@6.1.1(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(@vitejs/plugin-rsc@0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 1.0.1(@types/node@26.6.4)(@vitejs/plugin-react@6.1.1(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(@vitejs/plugin-rsc@0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
-        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
+        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
       '@cloudflare/vitest-plugin':
         specifier: 1.3.3
         version: 1.3.3(@cloudflare/workers-types@5.20260930.1)(@types/node@26.6.4)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11)
@@ -891,7 +891,7 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-rsc':
         specifier: 0.5.35
-        version: 0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@vitest/coverage-istanbul':
         specifier: ^4.1.11
         version: 4.1.11(supports-color@10.2.2)(vitest@4.1.11)
@@ -920,17 +920,17 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       vite:
-        specifier: ^8.2.2
-        version: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+        specifier: 8.3.2
+        version: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
 
   vinext-demos/todo:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -948,11 +948,11 @@ importers:
         version: 19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       vinext:
         specifier: 1.0.1
-        version: 1.0.1(@types/node@26.6.4)(@vitejs/plugin-react@6.1.1(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(@vitejs/plugin-rsc@0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 1.0.1(@types/node@26.6.4)(@vitejs/plugin-react@6.1.1(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(@vitejs/plugin-rsc@0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.sha-ad79608dd
-        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
+        version: 2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)
       '@cloudflare/vitest-plugin':
         specifier: 1.3.3
         version: 1.3.3(@cloudflare/workers-types@5.20260930.1)(@types/node@26.6.4)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11)
@@ -979,7 +979,7 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-rsc':
         specifier: 0.5.35
-        version: 0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@vitest/coverage-istanbul':
         specifier: ^4.1.11
         version: 4.1.11(supports-color@10.2.2)(vitest@4.1.11)
@@ -1008,11 +1008,11 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       vite:
-        specifier: ^8.2.2
-        version: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+        specifier: 8.3.2
+        version: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
 
 packages:
 
@@ -3988,8 +3988,8 @@ packages:
   vite-plugin-dynamic-import@1.6.0:
     resolution: {integrity: sha512-TM0sz70wfzTIo9YCxVFwS8OA9lNREsh+0vMHGSkWDTZ7bgd1Yjs5RV8EgB634l/91IsXJReg0xtmuQqP0mf+rg==}
 
-  vite@8.3.1:
-    resolution: {integrity: sha512-/bvH9E9tmCXRGp2uXY3WbOldqpTwFkbha/8ANaEQ6VkxhH60KyqLwgZq6lG2y+4uT55x9+9eUHMpQ7uGnOCKjA==}
+  vite@8.3.2:
+    resolution: {integrity: sha512-SQr1x6W5vVSbROg7vsyXIaxK9b0G7zsT68acdWWRmnBUsgDieLCRG+Rep9WdZgcposvv/GSnr4GUUBqB3vXq6w==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
     peerDependencies:
@@ -4255,7 +4255,7 @@ snapshots:
 
   '@adobe/css-tools@4.5.0': {}
 
-  '@adrianhall/cloudflare-toolkit@2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))':
+  '@adrianhall/cloudflare-toolkit@2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))':
     dependencies:
       chalk: 5.6.2
       commander: 15.0.0
@@ -4265,7 +4265,7 @@ snapshots:
       jose: 6.2.12
     optionalDependencies:
       cf: 1.0.0-beta.12(@types/node@26.6.4)
-      vite: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
 
   '@asamuzakjp/css-color@7.1.3':
     dependencies:
@@ -4441,7 +4441,7 @@ snapshots:
     optionalDependencies:
       workerd: 1.20260926.1
 
-  '@cloudflare/vite-plugin@2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260908.1)':
+  '@cloudflare/vite-plugin@2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260908.1)':
     dependencies:
       '@cloudflare/build-output-utils': 0.8.2
       '@cloudflare/config': 0.20.0
@@ -4449,7 +4449,7 @@ snapshots:
       '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20260908.1)
       miniflare: 5.20260926.0-alpha(@types/node@26.6.4)
       unenv: 2.0.0-rc.24
-      vite: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       ws: 8.21.0
     transitivePeerDependencies:
       - '@types/node'
@@ -4457,7 +4457,7 @@ snapshots:
       - utf-8-validate
       - workerd
 
-  '@cloudflare/vite-plugin@2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)':
+  '@cloudflare/vite-plugin@2.0.0-beta.sha-ad79608dd(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(workerd@1.20260926.1)':
     dependencies:
       '@cloudflare/build-output-utils': 0.8.2
       '@cloudflare/config': 0.20.0
@@ -4465,7 +4465,7 @@ snapshots:
       '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20260926.1)
       miniflare: 5.20260926.0-alpha(@types/node@26.6.4)
       unenv: 2.0.0-rc.24
-      vite: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       ws: 8.21.0
     transitivePeerDependencies:
       - '@types/node'
@@ -4480,7 +4480,7 @@ snapshots:
       cjs-module-lexer: 1.2.3
       esbuild: 0.28.1
       miniflare: 5.20260926.1-alpha(@types/node@26.6.4)
-      vitest: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+      vitest: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       wrangler: 4.144.0(@cloudflare/workers-types@5.20260930.1)(@types/node@26.6.4)
       zod: 4.4.3
     transitivePeerDependencies:
@@ -5383,12 +5383,12 @@ snapshots:
 
   '@vinext/types@1.0.1': {}
 
-  '@vitejs/plugin-react@6.1.1(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))':
+  '@vitejs/plugin-react@6.1.1(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
 
-  '@vitejs/plugin-rsc@0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))':
+  '@vitejs/plugin-rsc@0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       es-module-lexer: 2.3.2
@@ -5400,15 +5400,15 @@ snapshots:
       srvx: 0.12.8
       strip-literal: 4.0.0
       turbo-stream: 3.2.1
-      vite: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
-      vitefu: 1.1.3(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+      vitefu: 1.1.3(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
     optionalDependencies:
       react-server-dom-webpack: 19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
 
-  '@vitejs/plugin-vue@6.0.9(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))':
+  '@vitejs/plugin-vue@6.0.9(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       vue: 3.5.43(typescript@7.0.2)
 
   '@vitest/coverage-istanbul@4.1.11(supports-color@10.2.2)(vitest@4.1.11)':
@@ -5423,7 +5423,7 @@ snapshots:
       magicast: 0.5.5
       obug: 2.2.1
       tinyrainbow: 3.1.1
-      vitest: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+      vitest: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
     transitivePeerDependencies:
       - supports-color
 
@@ -5439,7 +5439,7 @@ snapshots:
       obug: 2.2.1
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+      vitest: 4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
     optional: true
 
   '@vitest/expect@4.1.11':
@@ -5451,13 +5451,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.1
 
-  '@vitest/mocker@4.1.11(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))':
+  '@vitest/mocker@4.1.11(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))':
     dependencies:
       '@vitest/spy': 4.1.11
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
 
   '@vitest/pretty-format@4.1.11':
     dependencies:
@@ -6816,7 +6816,7 @@ snapshots:
       pathe: 2.0.3
       picomatch: 4.0.7
 
-  unplugin@3.4.0(esbuild@0.28.1)(rolldown@1.2.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))):
+  unplugin@3.4.0(esbuild@0.28.1)(rolldown@1.2.11)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))):
     dependencies:
       '@jridgewell/remapping': 2.3.5
       picomatch: 4.0.7
@@ -6824,7 +6824,7 @@ snapshots:
     optionalDependencies:
       esbuild: 0.28.1
       rolldown: 1.2.11
-      vite: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       webpack: 5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))
 
   update-browserslist-db@1.3.3(browserslist@4.29.2):
@@ -6835,21 +6835,21 @@ snapshots:
 
   urlpattern-polyfill@10.1.0: {}
 
-  vinext@1.0.1(@types/node@26.6.4)(@vitejs/plugin-react@6.1.1(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(@vitejs/plugin-rsc@0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)):
+  vinext@1.0.1(@types/node@26.6.4)(@vitejs/plugin-react@6.1.1(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(@vitejs/plugin-rsc@0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)))(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)):
     dependencies:
       '@unpic/react': 1.0.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@vercel/og': 1.0.3(@types/node@26.6.4)
       '@vinext/types': 1.0.1
-      '@vitejs/plugin-react': 6.1.1(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+      '@vitejs/plugin-react': 6.1.1(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       ipaddr.js: 2.5.0
       magic-string: 0.30.21
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
-      vite: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       vite-plugin-commonjs: 0.10.4
       web-vitals: 4.2.4
     optionalDependencies:
-      '@vitejs/plugin-rsc': 0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+      '@vitejs/plugin-rsc': 0.5.35(react-dom@19.3.0(react@19.3.0))(react-server-dom-webpack@19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))))(react@19.3.0)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       react-server-dom-webpack: 19.3.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
     transitivePeerDependencies:
       - '@types/node'
@@ -6868,7 +6868,7 @@ snapshots:
       fast-glob: 3.3.3
       magic-string: 0.30.21
 
-  vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2):
+  vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -6881,14 +6881,14 @@ snapshots:
       fsevents: 2.3.3
       terser: 5.51.2
 
-  vitefu@1.1.3(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)):
+  vitefu@1.1.3(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)):
     optionalDependencies:
-      vite: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
 
-  vitest@4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.1)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)):
+  vitest@4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.1)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)):
     dependencies:
       '@vitest/expect': 4.1.11
-      '@vitest/mocker': 4.1.11(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+      '@vitest/mocker': 4.1.11(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@vitest/pretty-format': 4.1.11
       '@vitest/runner': 4.1.11
       '@vitest/snapshot': 4.1.11
@@ -6905,7 +6905,7 @@ snapshots:
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.1
-      vite: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 26.6.4
@@ -6915,10 +6915,10 @@ snapshots:
     transitivePeerDependencies:
       - msw
 
-  vitest@4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)):
+  vitest@4.1.11(@types/node@26.6.4)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)):
     dependencies:
       '@vitest/expect': 4.1.11
-      '@vitest/mocker': 4.1.11(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+      '@vitest/mocker': 4.1.11(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@vitest/pretty-format': 4.1.11
       '@vitest/runner': 4.1.11
       '@vitest/snapshot': 4.1.11
@@ -6935,7 +6935,7 @@ snapshots:
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.1
-      vite: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 26.6.4
@@ -6947,7 +6947,7 @@ snapshots:
 
   vue-component-type-helpers@3.3.11: {}
 
-  vue-router@5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))):
+  vue-router@5.3.1(@vue/compiler-sfc@3.5.43)(esbuild@0.28.1)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2)))(rolldown@1.2.11)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(vue@3.5.43(typescript@7.0.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4))):
     dependencies:
       '@vue-macros/common': 3.1.4(vue@3.5.43(typescript@7.0.2))
       '@vue/devtools-api': 8.2.1
@@ -6963,13 +6963,13 @@ snapshots:
       picomatch: 4.0.7
       scule: 1.3.0
       tinyglobby: 0.2.17
-      unplugin: 3.4.0(esbuild@0.28.1)(rolldown@1.2.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
+      unplugin: 3.4.0(esbuild@0.28.1)(rolldown@1.2.11)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))(webpack@5.111.1(esbuild@0.28.1)(lightningcss@1.33.0)(postcss@8.5.28)(sharp@0.35.4(@types/node@26.6.4)))
       unplugin-utils: 0.3.2
       vue: 3.5.43(typescript@7.0.2)
     optionalDependencies:
       '@vue/compiler-sfc': 3.5.43
       pinia: 4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
-      vite: 8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
+      vite: 8.3.2(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2)
     transitivePeerDependencies:
       - '@farmfe/core'
       - '@rsbuild/core'
