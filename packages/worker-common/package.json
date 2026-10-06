@@ -26,7 +26,7 @@
     "@cloudflare/workers-types": "^5.20260930.1",
     "@types/node": "26.6.4",
     "@vitest/coverage-istanbul": "^4.1.11",
-    "hono": "^4.13.11",
+    "hono": "4.13.13",
     "npm-run-all2": "^9.0.3",
     "oxfmt": "^0.71.0",
     "oxlint": "^1.86.0",
@@ -36,7 +36,7 @@
   },
   "peerDependencies": {
     "@adrianhall/cloudflare-toolkit": "^2.7.0",
-    "hono": "^4.13.11"
+    "hono": "4.13.13"
   },
   "engines": {
     "node": ">=24.0.0",

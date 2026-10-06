@@ -196,13 +196,13 @@ importers:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: 4.13.13
+        version: 4.13.13
       pinia:
         specifier: ^4.0.3
         version: 4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
@@ -275,13 +275,13 @@ importers:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: 4.13.13
+        version: 4.13.13
       pinia:
         specifier: ^4.0.3
         version: 4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
@@ -351,7 +351,7 @@ importers:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -362,8 +362,8 @@ importers:
         specifier: ^4.0.0
         version: 4.0.0
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: 4.13.13
+        version: 4.13.13
       marked:
         specifier: ^18.0.14
         version: 18.0.14
@@ -439,7 +439,7 @@ importers:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -462,8 +462,8 @@ importers:
         specifier: ^5.24.1
         version: 5.24.1(graphql@16.14.2)
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: 4.13.13
+        version: 4.13.13
       pinia:
         specifier: ^4.0.3
         version: 4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
@@ -536,13 +536,13 @@ importers:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: 4.13.13
+        version: 4.13.13
       pinia:
         specifier: ^4.0.3
         version: 4.0.3(@vue/devtools-api@8.2.1)(typescript@7.0.2)(vue@3.5.43(typescript@7.0.2))
@@ -615,7 +615,7 @@ importers:
     devDependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@cloudflare/workers-types':
         specifier: ^5.20260930.1
         version: 5.20260930.1
@@ -626,8 +626,8 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(supports-color@10.2.2)(vitest@4.1.11)
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: 4.13.13
+        version: 4.13.13
       npm-run-all2:
         specifier: ^9.0.3
         version: 9.0.3
@@ -651,13 +651,13 @@ importers:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: 4.13.13
+        version: 4.13.13
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -739,13 +739,13 @@ importers:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: 4.13.13
+        version: 4.13.13
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -824,7 +824,7 @@ importers:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
@@ -847,8 +847,8 @@ importers:
         specifier: ^5.24.1
         version: 5.24.1(graphql@16.14.2)
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: 4.13.13
+        version: 4.13.13
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -930,13 +930,13 @@ importers:
     dependencies:
       '@adrianhall/cloudflare-toolkit':
         specifier: ^2.7.0
-        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
+        version: 2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))
       '@demos/worker-common':
         specifier: workspace:*
         version: link:../../packages/worker-common
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: 4.13.13
+        version: 4.13.13
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -2372,9 +2372,6 @@ packages:
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
-  '@types/node@26.6.3':
-    resolution: {integrity: sha512-dsqMQQoeTLqu9wynDD00q573mNzso3IdQOAfHRJqLCcmCFPoGo9A1bDpUcv/9tnKpErQWv9uKeGfl37EIS02Yg==}
-
   '@types/node@26.6.4':
     resolution: {integrity: sha512-ldVPDCzj7fsaGZrLB0NuHuTvJcsNasysBAqMolr/cgxrLd1xbqxIr3XJiPnHHJUCxj5sNF1vnRj9aWnrVh5Jcg==}
 
@@ -3160,8 +3157,8 @@ packages:
     resolution: {integrity: sha512-Ox1pJVrDCyGHMG9CFg1tmrRUMRPRsAWYc/PinY0XzJU4K7y7vjNoLKIQ7BR5UJMCxNN8EM1MNDmHWA/B3aZUuw==}
     engines: {node: '>=6'}
 
-  hono@4.13.11:
-    resolution: {integrity: sha512-/SMX/RQNJn7oNmFwH6DtwDqcrzZU2otm1FD6OJe2cWF6cfy/F8hq0XVBv7xW3FTJshRQwuBnXHDq2kNsdZnshg==}
+  hono@4.13.13:
+    resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
     engines: {node: '>=16.9.0'}
 
   hookable@5.5.3:
@@ -4237,13 +4234,13 @@ snapshots:
 
   '@adobe/css-tools@4.5.0': {}
 
-  '@adrianhall/cloudflare-toolkit@2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.11)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))':
+  '@adrianhall/cloudflare-toolkit@2.7.0(cf@1.0.0-beta.12(@types/node@26.6.4))(hono@4.13.13)(vite@8.3.1(@types/node@26.6.4)(esbuild@0.28.1)(terser@5.51.2))':
     dependencies:
       chalk: 5.6.2
       commander: 15.0.0
       cross-spawn: 7.0.6
       dotenv: 17.4.2
-      hono: 4.13.11
+      hono: 4.13.13
       jose: 6.2.12
     optionalDependencies:
       cf: 1.0.0-beta.12(@types/node@26.6.4)
@@ -5269,10 +5266,6 @@ snapshots:
 
   '@types/json-schema@7.0.15': {}
 
-  '@types/node@26.6.3':
-    dependencies:
-      undici-types: 8.9.0
-
   '@types/node@26.6.4':
     dependencies:
       undici-types: 8.9.0
@@ -6031,7 +6024,7 @@ snapshots:
 
   hex-rgb@4.3.0: {}
 
-  hono@4.13.11: {}
+  hono@4.13.13: {}
 
   hookable@5.5.3: {}
 
@@ -6082,7 +6075,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 26.6.3
+      '@types/node': 26.6.4
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
