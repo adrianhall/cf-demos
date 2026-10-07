@@ -11,6 +11,17 @@ vi.mock('elkjs/lib/elk.bundled.js', () => ({
   }
 }));
 
+const { mockCreateShare, mockGetShareStatus, mockRevokeShare } = vi.hoisted(() => ({
+  mockCreateShare: vi.fn(),
+  mockGetShareStatus: vi.fn(),
+  mockRevokeShare: vi.fn()
+}));
+vi.mock('../../src/client/api/shares.ts', () => ({
+  createShare: mockCreateShare,
+  getShareStatus: mockGetShareStatus,
+  revokeShare: mockRevokeShare
+}));
+
 const { useDiagramStore } = await import('../../src/client/stores/diagramStore.ts');
 const { Toolbar } = await import('../../src/client/components/editor/toolbar/Toolbar.tsx');
 
@@ -41,6 +52,9 @@ beforeEach(() => {
   mockXyflow.mockZoomIn.mockClear();
   mockXyflow.mockZoomOut.mockClear();
   mockElkLayout.mockReset().mockResolvedValue({ children: [] });
+  mockGetShareStatus.mockReset().mockResolvedValue({ active: false, createdAt: null });
+  mockCreateShare.mockReset();
+  mockRevokeShare.mockReset();
 });
 
 /**
@@ -313,17 +327,55 @@ describe('auto layout', () => {
   });
 });
 
+describe('sharing', () => {
+  it('opens the share controls', async () => {
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Share diagram' }));
+
+    expect(await screen.findByRole('dialog', { name: 'Share Diagram' })).toBeInTheDocument();
+    expect(mockGetShareStatus).toHaveBeenCalledWith('d1');
+  });
+
+  it('closes them again', async () => {
+    render(<Toolbar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Share diagram' }));
+    await screen.findByRole('dialog');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  // Nothing to share before a diagram has loaded, and the modal's first act would be to ask the
+  // server about a diagram that does not exist yet.
+  it('is unavailable until a diagram is loaded', () => {
+    useDiagramStore.setState({ diagramId: null });
+    render(<Toolbar />);
+
+    expect(screen.getByRole('button', { name: 'Share diagram' })).toBeDisabled();
+    expect(mockGetShareStatus).not.toHaveBeenCalled();
+  });
+});
+
 describe('the read-only posture', () => {
   // Omitted rather than disabled: a row of permanently dead buttons is a worse answer than their
-  // absence, and each would still be a tab stop leading nowhere.
-  it.each(['Toggle service palette', 'Connect nodes', 'Undo', 'Redo', 'Zoom in', 'Auto layout'])(
-    'omits %s entirely',
-    (name) => {
-      render(<Toolbar readOnly />);
+  // absence, and each would still be a tab stop leading nowhere. Sharing is on this list for a
+  // second reason: an anonymous viewer arrived through somebody else's link, and the server would
+  // refuse a request to mint one of their own.
+  it.each([
+    'Toggle service palette',
+    'Connect nodes',
+    'Undo',
+    'Redo',
+    'Zoom in',
+    'Auto layout',
+    'Share diagram'
+  ])('omits %s entirely', (name) => {
+    render(<Toolbar readOnly />);
 
-      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
-    }
-  );
+    expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+  });
 
   // A visitor reading a diagram they cannot edit has the same reason to want dark mode as its
   // owner.

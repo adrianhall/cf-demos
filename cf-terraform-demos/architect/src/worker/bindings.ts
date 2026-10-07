@@ -1,5 +1,6 @@
 import type { CloudflareToolkitVariables } from '@adrianhall/cloudflare-toolkit/hono';
 import type { DiagramService } from './application/diagram-service.ts';
+import type { ShareService } from './application/share-service.ts';
 import type { UserService } from './application/user-service.ts';
 
 /**
@@ -21,6 +22,15 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * passing through the rule.
    */
   DIAGRAM_SERVICE: DiagramService;
+  /**
+   * Sharing use cases, backed by the D1/KV adapter the composition root injected.
+   *
+   * Read by both postures the sharing feature has: the owner-only routes under `/api/diagrams`, and
+   * the anonymous resolver under `/api/shares`. One service serves both because the rule that
+   * separates them — an actor is required for management and deliberately absent for resolution —
+   * is a business decision rather than a routing one.
+   */
+  SHARE_SERVICE: ShareService;
   /**
    * User-directory use cases, backed by the D1 adapter the composition root injected.
    */

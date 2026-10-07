@@ -558,3 +558,129 @@ describe('the panels', () => {
     expect(screen.queryByTestId('rf-minimap')).not.toBeInTheDocument();
   });
 });
+
+describe('the read-only posture', () => {
+  /**
+   * A diagram as the anonymous share resolver returns it: no owner, and no timestamps.
+   */
+  const SHARED = {
+    description: 'Public notes',
+    graphData: EMPTY_GRAPH,
+    id: 'shared-1',
+    title: 'Shared Diagram'
+  };
+
+  /**
+   * Renders the canvas in the share viewer's posture and waits for it to settle.
+   *
+   * @returns The render result.
+   */
+  async function renderShared() {
+    const view = render(<DiagramCanvas diagramId={SHARED.id} readOnly initialDiagram={SHARED} />);
+    await waitFor(() => expect(screen.getByTestId('react-flow')).toBeInTheDocument());
+    return view;
+  }
+
+  // The posture exists for a visitor with no Access identity, so the owner-authenticated read
+  // would answer `401` for exactly the page they are entitled to see.
+  it('renders the diagram it was handed without calling the owner API', async () => {
+    await renderShared();
+
+    expect(mockGetDiagram).not.toHaveBeenCalled();
+    expect(useDiagramStore.getState().title).toBe('Shared Diagram');
+  });
+
+  it('treats an absent description as empty rather than rendering null', async () => {
+    render(
+      <DiagramCanvas
+        diagramId={SHARED.id}
+        readOnly
+        initialDiagram={{ ...SHARED, description: null }}
+      />
+    );
+    await waitFor(() => expect(screen.getByTestId('react-flow')).toBeInTheDocument());
+
+    expect(useDiagramStore.getState().description).toBe('');
+  });
+
+  // A read-only canvas has nothing to save, and a save it attempted would be refused: the
+  // visitor holds a share token, not an identity the diagram API would accept.
+  it('never autosaves, however dirty the store is made', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    render(<DiagramCanvas diagramId={SHARED.id} readOnly initialDiagram={SHARED} />);
+    await vi.waitFor(() => expect(useDiagramStore.getState().diagramId).toBe(SHARED.id));
+
+    act(() => useDiagramStore.setState({ dirty: true }));
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(mockSaveDiagramGraph).not.toHaveBeenCalled();
+    expect(mockUpdateDiagram).not.toHaveBeenCalled();
+  });
+
+  it('never asks before the tab closes', async () => {
+    await renderShared();
+    act(() => useDiagramStore.setState({ dirty: true }));
+
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  // Not merely inert: left unguarded, the canvas would swallow a Backspace the browser would
+  // otherwise treat as "go back".
+  it('ignores the editing shortcuts', async () => {
+    await renderShared();
+    act(() =>
+      useDiagramStore.setState({
+        nodes: [
+          {
+            data: { label: 'W', typeId: 'worker' },
+            id: 'n1',
+            position: { x: 0, y: 0 },
+            selected: true,
+            type: 'cf-node'
+          }
+        ],
+        selectedNodeId: 'n1'
+      })
+    );
+
+    fireEvent.keyDown(screen.getByRole('application'), { key: 'Delete' });
+
+    expect(useDiagramStore.getState().nodes).toHaveLength(1);
+  });
+
+  it('withholds the editing handlers from the canvas itself', async () => {
+    await renderShared();
+
+    const canvas = screen.getByTestId('react-flow');
+
+    expect(canvas).toHaveAttribute('data-nodes-draggable', 'false');
+    expect(canvas).toHaveAttribute('data-nodes-connectable', 'false');
+  });
+
+  it('withholds the palette and the details panel', async () => {
+    act(() => useDiagramStore.setState({ paletteOpen: true, propertiesOpen: true }));
+    await renderShared();
+
+    expect(screen.queryByLabelText('Service palette')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Label')).not.toBeInTheDocument();
+  });
+
+  it('reports the canvas as read-only rather than as unsaved', async () => {
+    await renderShared();
+
+    expect(screen.getByText('Read-only')).toBeInTheDocument();
+  });
+
+  // Reading a diagram still means moving around it, so the view controls and the heading stay.
+  it('keeps the heading and fits the diagram into view as the editor does', async () => {
+    await renderShared();
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      'Shared Diagram — Diagram editor'
+    );
+    expect(mockXyflow.mockFitView).toHaveBeenCalled();
+  });
+});

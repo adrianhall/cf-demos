@@ -193,5 +193,83 @@ export function createDiagramsRouter(): Hono<AppBindings> {
     return new Response(null, { status: 204 });
   });
 
+  /**
+   * Reports whether the diagram has an active read-only link, and when it was created.
+   *
+   * Never carries the link. Only a digest of a token is stored, so the server cannot reproduce one
+   * — see `../domain/share.ts`.
+   *
+   * @param context Hono request context carrying the verified identity, the untrusted `id` path
+   *   parameter and the share service.
+   * @returns A `200` response carrying `{ active, createdAt }`.
+   * @throws {ProblemDetailsError} `404` when the diagram is malformed, unknown or foreign.
+   * @throws {NullError} When mounted without the Access middleware in front of it.
+   * @throws {Error} When the repository cannot read the rows.
+   */
+  router.get('/:id/share', async (context) =>
+    context.json(
+      await context.var.SHARE_SERVICE.getStatus(
+        currentIdentityEmail(context),
+        context.req.param('id')
+      )
+    )
+  );
+
+  /**
+   * Mints a read-only link for the diagram, revoking any link already active for it.
+   *
+   * This response is the one and only place the raw token is ever exposed. It is not stored, not
+   * logged, and not returned by the status endpoint above, so a client that discards it cannot ask
+   * for it again — it can only mint a new link, which revokes this one.
+   *
+   * The absolute URL is assembled here rather than in the service, because the origin is a property
+   * of the request rather than of the use case: the same service called by an MCP tool in a later
+   * phase has no request to read an origin from.
+   *
+   * @param context Hono request context carrying the verified identity, the untrusted `id` path
+   *   parameter and the share service.
+   * @returns A `201` response carrying the token, its creation timestamp and the shareable URL.
+   * @throws {ProblemDetailsError} `404` when the diagram is malformed, unknown or foreign — refused
+   *   before anything is minted.
+   * @throws {NullError} When mounted without the Access middleware in front of it.
+   * @throws {Error} When the repository cannot read or write the rows.
+   */
+  router.post('/:id/share', async (context) => {
+    const id = context.req.param('id');
+    const share = await context.var.SHARE_SERVICE.rotate(currentIdentityEmail(context), id);
+
+    // The diagram id and the operation, exactly as every other log line here: the token is a
+    // bearer credential and the one value that must never reach an operational log.
+    context.var.LOGGER.info('diagram_shared', { diagramId: id });
+
+    return context.json(
+      {
+        createdAt: share.createdAt,
+        token: share.token,
+        url: new URL(`/s/${share.token}`, context.req.url).toString()
+      },
+      201
+    );
+  });
+
+  /**
+   * Revokes the diagram's active read-only link.
+   *
+   * @param context Hono request context carrying the verified identity, the untrusted `id` path
+   *   parameter and the share service.
+   * @returns A `204` response with no body.
+   * @throws {ProblemDetailsError} `404` when the diagram is malformed, unknown or foreign, or when
+   *   it has no active link.
+   * @throws {NullError} When mounted without the Access middleware in front of it.
+   * @throws {Error} When the repository cannot read or write the rows.
+   */
+  router.delete('/:id/share', async (context) => {
+    const id = context.req.param('id');
+    await context.var.SHARE_SERVICE.revoke(currentIdentityEmail(context), id);
+
+    context.var.LOGGER.info('diagram_share_revoked', { diagramId: id });
+    return new Response(null, { status: 204 });
+  });
+
   return router;
 }

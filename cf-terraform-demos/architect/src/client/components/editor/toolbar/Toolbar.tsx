@@ -10,6 +10,7 @@ import {
   Maximize,
   RotateCcw,
   RotateCw,
+  Share2,
   Sidebar,
   ZoomIn,
   ZoomOut
@@ -20,6 +21,7 @@ import { computeAutoLayout, type LayoutDirection } from '../../../lib/auto-layou
 import { useDiagramStore } from '../../../stores/diagramStore.ts';
 import { DarkModeToggle } from '../../DarkModeToggle.tsx';
 import { ConnectNodesModal } from './ConnectNodesModal.tsx';
+import { ShareModal } from './ShareModal.tsx';
 
 /**
  * How long the viewport takes to settle after an auto-layout, in milliseconds.
@@ -64,6 +66,7 @@ export interface ToolbarProps {
 export function Toolbar({ readOnly = false }: ToolbarProps) {
   const { fitView, zoomIn, zoomOut } = useReactFlow();
   const {
+    diagramId,
     undo,
     redo,
     undoStack,
@@ -83,6 +86,7 @@ export function Toolbar({ readOnly = false }: ToolbarProps) {
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>('DOWN');
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const layoutGroupRef = useRef<HTMLDivElement>(null);
 
   useDismissableMenu(
@@ -330,12 +334,31 @@ export function Toolbar({ readOnly = false }: ToolbarProps) {
       )}
 
       {/* The appearance control is available in both postures: a visitor reading a diagram they
-          cannot edit has the same reason to want dark mode as its owner. */}
+          cannot edit has the same reason to want dark mode as its owner. Sharing is not: an
+          anonymous viewer arrived through somebody else's link, and offering them a control to
+          mint one of their own would be an offer the server refuses. */}
       <div className="toolbar__group toolbar__group--end">
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={() => setShareOpen(true)}
+            disabled={diagramId === null}
+            className="toolbar__button"
+            title="Share diagram"
+            aria-label="Share diagram"
+          >
+            <Share2 size={18} aria-hidden="true" />
+          </button>
+        )}
         <DarkModeToggle className="toolbar__button" />
       </div>
 
       {!readOnly && <ConnectNodesModal open={connectOpen} onClose={() => setConnectOpen(false)} />}
+      {/* Mounted only once a diagram is loaded. The modal reads its share status on open, and
+          there is no diagram to ask about before then. */}
+      {!readOnly && diagramId !== null && (
+        <ShareModal diagramId={diagramId} open={shareOpen} onClose={() => setShareOpen(false)} />
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
 import type { Diagram } from '../domain/diagram.ts';
 import { EMPTY_GRAPH_DATA, validateGraphDataInput } from '../domain/graph.ts';
 import type { DiagramRepository } from './ports/diagram-repository.ts';
+import type { ShareRepository } from './ports/share-repository.ts';
 
 /**
  * Use cases for a user's own diagrams — the tier between the HTTP API and persistence.
@@ -30,8 +31,16 @@ import type { DiagramRepository } from './ports/diagram-repository.ts';
 export class DiagramService {
   /**
    * @param repository Authorization-neutral persistence port backing the diagram directory.
+   * @param shares Share persistence port, used only by {@link DiagramService.remove} to cascade.
+   *   Deleting a diagram has to stop every link to it resolving, and the cascade belongs to the
+   *   delete use case rather than to the route: an MCP tool deleting a diagram in a later phase
+   *   must leave exactly the same state behind as the HTTP endpoint does, and it will if there is
+   *   only one place that performs the delete at all.
    */
-  constructor(private readonly repository: DiagramRepository) {}
+  constructor(
+    private readonly repository: DiagramRepository,
+    private readonly shares: ShareRepository
+  ) {}
 
   /**
    * Lists the actor's own diagrams, most recently updated first.
@@ -165,13 +174,17 @@ export class DiagramService {
   }
 
   /**
-   * Deletes one of the actor's own diagrams.
+   * Deletes one of the actor's own diagrams, and with it every share link that pointed at it.
+   *
+   * The cascade runs only after the delete itself reports a row was removed, which is what stops it
+   * becoming a way to revoke somebody else's link by guessing an id: a refused delete never reaches
+   * it, and neither does a repeated one.
    *
    * @param actorEmail Verified Cloudflare Access identity making the request.
    * @param id Unvalidated diagram id from the request path.
-   * @returns A promise fulfilled once the diagram no longer exists.
+   * @returns A promise fulfilled once the diagram no longer exists and no link to it resolves.
    * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is absent or foreign.
-   * @throws {Error} When the repository cannot read or delete the row.
+   * @throws {Error} When the repository cannot read, delete or revoke a row.
    */
   async remove(actorEmail: string, id: string): Promise<void> {
     const diagram = await this.requireOwned(actorEmail, id);
@@ -179,6 +192,11 @@ export class DiagramService {
     if (!(await this.repository.remove(diagram.id))) {
       throw notFound({ detail: 'Diagram not found.' });
     }
+
+    // After the delete, deliberately. A link that outlived its diagram would resolve to a `404`
+    // from the share service's own existence check anyway, but leaving the record live would mean
+    // a deleted diagram still had an "active" share in the operator's data.
+    await this.shares.revokeAllForDiagram(diagram.id, new Date().toISOString());
   }
 
   /**

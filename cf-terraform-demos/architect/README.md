@@ -3,20 +3,21 @@
 Architect is a Cloudflare-centric architecture diagram tool: a React Flow canvas backed by a
 Cloudflare Worker, D1, Workers KV, Static Assets and Cloudflare Access.
 
-This directory currently contains **Phases 1–4** of the port: the deployable lifecycle and original
+This directory currently contains **Phases 1–5** of the port: the deployable lifecycle and original
 2,023-line stylesheet; production-equivalent Cloudflare Access policy; the source application
 header, identity states, three-state appearance control, landing page, catalogue-backed hero
 diagram; the initial user-directory side effect; the complete creation journey — the eight blueprint
 templates, the filterable gallery with real React Flow thumbnails, the two-column create modal, and
-the personal dashboard with duplicate and delete — and the full single-user editor.
+the personal dashboard with duplicate and delete — the full single-user editor, and read-only
+anonymous sharing.
 
 The editor retains the source Zustand model, undo/redo, 500 ms whole-graph autosave, searchable and
 persistently collapsible service palette, drag/drop and click-to-add paths, node/edge properties,
 responsive side drawers, keyboard shortcuts, status bar, custom React Flow renderers, the
 native-form **Connect nodes** dialog, and browser-only ELK auto-layout. ELK remains behind a dynamic
 import: the built-bundle contract fails if its roughly 1.4 MB chunk is folded into the initial
-editor bundle. Sharing, export/print, and administration remain temporary views or absent controls
-until their matching phases in
+editor bundle. Export/print and administration remain temporary views or absent controls until their
+matching phases in
 [`../../specs/architect/02-implementation.md`](../../specs/architect/02-implementation.md); those
 placeholders are not re-authored substitutes for the source components.
 
@@ -186,6 +187,10 @@ The Worker currently exposes:
 - `GET/PATCH/DELETE /api/diagrams/:id` — read, rename, or delete one owned diagram;
 - `PUT /api/diagrams/:id/graph` — validate and replace an owned diagram's graph;
 - `POST /api/diagrams/:id/duplicate` — copy an owned diagram;
+- `GET/POST/DELETE /api/diagrams/:id/share` — read an owned diagram's share status, mint or rotate
+  its read-only link, or revoke it;
+- `GET /api/shares/:token` — public, anonymous resolution of a share link to a deliberately limited
+  projection;
 - `/api/admin/*` — an administrator-only router with no handlers until the administration phase.
   Ordinary identities receive `403`; the configured administrator passes authorization and receives
   `404` for the not-yet-present endpoint.
@@ -206,17 +211,57 @@ Every mutation passes same-origin and exact `application/json` checks before rou
 RFC 9457 error handlers are used from the first route onward. Production responses never include
 stack traces.
 
+## Sharing
+
+An owner can hand out a read-only link to one of their diagrams. The link grants reading that one
+diagram and nothing else: it is not an identity, so it reaches neither the owner's other diagrams
+nor any management endpoint.
+
+**A raw share token is never stored.** Only its SHA-256 digest is written — in D1's
+`diagram_shares.token_digest` and as the `SHARES` KV key — and nothing logs it. The token is
+returned by exactly one response, the `POST` that mints it, and that response is the only moment it
+exists outside the holder's own browser. A reader working from the deployed account's data, or from
+its observability logs, cannot reconstruct a working link.
+
+Two visible consequences follow, and both are deliberate rather than unfinished:
+
+- **Share status reports only _that_ a link is active**, never its URL. The server cannot reproduce
+  one. An owner who has lost their link generates a new one, which revokes the old.
+- **At most one link is live per diagram.** Creating a link revokes any previous one in the same
+  operation, so "revoke" is a complete action rather than a per-link one. The revoked row is kept
+  with a `revoked_at` timestamp as a record that the link once existed.
+
+Sharing is a **live pointer**, not a snapshot: the resolver reads the diagram's current graph at
+request time, so an edit the owner makes after sharing is visible through the same link immediately
+and there is no second copy to keep in step. Deleting a diagram cascades a revocation of every link
+to it, in the delete use case itself rather than in the route, so an MCP tool deleting a diagram in
+a later phase leaves the same state behind.
+
+A malformed token, an unknown one, a revoked one and one pointing at a deleted diagram are all
+answered with the same `404` and the same problem detail. They are indistinguishable on purpose:
+anything that told them apart would make the public endpoint an oracle for probing live links.
+
+The resolver lives at `/api/shares/:token` — under the otherwise authenticated `/api` prefix — and
+stays public because three things agree: the shared policy list carves it out ahead of the general
+`/api` rule, the Terraform authenticated application simply omits it from its destinations so it
+falls through to the hostname-wide bypass, and the router itself serves only `GET`. That last point
+is what makes it safe for an anonymous cross-origin read, which is exactly what a link pasted into a
+chat client produces.
+
 ## Storage choices
 
-- **D1 is authoritative** for diagrams and the user directory. Read replication is disabled because
-  an editor save must be visible to the next read.
-- **Workers KV is disposable** and will cache share-token-digest → diagram-id lookups. D1 remains
-  authoritative for share lifecycle; losing KV must never lose a share record.
+- **D1 is authoritative** for diagrams, the user directory and the share lifecycle. Read replication
+  is disabled because an editor save must be visible to the next read.
+- **Workers KV is disposable**: it answers the one question an anonymous share request asks, digest
+  → diagram id, with no identity and no relational query involved. Every read falls back to D1 on a
+  miss, which also covers the short window before a new key has propagated between locations, so
+  losing the whole namespace costs a slower first lookup per link and nothing else.
 - A later **Durable Object** coordinates live sockets only. It does not keep a second durable graph.
 
-The first migration preserves two deliberate schema decisions: no foreign keys, and no
-`users.is_admin` column. The single administrator is operator configuration (`ADMIN_EMAIL`), checked
-against a verified Access identity on every administrative request, not mutable database state.
+The migrations preserve three deliberate schema decisions: no foreign keys, no `users.is_admin`
+column, and no column anywhere a raw share token could be written. The single administrator is
+operator configuration (`ADMIN_EMAIL`), checked against a verified Access identity on every
+administrative request, not mutable database state.
 
 A diagram's `graph_data` is stored and returned as an opaque JSON string. The Worker validates its
 shape on write — an array of nodes and of edges, each an object with a non-empty string `id`, plus a
@@ -253,3 +298,10 @@ keyboard connections, initial blueprint fitting, auto-layout, autosave/reload, b
 drawers, all three appearance states, and the reduced-motion data-flow treatment. The editor's
 canvas is a real computed-height viewport: the fit-on-load effect waits for React Flow to measure
 the custom nodes, then fits once and never fights a visitor's later pan or zoom.
+
+The Phase 5 browser pass covers the share dialog's three states and its focus handling, copying the
+revealed link, and opening that link in a private window — where the read-only viewer must render
+the same diagram with no editing affordances, its own banner, and a canvas that pans and zooms but
+does not move a node. `.share-view` sets a real `height: 100vh` for the same reason the editor's
+main region does; jsdom computes no layout, so that is reviewed in a browser rather than asserted in
+a test.

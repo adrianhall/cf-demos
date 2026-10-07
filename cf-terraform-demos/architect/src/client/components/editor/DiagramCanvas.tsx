@@ -14,6 +14,7 @@ import {
 import { CATEGORY_COLORS, NODE_TYPE_MAP } from '../../../catalog.ts';
 import { CF_EDGE_TYPE, CF_NODE_TYPE } from '../../../graph-element-types.ts';
 import { getDiagram, saveDiagramGraph, updateDiagram } from '../../api/diagrams.ts';
+import type { SharedDiagram } from '../../api/shares.ts';
 import { useDiagramStore } from '../../stores/diagramStore.ts';
 import { edgeTypes } from './edges/edgeTypes.ts';
 import { nodeTypes } from './nodes/nodeTypes.ts';
@@ -94,10 +95,26 @@ export interface DiagramCanvasProps {
    * Id of the diagram to load, taken from the path by the app shell.
    */
   diagramId: string;
+  /**
+   * Whether the canvas is read-only — the anonymous share viewer's posture.
+   *
+   * Every editing affordance is withheld rather than disabled, and every editing effect is skipped
+   * rather than left to find nothing to do.
+   */
+  readOnly?: boolean;
+  /**
+   * The diagram's fields, already fetched by the public share resolver.
+   *
+   * Required when `readOnly` is set, and the reason the two props travel together: an anonymous
+   * viewer has no Access identity and therefore cannot call the owner-authenticated read this
+   * component otherwise makes. Passing the already-resolved diagram in is what lets one component
+   * serve both postures instead of a near-duplicate being written for the viewer.
+   */
+  initialDiagram?: SharedDiagram;
 }
 
 /**
- * The editable architecture canvas: the editor's whole working surface.
+ * The architecture canvas: the editor's working surface, and the anonymous share viewer's.
  *
  * It loads the diagram, autosaves it, and wires every way of changing it — dragging a service in
  * from the palette, activating one from the keyboard, selecting, deleting, undoing and redoing — to
@@ -107,10 +124,19 @@ export interface DiagramCanvasProps {
  * autosave below correct: it reads the graph at the moment the timer fires, so it always sends the
  * canvas as it actually stands rather than as it stood when the change that scheduled it happened.
  *
- * @param props Diagram id; see {@link DiagramCanvasProps}.
- * @returns The editor, a loading state, or the failure that stopped it loading.
+ * **Read-only mode** is one component rather than two because the difference is genuinely a set of
+ * omissions: the same graph, the same renderers, the same geometry, with every editing effect
+ * skipped and every editing control absent. A second component would be this file with its verbs
+ * removed, and would drift from it the first time a node renderer changed. Each `readOnly` guard
+ * below is written explicitly even where the effect would be inert anyway — `dirty` never becomes
+ * true when nothing can change the graph — because an inert effect is an accident of the current
+ * wiring, and the guard is the statement of intent.
+ *
+ * @param props Diagram id and, for the share viewer, the already-resolved diagram; see
+ *   {@link DiagramCanvasProps}.
+ * @returns The canvas, a loading state, or the failure that stopped it loading.
  */
-export function DiagramCanvas({ diagramId }: DiagramCanvasProps) {
+export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: DiagramCanvasProps) {
   const { fitView, screenToFlowPosition } = useReactFlow();
   const nodesInitialized = useNodesInitialized();
 
@@ -142,6 +168,22 @@ export function DiagramCanvas({ diagramId }: DiagramCanvasProps) {
   const diagramLoaded = useDiagramStore((state) => state.diagramId !== null);
 
   useEffect(() => {
+    // The share viewer's diagram arrived with the props, resolved anonymously by `/api/shares`.
+    // Calling `getDiagram` here would be a request an anonymous visitor is not authorized to
+    // make, and would answer `401` for a page they are entitled to see.
+    if (readOnly && initialDiagram) {
+      const parsed = parseGraphData(initialDiagram.graphData);
+      setDiagram(
+        diagramId,
+        initialDiagram.title,
+        initialDiagram.description ?? '',
+        parsed.nodes,
+        parsed.edges,
+        parsed.viewport
+      );
+      return undefined;
+    }
+
     let cancelled = false;
 
     getDiagram(diagramId)
@@ -170,12 +212,12 @@ export function DiagramCanvas({ diagramId }: DiagramCanvasProps) {
     return () => {
       cancelled = true;
     };
-  }, [diagramId, setDiagram]);
+  }, [diagramId, setDiagram, readOnly, initialDiagram]);
 
   // Autosave. The whole graph every time: there is no partial-patch protocol, so a save is a
   // complete statement of the canvas rather than a difference against whatever the server holds.
   useEffect(() => {
-    if (!dirty) {
+    if (readOnly || !dirty) {
       return undefined;
     }
 
@@ -198,11 +240,16 @@ export function DiagramCanvas({ diagramId }: DiagramCanvasProps) {
     }, AUTOSAVE_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [dirty, diagramId, markSaving, markSaved, markSaveError]);
+  }, [readOnly, dirty, diagramId, markSaving, markSaved, markSaveError]);
 
   // The last line of defence for unsaved work: a visitor who closes the tab within the debounce
   // window is asked first. The browser shows its own wording, so there is no message to provide.
+  // Not attached at all in read-only mode, which never has unsaved work to lose.
   useEffect(() => {
+    if (readOnly) {
+      return undefined;
+    }
+
     const handler = (event: BeforeUnloadEvent): void => {
       if (useDiagramStore.getState().dirty) {
         event.preventDefault();
@@ -211,7 +258,7 @@ export function DiagramCanvas({ diagramId }: DiagramCanvasProps) {
 
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, []);
+  }, [readOnly]);
 
   // The title saves on its own timer rather than with the graph: it is metadata, it changes a
   // character at a time, and bundling it with the graph would send the whole canvas on every
@@ -219,7 +266,7 @@ export function DiagramCanvas({ diagramId }: DiagramCanvasProps) {
   // state, which is the one a visitor is watching, and a toast about a title that will be retried
   // on the next keystroke would be noise.
   useEffect(() => {
-    if (!diagramLoaded) {
+    if (readOnly || !diagramLoaded) {
       return undefined;
     }
 
@@ -230,7 +277,7 @@ export function DiagramCanvas({ diagramId }: DiagramCanvasProps) {
     }, TITLE_SAVE_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [title, diagramLoaded, diagramId]);
+  }, [readOnly, title, diagramLoaded, diagramId]);
 
   // Fit the loaded diagram into view once it can actually be measured. React Flow's own `fitView`
   // prop fits at mount, against nodes that have no size yet: `CFNode` is sized by its content, so
@@ -337,6 +384,13 @@ export function DiagramCanvas({ diagramId }: DiagramCanvasProps) {
    */
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
+      // Nothing on a read-only canvas can be deleted, undone or redone, so the shortcuts are not
+      // merely inert here — they must not swallow a Backspace the browser would otherwise treat
+      // as "go back".
+      if (readOnly) {
+        return;
+      }
+
       const target = event.target as HTMLElement;
       // Deleting the selection while somebody is editing a text field would turn Backspace in the
       // title box into "delete the selected node", which is the single most destructive way this
@@ -356,7 +410,7 @@ export function DiagramCanvas({ diagramId }: DiagramCanvasProps) {
         redo();
       }
     },
-    [removeSelected, undo, redo]
+    [readOnly, removeSelected, undo, redo]
   );
 
   if (loadError) {
@@ -398,19 +452,24 @@ export function DiagramCanvas({ diagramId }: DiagramCanvasProps) {
           a screen-reader user meets is the palette's "Services" and the diagram they opened is
           never announced at all. */}
       <h1 className="visually-hidden">{title} — Diagram editor</h1>
-      <Toolbar />
+      <Toolbar readOnly={readOnly} />
       <div className="diagram-editor__body">
-        {paletteOpen && <ServicePalette onAddNode={onAddNodeFromPalette} />}
+        {!readOnly && paletteOpen && <ServicePalette onAddNode={onAddNodeFromPalette} />}
         <div className="diagram-editor__canvas">
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
+            // The handlers are withheld rather than guarded internally, so React Flow itself stops
+            // offering the interaction: with no `onConnect` there is no connection to start, and
+            // with no `onDrop` the canvas is not a drop target at all.
+            onNodesChange={readOnly ? undefined : onNodesChange}
+            onEdgesChange={readOnly ? undefined : onEdgesChange}
+            onConnect={readOnly ? undefined : onConnect}
+            // Panning and zooming stay live in both postures: moving around a diagram is reading
+            // it, not editing it.
             onViewportChange={onViewportChange}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
+            onDragOver={readOnly ? undefined : onDragOver}
+            onDrop={readOnly ? undefined : onDrop}
             onNodeClick={onNodeClick}
             onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
@@ -422,6 +481,8 @@ export function DiagramCanvas({ diagramId }: DiagramCanvasProps) {
             // itself, above: leaving both on would delete through two code paths, only one of
             // which records undo history.
             deleteKeyCode={null}
+            nodesDraggable={!readOnly}
+            nodesConnectable={!readOnly}
             defaultEdgeOptions={{ type: CF_EDGE_TYPE }}
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
@@ -434,12 +495,16 @@ export function DiagramCanvas({ diagramId }: DiagramCanvasProps) {
                 }}
               />
             )}
-            <Controls />
+            {/* `showInteractive` hides React Flow's own lock control, which would otherwise be a
+                tab stop offering to unlock a canvas this visitor may not edit. */}
+            <Controls showInteractive={!readOnly} />
           </ReactFlow>
         </div>
-        {propertiesOpen && <DetailsPanel />}
+        {/* The details panel edits the selection, so it is absent rather than disabled — a
+            read-only visitor who selects a node has nothing to change about it. */}
+        {!readOnly && propertiesOpen && <DetailsPanel />}
       </div>
-      <StatusBar readOnly={false} />
+      <StatusBar readOnly={readOnly} />
     </div>
   );
 }
