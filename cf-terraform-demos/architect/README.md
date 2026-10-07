@@ -3,14 +3,17 @@
 Architect is a Cloudflare-centric architecture diagram tool: a React Flow canvas backed by a
 Cloudflare Worker, D1, Workers KV, Static Assets and Cloudflare Access.
 
-This directory currently contains **Phases 1–6** of the port: the deployable lifecycle and complete
+This directory contains **Phases 1–7 (Layer 1)** of the port: the deployable lifecycle and complete
 source stylesheet; production-equivalent Cloudflare Access policy; the source application header,
 identity states, three-state appearance control, landing page, catalogue-backed hero diagram; the
 initial user-directory side effect; the complete creation journey — the eight blueprint templates,
 the filterable gallery with real React Flow thumbnails, the two-column create modal, and the
 personal dashboard with duplicate and delete — the full single-user editor, read-only anonymous
 sharing, the administrator directory and moderation surface, browser PNG/SVG/scaffold exports, print
-mode, and guarded local preferences.
+mode, guarded local preferences, the complete 35-finding source regression audit, WCAG 2.2 AA
+review, and production-bundle performance contract. See [`BUG-AUDIT.md`](BUG-AUDIT.md) for the
+bug-by-bug evidence and browser record, [`DEMO.md`](DEMO.md) for a presentation walkthrough, and
+[`EXPLAIN-DEMO.md`](EXPLAIN-DEMO.md) for the architectural lessons.
 
 The editor retains the source Zustand model, undo/redo, 500 ms whole-graph autosave, searchable and
 persistently collapsible service palette, drag/drop and click-to-add paths, node/edge properties,
@@ -288,6 +291,51 @@ Print mode forces a light scheme, picks portrait or landscape from the graph's a
 the whole diagram, removes editor chrome, adds the diagram title/description and opens the browser
 print dialog after a paint delay. `afterprint`, the visible **Back** control, and component unmount
 all restore the prior colour scheme and remove the injected `@page` rule.
+
+## Resources and clean teardown
+
+A deployment creates exactly these resources:
+
+| Resource                                           | Lifecycle owner | Purpose                                           |
+| -------------------------------------------------- | --------------- | ------------------------------------------------- |
+| Worker registration, bootstrap and custom hostname | Terraform       | Stable application identity and route             |
+| Worker code and deploy-time bindings               | `cf`            | The built Hono/React application                  |
+| D1 database                                        | Terraform       | Authoritative diagrams, users and share lifecycle |
+| Workers KV namespace                               | Terraform       | Disposable digest → diagram-id share lookup cache |
+| Public bypass Access application/policy            | Terraform       | Public landing, gallery and share routes          |
+| Authenticated Access application/policy            | Terraform       | `/app*` and management APIs                       |
+
+`pnpm teardown` deletes the deployed Worker before Terraform destroys its D1/KV/Access/hostname
+resources. That ordering releases live bindings first. It does not touch the separate source
+reference deployment: the naming contract rejects source hostname/Worker literals outside the two
+Terraform defaults reserved for this port.
+
+## Deliberate limitations
+
+- Layer 1 is a single-user editor. MCP, live collaboration and AI assistance are specified future
+  layers, not partially hidden features in this build.
+- Whole-graph autosave is last-write-wins within one owner's browser sessions; collaborative
+  operation ordering belongs to the later Durable Object layer.
+- Anonymous shares are read-only live pointers, not snapshots, and there is one active link per
+  diagram. Losing a raw URL requires rotation because the server stores only its digest.
+- Administration is intentionally one configured identity. There is no role table, invitation flow,
+  or first-user bootstrap.
+- Browser image export captures rendered DOM and therefore has no server API. Project export is a
+  portable starter, not a complete reverse-engineering of arbitrary diagram topology.
+- ELK auto-layout is browser-only and downloaded only when requested. It is absent from Workers
+  because ELK cannot execute in `workerd`.
+- The generated scaffold intentionally uses `cf`, unlike the Wrangler-based source scaffold. This is
+  the only deliberate Layer 1 platform-facing source deviation.
+
+## Regression, accessibility and performance audit
+
+[`BUG-AUDIT.md`](BUG-AUDIT.md) maps all 35 source findings to focused tests, built-production CSS,
+or real-browser checks. It also records the WCAG 2.2 AA review and explains why React Flow fitting,
+responsive drawer geometry, target boxes, focus paint and hit-testing cannot be validated by jsdom.
+
+The performance contract is artifact-based: `tests/worker/built-bundle.test.ts` requires ELK to stay
+in one dynamic chunk and out of the initial application bundle. The Phase 7 production build emitted
+a 602.34 kB initial JS entry and a separate 1,431.11 kB ELK chunk loaded only by Auto layout.
 
 ## Storage choices
 

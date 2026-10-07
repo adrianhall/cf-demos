@@ -175,6 +175,29 @@ describe('built stylesheet contract', () => {
     // rule, so losing this class returns the banner's links to underlined, link-coloured body text.
     it('keeps the shared chrome-link opt-out', () => {
       expect(css).toMatch(/\.nav-link\s*\{[^}]*text-decoration:\s*none/u);
+      expect(css).toMatch(/\.button\s*\{[^}]*text-decoration:\s*none/u);
+    });
+
+    it('retains the WCAG non-text contrast and focus fixes', () => {
+      expect(css).toMatch(/--cf-field-border:light-dark\(#00000073,#ffffff59\)/u);
+      expect(css).toMatch(/--cf-danger:light-dark\(#c0392b,#ff8a75\)/u);
+      expect(css).toMatch(
+        /\.diagram-editor:focus-visible\{[^}]*outline:2px solid var\(--cf-orange\)/u
+      );
+      expect(css).toMatch(/\.modal__close\{[^}]*min-width:24px;min-height:24px/u);
+      expect(css).toMatch(/\.diagram-card__menu-button\{[^}]*min-width:24px;min-height:24px/u);
+    });
+
+    it('retains the geometry fixes that jsdom cannot measure', () => {
+      expect(css).toMatch(/\*,:before,:after\{box-sizing:border-box\}/u);
+      expect(css).toMatch(/\.properties-panel__input\{[^}]*width:100%/u);
+      expect(css).toMatch(/\.app-shell__main--editor\{[^}]*height:100vh/u);
+      expect(css).toMatch(/\.share-view\{[^}]*height:100vh/u);
+      expect(css).toContain('@media (width<=900px)');
+      expect(css).toMatch(/\.diagram-card__link:after\{[^}]*z-index:5/u);
+      expect(css).toMatch(/\.diagram-card__menu\{[^}]*z-index:6/u);
+      expect(css).toMatch(/\.diagram-card__preview\{[^}]*pointer-events:none/u);
+      expect(css).toMatch(/\.diagram-card__timestamp\{[^}]*z-index:6/u);
     });
 
     // Animated data-flow edges are useful direction cues, but motion is not decorative to somebody
