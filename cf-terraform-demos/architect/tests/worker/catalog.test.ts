@@ -153,6 +153,73 @@ describe('catalog', () => {
         }
       }
     });
+
+    // `DocLinkIcon` has had a `video` member since the original application, but no product ever
+    // set it, so the panel's video branch was unreachable content rather than unreachable code.
+    // This keeps the branch fed: delete the last video link and the panel renders a type it can
+    // no longer be shown to handle.
+    it('exercises both supported link icons somewhere in the catalogue', () => {
+      const icons = new Set(NODE_TYPES.flatMap((node) => node.docLinks ?? []).map((l) => l.icon));
+
+      expect(icons).toEqual(new Set(['doc', 'video']));
+    });
+
+    // A video is an addition to a product's written documentation, never a replacement: the docs
+    // link is the one that stays correct as the product changes.
+    it('pairs every video link with written documentation for the same product', () => {
+      for (const node of NODE_TYPES) {
+        const links = node.docLinks ?? [];
+        if (!links.some((link) => link.icon === 'video')) {
+          continue;
+        }
+        expect(
+          links.some((link) => link.icon === 'doc'),
+          `${node.typeId} offers a video but no documentation link`
+        ).toBe(true);
+      }
+    });
+
+    // Every video is a watch page on Cloudflare's own channel. Anything else -- a playlist, a
+    // channel page, a marketing page wearing a video title -- is the content gap reopening under
+    // a link that merely looks right.
+    it('points every video link at a YouTube watch page', () => {
+      for (const node of NODE_TYPES) {
+        for (const link of node.docLinks ?? []) {
+          if (link.icon !== 'video') {
+            continue;
+          }
+          expect(link.url, `${node.typeId} video is not a watch URL`).toMatch(
+            /^https:\/\/www\.youtube\.com\/watch\?v=[\w-]{11}$/u
+          );
+        }
+      }
+    });
+
+    // The panel keys its list by URL, so two products sharing one video is fine but one product
+    // listing the same link twice renders duplicate React keys and a visibly repeated row.
+    it('lists no duplicate link URL within a product', () => {
+      for (const node of NODE_TYPES) {
+        const urls = (node.docLinks ?? []).map((link) => link.url);
+
+        expect(new Set(urls).size, `${node.typeId} repeats a documentation link`).toBe(urls.length);
+      }
+    });
+
+    // A title that does not name its product reads as "Video" in a panel that has already said
+    // which product is selected, which is exactly where a mis-pasted link hides.
+    it('names the product in every video link title', () => {
+      for (const node of NODE_TYPES) {
+        for (const link of node.docLinks ?? []) {
+          if (link.icon !== 'video') {
+            continue;
+          }
+          expect(link.title, `${node.typeId} video title is unhelpful`).toMatch(/\bVideo$/u);
+          expect(link.title.length, `${node.typeId} video title is only "Video"`).toBeGreaterThan(
+            'Video'.length
+          );
+        }
+      }
+    });
   });
 
   describe('getNodesByCategory', () => {

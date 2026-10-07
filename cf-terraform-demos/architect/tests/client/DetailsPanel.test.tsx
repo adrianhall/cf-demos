@@ -152,6 +152,59 @@ describe('with a node selected', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
+  // The video icon was dead code in both this port and its source until the catalogue gained a
+  // real `icon: 'video'` entry, so this asserts the icon actually rendered rather than only that
+  // the link exists — the doc icon would satisfy a href-only assertion just as well.
+  it('marks a video documentation link with the video icon', () => {
+    selectNode('workers-ai');
+    render(<DetailsPanel />);
+
+    const link = screen.getByRole('link', { name: 'Workers AI Video' });
+
+    expect(link).toHaveAttribute('href', 'https://www.youtube.com/watch?v=cK_leoJsBWY');
+    // `react-feather`'s `Video` is the only doc-link glyph drawn with a `<polygon>`; `BookOpen`,
+    // the doc icon, is paths alone. That tells the two apart without depending on a class name
+    // the stylesheet could rename.
+    expect(link.querySelector('polygon')).not.toBeNull();
+  });
+
+  it('opens a video documentation link safely in a new tab', () => {
+    selectNode('workers-ai');
+    render(<DetailsPanel />);
+
+    const link = screen.getByRole('link', { name: 'Workers AI Video' });
+
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  // The icon carries no information the link text does not already give, so a screen reader
+  // should announce the title alone rather than reading a decorative glyph before it.
+  it('names a documentation link by its title alone, hiding the icon from assistive technology', () => {
+    selectNode('workers-ai');
+    render(<DetailsPanel />);
+
+    for (const name of ['Workers AI Docs', 'Workers AI Video']) {
+      const icon = screen.getByRole('link', { name }).querySelector('svg');
+
+      expect(icon, `${name} should render an icon`).not.toBeNull();
+      expect(icon).toHaveAttribute('aria-hidden', 'true');
+    }
+  });
+
+  // Both icon variants have to be reachable from one product, or a regression that swapped the
+  // map's two entries would still satisfy a test that only ever looks at one of them.
+  it('distinguishes the two documentation-link icons on the same product', () => {
+    selectNode('workers-ai');
+    render(<DetailsPanel />);
+
+    const docLink = screen.getByRole('link', { name: 'Workers AI Docs' });
+    const videoLink = screen.getByRole('link', { name: 'Workers AI Video' });
+
+    expect(docLink.querySelector('polygon')).toBeNull();
+    expect(videoLink.querySelector('polygon')).not.toBeNull();
+  });
+
   it('offers no documentation section for a product that has none', () => {
     selectNode('no-longer-a-product');
     render(<DetailsPanel />);

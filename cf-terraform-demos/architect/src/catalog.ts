@@ -31,6 +31,15 @@ export interface HandleDef {
 
 /**
  * Icon style for a documentation link: open-book or video.
+ *
+ * A `video` entry is held to a narrower standard than a `doc` one, because a stale video is worse
+ * than no video: written documentation is revised in place when a product changes, whereas a
+ * recording is replaced by a different one and the old URL keeps resolving to advice that has
+ * quietly stopped being true. So a video link must be a watch page on Cloudflare's own channel —
+ * not a playlist, a conference index, or a third-party walkthrough — and it never stands alone; the
+ * product's `doc` link is the entry that is still correct a year from now. The catalogue tests
+ * enforce the durable parts of that policy — watch-page shape and a paired `doc` link — while
+ * channel ownership and usefulness are re-verified when a URL is added or changed.
  */
 export type DocLinkIcon = 'doc' | 'video';
 
@@ -346,6 +355,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: 'doc',
         title: 'Workers for Platforms Docs',
         url: 'https://developers.cloudflare.com/cloudflare-for-platforms/workers-for-platforms/'
+      },
+      {
+        icon: 'video',
+        title: 'Workers for Platforms Video',
+        url: 'https://www.youtube.com/watch?v=Z9-wwXaoA68'
       }
     ]
   },
@@ -383,6 +397,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: 'doc',
         title: 'Containers Docs',
         url: 'https://developers.cloudflare.com/containers/'
+      },
+      {
+        icon: 'video',
+        title: 'Containers Video',
+        url: 'https://www.youtube.com/watch?v=oyOaxMY4eNo'
       }
     ]
   },
@@ -398,6 +417,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: 'doc',
         title: 'Sandbox SDK Docs',
         url: 'https://developers.cloudflare.com/sandbox/'
+      },
+      {
+        icon: 'video',
+        title: 'Sandbox Video',
+        url: 'https://www.youtube.com/watch?v=jEuIgwYx8dQ'
       }
     ]
   },
@@ -532,6 +556,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: 'doc',
         title: 'Vectorize Docs',
         url: 'https://developers.cloudflare.com/vectorize/'
+      },
+      {
+        icon: 'video',
+        title: 'Vectorize Video',
+        url: 'https://www.youtube.com/watch?v=A4b_qgNzlSw'
       }
     ]
   },
@@ -610,6 +639,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: 'doc',
         title: 'Workers AI Docs',
         url: 'https://developers.cloudflare.com/workers-ai/'
+      },
+      {
+        icon: 'video',
+        title: 'Workers AI Video',
+        url: 'https://www.youtube.com/watch?v=cK_leoJsBWY'
       }
     ]
   },
@@ -625,6 +659,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: 'doc',
         title: 'AI Gateway Docs',
         url: 'https://developers.cloudflare.com/ai-gateway/'
+      },
+      {
+        icon: 'video',
+        title: 'AI Gateway Video',
+        url: 'https://www.youtube.com/watch?v=hkJ_dglOlV8'
       }
     ]
   },
@@ -669,6 +708,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: 'doc',
         title: 'Browser Run Docs',
         url: 'https://developers.cloudflare.com/browser-run/'
+      },
+      {
+        icon: 'video',
+        title: 'Browser Run Video',
+        url: 'https://www.youtube.com/watch?v=s5PQE8bklNY'
       }
     ]
   },
@@ -684,6 +728,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: 'doc',
         title: 'Agents Docs',
         url: 'https://developers.cloudflare.com/agents/'
+      },
+      {
+        icon: 'video',
+        title: 'AI Agents Video',
+        url: 'https://www.youtube.com/watch?v=SujrIrj-aZ8'
       }
     ]
   },
@@ -731,6 +780,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: 'doc',
         title: 'Realtime Docs',
         url: 'https://developers.cloudflare.com/realtime/'
+      },
+      {
+        icon: 'video',
+        title: 'Realtime Video',
+        url: 'https://www.youtube.com/watch?v=z4ZQIjN3I7k'
       }
     ]
   },
@@ -793,6 +847,11 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: 'doc',
         title: 'Email Service Docs',
         url: 'https://developers.cloudflare.com/email-service/'
+      },
+      {
+        icon: 'video',
+        title: 'Email Service Video',
+        url: 'https://www.youtube.com/watch?v=0pil4xQXIVE'
       }
     ]
   },
