@@ -5,14 +5,17 @@ import {
   problemDetailsErrorHandler
 } from '@adrianhall/cloudflare-toolkit/hono';
 import { createMeRouter, currentIdentityEmail } from '@demos/worker-common';
+import { DiagramService } from './application/diagram-service.ts';
 import { UserService } from './application/user-service.ts';
 import type { AppBindings } from './bindings.ts';
 import { isAdministrator } from './domain/user.ts';
+import { D1DiagramRepository } from './infrastructure/d1-diagram-repository.ts';
 import { D1UserRepository } from './infrastructure/d1-user-repository.ts';
 import { accessMiddleware } from './middleware/access.ts';
 import { recordUserMiddleware } from './middleware/record-user.ts';
 import { enforceSameOriginJson } from './middleware/same-origin.ts';
 import { createAdminRouter } from './routes/admin.ts';
+import { createDiagramsRouter } from './routes/diagrams.ts';
 import { createHealthRouter } from './routes/health.ts';
 
 /**
@@ -41,11 +44,16 @@ app.use(cloudflareLogger());
  * scope is deliberate: a Worker isolate is shared across requests, and a service closed over one
  * request's bindings would outlive the request that created it.
  *
+ * Both services are built on the same `DB` binding and are the only place in the Worker that knows
+ * a concrete adapter at all. A route handler therefore receives a service ready-made, and could not
+ * construct a repository even if it tried: nothing under `routes/` imports from `infrastructure/`.
+ *
  * @param context Hono request context supplying the `DB` D1 binding.
  * @param next Middleware continuation invoked after the services are attached.
  * @returns A promise fulfilled after the downstream middleware and selected route finish.
  */
 app.use(async (context, next) => {
+  context.set('DIAGRAM_SERVICE', new DiagramService(new D1DiagramRepository(context.env.DB)));
   context.set('USER_SERVICE', new UserService(new D1UserRepository(context.env.DB)));
   await next();
 });
@@ -76,6 +84,8 @@ app.route(
     })
   })
 );
+
+app.route('/api/diagrams', createDiagramsRouter());
 
 app.route('/api/admin', createAdminRouter());
 

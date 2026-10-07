@@ -1,4 +1,5 @@
 import type { CloudflareToolkitVariables } from '@adrianhall/cloudflare-toolkit/hono';
+import type { DiagramService } from './application/diagram-service.ts';
 import type { UserService } from './application/user-service.ts';
 
 /**
@@ -12,6 +13,14 @@ import type { UserService } from './application/user-service.ts';
  * `infrastructure/`.
  */
 export interface AppVariables extends CloudflareToolkitVariables {
+  /**
+   * Owner-scoped diagram use cases, backed by the D1 adapter the composition root injected.
+   *
+   * This service owns every ownership decision the diagram API makes, which is why route handlers
+   * receive it rather than a repository: a handler holding a repository could read a row without
+   * passing through the rule.
+   */
+  DIAGRAM_SERVICE: DiagramService;
   /**
    * User-directory use cases, backed by the D1 adapter the composition root injected.
    */

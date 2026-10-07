@@ -2,6 +2,17 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { applyTheme, getStoredTheme } from './lib/theme.ts';
+// React Flow's own stylesheet, imported *before* `./app.css` so this application's rules — which
+// deliberately override several `.react-flow__*` selectors for stacking and pointer behaviour —
+// come after it and win.
+//
+// Not optional decoration: React Flow positions every node absolutely from this stylesheet, so
+// without it a canvas lays its nodes out in normal document flow and a diagram renders as a
+// vertical list of boxes. It is imported here, at the entry point, rather than beside the first
+// component that happens to need it, because both the thumbnails on this phase's gallery and
+// dashboard and the editor in a later phase depend on it, and a per-component import would make
+// the page's styling depend on which component mounted first.
+import '@xyflow/react/dist/style.css';
 import './app.css';
 
 /**

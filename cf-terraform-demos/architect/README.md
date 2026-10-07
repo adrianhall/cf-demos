@@ -3,11 +3,13 @@
 Architect is a Cloudflare-centric architecture diagram tool: a React Flow canvas backed by a
 Cloudflare Worker, D1, Workers KV, Static Assets and Cloudflare Access.
 
-This directory currently contains **Phases 1–2** of the port: the deployable lifecycle and original
+This directory currently contains **Phases 1–3** of the port: the deployable lifecycle and original
 2,023-line stylesheet; production-equivalent Cloudflare Access policy; the source application
 header, identity states, three-state appearance control, landing page, catalogue-backed hero
-diagram; and the initial user-directory side effect. Editor, gallery and management surfaces remain
-temporary views until their matching phases in
+diagram; the initial user-directory side effect; and the complete creation journey — the eight
+blueprint templates, the filterable gallery with real React Flow thumbnails, the two-column create
+modal, and the personal dashboard with duplicate and delete. The editor and the administrative
+surface remain temporary views until their matching phases in
 [`../../specs/architect/02-implementation.md`](../../specs/architect/02-implementation.md); those
 placeholders are not re-authored substitutes for the source components.
 
@@ -155,18 +157,37 @@ Dependencies point in one direction:
 React UI → Hono routes → application services → domain/ports → infrastructure adapters
 ```
 
-[`src/worker/index.ts`](src/worker/index.ts) is the composition root. It constructs the D1 user
-adapter and user service once per request, then injects the service into middleware; routes and
-middleware never construct repositories. Future diagram/share services follow the same seam.
+[`src/worker/index.ts`](src/worker/index.ts) is the composition root. It constructs the D1 diagram
+and user adapters and their services once per request, then injects them into middleware and routes;
+nothing under `routes/` imports from `infrastructure/`, so a handler could not construct a
+repository even if it tried. Future share services follow the same seam.
+
+Three modules are shared between the client and the Worker rather than owned by either:
+[`src/catalog.ts`](src/catalog.ts), [`src/blueprints.ts`](src/blueprints.ts) and
+[`src/graph-element-types.ts`](src/graph-element-types.ts). The last is the smallest and the most
+load-bearing: it holds the two React Flow type keys every stored node and edge carries, and a
+literal re-typed independently on either side would render as React Flow's unstyled default rather
+than failing a build.
 
 The Worker currently exposes:
 
 - `GET /api/health` — public liveness, returning `{ "status": "ok" }`;
 - `GET /api/me` — authenticated `{ email, isAdmin }`, derived only from the verified Access identity
   and `ADMIN_EMAIL`;
+- `GET/POST /api/diagrams` — list the caller's own diagrams, or create one blank or from a named
+  blueprint;
+- `GET/PATCH/DELETE /api/diagrams/:id` — read, rename, or delete one owned diagram;
+- `PUT /api/diagrams/:id/graph` — validate and replace an owned diagram's graph;
+- `POST /api/diagrams/:id/duplicate` — copy an owned diagram;
 - `/api/admin/*` — an administrator-only router with no handlers until the administration phase.
   Ordinary identities receive `403`; the configured administrator passes authorization and receives
   `404` for the not-yet-present endpoint.
+
+Every diagram route answers `404` — never `403` — for a diagram that does not exist, that is
+malformed, or that belongs to another identity. The three are deliberately indistinguishable in both
+status and body: a `403` would confirm to a caller that a guessed id is real. That rule lives in one
+private method of `DiagramService`, so no use case can reach storage without passing through it, and
+the repository port stays authorization-neutral.
 
 Authentication best-effort upserts the verified identity into D1's lightweight `users` directory.
 The service absorbs a directory-write failure so it cannot take down the caller's request, but logs
@@ -190,6 +211,13 @@ The first migration preserves two deliberate schema decisions: no foreign keys, 
 `users.is_admin` column. The single administrator is operator configuration (`ADMIN_EMAIL`), checked
 against a verified Access identity on every administrative request, not mutable database state.
 
+A diagram's `graph_data` is stored and returned as an opaque JSON string. The Worker validates its
+shape on write — an array of nodes and of edges, each an object with a non-empty string `id`, plus a
+viewport — and inspects nothing further. `type`, `position` and `data` are the editor's vocabulary,
+so a client adding a field needs no server change. The `id` is the exception because the server
+itself relies on it: a later phase's granular operations address an element by it, and an element
+with no stable identity cannot be the target of one.
+
 ## Visual verification
 
 `pnpm start` serves the real stylesheet locally. Before closing a phase, review the local page at
@@ -204,3 +232,11 @@ desktop and narrow widths in system, light and dark schemes. Automated coverage 
 
 `vite.config.ts` excludes that transformation through `Features.LightDark`, and the contract fails
 if it regresses.
+
+The React Flow canvases are the clearest case for reviewing in a real browser rather than trusting
+the suite. React Flow positions every node absolutely from its own stylesheet, which
+[`src/client/main.tsx`](src/client/main.tsx) imports ahead of `app.css`. Without that import a
+thumbnail still renders every node, every label and every edge — so every DOM assertion passes — but
+lays them out in normal document flow, and a diagram appears as a vertical list of boxes. jsdom
+computes no layout, so nothing in the test suite can fail on it. Phase 3 found exactly that defect
+in local browser review, which is why the step is a requirement rather than a courtesy.

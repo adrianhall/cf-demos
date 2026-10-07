@@ -1,4 +1,5 @@
 import { AppHeader } from '../components/AppHeader.tsx';
+import { BlueprintGallery } from '../components/blueprints/BlueprintGallery.tsx';
 import { useIdentity } from '../hooks/useIdentity.ts';
 
 /**
@@ -13,10 +14,6 @@ import { useIdentity } from '../hooks/useIdentity.ts';
  * in" rather than a fault worth alerting about, and the banner offers "Sign in" instead of "Sign
  * out".
  *
- * **Phase 2 scope.** The gallery itself, its category filters, its real React Flow thumbnails, the
- * permanent blank-canvas card and the two-column create modal are ported in Phase 3. The banner and
- * the page's intro copy are final.
- *
  * @returns The blueprint gallery page.
  */
 export function BlueprintsView() {
@@ -30,6 +27,7 @@ export function BlueprintsView() {
           <h1>Start a new diagram</h1>
           <p>Choose a blueprint template, or start from a blank canvas.</p>
         </div>
+        <BlueprintGallery />
       </main>
     </div>
   );
