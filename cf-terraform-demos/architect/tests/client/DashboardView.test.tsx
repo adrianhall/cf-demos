@@ -3,11 +3,17 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 
 vi.mock('@xyflow/react', () => import('./mock-xyflow.tsx'));
 
-const { mockListDiagrams } = vi.hoisted(() => ({ mockListDiagrams: vi.fn() }));
+const { mockGetDiagram, mockListDiagrams } = vi.hoisted(() => ({
+  mockGetDiagram: vi.fn(),
+  mockListDiagrams: vi.fn()
+}));
 vi.mock('../../src/client/api/diagrams.ts', () => ({
   deleteDiagram: vi.fn(),
   duplicateDiagram: vi.fn(),
-  listDiagrams: mockListDiagrams
+  getDiagram: mockGetDiagram,
+  listDiagrams: mockListDiagrams,
+  saveDiagramGraph: vi.fn(),
+  updateDiagram: vi.fn()
 }));
 
 const { AppShellView } = await import('../../src/client/views/AppShellView.tsx');
@@ -112,11 +118,14 @@ describe('the authenticated shell', () => {
     expect(mockListDiagrams).not.toHaveBeenCalled();
   });
 
-  it('leaves the editor route to its own phase', () => {
+  // The editor loads the one diagram named in the path. Listing every diagram the visitor owns
+  // would be a request for data the editor has no use for.
+  it('opens the editor on the diagram route without listing the dashboard', async () => {
     visit('/app/diagram/abc');
+    mockGetDiagram.mockReturnValue(new Promise(() => {}));
     render(<AppShellView />);
 
-    expect(screen.getByText(/loading editor/iu)).toBeInTheDocument();
+    await waitFor(() => expect(mockGetDiagram).toHaveBeenCalledWith('abc'));
     expect(mockListDiagrams).not.toHaveBeenCalled();
   });
 });

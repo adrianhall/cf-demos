@@ -460,6 +460,103 @@ describe('the diagram API', () => {
       expect(JSON.parse(saved.graphData)).toMatchObject({ nodes: [{ id: 'n1' }] });
     });
 
+    // The editor's autosave sends the whole canvas, including every field the client invented for
+    // itself. The Worker validates that each element is an object with a usable id and stores the
+    // rest verbatim, which is what lets the editor add a field without a server change — so the
+    // round trip has to return the payload byte for byte, not a server-reshaped version of it.
+    it('returns an editor-shaped graph exactly as the editor saved it', async () => {
+      const diagram = await createDiagram(ALICE, {});
+      const graph = {
+        edges: [
+          {
+            data: { edgeType: 'trigger', label: 'on schedule', protocol: 'queue' },
+            id: 'e1',
+            source: 'n1',
+            sourceHandle: 'source-bottom',
+            target: 'n2',
+            targetHandle: 'target-top',
+            type: 'cf-edge'
+          }
+        ],
+        nodes: [
+          {
+            data: {
+              description: 'Handles requests',
+              label: 'API Worker',
+              style: { accentColor: '#123456' },
+              typeId: 'worker'
+            },
+            id: 'n1',
+            position: { x: 16, y: 32 },
+            type: 'cf-node'
+          },
+          {
+            data: { label: 'Primary DB', typeId: 'd1' },
+            id: 'n2',
+            position: { x: 16, y: 240 },
+            type: 'cf-node'
+          }
+        ],
+        viewport: { x: -40, y: 12, zoom: 0.75 }
+      };
+
+      await send(
+        await writeAs(ALICE, `/api/diagrams/${diagram.id}/graph`, 'PUT', {
+          graphData: JSON.stringify(graph)
+        })
+      );
+
+      const read = await send(await requestAs(ALICE, `/api/diagrams/${diagram.id}`));
+      const saved = ((await read.json()) as { diagram: DiagramPayload }).diagram;
+
+      expect(JSON.parse(saved.graphData)).toEqual(graph);
+    });
+
+    // A save is a complete statement of the canvas rather than a difference against what the
+    // server holds, so deleting the last node has to leave an empty diagram — not the previous
+    // one merged with an empty update.
+    it('replaces the stored graph rather than merging into it', async () => {
+      const diagram = await createDiagram(ALICE, { blueprintId: 'api-gateway' });
+
+      expect((JSON.parse(diagram.graphData) as { nodes: unknown[] }).nodes.length).toBeGreaterThan(
+        0
+      );
+
+      await send(
+        await writeAs(ALICE, `/api/diagrams/${diagram.id}/graph`, 'PUT', {
+          graphData: JSON.stringify({ edges: [], nodes: [], viewport: { x: 0, y: 0, zoom: 1 } })
+        })
+      );
+
+      const read = await send(await requestAs(ALICE, `/api/diagrams/${diagram.id}`));
+      const saved = ((await read.json()) as { diagram: DiagramPayload }).diagram;
+
+      expect(JSON.parse(saved.graphData)).toEqual({
+        edges: [],
+        nodes: [],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      });
+    });
+
+    // The editor shows the returned timestamp as its save state, so it has to actually move —
+    // a stale one would leave the status bar reporting an earlier save than the one just made.
+    it('advances the diagram\u2019s updated timestamp', async () => {
+      const diagram = await createDiagram(ALICE, {});
+
+      const save = await send(
+        await writeAs(ALICE, `/api/diagrams/${diagram.id}/graph`, 'PUT', {
+          graphData: JSON.stringify({ edges: [], nodes: [{ id: 'n1' }] })
+        })
+      );
+      const { updatedAt } = (await save.json()) as { updatedAt: string };
+
+      const read = await send(await requestAs(ALICE, `/api/diagrams/${diagram.id}`));
+      const saved = ((await read.json()) as { diagram: DiagramPayload }).diagram;
+
+      expect(saved.updatedAt).toBe(updatedAt);
+      expect(Date.parse(updatedAt)).toBeGreaterThanOrEqual(Date.parse(diagram.createdAt));
+    });
+
     it('rejects a malformed graph with 422 and keeps the stored one', async () => {
       const diagram = await createDiagram(ALICE, {});
 

@@ -3,13 +3,20 @@
 Architect is a Cloudflare-centric architecture diagram tool: a React Flow canvas backed by a
 Cloudflare Worker, D1, Workers KV, Static Assets and Cloudflare Access.
 
-This directory currently contains **Phases 1–3** of the port: the deployable lifecycle and original
+This directory currently contains **Phases 1–4** of the port: the deployable lifecycle and original
 2,023-line stylesheet; production-equivalent Cloudflare Access policy; the source application
 header, identity states, three-state appearance control, landing page, catalogue-backed hero
-diagram; the initial user-directory side effect; and the complete creation journey — the eight
-blueprint templates, the filterable gallery with real React Flow thumbnails, the two-column create
-modal, and the personal dashboard with duplicate and delete. The editor and the administrative
-surface remain temporary views until their matching phases in
+diagram; the initial user-directory side effect; the complete creation journey — the eight blueprint
+templates, the filterable gallery with real React Flow thumbnails, the two-column create modal, and
+the personal dashboard with duplicate and delete — and the full single-user editor.
+
+The editor retains the source Zustand model, undo/redo, 500 ms whole-graph autosave, searchable and
+persistently collapsible service palette, drag/drop and click-to-add paths, node/edge properties,
+responsive side drawers, keyboard shortcuts, status bar, custom React Flow renderers, the
+native-form **Connect nodes** dialog, and browser-only ELK auto-layout. ELK remains behind a dynamic
+import: the built-bundle contract fails if its roughly 1.4 MB chunk is folded into the initial
+editor bundle. Sharing, export/print, and administration remain temporary views or absent controls
+until their matching phases in
 [`../../specs/architect/02-implementation.md`](../../specs/architect/02-implementation.md); those
 placeholders are not re-authored substitutes for the source components.
 
@@ -240,3 +247,9 @@ thumbnail still renders every node, every label and every edge — so every DOM 
 lays them out in normal document flow, and a diagram appears as a vertical list of boxes. jsdom
 computes no layout, so nothing in the test suite can fail on it. Phase 3 found exactly that defect
 in local browser review, which is why the step is a requirement rather than a courtesy.
+
+The Phase 4 browser pass additionally covers drag/drop, node movement, pointer and native-form
+keyboard connections, initial blueprint fitting, auto-layout, autosave/reload, both responsive side
+drawers, all three appearance states, and the reduced-motion data-flow treatment. The editor's
+canvas is a real computed-height viewport: the fit-on-load effect waits for React Flow to measure
+the custom nodes, then fits once and never fights a visitor's later pan or zoom.

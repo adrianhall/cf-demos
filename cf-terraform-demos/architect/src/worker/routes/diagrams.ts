@@ -89,14 +89,15 @@ export function createDiagramsRouter(): Hono<AppBindings> {
    * @throws {NullError} When mounted without the Access middleware in front of it.
    * @throws {Error} When the repository cannot read the row.
    */
-  router.get('/:id', async (context) =>
-    context.json({
-      diagram: await context.var.DIAGRAM_SERVICE.get(
-        currentIdentityEmail(context),
-        context.req.param('id')
-      )
-    })
-  );
+  router.get('/:id', async (context) => {
+    const id = context.req.param('id');
+    const diagram = await context.var.DIAGRAM_SERVICE.get(currentIdentityEmail(context), id);
+
+    // An id and the operation are enough to correlate a request. The graph, title and verified
+    // identity are user content and do not belong in an operational log.
+    context.var.LOGGER.info('diagram_opened', { diagramId: diagram.id });
+    return context.json({ diagram });
+  });
 
   /**
    * Renames one of the signed-in identity's own diagrams and/or changes its description.
@@ -116,6 +117,7 @@ export function createDiagramsRouter(): Hono<AppBindings> {
       await readJsonBody(context.req.raw)
     );
 
+    context.var.LOGGER.info('diagram_updated', { diagramId: diagram.id, kind: 'metadata' });
     return context.json({ diagram });
   });
 
@@ -143,6 +145,7 @@ export function createDiagramsRouter(): Hono<AppBindings> {
       await readJsonBody(context.req.raw)
     );
 
+    context.var.LOGGER.info('diagram_updated', { diagramId: id, kind: 'graph' });
     return context.json({ updatedAt });
   });
 

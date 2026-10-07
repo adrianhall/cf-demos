@@ -15,7 +15,7 @@
     "check:lint": "oxlint --type-aware --type-check .",
     "check:naming": "node scripts/check-naming-contract.ts",
     "check:css": "run-s build check:css:contract",
-    "check:css:contract": "NODE_OPTIONS=--no-experimental-webstorage vitest run --project worker tests/worker/built-css.test.ts",
+    "check:css:contract": "NODE_OPTIONS=--no-experimental-webstorage vitest run --project worker tests/worker/built-css.test.ts tests/worker/built-bundle.test.ts",
     "check:infra": "terraform -chdir=infra validate",
     "check:infra:fmt": "terraform -chdir=infra fmt -check",
     "fix": "run-s fix:format fix:lint fix:infra",

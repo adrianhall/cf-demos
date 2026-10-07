@@ -1,6 +1,7 @@
 import { AppHeader } from '../components/AppHeader.tsx';
 import { useIdentity } from '../hooks/useIdentity.ts';
 import { DashboardView } from './DashboardView.tsx';
+import { EditorView } from './EditorView.tsx';
 
 /**
  * Every `/app*` path this shell knows how to render into `<main>`.
@@ -51,8 +52,8 @@ export function resolveRoute(pathname: string): AppRoute {
  * header and its sign-out control are available, so stacking the two produced a second banner with
  * no affordance of its own.
  *
- * **Phase 3 scope.** The dashboard is ported; the editor and the administrative surface arrive in
- * Phases 4 and 6. The header, the identity resolution and the administrative gate below are final.
+ * **Phase 4 scope.** The dashboard and the editor are ported; the administrative surface arrives in
+ * Phase 6. The header, the identity resolution and the administrative gate below are final.
  *
  * @returns The authenticated application shell.
  */
@@ -75,7 +76,7 @@ export function AppShellView() {
       >
         {route.view === 'admin' && <AdminGate identity={identity} />}
         {route.view === 'dashboard' && <DashboardView />}
-        {route.view === 'editor' && <p className="app-shell__loading">Loading editor…</p>}
+        {route.view === 'editor' && <EditorView diagramId={route.diagramId} />}
       </main>
     </div>
   );

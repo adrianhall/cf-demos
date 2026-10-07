@@ -168,5 +168,13 @@ describe('built stylesheet contract', () => {
     it('keeps the shared chrome-link opt-out', () => {
       expect(css).toMatch(/\.nav-link\s*\{[^}]*text-decoration:\s*none/u);
     });
+
+    // Animated data-flow edges are useful direction cues, but motion is not decorative to somebody
+    // who asked the operating system to reduce it. Asserted against the build because a source-only
+    // rule can still be dropped or rewritten by the CSS transform.
+    it('turns edge animation off for reduced-motion visitors', () => {
+      expect(css).toContain('prefers-reduced-motion:reduce');
+      expect(css).toMatch(/cf-edge-animated\{animation:none/u);
+    });
   });
 });
