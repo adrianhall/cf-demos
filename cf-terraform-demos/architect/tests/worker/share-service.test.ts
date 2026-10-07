@@ -31,7 +31,7 @@ let service: ShareService;
 
 beforeEach(() => {
   diagrams = new FakeDiagramRepository();
-  shares = new FakeShareRepository(diagrams);
+  shares = new FakeShareRepository();
   diagramService = new DiagramService(diagrams, shares);
   service = new ShareService(shares, diagramService);
 });
@@ -344,7 +344,7 @@ describe('the service\u2019s dependencies', () => {
   });
 
   it('accepts any conforming repository implementation', async () => {
-    const custom: ShareRepository = new FakeShareRepository(diagrams);
+    const custom: ShareRepository = new FakeShareRepository();
     const alternative = new ShareService(custom, diagramService);
     const id = await createDiagram(ALICE);
 

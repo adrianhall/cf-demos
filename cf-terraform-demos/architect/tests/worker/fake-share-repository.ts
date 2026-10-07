@@ -1,6 +1,5 @@
 import type { ShareRepository } from '../../src/worker/application/ports/share-repository.ts';
-import type { ShareRecord, SharedDiagram } from '../../src/worker/domain/share.ts';
-import type { FakeDiagramRepository } from './fake-diagram-repository.ts';
+import type { ShareRecord } from '../../src/worker/domain/share.ts';
 
 /**
  * One stored share, as this fake keeps it.
@@ -34,6 +33,10 @@ export interface FakeShareRow {
  *
  * Authorization-neutral, exactly like the port it implements: it answers for any diagram id it is
  * given, so the ownership refusals the service suite asserts can only be coming from the service.
+ *
+ * Reading the shared diagram itself is not here, because it is not a share concern: the share
+ * service asks the diagram service for the owner-blind projection, so the service suite injects one
+ * diagram store and both paths read the same rows.
  */
 export class FakeShareRepository implements ShareRepository {
   /**
@@ -45,13 +48,6 @@ export class FakeShareRepository implements ShareRepository {
    * Resolvable digest → diagram id entries, standing in for the KV namespace.
    */
   readonly lookup = new Map<string, string>();
-
-  /**
-   * @param diagrams Diagram store to read the public projection from. Optional, because most share
-   *   assertions never resolve a diagram; the service suite injects the same store its diagram
-   *   service uses so the live-pointer behaviour can be observed end to end.
-   */
-  constructor(private readonly diagrams?: FakeDiagramRepository) {}
 
   /**
    * @param diagramId Diagram id.
@@ -119,25 +115,5 @@ export class FakeShareRepository implements ShareRepository {
    */
   async resolve(tokenDigest: string): Promise<string | null> {
     return this.lookup.get(tokenDigest) ?? null;
-  }
-
-  /**
-   * @param diagramId Diagram id resolved from a valid share.
-   * @returns The public projection, or `null` when the diagram is gone.
-   */
-  async findSharedDiagram(diagramId: string): Promise<SharedDiagram | null> {
-    const diagram = this.diagrams?.rows.get(diagramId);
-    if (diagram === undefined) {
-      return null;
-    }
-
-    // Built field by field rather than spread, for the same reason the real adapter selects
-    // columns: the owner must not be able to travel into a public projection by accident.
-    return {
-      description: diagram.description,
-      graphData: diagram.graphData,
-      id: diagram.id,
-      title: diagram.title
-    };
   }
 }

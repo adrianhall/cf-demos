@@ -1,5 +1,6 @@
 import { AppHeader } from '../components/AppHeader.tsx';
 import { useIdentity } from '../hooks/useIdentity.ts';
+import { AdminView } from './AdminView.tsx';
 import { DashboardView } from './DashboardView.tsx';
 import { EditorView } from './EditorView.tsx';
 
@@ -52,9 +53,6 @@ export function resolveRoute(pathname: string): AppRoute {
  * header and its sign-out control are available, so stacking the two produced a second banner with
  * no affordance of its own.
  *
- * **Phase 4 scope.** The dashboard and the editor are ported; the administrative surface arrives in
- * Phase 6. The header, the identity resolution and the administrative gate below are final.
- *
  * @returns The authenticated application shell.
  */
 export function AppShellView() {
@@ -94,11 +92,11 @@ export function AppShellView() {
  * immediately would flash "not allowed" at the actual administrator on every load.
  *
  * @param props Resolved identity state.
- * @returns The administrative surface placeholder, a wait state, or a refusal.
+ * @returns The administrative surface, a wait state, or a refusal.
  */
 function AdminGate({ identity }: { identity: ReturnType<typeof useIdentity> }) {
   if (identity.isAdmin) {
-    return <p className="app-shell__loading">Loading admin…</p>;
+    return <AdminView />;
   }
   if (identity.loading) {
     return <p className="app-shell__loading">Verifying identity…</p>;

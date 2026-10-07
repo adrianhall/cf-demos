@@ -168,7 +168,9 @@ describe('AppShellView', () => {
       render(<AppShellView />);
 
       await waitFor(() => {
-        expect(within(screen.getByRole('main')).getByText(/loading admin/iu)).toBeInTheDocument();
+        expect(
+          within(screen.getByRole('main')).getByRole('heading', { name: 'Administration' })
+        ).toBeInTheDocument();
       });
     });
 
@@ -218,9 +220,13 @@ describe('AppShellView', () => {
       render(<AppShellView />);
 
       await waitFor(() => {
-        expect(within(screen.getByRole('main')).getByText(/loading admin/iu)).toBeInTheDocument();
+        expect(
+          within(screen.getByRole('main')).getByRole('heading', { name: 'Administration' })
+        ).toBeInTheDocument();
       });
-      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+      // One `/api/me`. The administrative view's own `/api/admin/users` is a second call to a
+      // different endpoint, so the count is taken over the identity requests only.
+      expect(vi.mocked(fetch).mock.calls.filter(([input]) => input === '/api/me')).toHaveLength(1);
     });
   });
 });

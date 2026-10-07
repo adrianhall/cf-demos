@@ -58,8 +58,20 @@ export const mockScreenToFlowPosition = vi
 
 /**
  * Spy standing in for `getNodesBounds()`, defaulting to a landscape diagram.
+ *
+ * The default orientation matters for the print tests: print mode chooses a page orientation from
+ * the diagram's own aspect ratio, so a test about portrait output overrides this.
  */
 export const mockGetNodesBounds = vi.fn().mockReturnValue({ height: 300, width: 400, x: 0, y: 0 });
+
+/**
+ * Spy standing in for `getViewportForBounds()`.
+ *
+ * Returns an identity transform. jsdom computes no layout, so the real function's arithmetic is not
+ * something a test here can meaningfully assert; what the export tests check is that the computed
+ * transform reaches the capture call at all.
+ */
+export const mockGetViewportForBounds = vi.fn().mockReturnValue({ x: 0, y: 0, zoom: 1 });
 
 /**
  * Spy standing in for `useNodesInitialized()`.
@@ -134,6 +146,7 @@ export function useReactFlow() {
   return {
     fitView: mockFitView,
     getNodes: mockGetNodes,
+    getNodesBounds: mockGetNodesBounds,
     getZoom: mockGetZoom,
     screenToFlowPosition: mockScreenToFlowPosition,
     zoomIn: mockZoomIn,
@@ -154,6 +167,11 @@ export function useNodesInitialized(): boolean {
  * Stand-in for `getNodesBounds()`, delegating to {@link mockGetNodesBounds}.
  */
 export const getNodesBounds = mockGetNodesBounds;
+
+/**
+ * Stand-in for `getViewportForBounds()`, delegating to {@link mockGetViewportForBounds}.
+ */
+export const getViewportForBounds = mockGetViewportForBounds;
 
 /**
  * Stand-in for React Flow's `Position` string enum.

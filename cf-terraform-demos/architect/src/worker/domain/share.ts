@@ -5,6 +5,8 @@
  *   appears in exactly one of them. See {@link CreatedShare}.
  */
 
+import type { PublicDiagram } from './diagram.ts';
+
 /**
  * A diagram's current share state, as its owner sees it.
  *
@@ -63,28 +65,14 @@ export interface ShareRecord {
 /**
  * The read-only projection an anonymous share viewer receives.
  *
- * `ownerEmail` is absent by construction rather than stripped on the way out: a public link must
- * never disclose whose diagram it points at, and a type that could carry the owner would make that
- * a thing to remember rather than a thing the compiler enforces. The adapter selects exactly these
- * columns, so the owner is never read from storage in the first place.
+ * An alias of {@link PublicDiagram} rather than a second declaration of the same four fields, so the
+ * owner-blind projection is defined once for every surface that returns it: this one and the
+ * administrative moderation preview. The name is kept because sharing is where the rule is
+ * strictest — a public link must never disclose whose diagram it points at — and because the
+ * client's own share module names the same shape.
+ *
+ * The graph is read at request time rather than captured when the link was created: sharing points
+ * at the live diagram, so an edit the owner makes afterwards is immediately visible through the
+ * same link and there is no snapshot to keep in step.
  */
-export interface SharedDiagram {
-  /**
-   * Diagram id, used by the client to key the read-only canvas.
-   */
-  id: string;
-  /**
-   * Diagram title.
-   */
-  title: string;
-  /**
-   * Diagram description, or `null`.
-   */
-  description: string | null;
-  /**
-   * The diagram's current graph, JSON-serialised. Read at request time rather than captured when
-   * the link was created: sharing points at the live diagram, so an edit the owner makes afterwards
-   * is immediately visible through the same link and there is no snapshot to keep in step.
-   */
-  graphData: string;
-}
+export type SharedDiagram = PublicDiagram;

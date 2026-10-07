@@ -1,5 +1,10 @@
 import type { DiagramRepository } from '../application/ports/diagram-repository.ts';
-import type { CreateDiagramInput, Diagram, UpdateDiagramInput } from '../domain/diagram.ts';
+import type {
+  CreateDiagramInput,
+  Diagram,
+  PublicDiagram,
+  UpdateDiagramInput
+} from '../domain/diagram.ts';
 import { DEFAULT_DIAGRAM_TITLE } from '../domain/diagram.ts';
 
 /**
@@ -23,6 +28,16 @@ interface DiagramRow {
  * forgotten in another.
  */
 const DIAGRAM_COLUMNS = 'id, owner_email, title, description, graph_data, created_at, updated_at';
+
+/**
+ * Columns the owner-blind projection selects.
+ *
+ * `owner_email` is absent by construction. Both readers of this projection — the anonymous share
+ * resolver and the administrative moderation preview — must never disclose whose diagram they are
+ * showing, and not reading the column at all is a stronger guarantee than reading the row and
+ * remembering to drop a field before serialising it.
+ */
+const PUBLIC_DIAGRAM_COLUMNS = 'id, title, description, graph_data';
 
 /**
  * Converts a stored row into the domain shape.
@@ -121,6 +136,29 @@ export class D1DiagramRepository implements DiagramRepository {
       .first<DiagramRow>();
 
     return row === null ? null : toDiagram(row);
+  }
+
+  /**
+   * Reads one diagram's owner-blind projection by id.
+   *
+   * @param id Diagram id.
+   * @returns The projection, or `null` when no row has that id.
+   * @throws {Error} When D1 rejects the statement.
+   */
+  async findPublicFields(id: string): Promise<PublicDiagram | null> {
+    const row = await this.database
+      .prepare(`SELECT ${PUBLIC_DIAGRAM_COLUMNS} FROM diagrams WHERE id = ? LIMIT 1`)
+      .bind(id)
+      .first<Omit<DiagramRow, 'owner_email' | 'created_at' | 'updated_at'>>();
+
+    return row === null
+      ? null
+      : {
+          description: row.description,
+          graphData: row.graph_data,
+          id: row.id,
+          title: row.title
+        };
   }
 
   /**

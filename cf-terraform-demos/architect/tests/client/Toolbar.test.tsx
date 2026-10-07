@@ -358,6 +358,31 @@ describe('sharing', () => {
   });
 });
 
+describe('exporting and printing', () => {
+  it('offers both controls', () => {
+    render(<Toolbar />);
+
+    expect(screen.getByRole('button', { name: 'Export' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Print' })).toBeInTheDocument();
+  });
+
+  it('enters print mode from the toolbar', () => {
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Print' }));
+
+    expect(useDiagramStore.getState().printMode).toBe(true);
+  });
+
+  it('opens the export menu from the toolbar', () => {
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+  });
+});
+
 describe('the read-only posture', () => {
   // Omitted rather than disabled: a row of permanently dead buttons is a worse answer than their
   // absence, and each would still be a tab stop leading nowhere. Sharing is on this list for a
@@ -377,11 +402,12 @@ describe('the read-only posture', () => {
     expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
   });
 
-  // A visitor reading a diagram they cannot edit has the same reason to want dark mode as its
-  // owner.
-  it('keeps the appearance control', () => {
+  // A visitor reading a diagram they cannot edit has the same reason to want a PNG of it, a
+  // printed copy, or dark mode as its owner — and none of the three writes anything, so none
+  // needs the identity the server would refuse them.
+  it.each(['Export', 'Print', /appearance/iu])('keeps %s', (name) => {
     render(<Toolbar readOnly />);
 
-    expect(screen.getByRole('button', { name: /appearance/iu })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name })).toBeInTheDocument();
   });
 });

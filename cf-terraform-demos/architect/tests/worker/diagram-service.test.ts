@@ -31,7 +31,7 @@ let service: DiagramService;
 
 beforeEach(() => {
   repository = new FakeDiagramRepository();
-  service = new DiagramService(repository, new FakeShareRepository(repository));
+  service = new DiagramService(repository, new FakeShareRepository());
 });
 
 describe('creating a diagram', () => {
@@ -380,7 +380,7 @@ describe('concurrent removal between the ownership read and the write', () => {
     ['remove', (svc: DiagramService, id: string) => svc.remove(ALICE, id)]
   ])('reports %s as not found when the row disappeared mid-request', async (_name, run) => {
     const vanishing = new VanishingRepository();
-    const vanishingService = new DiagramService(vanishing, new FakeShareRepository(vanishing));
+    const vanishingService = new DiagramService(vanishing, new FakeShareRepository());
     const diagram = await vanishingService.create(ALICE, {});
 
     await expectRejectedProblemStatus(run(vanishingService, diagram.id), 404);

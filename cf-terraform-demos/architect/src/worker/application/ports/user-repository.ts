@@ -1,3 +1,5 @@
+import type { DirectoryPage, DirectoryRows } from '../../domain/user.ts';
+
 /**
  * Persistence port for the lightweight user directory.
  *
@@ -9,10 +11,9 @@
  * layer in a later phase) calls the same use cases. Ownership and administrator decisions therefore
  * live in the application tier, and this port only stores and retrieves.
  *
- * The interface carries exactly what this phase uses. The paginated, diagram-count-annotated read
- * the administrative directory view needs is added in Phase 6 alongside the route that calls it,
- * rather than declared here in advance: a port method with no caller has no test that exercises it
- * for real, which makes it a guess about a future query rather than a contract.
+ * {@link UserRepository.listWithDiagramCounts} is the one read, and it takes no actor: "who may see
+ * the directory?" is an administrator decision, and it is taken once in `../admin-service.ts`
+ * rather than restated here where a second transport could reach storage without it.
  */
 export interface UserRepository {
   /**
@@ -29,4 +30,22 @@ export interface UserRepository {
    * @throws {Error} When the underlying store rejects the write.
    */
   recordSeen(email: string, seenAt: string): Promise<void>;
+
+  /**
+   * Reads one page of the directory, most recently active identity first, each row annotated with
+   * how many diagrams that identity currently owns.
+   *
+   * The ordering is part of the contract rather than an adapter's choice: the administrative view
+   * exists to answer "who has been using this deployment", and a page ordered by anything else
+   * would make the first page the least interesting one. The total is returned alongside the rows
+   * because a page of rows cannot say whether another page exists.
+   *
+   * Returns the rows and the total only. Echoing the window back is the application tier's job,
+   * since it is the caller's own value and storage merely obeyed it.
+   *
+   * @param page Validated pagination window.
+   * @returns The requested rows and the directory's total row count.
+   * @throws {Error} When the underlying store rejects the read.
+   */
+  listWithDiagramCounts(page: DirectoryPage): Promise<DirectoryRows>;
 }

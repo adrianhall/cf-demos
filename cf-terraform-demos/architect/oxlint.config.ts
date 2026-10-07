@@ -37,6 +37,12 @@ export default defineConfig({
     'dist/',
     'infra/outputs.json',
     'node_modules/',
+    // Starter-project templates for the scaffold export. They are imported only as raw text
+    // through Vite's `?raw` suffix and never compiled or run by this demo, so type-aware linting
+    // resolves them against this project's dependencies rather than the generated project's —
+    // and reports every Drizzle and Workers-types import as missing. `tsconfig.json` excludes
+    // them for the same reason.
+    'src/client/lib/scaffold-templates/',
     // The Workers-runtime suite imports `cloudflare:test`/`cloudflare:workers`, which only resolve
     // inside the Workers pool. Type-aware linting runs in Node and cannot resolve them.
     'tests/integration/'

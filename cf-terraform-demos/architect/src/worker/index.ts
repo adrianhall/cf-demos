@@ -5,6 +5,7 @@ import {
   problemDetailsErrorHandler
 } from '@adrianhall/cloudflare-toolkit/hono';
 import { createMeRouter, currentIdentityEmail } from '@demos/worker-common';
+import { AdminService } from './application/admin-service.ts';
 import { DiagramService } from './application/diagram-service.ts';
 import { ShareService } from './application/share-service.ts';
 import { UserService } from './application/user-service.ts';
@@ -30,10 +31,9 @@ import { createSharesRouter } from './routes/shares.ts';
  * does arrive here — in local development, in the Workers-runtime test suite, or if asset routing
  * ever changed — is authenticated rather than served by accident.
  *
- * This file is the only place that knows both a concrete adapter and the service built on it. Later
- * phases add the diagram, share and admin services here the same way, so a route handler always
- * receives a service ready-made and never constructs a repository. That is what keeps the routes →
- * application → domain → infrastructure dependency direction one-way.
+ * This file is the only place that knows both a concrete adapter and the service built on it, so a
+ * route handler always receives a service ready-made and never constructs a repository. That is
+ * what keeps the routes → application → domain → infrastructure dependency direction one-way.
  */
 const app = new Hono<AppBindings>();
 
@@ -62,6 +62,7 @@ app.use(cloudflareLogger());
  */
 app.use(async (context, next) => {
   const shareRepository = new D1KvShareRepository(context.env.DB, context.env.SHARES);
+  const userRepository = new D1UserRepository(context.env.DB);
   const diagramService = new DiagramService(
     new D1DiagramRepository(context.env.DB),
     shareRepository
@@ -69,7 +70,12 @@ app.use(async (context, next) => {
 
   context.set('DIAGRAM_SERVICE', diagramService);
   context.set('SHARE_SERVICE', new ShareService(shareRepository, diagramService));
-  context.set('USER_SERVICE', new UserService(new D1UserRepository(context.env.DB)));
+  context.set('USER_SERVICE', new UserService(userRepository));
+  // The administrative service is given the same diagram service the owner-scoped routes use,
+  // not a second one over the same repository. Moderation deleting a diagram has to leave
+  // precisely the state an owner's own delete leaves — including the share cascade — and sharing
+  // the use case is what makes that true by construction rather than by review.
+  context.set('ADMIN_SERVICE', new AdminService(userRepository, diagramService));
   await next();
 });
 
@@ -105,6 +111,9 @@ app.route('/api/diagrams', createDiagramsRouter());
 // Anonymous, read-only, and public by three agreeing decisions — see `./routes/shares.ts`.
 app.route('/api/shares', createSharesRouter());
 
+// Administrator-only, and checked here rather than trusted from `/api/me`: the router's own
+// middleware re-derives the comparison against `ADMIN_EMAIL` from the verified JWT on every
+// request. See `./routes/admin.ts`.
 app.route('/api/admin', createAdminRouter());
 
 // `includeStack` is gated on `import.meta.env.DEV`, which Vite replaces with the literal `false`

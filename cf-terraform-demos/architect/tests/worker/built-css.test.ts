@@ -155,6 +155,14 @@ describe('built stylesheet contract', () => {
       expect(css).toMatch(/:root\s*\{[^}]*color-scheme:\s*light dark/u);
     });
 
+    // `color-scheme` changes native controls, not inherited text colour in every browser. Without
+    // an explicit pair, system/dark mode can combine a dark surface with the UA's black body text
+    // — which is exactly what local browser review found in the administration table.
+    it('pairs the themed body surface with themed text', () => {
+      expect(css).toMatch(/body\{[^}]*background:var\(--cf-surface\)/u);
+      expect(css).toMatch(/body\{[^}]*color:light-dark\(#111827,#f4f4f5\)/u);
+    });
+
     // Every `<button>` opts out of native chrome. Without it, a browser paints a button's
     // background using the *system's* appearance rather than this page's `color-scheme`, so an
     // explicitly chosen scheme leaves icon-only controls showing the other scheme's background —

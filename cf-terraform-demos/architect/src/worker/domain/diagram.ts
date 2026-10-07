@@ -89,6 +89,35 @@ export interface UpdateDiagramInput {
 }
 
 /**
+ * A diagram as somebody who is not its owner may see it.
+ *
+ * `ownerEmail` is absent **by construction** rather than stripped on the way out, and that is the
+ * whole of this type's job. Two surfaces return it — the anonymous share resolver (`./share.ts`'s
+ * {@link SharedDiagram}) and the administrative moderation preview
+ * (`../application/admin-service.ts`) — and in both cases disclosing the owner would be the
+ * mistake. A type that _could_ carry the owner would make omitting it a thing to remember; the
+ * adapter selects exactly these columns, so the owner is never read from storage at all.
+ */
+export interface PublicDiagram {
+  /**
+   * Diagram id, used by the client to key the read-only canvas.
+   */
+  id: string;
+  /**
+   * Diagram title.
+   */
+  title: string;
+  /**
+   * Diagram description, or `null`.
+   */
+  description: string | null;
+  /**
+   * The diagram's current graph, JSON-serialised.
+   */
+  graphData: string;
+}
+
+/**
  * Title assigned when a create request omits one.
  *
  * A constant rather than an empty string: the dashboard card and the editor's title control both

@@ -21,6 +21,8 @@ import { computeAutoLayout, type LayoutDirection } from '../../../lib/auto-layou
 import { useDiagramStore } from '../../../stores/diagramStore.ts';
 import { DarkModeToggle } from '../../DarkModeToggle.tsx';
 import { ConnectNodesModal } from './ConnectNodesModal.tsx';
+import { ExportButton } from './ExportButton.tsx';
+import { PrintButton } from './PrintButton.tsx';
 import { ShareModal } from './ShareModal.tsx';
 
 /**
@@ -333,10 +335,11 @@ export function Toolbar({ readOnly = false }: ToolbarProps) {
         </div>
       )}
 
-      {/* The appearance control is available in both postures: a visitor reading a diagram they
-          cannot edit has the same reason to want dark mode as its owner. Sharing is not: an
-          anonymous viewer arrived through somebody else's link, and offering them a control to
-          mint one of their own would be an offer the server refuses. */}
+      {/* Export, print and the appearance control are available in both postures: a visitor
+          reading a diagram they cannot edit has the same reason to want a PNG of it, a printed
+          copy, or dark mode as its owner, and none of the three writes anything. Sharing is the
+          exception — an anonymous viewer arrived through somebody else's link, and offering them
+          a control to mint one of their own would be an offer the server refuses. */}
       <div className="toolbar__group toolbar__group--end">
         {!readOnly && (
           <button
@@ -350,6 +353,8 @@ export function Toolbar({ readOnly = false }: ToolbarProps) {
             <Share2 size={18} aria-hidden="true" />
           </button>
         )}
+        <ExportButton />
+        <PrintButton />
         <DarkModeToggle className="toolbar__button" />
       </div>
 

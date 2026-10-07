@@ -15,12 +15,21 @@ import { UserService } from '../../src/worker/application/user-service.ts';
 const ALICE = 'alice@example.com';
 
 /**
- * Builds an in-memory {@link UserRepository} whose calls can be inspected.
+ * The directory write, which is all {@link UserService} is given.
+ *
+ * Narrowed here exactly as the service narrows it, so this suite cannot accidentally hand the
+ * service a capability production does not: the directory read belongs to the administrative
+ * service, behind the administrator check.
+ */
+type DirectoryWriter = Pick<UserRepository, 'recordSeen'>;
+
+/**
+ * Builds an in-memory directory writer whose calls can be inspected.
  *
  * @param overrides Methods to replace; the rest resolve successfully.
- * @returns The fake repository.
+ * @returns The fake writer.
  */
-function fakeRepository(overrides: Partial<UserRepository> = {}): UserRepository {
+function fakeRepository(overrides: Partial<DirectoryWriter> = {}): DirectoryWriter {
   return {
     recordSeen: vi.fn(async () => undefined),
     ...overrides

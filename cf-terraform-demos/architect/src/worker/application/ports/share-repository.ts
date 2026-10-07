@@ -1,4 +1,4 @@
-import type { ShareRecord, SharedDiagram } from '../../domain/share.ts';
+import type { ShareRecord } from '../../domain/share.ts';
 
 /**
  * Persistence port for read-only diagram sharing.
@@ -17,6 +17,12 @@ import type { ShareRecord, SharedDiagram } from '../../domain/share.ts';
  * Which store backs which method is deliberately invisible here. The adapter
  * (`../../infrastructure/d1-kv-share-repository.ts`) keeps D1 authoritative for the share lifecycle
  * and uses KV only as a disposable lookup, and nothing above this line knows that.
+ *
+ * Reading the shared diagram itself is deliberately **not** here. It is a diagram read, not a share
+ * one, and it now lives on {@link DiagramRepository.findPublicFields} — the same owner-blind
+ * projection the administrative moderation preview uses. Two ports returning the same four columns
+ * would be two places to keep the "never select `owner_email`" rule, and the one most likely to
+ * drift is whichever was written second.
  */
 export interface ShareRepository {
   /**
@@ -75,17 +81,4 @@ export interface ShareRepository {
    * @throws {Error} When the underlying store rejects the read.
    */
   resolve(tokenDigest: string): Promise<string | null>;
-
-  /**
-   * Reads the public, read-only projection of a diagram.
-   *
-   * Separate from {@link DiagramRepository.find} rather than reusing it, because the projections
-   * genuinely differ: this one must not include the owner, and selecting the columns it may return
-   * is a stronger guarantee than reading the whole row and remembering to drop one field.
-   *
-   * @param diagramId Diagram id, already resolved from a valid share.
-   * @returns The public projection, or `null` when the diagram no longer exists.
-   * @throws {Error} When the underlying store rejects the read.
-   */
-  findSharedDiagram(diagramId: string): Promise<SharedDiagram | null>;
 }

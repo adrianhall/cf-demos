@@ -313,11 +313,20 @@ describe('Architect Worker', () => {
       expect(response.status).toBe(401);
     });
 
-    // The administrator passes authorization and is then answered by routing: the endpoints
-    // themselves arrive in a later phase. A `404` here rather than a `403` is what proves the
-    // check admitted them.
-    it('admits the configured administrator as far as routing', async () => {
+    // The positive half of the same rule: the check admits the configured administrator rather
+    // than refusing everybody. The endpoints' own behaviour is covered in `./admin.test.ts`; what
+    // matters here is simply that this identity got past the gate every other one is stopped by.
+    it('admits the configured administrator', async () => {
       const response = await send(await requestAs(ADMIN, '/api/admin/users'));
+
+      expect(response.status).toBe(200);
+    });
+
+    // Hono runs router middleware before matching a path, so the administrator reaching a path
+    // that does not exist is answered by routing while an ordinary identity is still refused —
+    // which is what stops the administrative surface disclosing which of its routes are real.
+    it('answers the administrator with 404 for a path under the prefix that does not exist', async () => {
+      const response = await send(await requestAs(ADMIN, '/api/admin/not-a-route'));
 
       expect(response.status).toBe(404);
     });

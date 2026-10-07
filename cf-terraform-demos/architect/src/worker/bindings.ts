@@ -1,4 +1,5 @@
 import type { CloudflareToolkitVariables } from '@adrianhall/cloudflare-toolkit/hono';
+import type { AdminService } from './application/admin-service.ts';
 import type { DiagramService } from './application/diagram-service.ts';
 import type { ShareService } from './application/share-service.ts';
 import type { UserService } from './application/user-service.ts';
@@ -35,6 +36,16 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * User-directory use cases, backed by the D1 adapter the composition root injected.
    */
   USER_SERVICE: UserService;
+  /**
+   * Operator use cases — the user directory and diagram moderation — backed by the same adapters
+   * the owner-scoped services use.
+   *
+   * Set for every request like the rest, rather than only on the administrative routes. Holding the
+   * service is not authority to call it: `./middleware/require-admin.ts` is mounted on the
+   * administrative router, so no handler elsewhere can reach these use cases regardless of what the
+   * context carries.
+   */
+  ADMIN_SERVICE: AdminService;
 }
 
 /**

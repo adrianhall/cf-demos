@@ -46,6 +46,27 @@ const TITLE_SAVE_DEBOUNCE_MS = 1_000;
 const SNAP_GRID: [number, number] = [16, 16];
 
 /**
+ * How long to wait after fitting the view before opening the print dialog, in milliseconds.
+ *
+ * `window.print()` snapshots the page synchronously, so it has to run after the browser has
+ * actually painted the fitted viewport. One frame is not reliably enough — the fit animates the
+ * transform — so this is a deliberate short wait rather than a `requestAnimationFrame`.
+ */
+const PRINT_DIALOG_DELAY_MS = 300;
+
+/**
+ * Class applied to `<body>` while the canvas is in print mode, which the stylesheet's print-only
+ * rules key off.
+ */
+const PRINT_MODE_BODY_CLASS = 'diagram-editor-print-mode';
+
+/**
+ * Id of the `<style>` element carrying the chosen `@page` orientation, so it can be removed again
+ * on the way out.
+ */
+const PRINT_ORIENTATION_STYLE_ID = 'diagram-editor-print-orientation';
+
+/**
  * A diagram's graph, parsed.
  */
 interface ParsedGraphData {
@@ -137,7 +158,7 @@ export interface DiagramCanvasProps {
  * @returns The canvas, a loading state, or the failure that stopped it loading.
  */
 export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: DiagramCanvasProps) {
-  const { fitView, screenToFlowPosition } = useReactFlow();
+  const { fitView, getNodes, getNodesBounds, screenToFlowPosition } = useReactFlow();
   const nodesInitialized = useNodesInitialized();
 
   const {
@@ -159,6 +180,9 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     markSaved,
     markSaveError,
     title,
+    description,
+    printMode,
+    setPrintMode,
     paletteOpen,
     propertiesOpen,
     minimapOpen
@@ -293,6 +317,84 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     fittedOnLoadRef.current = true;
     void fitView({ duration: 0 });
   }, [diagramLoaded, nodesInitialized, fitView]);
+
+  // Print mode. The button only sets the flag; everything printing actually requires happens
+  // here, because all of it is about the document and the viewport rather than about a control.
+  //
+  // Four things have to be true for a printed diagram to be usable, and only the last is
+  // obvious:
+  //
+  // - **A light colour scheme, forced.** A dark-mode diagram prints as a page of black ink. The
+  //   override is an inline `color-scheme` rather than a class, because that is what drives
+  //   every `light-dark()` value in the stylesheet — see `../../lib/theme.ts`.
+  // - **An orientation matching the diagram.** A wide architecture on a portrait page is
+  //   scaled down to nothing. The `@page` rule is injected rather than written in the stylesheet
+  //   because the choice depends on this diagram's actual shape.
+  // - **A fitted viewport.** Printing captures the page as it stands, so whatever the visitor had
+  //   panned to is what would land on the paper.
+  // - **The dialog itself**, one short wait later, so the browser has painted the fit first.
+  //
+  // Every one of them is undone on the way out, including when the effect is torn down by an
+  // unmount mid-print: leaving the scheme forced would silently disable the appearance control.
+  useEffect(() => {
+    if (!printMode) {
+      return undefined;
+    }
+
+    const previousColorScheme = document.documentElement.style.colorScheme;
+    document.documentElement.style.colorScheme = 'light';
+    document.body.classList.add(PRINT_MODE_BODY_CLASS);
+
+    const flowNodes = getNodes();
+    // Landscape for an empty diagram: there is no shape to infer one from, and a printed page of
+    // a blank canvas is the same either way.
+    const bounds = flowNodes.length > 0 ? getNodesBounds(flowNodes) : null;
+    const isLandscape = bounds === null || bounds.width > bounds.height;
+
+    const orientationStyle = document.createElement('style');
+    orientationStyle.id = PRINT_ORIENTATION_STYLE_ID;
+    orientationStyle.textContent = `@page { size: ${
+      isLandscape ? 'landscape' : 'portrait'
+    }; margin: 0.5in; }`;
+    document.head.appendChild(orientationStyle);
+
+    /**
+     * Returns the document to the state it was in before print mode.
+     *
+     * @returns Nothing.
+     */
+    const restoreDocument = (): void => {
+      document.documentElement.style.colorScheme = previousColorScheme;
+      document.body.classList.remove(PRINT_MODE_BODY_CLASS);
+      document.getElementById(PRINT_ORIENTATION_STYLE_ID)?.remove();
+    };
+
+    /**
+     * Leaves print mode once the browser's print dialog has closed.
+     *
+     * Listening for `afterprint` rather than assuming the dialog succeeded is what returns the
+     * editor to normal after a cancelled print as well as a completed one.
+     *
+     * @returns Nothing.
+     */
+    const exitPrintMode = (): void => {
+      restoreDocument();
+      setPrintMode(false);
+    };
+
+    window.addEventListener('afterprint', exitPrintMode);
+
+    const frame = requestAnimationFrame(() => {
+      void fitView({ duration: 0 });
+      setTimeout(() => window.print(), PRINT_DIALOG_DELAY_MS);
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('afterprint', exitPrintMode);
+      restoreDocument();
+    };
+  }, [printMode, fitView, getNodes, getNodesBounds, setPrintMode]);
 
   /**
    * Adds a service dropped from the palette, at the point it was dropped.
@@ -440,7 +542,7 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     // keyboard cases in `tests/client/DiagramCanvas.test.tsx`.
     // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
-      className="diagram-editor"
+      className={`diagram-editor${printMode ? ' diagram-editor--print' : ''}`}
       role="application"
       aria-label="Diagram editor"
       onKeyDown={onKeyDown}
@@ -452,10 +554,41 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
           a screen-reader user meets is the palette's "Services" and the diagram they opened is
           never announced at all. */}
       <h1 className="visually-hidden">{title} — Diagram editor</h1>
-      <Toolbar readOnly={readOnly} />
+      {/* Print mode strips the editor down to the diagram itself: the toolbar, the panels, the
+          status bar, the background grid, the minimap and the canvas controls are all chrome,
+          and none of them belongs on paper. */}
+      {!printMode && <Toolbar readOnly={readOnly} />}
       <div className="diagram-editor__body">
-        {!readOnly && paletteOpen && <ServicePalette onAddNode={onAddNodeFromPalette} />}
+        {!readOnly && !printMode && paletteOpen && (
+          <ServicePalette onAddNode={onAddNodeFromPalette} />
+        )}
         <div className="diagram-editor__canvas">
+          {/* The printed page's own title block. The editor shows the title in the toolbar,
+              which print mode has just removed, so without this the paper carries a diagram with
+              no name on it. Pointer-inert, so it cannot intercept a click on the canvas beneath
+              during the moment before the dialog opens. */}
+          {printMode && (
+            <div className="diagram-editor__print-overlay">
+              <div className="diagram-editor__print-title-box">
+                <h2 className="diagram-editor__print-title">{title}</h2>
+                {description && <p className="diagram-editor__print-description">{description}</p>}
+              </div>
+            </div>
+          )}
+          {/* The way out if the browser never fires `afterprint` — a cancelled dialog in some
+              browsers, or a printing path that simply does not. Hidden by the stylesheet's own
+              `@media print` rule, so it is never on the paper it exists to escape from. */}
+          {printMode && (
+            <button
+              type="button"
+              className="diagram-editor__print-exit"
+              onClick={() => setPrintMode(false)}
+              title="Exit print mode"
+              aria-label="Exit print mode"
+            >
+              ← Back
+            </button>
+          )}
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -485,8 +618,8 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
             nodesConnectable={!readOnly}
             defaultEdgeOptions={{ type: CF_EDGE_TYPE }}
           >
-            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-            {minimapOpen && (
+            {!printMode && <Background variant={BackgroundVariant.Dots} gap={16} size={1} />}
+            {!printMode && minimapOpen && (
               <MiniMap
                 nodeColor={(node) => {
                   const data = node.data as CFNodeData;
@@ -497,14 +630,14 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
             )}
             {/* `showInteractive` hides React Flow's own lock control, which would otherwise be a
                 tab stop offering to unlock a canvas this visitor may not edit. */}
-            <Controls showInteractive={!readOnly} />
+            {!printMode && <Controls showInteractive={!readOnly} />}
           </ReactFlow>
         </div>
         {/* The details panel edits the selection, so it is absent rather than disabled — a
             read-only visitor who selects a node has nothing to change about it. */}
-        {!readOnly && propertiesOpen && <DetailsPanel />}
+        {!readOnly && !printMode && propertiesOpen && <DetailsPanel />}
       </div>
-      <StatusBar readOnly={readOnly} />
+      {!printMode && <StatusBar readOnly={readOnly} />}
     </div>
   );
 }

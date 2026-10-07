@@ -1,4 +1,9 @@
-import type { CreateDiagramInput, Diagram, UpdateDiagramInput } from '../../domain/diagram.ts';
+import type {
+  CreateDiagramInput,
+  Diagram,
+  PublicDiagram,
+  UpdateDiagramInput
+} from '../../domain/diagram.ts';
 
 /**
  * Persistence port for diagrams.
@@ -43,6 +48,22 @@ export interface DiagramRepository {
    * @throws {Error} When the underlying store rejects the read.
    */
   find(id: string): Promise<Diagram | null>;
+
+  /**
+   * Reads one diagram's owner-blind projection by id.
+   *
+   * Separate from {@link DiagramRepository.find} rather than a caller dropping a field, because the
+   * projections genuinely differ: this one must not carry the owner, and selecting only the columns
+   * it may return is a stronger guarantee than reading the whole row and remembering to omit one.
+   * It backs the administrative moderation preview, whose point is to show an administrator what a
+   * diagram _contains_ before they decide to delete it — without adding a second way to discover
+   * who wrote it.
+   *
+   * @param id Diagram id.
+   * @returns The owner-blind projection, or `null` when no row has that id.
+   * @throws {Error} When the underlying store rejects the read.
+   */
+  findPublicFields(id: string): Promise<PublicDiagram | null>;
 
   /**
    * Lists the diagrams belonging to one owner, most recently updated first.

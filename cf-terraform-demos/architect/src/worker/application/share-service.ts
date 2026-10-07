@@ -140,10 +140,11 @@ export class ShareService {
       throw notFound({ detail: SHARE_NOT_FOUND });
     }
 
-    // Checked rather than assumed. The diagram delete use case cascades a revocation, so a share
-    // pointing at a missing diagram should not occur — but "should not occur" is not a reason to
-    // serve `null` into a response, and a cascade that failed halfway must still refuse here.
-    const shared = await this.repository.findSharedDiagram(diagramId);
+    // Checked rather than assumed. Both delete use cases — the owner's and the administrator's
+    // moderation delete — cascade a revocation, so a share pointing at a missing diagram should
+    // not occur; but "should not occur" is not a reason to serve `null` into a response, and a
+    // cascade that failed halfway must still refuse here.
+    const shared = await this.diagrams.getPublicFields(diagramId);
     if (shared === null) {
       throw notFound({ detail: SHARE_NOT_FOUND });
     }

@@ -1,4 +1,33 @@
+import { sqlCount } from '@adrianhall/cloudflare-toolkit/guards';
 import type { UserRepository } from '../application/ports/user-repository.ts';
+import type { AdminUserDirectoryEntry, DirectoryPage, DirectoryRows } from '../domain/user.ts';
+
+/**
+ * One directory row joined with its diagram count, in D1's snake-cased column names.
+ */
+interface UserDirectoryRow {
+  email: string;
+  display_name: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  diagram_count: number;
+}
+
+/**
+ * Converts a stored row into the domain shape.
+ *
+ * @param row Row as returned by D1.
+ * @returns The directory entry in the application tier's vocabulary.
+ */
+function toDirectoryEntry(row: UserDirectoryRow): AdminUserDirectoryEntry {
+  return {
+    diagramCount: row.diagram_count,
+    displayName: row.display_name,
+    email: row.email,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at
+  };
+}
 
 /**
  * D1 adapter implementing {@link UserRepository}.
@@ -6,7 +35,8 @@ import type { UserRepository } from '../application/ports/user-repository.ts';
  * D1 rather than KV because the administrative view this directory backs lists identities ordered
  * by recent activity and annotated with a diagram count — both queries by predicate across the
  * whole table, which is what a relational store is for and what a key-value store cannot answer
- * without reading every key.
+ * without reading every key. The count in particular is a join between two tables, which is not a
+ * question a key-value store can be asked at all.
  */
 export class D1UserRepository implements UserRepository {
   /**
@@ -40,5 +70,51 @@ export class D1UserRepository implements UserRepository {
       )
       .bind(email, seenAt, seenAt)
       .run();
+  }
+
+  /**
+   * Reads one page of the directory, most recently active first, each row carrying its owner's
+   * current diagram count.
+   *
+   * The count comes from a correlated subquery against `diagrams.owner_email` rather than a
+   * denormalised counter column, so it cannot drift from the diagrams an identity actually owns —
+   * including after a moderation delete, which is exactly the operation a counter would be
+   * forgotten in. The subquery rides the `diagrams_owner_email_idx` index
+   * (`migrations/0001_create_diagrams_and_users.sql`), so it is a per-row index lookup rather than
+   * a scan of the shared table.
+   *
+   * The total is read as a second statement rather than as a window function over the first,
+   * because `LIMIT` is applied before a window would be evaluated: the paged query simply cannot
+   * see the rows it excluded.
+   *
+   * @param page Validated pagination window.
+   * @returns The requested rows and the directory's total row count.
+   * @throws {Error} When D1 rejects either statement.
+   */
+  async listWithDiagramCounts(page: DirectoryPage): Promise<DirectoryRows> {
+    const { results } = await this.database
+      .prepare(
+        `SELECT
+           u.email AS email,
+           u.display_name AS display_name,
+           u.first_seen_at AS first_seen_at,
+           u.last_seen_at AS last_seen_at,
+           (SELECT COUNT(*) FROM diagrams d WHERE d.owner_email = u.email) AS diagram_count
+         FROM users u
+         ORDER BY u.last_seen_at DESC, u.email ASC
+         LIMIT ? OFFSET ?`
+      )
+      .bind(page.limit, page.offset)
+      .all<UserDirectoryRow>();
+
+    const totalRow = await this.database
+      .prepare('SELECT COUNT(*) AS count FROM users')
+      .first<{ count: number }>();
+
+    // `sqlCount` rather than `totalRow?.count ?? 0`. A `COUNT(*)` always produces a row, so a
+    // missing or non-numeric one is a storage fault rather than an empty directory — and the two
+    // must not look alike. The guard fails loudly where `?? 0` would report "nobody has ever
+    // signed in" to an administrator looking at a broken database.
+    return { total: sqlCount(totalRow), users: results.map(toDirectoryEntry) };
   }
 }

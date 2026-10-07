@@ -1,5 +1,5 @@
 import type { ShareRepository } from '../application/ports/share-repository.ts';
-import type { ShareRecord, SharedDiagram } from '../domain/share.ts';
+import type { ShareRecord } from '../domain/share.ts';
 
 /**
  * One row of the `diagram_shares` table, in D1's snake-cased column names.
@@ -8,15 +8,6 @@ interface ShareRow {
   token_digest: string;
   created_at: string;
 }
-
-/**
- * The columns the public share projection selects from `diagrams`.
- *
- * `owner_email` is absent by construction. A public link must never disclose whose diagram it
- * points at, and not reading the column at all is a stronger guarantee than reading the row and
- * remembering to drop a field before serialising it.
- */
-const SHARED_DIAGRAM_COLUMNS = 'id, title, description, graph_data';
 
 /**
  * Adapter implementing {@link ShareRepository} over D1 and Workers KV.
@@ -36,6 +27,10 @@ const SHARED_DIAGRAM_COLUMNS = 'id, title, description, graph_data';
  * KV is eventually consistent across locations, which is why {@link D1KvShareRepository.resolve}
  * treats a miss as "ask D1" rather than "revoked". Without that fallback, a link opened moments
  * after it was minted could fail in the very session the owner is watching.
+ *
+ * Reading the shared diagram itself is not here. It is a diagram read, and it belongs to the
+ * diagram adapter's owner-blind projection — see `../application/ports/share-repository.ts` for why
+ * one projection rather than two.
  */
 export class D1KvShareRepository implements ShareRepository {
   /**
@@ -205,33 +200,5 @@ export class D1KvShareRepository implements ShareRepository {
       await this.kv.put(tokenDigest, row.diagram_id);
     }
     return row.diagram_id;
-  }
-
-  /**
-   * Reads the public, read-only projection of a diagram.
-   *
-   * @param diagramId Diagram id, already resolved from a valid share.
-   * @returns The public projection, or `null` when the diagram no longer exists.
-   * @throws {Error} When D1 rejects the statement.
-   */
-  async findSharedDiagram(diagramId: string): Promise<SharedDiagram | null> {
-    const row = await this.database
-      .prepare(`SELECT ${SHARED_DIAGRAM_COLUMNS} FROM diagrams WHERE id = ? LIMIT 1`)
-      .bind(diagramId)
-      .first<{
-        id: string;
-        title: string;
-        description: string | null;
-        graph_data: string;
-      }>();
-
-    return row === null
-      ? null
-      : {
-          description: row.description,
-          graphData: row.graph_data,
-          id: row.id,
-          title: row.title
-        };
   }
 }

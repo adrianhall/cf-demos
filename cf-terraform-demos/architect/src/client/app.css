@@ -40,6 +40,12 @@
 }
 
 body {
+  /* `color-scheme` changes native controls, not the inherited text colour in every browser. Without
+     an explicit pair here, system/dark mode can combine a dark `--cf-surface` with the UA's black
+     body text — the admin directory made the failure especially visible because its table is mostly
+     unstyled text. Keep both values native `light-dark()` so the in-app override still drives them. */
+  background: var(--cf-surface);
+  color: light-dark(#111827, #f4f4f5);
   margin: 0;
 }
 

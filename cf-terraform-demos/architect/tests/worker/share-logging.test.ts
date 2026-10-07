@@ -52,7 +52,7 @@ function createApp(): {
   diagrams: FakeDiagramRepository;
 } {
   const diagrams = new FakeDiagramRepository();
-  const shares = new FakeShareRepository(diagrams);
+  const shares = new FakeShareRepository();
   const diagramService = new DiagramService(diagrams, shares);
   const shareService = new ShareService(shares, diagramService);
   const entries: LoggedEntry[] = [];

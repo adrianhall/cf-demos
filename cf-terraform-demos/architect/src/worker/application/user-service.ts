@@ -1,17 +1,30 @@
 import type { UserRepository } from './ports/user-repository.ts';
 
 /**
- * Use cases for the user directory — the tier between the HTTP API and persistence.
+ * The directory write, and nothing else.
+ *
+ * {@link UserService} is narrowed to this rather than taking the whole {@link UserRepository}, so
+ * the claim made everywhere else in this demo — _the directory is written as a side effect of
+ * authentication and never read back by it_ — is enforced by the compiler rather than by comment.
+ * The service physically cannot reach the directory read; `./admin-service.ts` holds that, behind
+ * the administrator check.
+ */
+type UserDirectoryWriter = Pick<UserRepository, 'recordSeen'>;
+
+/**
+ * The authentication-time user-directory side effect — the tier between the HTTP API and
+ * persistence.
  *
  * Routes hand this service a verified Cloudflare Access identity and nothing else. It depends only
- * on the {@link UserRepository} port, so the same use case will serve the MCP tool layer in a later
- * phase as an in-process function call rather than an internal HTTP round trip.
+ * on a port, so the same use case will serve the MCP tool layer in a later phase as an in-process
+ * function call rather than an internal HTTP round trip.
  */
 export class UserService {
   /**
-   * @param repository Persistence port backing the directory.
+   * @param repository Persistence port backing the directory, narrowed to the write; see
+   *   {@link UserDirectoryWriter}.
    */
-  constructor(private readonly repository: UserRepository) {}
+  constructor(private readonly repository: UserDirectoryWriter) {}
 
   /**
    * Records that a verified identity made an authenticated request.

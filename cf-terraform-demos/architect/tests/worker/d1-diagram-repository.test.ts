@@ -50,6 +50,7 @@ describe('parameter binding', () => {
 
     await repository.create(injection, { title: injection }, '{}');
     await repository.find(injection);
+    await repository.findPublicFields(injection);
     await repository.listByOwner(injection);
     await repository.updateMetadata(injection, { title: injection });
     await repository.replaceGraph(injection, injection);
@@ -139,6 +140,59 @@ describe('find', () => {
     );
 
     expect((await repository.find(DIAGRAM_ID))?.description).toBeNull();
+  });
+});
+
+describe('findPublicFields', () => {
+  it('maps the owner-blind columns onto the domain shape', async () => {
+    const fake = createFakeD1({
+      firstRows: [
+        {
+          description: 'Notes',
+          graph_data: '{"nodes":[],"edges":[]}',
+          id: DIAGRAM_ID,
+          title: 'My Diagram'
+        }
+      ]
+    });
+    const repository = new D1DiagramRepository(fake.database);
+
+    await expect(repository.findPublicFields(DIAGRAM_ID)).resolves.toEqual({
+      description: 'Notes',
+      graphData: '{"nodes":[],"edges":[]}',
+      id: DIAGRAM_ID,
+      title: 'My Diagram'
+    });
+  });
+
+  // Asserted against the statement rather than only the mapped result. Selecting the owner and
+  // dropping it afterwards would pass a shape assertion while still reading it out of storage,
+  // one careless spread away from reaching an anonymous share viewer or the moderation preview.
+  it('never selects the owner column', async () => {
+    const fake = createFakeD1({ firstRows: [{ id: DIAGRAM_ID, title: 'My Diagram' }] });
+    const repository = new D1DiagramRepository(fake.database);
+
+    await repository.findPublicFields(DIAGRAM_ID);
+
+    expect(fake.statements[0]?.sql).not.toContain('owner_email');
+  });
+
+  it('reports a diagram that no longer exists as absent', async () => {
+    const repository = new D1DiagramRepository(createFakeD1().database);
+
+    await expect(repository.findPublicFields(DIAGRAM_ID)).resolves.toBeNull();
+  });
+
+  it('preserves a null description rather than coercing it to a string', async () => {
+    const repository = new D1DiagramRepository(
+      createFakeD1({
+        firstRows: [{ description: null, graph_data: '{}', id: DIAGRAM_ID, title: 'My Diagram' }]
+      }).database
+    );
+
+    await expect(repository.findPublicFields(DIAGRAM_ID)).resolves.toMatchObject({
+      description: null
+    });
   });
 });
 

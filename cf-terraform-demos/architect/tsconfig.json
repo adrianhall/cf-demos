@@ -27,5 +27,13 @@
     "vitest.config.ts",
     "cloudflare.config.ts",
     ".cloudflare/types/index.d.ts"
+  ],
+  "exclude": [
+    // Starter-project templates for the scaffold export, imported only as raw text through
+    // Vite's `?raw` suffix and never compiled or run by this project. They target a standalone
+    // project with its own dependencies — Drizzle, Hono, Astro — that this demo deliberately
+    // does not install, so type-checking them here would fail on imports that are correct in
+    // the project they are generated into.
+    "src/client/lib/scaffold-templates"
   ]
 }

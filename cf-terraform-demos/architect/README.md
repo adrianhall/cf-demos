@@ -3,32 +3,32 @@
 Architect is a Cloudflare-centric architecture diagram tool: a React Flow canvas backed by a
 Cloudflare Worker, D1, Workers KV, Static Assets and Cloudflare Access.
 
-This directory currently contains **Phases 1–5** of the port: the deployable lifecycle and original
-2,023-line stylesheet; production-equivalent Cloudflare Access policy; the source application
-header, identity states, three-state appearance control, landing page, catalogue-backed hero
-diagram; the initial user-directory side effect; the complete creation journey — the eight blueprint
-templates, the filterable gallery with real React Flow thumbnails, the two-column create modal, and
-the personal dashboard with duplicate and delete — the full single-user editor, and read-only
-anonymous sharing.
+This directory currently contains **Phases 1–6** of the port: the deployable lifecycle and complete
+source stylesheet; production-equivalent Cloudflare Access policy; the source application header,
+identity states, three-state appearance control, landing page, catalogue-backed hero diagram; the
+initial user-directory side effect; the complete creation journey — the eight blueprint templates,
+the filterable gallery with real React Flow thumbnails, the two-column create modal, and the
+personal dashboard with duplicate and delete — the full single-user editor, read-only anonymous
+sharing, the administrator directory and moderation surface, browser PNG/SVG/scaffold exports, print
+mode, and guarded local preferences.
 
 The editor retains the source Zustand model, undo/redo, 500 ms whole-graph autosave, searchable and
 persistently collapsible service palette, drag/drop and click-to-add paths, node/edge properties,
 responsive side drawers, keyboard shortcuts, status bar, custom React Flow renderers, the
-native-form **Connect nodes** dialog, and browser-only ELK auto-layout. ELK remains behind a dynamic
-import: the built-bundle contract fails if its roughly 1.4 MB chunk is folded into the initial
-editor bundle. Export/print and administration remain temporary views or absent controls until their
-matching phases in
-[`../../specs/architect/02-implementation.md`](../../specs/architect/02-implementation.md); those
-placeholders are not re-authored substitutes for the source components.
+native-form **Connect nodes** dialog, browser-only ELK auto-layout, browser PNG/SVG capture, project
+scaffold ZIP, and print mode. ELK remains behind a dynamic import: the built-bundle contract fails
+if its roughly 1.4 MB chunk is folded into the initial editor bundle.
 
 ## Why this is a port
 
 The working application is prior art, not a loose inspiration. Client files are copied as whole
 units wherever their dependencies permit it, then adapted only at data, Access and configuration
-seams. In particular, [`src/client/app.css`](src/client/app.css) is copied verbatim: its tokens,
-contrast commentary, responsive breakpoints and print rules are part of the product. A built-output
-contract fails `pnpm check` if the brand colour, system font stack, design tokens or native
-`light-dark()` semantics drift.
+seams. In particular, [`src/client/app.css`](src/client/app.css) retains the source tokens, contrast
+commentary, component rules, responsive breakpoints and print rules. Phase 6 adds one documented
+correction found in real-browser review: an explicit theme-aware body background/text pair. Without
+it, system/dark mode could combine a dark `--cf-surface` with black UA body text. A built-output
+contract fails `pnpm check` if that pair, the brand colour, system font stack, design tokens or
+native `light-dark()` semantics drift.
 
 The app deliberately remains a plain React SPA. Links into `/app*` are ordinary document
 navigations, which lets Cloudflare Access intercept the request before a protected bundle runs. A
@@ -191,9 +191,14 @@ The Worker currently exposes:
   its read-only link, or revoke it;
 - `GET /api/shares/:token` — public, anonymous resolution of a share link to a deliberately limited
   projection;
-- `/api/admin/*` — an administrator-only router with no handlers until the administration phase.
-  Ordinary identities receive `403`; the configured administrator passes authorization and receives
-  `404` for the not-yet-present endpoint.
+- `GET /api/admin/users` — administrator-only, paginated user directory with live diagram counts;
+- `GET /api/admin/diagrams/:id` — administrator-only, owner-blind moderation preview;
+- `DELETE /api/admin/diagrams/:id` — administrator-only moderation delete with share cleanup.
+
+Every administrative path rechecks the verified identity against `ADMIN_EMAIL`, including a path
+that does not exist: an ordinary identity receives `403` before routing and cannot use response
+status to discover which administrative routes are real. The configured administrator receives the
+route's own result.
 
 Every diagram route answers `404` — never `403` — for a diagram that does not exist, that is
 malformed, or that belongs to another identity. The three are deliberately indistinguishable in both
@@ -247,6 +252,42 @@ stays public because three things agree: the shared policy list carves it out ah
 falls through to the hostname-wide bypass, and the router itself serves only `GET`. That last point
 is what makes it safe for an anonymous cross-origin read, which is exactly what a link pasted into a
 chat client produces.
+
+## Administration
+
+The administrative page deliberately presents two surfaces that cannot be composed into a browser
+for other people's content:
+
+- the directory answers **who has used this deployment, and how much**, listing email, display name,
+  first/last-seen timestamps and a live diagram count — never diagram titles or ids;
+- moderation answers **what is in this one named diagram**, returning the same owner-blind
+  projection the anonymous share viewer receives — never the owner.
+
+Diagram ids reach an operator out of band or from the D1 console. Previewing and deleting one is
+then a deliberate, individually logged operation. Moderation deletion calls the same application use
+case as owner deletion, so both leave exactly the same state: no diagram and no active share link to
+it. The count is computed at read time from `diagrams.owner_email`, not denormalised, so it follows
+both kinds of delete without a counter to drift.
+
+## Export and print
+
+PNG and SVG export are browser-only because they capture the actual DOM/React Flow layout. The
+browser computes the whole graph's bounds and a fitted transform, independent of the visitor's
+current pan/zoom, then downloads a white-background image with a timestamped filesystem-safe
+filename. Project export is DOM-free: a pure generator maps catalogue nodes into a ZIP containing a
+typed `cloudflare.config.ts`, Worker/Hono/Astro entry point, package scripts and optional Drizzle/D1
+files.
+
+The generated scaffold is the one deliberate Phase 6 behaviour difference from the source. The
+source emitted `wrangler.toml` and Wrangler commands. This repository exists to teach the `cf`
+control plane that supersedes Wrangler, so the generated starter uses `cf/config`, `cf dev`,
+`cf workers types` and `cf deploy` instead. This was an explicit implementation choice rather than
+an accidental porting drift.
+
+Print mode forces a light scheme, picks portrait or landscape from the graph's aspect ratio, fits
+the whole diagram, removes editor chrome, adds the diagram title/description and opens the browser
+print dialog after a paint delay. `afterprint`, the visible **Back** control, and component unmount
+all restore the prior colour scheme and remove the injected `@page` rule.
 
 ## Storage choices
 
@@ -305,3 +346,9 @@ the same diagram with no editing affordances, its own banner, and a canvas that 
 does not move a node. `.share-view` sets a real `height: 100vh` for the same reason the editor's
 main region does; jsdom computes no layout, so that is reviewed in a browser rather than asserted in
 a test.
+
+The Phase 6 browser pass covers the administrator/non-administrator postures, accessible directory
+table, owner-blind real-canvas moderation preview, export-menu geometry and dismissal, print-mode
+chrome removal/fit/title block, and the system/light/dark surface/text pair. The browser's native
+print dialog and download destination are not automatable through the panel; focused behavioural
+tests assert `window.print()`, capture options, filenames, object-URL cleanup and ZIP contents.

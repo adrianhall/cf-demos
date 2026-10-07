@@ -75,6 +75,7 @@ beforeEach(() => {
     minimapOpen: true,
     nodes: [],
     paletteOpen: true,
+    printMode: false,
     propertiesOpen: false,
     redoStack: [],
     saveError: null,
@@ -88,6 +89,13 @@ beforeEach(() => {
   mockSaveDiagramGraph.mockReset().mockResolvedValue('2026-01-01T00:00:00.000Z');
   mockUpdateDiagram.mockReset().mockResolvedValue({});
   mockXyflow.mockFitView.mockClear();
+  mockXyflow.mockGetNodes.mockReset().mockReturnValue([]);
+  mockXyflow.mockGetNodesBounds.mockReset().mockReturnValue({
+    height: 300,
+    width: 400,
+    x: 0,
+    y: 0
+  });
   mockXyflow.mockUseNodesInitialized.mockReturnValue(true);
   // Restored rather than merely cleared: a test that pins a converted position would otherwise
   // leave that fixed value in place for every test after it.
@@ -99,6 +107,12 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  // Print mode writes to `document`, which is shared across the whole file. The canvas's own
+  // cleanup undoes it, but a test that asserts the undo has to start from a known state rather
+  // than from whatever the previous one left.
+  document.documentElement.style.removeProperty('color-scheme');
+  document.body.classList.remove('diagram-editor-print-mode');
+  document.getElementById('diagram-editor-print-orientation')?.remove();
 });
 
 describe('loading a diagram', () => {
@@ -556,6 +570,230 @@ describe('the panels', () => {
     act(() => useDiagramStore.getState().toggleMinimap());
 
     expect(screen.queryByTestId('rf-minimap')).not.toBeInTheDocument();
+  });
+});
+
+describe('print mode', () => {
+  /**
+   * The injected `@page` rule's element, if print mode added one.
+   *
+   * @returns The style element, or `null`.
+   */
+  function orientationStyle(): HTMLElement | null {
+    return document.getElementById('diagram-editor-print-orientation');
+  }
+
+  /**
+   * Renders the canvas and enters print mode.
+   *
+   * @returns The render result.
+   */
+  async function renderPrinting() {
+    respondWithDiagram();
+    const view = await renderLoaded();
+    await act(async () => {
+      useDiagramStore.getState().setPrintMode(true);
+    });
+    return view;
+  }
+
+  // A printed diagram should carry the diagram and nothing else: the toolbar, the panels, the
+  // status bar, the grid, the minimap and the canvas controls are all chrome.
+  it('strips every piece of chrome from the page', async () => {
+    await renderPrinting();
+
+    expect(screen.queryByLabelText('Diagram title')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Service palette')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('rf-background')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('rf-minimap')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('rf-controls')).not.toBeInTheDocument();
+  });
+
+  // The title lives in the toolbar, which print mode has just removed — so without this the
+  // paper carries a diagram with no name on it.
+  it('puts the diagram\u2019s name and description on the printed page', async () => {
+    mockGetDiagram.mockResolvedValue({
+      description: 'How the pieces fit together',
+      graphData: EMPTY_GRAPH,
+      id: 'd1',
+      ownerEmail: 'alice@example.com',
+      title: 'My Diagram'
+    });
+    const view = render(<DiagramCanvas diagramId="d1" />);
+    await waitFor(() => expect(screen.getByTestId('react-flow')).toBeInTheDocument());
+    await act(async () => {
+      useDiagramStore.getState().setPrintMode(true);
+    });
+
+    expect(screen.getByRole('heading', { level: 2, name: 'My Diagram' })).toBeInTheDocument();
+    expect(screen.getByText('How the pieces fit together')).toBeInTheDocument();
+
+    view.unmount();
+  });
+
+  it('omits the description block for a diagram that has none', async () => {
+    await renderPrinting();
+
+    expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument();
+    expect(document.querySelector('.diagram-editor__print-description')).toBeNull();
+  });
+
+  // A dark-mode diagram prints as a page of black ink. The override is an inline `color-scheme`
+  // because that is what drives every `light-dark()` value in the stylesheet.
+  it('forces a light colour scheme', async () => {
+    await renderPrinting();
+
+    expect(document.documentElement.style.colorScheme).toBe('light');
+  });
+
+  it('marks the document so the print-only stylesheet rules apply', async () => {
+    await renderPrinting();
+
+    expect(document.body.classList.contains('diagram-editor-print-mode')).toBe(true);
+  });
+
+  // A wide architecture on a portrait page is scaled down to nothing, so the orientation is
+  // chosen from the diagram's own shape rather than fixed in the stylesheet.
+  it.each([
+    ['landscape', { height: 300, width: 900, x: 0, y: 0 }, 'landscape'],
+    ['portrait', { height: 900, width: 300, x: 0, y: 0 }, 'portrait']
+  ])('chooses a %s page for a diagram of that shape', async (_name, bounds, expected) => {
+    mockXyflow.mockGetNodes.mockReturnValue([{ id: 'n1' }]);
+    mockXyflow.mockGetNodesBounds.mockReturnValue(bounds);
+
+    await renderPrinting();
+
+    expect(orientationStyle()?.textContent).toContain(`size: ${expected}`);
+  });
+
+  // No shape to infer one from, and a printed page of a blank canvas is the same either way.
+  it('chooses landscape for an empty diagram', async () => {
+    mockXyflow.mockGetNodes.mockReturnValue([]);
+
+    await renderPrinting();
+
+    expect(orientationStyle()?.textContent).toContain('size: landscape');
+  });
+
+  // Printing captures the page as it stands, so whatever the visitor had panned to is what would
+  // land on the paper.
+  it('fits the diagram into view and then opens the print dialog', async () => {
+    const print = vi.fn();
+    vi.stubGlobal('print', print);
+    // Run synchronously rather than on a real frame, so the effect's whole sequence is
+    // observable without waiting on the browser's own scheduling.
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] });
+
+    respondWithDiagram();
+    render(<DiagramCanvas diagramId="d1" />);
+    await vi.waitFor(() => expect(useDiagramStore.getState().diagramId).toBe('d1'));
+    mockXyflow.mockFitView.mockClear();
+
+    act(() => useDiagramStore.getState().setPrintMode(true));
+
+    expect(mockXyflow.mockFitView).toHaveBeenCalledWith({ duration: 0 });
+    // Not yet: the dialog waits for the browser to paint the fitted viewport first.
+    expect(print).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(print).toHaveBeenCalledTimes(1);
+  });
+
+  // `afterprint` rather than assuming the dialog succeeded, so a cancelled print returns the
+  // editor to normal just as a completed one does.
+  it('leaves print mode once the browser reports the dialog closed', async () => {
+    await renderPrinting();
+
+    await act(async () => {
+      window.dispatchEvent(new Event('afterprint'));
+    });
+
+    expect(useDiagramStore.getState().printMode).toBe(false);
+    expect(document.documentElement.style.colorScheme).toBe('');
+    expect(document.body.classList.contains('diagram-editor-print-mode')).toBe(false);
+    expect(orientationStyle()).toBeNull();
+  });
+
+  // The way out when the browser never fires `afterprint` at all.
+  it('offers a visible way back out of print mode', async () => {
+    await renderPrinting();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exit print mode' }));
+
+    expect(useDiagramStore.getState().printMode).toBe(false);
+  });
+
+  it('restores the editor when print mode is left', async () => {
+    await renderPrinting();
+
+    await act(async () => {
+      useDiagramStore.getState().setPrintMode(false);
+    });
+
+    expect(screen.getByLabelText('Diagram title')).toBeInTheDocument();
+    expect(screen.getByTestId('rf-controls')).toBeInTheDocument();
+    expect(document.documentElement.style.colorScheme).toBe('');
+  });
+
+  // Leaving the scheme forced would silently disable the appearance control for the rest of the
+  // session.
+  it('undoes every document change when unmounted mid-print', async () => {
+    respondWithDiagram();
+    const { unmount } = await renderLoaded();
+    await act(async () => {
+      useDiagramStore.getState().setPrintMode(true);
+    });
+
+    unmount();
+
+    expect(document.documentElement.style.colorScheme).toBe('');
+    expect(document.body.classList.contains('diagram-editor-print-mode')).toBe(false);
+    expect(orientationStyle()).toBeNull();
+  });
+
+  // The scheme in force before printing is restored, not cleared: a visitor who had chosen dark
+  // mode explicitly must still have it afterwards.
+  it('restores an explicitly chosen colour scheme rather than clearing it', async () => {
+    document.documentElement.style.colorScheme = 'dark';
+    await renderPrinting();
+
+    expect(document.documentElement.style.colorScheme).toBe('light');
+
+    await act(async () => {
+      useDiagramStore.getState().setPrintMode(false);
+    });
+
+    expect(document.documentElement.style.colorScheme).toBe('dark');
+  });
+
+  // Available to an anonymous share viewer too: printing reads a diagram, it does not change it.
+  it('works the same way in the read-only posture', async () => {
+    render(
+      <DiagramCanvas
+        diagramId="shared-1"
+        readOnly
+        initialDiagram={{
+          description: null,
+          graphData: EMPTY_GRAPH,
+          id: 'shared-1',
+          title: 'Shared Diagram'
+        }}
+      />
+    );
+    await waitFor(() => expect(screen.getByTestId('react-flow')).toBeInTheDocument());
+
+    await act(async () => {
+      useDiagramStore.getState().setPrintMode(true);
+    });
+
+    expect(document.documentElement.style.colorScheme).toBe('light');
+    expect(screen.getByRole('heading', { level: 2, name: 'Shared Diagram' })).toBeInTheDocument();
   });
 });
 

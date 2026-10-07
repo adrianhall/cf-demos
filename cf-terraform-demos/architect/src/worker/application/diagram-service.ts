@@ -5,7 +5,7 @@ import {
   validateDiagramId,
   validateUpdateDiagramInput
 } from '../domain/diagram-validation.ts';
-import type { Diagram } from '../domain/diagram.ts';
+import type { Diagram, PublicDiagram } from '../domain/diagram.ts';
 import { EMPTY_GRAPH_DATA, validateGraphDataInput } from '../domain/graph.ts';
 import type { DiagramRepository } from './ports/diagram-repository.ts';
 import type { ShareRepository } from './ports/share-repository.ts';
@@ -100,6 +100,31 @@ export class DiagramService {
   }
 
   /**
+   * Reads a diagram's owner-blind fields, with no actor and therefore no ownership check.
+   *
+   * Deliberately the only method on this service that takes no actor, and the signature is the
+   * documentation: a caller reaching it has already established its own authority some other way,
+   * and the projection is narrow enough that it cannot leak whose diagram this is whichever way
+   * that was. Two callers qualify today, for different reasons:
+   *
+   * - {@link ShareService.resolve}, where holding the token _is_ the authorization;
+   * - The administrative moderation preview, where the configured administrator has already been
+   *   verified by `../middleware/require-admin.ts`.
+   *
+   * A third caller that is neither would be a mistake, and it is a reviewable one precisely because
+   * this method is the only way to read a diagram without naming an actor.
+   *
+   * @param id Already-validated diagram id. The callers above both validate it; this method does
+   *   not repeat the check, because the uniform `404` they each need differs in wording and belongs
+   *   to them.
+   * @returns The diagram's id, title, description and graph — never its owner.
+   * @throws {Error} When the repository cannot read the row.
+   */
+  async getPublicFields(id: string): Promise<PublicDiagram | null> {
+    return this.repository.findPublicFields(id);
+  }
+
+  /**
    * Updates one of the actor's own diagrams' title and/or description.
    *
    * The body is validated before the diagram is looked up, so an invalid payload cannot be used to
@@ -189,14 +214,58 @@ export class DiagramService {
   async remove(actorEmail: string, id: string): Promise<void> {
     const diagram = await this.requireOwned(actorEmail, id);
 
-    if (!(await this.repository.remove(diagram.id))) {
+    await this.removeWithCascade(diagram.id);
+  }
+
+  /**
+   * Deletes a diagram regardless of who owns it, cascading the same share revocation.
+   *
+   * The administrative moderation delete, and the one method here that deliberately crosses the
+   * ownership boundary. It is named for what it does rather than for who calls it, so that reading
+   * a call site makes the absence of an ownership check obvious rather than implied: authorization
+   * has already happened in `../middleware/require-admin.ts`, which compares the verified Access
+   * identity to the operator-configured `ADMIN_EMAIL` before any administrative route runs.
+   *
+   * Routing through the same cascade as {@link DiagramService.remove} is the point of putting it
+   * here rather than in an administrative service of its own. A moderated diagram must leave
+   * exactly the state an owner's own delete leaves — no diagram, and no link that still resolves —
+   * and the surest way to guarantee that is for there to be one delete.
+   *
+   * @param id Unvalidated diagram id from the request path.
+   * @returns A promise fulfilled once the diagram no longer exists and no link to it resolves.
+   * @throws {ProblemDetailsError} `notFound()` (404) when the id is malformed or no diagram has it.
+   *   An administrator gets a plain `404` here because there is genuinely nothing to moderate, not
+   *   because the answer is being withheld.
+   * @throws {Error} When the repository cannot delete or revoke a row.
+   */
+  async removeWithoutOwnerCheck(id: string): Promise<void> {
+    await this.removeWithCascade(validateDiagramId(id));
+  }
+
+  /**
+   * Deletes a diagram by id and revokes every share link pointing at it.
+   *
+   * Private, and the only place either delete performs the actual removal. The cascade belongs to
+   * the use case rather than to a route, so an MCP tool deleting a diagram in a later phase leaves
+   * the same state behind as the editor and the moderation surface do.
+   *
+   * @param id Validated diagram id, whose ownership the caller has already decided about.
+   * @returns A promise fulfilled once the diagram and every link to it are gone.
+   * @throws {ProblemDetailsError} `notFound()` (404) when no row had that id — which also covers a
+   *   concurrent delete between an ownership read and this write.
+   * @throws {Error} When the repository cannot delete or revoke a row.
+   */
+  private async removeWithCascade(id: string): Promise<void> {
+    if (!(await this.repository.remove(id))) {
       throw notFound({ detail: 'Diagram not found.' });
     }
 
     // After the delete, deliberately. A link that outlived its diagram would resolve to a `404`
     // from the share service's own existence check anyway, but leaving the record live would mean
-    // a deleted diagram still had an "active" share in the operator's data.
-    await this.shares.revokeAllForDiagram(diagram.id, new Date().toISOString());
+    // a deleted diagram still had an "active" share in the operator's data. Running it only after
+    // a row was actually removed is also what stops a repeated or refused delete becoming a way to
+    // revoke somebody's link.
+    await this.shares.revokeAllForDiagram(id, new Date().toISOString());
   }
 
   /**

@@ -2,6 +2,7 @@ import type { DiagramRepository } from '../../src/worker/application/ports/diagr
 import type {
   CreateDiagramInput,
   Diagram,
+  PublicDiagram,
   UpdateDiagramInput
 } from '../../src/worker/domain/diagram.ts';
 import { DEFAULT_DIAGRAM_TITLE } from '../../src/worker/domain/diagram.ts';
@@ -60,6 +61,28 @@ export class FakeDiagramRepository implements DiagramRepository {
    */
   async find(id: string): Promise<Diagram | null> {
     return this.rows.get(id) ?? null;
+  }
+
+  /**
+   * @param id Diagram id.
+   * @returns The owner-blind projection, regardless of owner, or `null`.
+   */
+  async findPublicFields(id: string): Promise<PublicDiagram | null> {
+    const diagram = this.rows.get(id);
+    if (diagram === undefined) {
+      return null;
+    }
+
+    // Built field by field rather than spread, for the same reason the real adapter selects
+    // columns rather than `SELECT *`: the owner must not be able to travel into an owner-blind
+    // projection by accident, and a fake that let it would make the suite's "never discloses the
+    // owner" assertions pass against a service that did.
+    return {
+      description: diagram.description,
+      graphData: diagram.graphData,
+      id: diagram.id,
+      title: diagram.title
+    };
   }
 
   /**

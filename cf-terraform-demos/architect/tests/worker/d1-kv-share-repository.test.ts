@@ -31,7 +31,6 @@ describe('parameter binding', () => {
     await repository.create(injection, injection, CREATED_AT);
     await repository.revokeActive(injection, REVOKED_AT);
     await repository.resolve(injection);
-    await repository.findSharedDiagram(injection);
 
     expect(fake.statements).not.toHaveLength(0);
     for (const statement of fake.statements) {
@@ -230,46 +229,5 @@ describe('resolve', () => {
 
     expect(fake.statements[0]?.sql).toContain('revoked_at IS NULL');
     expect(kv.entries.size).toBe(0);
-  });
-});
-
-describe('findSharedDiagram', () => {
-  it('maps the public columns onto the domain shape', async () => {
-    const fake = createFakeD1({
-      firstRows: [
-        {
-          description: 'Notes',
-          graph_data: '{"nodes":[],"edges":[]}',
-          id: DIAGRAM_ID,
-          title: 'Shared'
-        }
-      ]
-    });
-    const repository = new D1KvShareRepository(fake.database, createFakeKv().kv);
-
-    await expect(repository.findSharedDiagram(DIAGRAM_ID)).resolves.toEqual({
-      description: 'Notes',
-      graphData: '{"nodes":[],"edges":[]}',
-      id: DIAGRAM_ID,
-      title: 'Shared'
-    });
-  });
-
-  // Asserted against the statement rather than only the mapped result: selecting the owner and
-  // dropping it afterwards would pass a shape assertion while still reading it out of storage,
-  // one careless spread away from being returned.
-  it('never selects the owner column', async () => {
-    const fake = createFakeD1({ firstRows: [{ id: DIAGRAM_ID, title: 'Shared' }] });
-    const repository = new D1KvShareRepository(fake.database, createFakeKv().kv);
-
-    await repository.findSharedDiagram(DIAGRAM_ID);
-
-    expect(fake.statements[0]?.sql).not.toContain('owner_email');
-  });
-
-  it('reports a diagram that no longer exists as absent', async () => {
-    const repository = new D1KvShareRepository(createFakeD1().database, createFakeKv().kv);
-
-    await expect(repository.findSharedDiagram(DIAGRAM_ID)).resolves.toBeNull();
   });
 });
