@@ -1,3 +1,6 @@
+import { AppHeader } from '../components/AppHeader.tsx';
+import { useIdentity } from '../hooks/useIdentity.ts';
+
 /**
  * Every `/app*` path this shell knows how to render into `<main>`.
  */
@@ -38,26 +41,72 @@ export function resolveRoute(pathname: string): AppRoute {
  * authentication check of its own — it displays the identity Access already verified and sub-routes
  * `<main>` between the dashboard, the editor and the administrative view.
  *
- * The editor sub-view deliberately suppresses the common header: it renders its own toolbar
- * immediately below, whose back control already returns to a view where the header and its sign-out
- * control are available.
+ * The identity is resolved here, once, and passed to the header: this view needs `isAdmin` for its
+ * own administrative gate anyway, so letting the header resolve it too would issue a second,
+ * redundant `GET /api/me` on every render.
  *
- * **Phase 1 placeholder.** The header, dashboard, editor and admin surfaces are ported in Phases 2,
- * 3, 4 and 6 respectively; this renders only the resolved route's name so the `/app*` boundary and
- * its real browser navigation can be exercised end to end first.
+ * The editor sub-view deliberately suppresses the common header. It renders its own toolbar
+ * immediately below where this would sit, whose back control already returns to a view where the
+ * header and its sign-out control are available, so stacking the two produced a second banner with
+ * no affordance of its own.
+ *
+ * **Phase 2 scope.** The dashboard, editor and administrative surfaces are ported in Phases 3, 4
+ * and 6 respectively. The header, the identity resolution and the administrative gate below are
+ * final.
  *
  * @returns The authenticated application shell.
  */
 export function AppShellView() {
+  const identity = useIdentity();
   const route = resolveRoute(window.location.pathname);
+  const showHeader = route.view !== 'editor';
 
   return (
     <div className="app-shell">
+      {showHeader && (
+        <AppHeader
+          identity={identity}
+          current={route.view === 'admin' ? 'admin' : 'dashboard'}
+          access="authenticated"
+        />
+      )}
       <main
         className={`app-shell__main${route.view === 'editor' ? ' app-shell__main--editor' : ''}`}
       >
-        <p className="app-shell__loading">Loading {route.view}…</p>
+        {route.view === 'admin' ? (
+          <AdminGate identity={identity} />
+        ) : (
+          <p className="app-shell__loading">Loading {route.view}…</p>
+        )}
       </main>
     </div>
+  );
+}
+
+/**
+ * Decides whether to show the administrative surface, a wait state, or a refusal.
+ *
+ * This is presentation, not authorization. Every `/api/admin/*` route compares the verified
+ * identity to `ADMIN_EMAIL` itself, so a visitor who reaches this path without being the
+ * administrator is stopped by the server whatever this renders. Showing the refusal rather than the
+ * dashboard is simply the honest answer to someone who asked for a page they may not have.
+ *
+ * The wait state matters: `isAdmin` is `false` until `/api/me` resolves, so rendering the refusal
+ * immediately would flash "not allowed" at the actual administrator on every load.
+ *
+ * @param props Resolved identity state.
+ * @returns The administrative surface placeholder, a wait state, or a refusal.
+ */
+function AdminGate({ identity }: { identity: ReturnType<typeof useIdentity> }) {
+  if (identity.isAdmin) {
+    return <p className="app-shell__loading">Loading admin…</p>;
+  }
+  if (identity.loading) {
+    return <p className="app-shell__loading">Verifying identity…</p>;
+  }
+  return (
+    <p className="app-shell__forbidden" role="alert">
+      This page is only available to this demo&apos;s configured administrator.
+    </p>
   );
 }

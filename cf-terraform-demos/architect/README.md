@@ -3,12 +3,13 @@
 Architect is a Cloudflare-centric architecture diagram tool: a React Flow canvas backed by a
 Cloudflare Worker, D1, Workers KV, Static Assets and Cloudflare Access.
 
-This directory currently contains **Phase 1** of the port: the deployable scaffold, complete
-provision/deploy/teardown lifecycle, the original 2,023-line stylesheet, a source-compatible path
-selector with temporary views, theme primitives, and a minimal Worker/API baseline. Product features
-arrive in the phases documented in
-[`../../specs/architect/02-implementation.md`](../../specs/architect/02-implementation.md); the
-placeholders here are not re-authored substitutes for those components.
+This directory currently contains **Phases 1–2** of the port: the deployable lifecycle and original
+2,023-line stylesheet; production-equivalent Cloudflare Access policy; the source application
+header, identity states, three-state appearance control, landing page, catalogue-backed hero
+diagram; and the initial user-directory side effect. Editor, gallery and management surfaces remain
+temporary views until their matching phases in
+[`../../specs/architect/02-implementation.md`](../../specs/architect/02-implementation.md); those
+placeholders are not re-authored substitutes for the source components.
 
 ## Why this is a port
 
@@ -55,8 +56,14 @@ The local Access emulator offers two identities:
 - `admin@example.com`, matching the committed local `ADMIN_EMAIL` placeholder;
 - `alice@example.com`, an ordinary user.
 
-The current public shell is available at the URL printed by `cf dev`. `/api/health` is deliberately
-public; `/api/me` and future management APIs exercise the real Access middleware and audience check.
+The source-faithful landing page is available at the URL printed by `cf dev`. `/api/health` is
+public; `/api/me` and future management APIs exercise the same Access middleware and audience check
+used in production. The common header treats an unauthenticated `/api/me` response as an ordinary
+anonymous state on a public page, while an Access-gated `/app*` page surfaces it as an error.
+
+The appearance control cycles system → light → dark → system. System is represented by **no stored
+preference and no inline `color-scheme` override**; explicit light/dark choices are persisted. This
+distinction matters when the OS scheme changes while the page is open.
 
 ## Commands
 
@@ -100,6 +107,24 @@ The Worker is deleted first because Cloudflare refuses to delete D1/KV resources
 live Worker. Terraform also records explicit Worker-to-storage dependency edges, ensuring safe
 reverse ordering if the lifecycle is invoked directly.
 
+## Access model
+
+Terraform owns two applications on the configured hostname:
+
+- a hostname-wide public bypass for the landing page, blueprint gallery and anonymous share viewer;
+- a narrower authenticated application for `/app*`, management APIs and the reserved future `/mcp*`
+  path.
+
+The authenticated application deliberately enumerates API destinations rather than claiming
+`/api/*`, because the later anonymous share resolver lives under that prefix and must stay public.
+The same ordered policy builder drives local Access emulation and Worker-side verification; every
+API and MCP policy uses `redirect: false`, so a programmatic caller receives an RFC 9457 `401`
+rather than HTML from a login redirect.
+
+Edge Access is not authorization. The Worker validates the exact Access application audience, and
+administrative routes additionally compare the verified email to the Terraform-provided
+`ADMIN_EMAIL`. There is no role column or promote/demote flow.
+
 ## Naming and coexistence
 
 This port intentionally coexists with the deployment it was ported from. The Worker name and
@@ -130,18 +155,28 @@ Dependencies point in one direction:
 React UI → Hono routes → application services → domain/ports → infrastructure adapters
 ```
 
-Phase 1 has no product service yet. [`src/worker/index.ts`](src/worker/index.ts) is already the
-composition root: later phases construct D1/KV adapters and services there, then inject those
-services into routes. Routes never construct repositories.
+[`src/worker/index.ts`](src/worker/index.ts) is the composition root. It constructs the D1 user
+adapter and user service once per request, then injects the service into middleware; routes and
+middleware never construct repositories. Future diagram/share services follow the same seam.
 
 The Worker currently exposes:
 
 - `GET /api/health` — public liveness, returning `{ "status": "ok" }`;
-- `GET /api/me` — authenticated identity from `@demos/worker-common`.
+- `GET /api/me` — authenticated `{ email, isAdmin }`, derived only from the verified Access identity
+  and `ADMIN_EMAIL`;
+- `/api/admin/*` — an administrator-only router with no handlers until the administration phase.
+  Ordinary identities receive `403`; the configured administrator passes authorization and receives
+  `404` for the not-yet-present endpoint.
 
-The shared `@demos/worker-common` Access middleware and `@adrianhall/cloudflare-toolkit` logging,
-not-found and RFC 9457 error handlers are used from the first route onward. Production responses
-never include stack traces.
+Authentication best-effort upserts the verified identity into D1's lightweight `users` directory.
+The service absorbs a directory-write failure so it cannot take down the caller's request, but logs
+a structured warning so a persistently unwritable directory is observable. The directory is never an
+authorization source.
+
+Every mutation passes same-origin and exact `application/json` checks before routing. The shared
+`@demos/worker-common` Access middleware and `@adrianhall/cloudflare-toolkit` logging, not-found and
+RFC 9457 error handlers are used from the first route onward. Production responses never include
+stack traces.
 
 ## Storage choices
 

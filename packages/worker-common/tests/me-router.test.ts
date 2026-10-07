@@ -6,7 +6,7 @@ import type {
   CloudflareAccessIdentity,
   CloudflareToolkitVariables
 } from '@adrianhall/cloudflare-toolkit/hono';
-import { createMeRouter } from '../src/me-router.ts';
+import { createMeRouter, type MeRouterOptions } from '../src/me-router.ts';
 
 type TestEnv = { Bindings: Record<string, never>; Variables: CloudflareToolkitVariables };
 
@@ -77,5 +77,58 @@ describe('createMeRouter', () => {
 
     const response = await buildApp(VERIFIED, [allow]).request('/api/me');
     expect(response.status).toBe(200);
+  });
+
+  describe('additionalFields', () => {
+    /**
+     * Mount the router with an `additionalFields` deriver behind a verified-identity stub.
+     *
+     * @param additionalFields Deriver under test.
+     * @returns An application answering `GET /api/me`.
+     */
+    function buildAppWithFields(
+      additionalFields: NonNullable<MeRouterOptions<TestEnv>['additionalFields']>
+    ): Hono<TestEnv> {
+      const app = new Hono<TestEnv>();
+      app.use(async (context, next) => {
+        context.set('Cloudflare_Access_Identity', VERIFIED);
+        await next();
+      });
+      app.route('/api/me', createMeRouter<TestEnv>({ additionalFields }));
+      app.onError(problemDetailsErrorHandler());
+      return app;
+    }
+
+    it('adds a derived field alongside the verified email', async () => {
+      const response = await buildAppWithFields(() => ({ isAdmin: true })).request('/api/me');
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ email: 'user@example.com', isAdmin: true });
+    });
+
+    it('derives the field from the request context', async () => {
+      const response = await buildAppWithFields((context) => ({
+        isAdmin: context.get('Cloudflare_Access_Identity')?.email === 'someone-else@example.com'
+      })).request('/api/me');
+
+      expect(await response.json()).toEqual({ email: 'user@example.com', isAdmin: false });
+    });
+
+    // The endpoint's entire value is that `email` is the server's own verified answer. A deriver
+    // that could overwrite it would turn this into a field the caller's application code chooses,
+    // which is exactly what a client must not be able to influence.
+    it('never lets a derived field override the verified email', async () => {
+      const response = await buildAppWithFields(() => ({ email: 'attacker@example.com' })).request(
+        '/api/me'
+      );
+
+      expect(await response.json()).toEqual({ email: 'user@example.com' });
+    });
+
+    it('reports only the email when no deriver is configured', async () => {
+      const response = await buildApp(VERIFIED).request('/api/me');
+
+      expect(await response.json()).toEqual({ email: 'user@example.com' });
+    });
   });
 });

@@ -29,6 +29,14 @@ import type { PathPolicy } from '@adrianhall/cloudflare-toolkit/hono';
  *   request never reaches this Worker. The entry exists so local development reproduces the same
  *   pre-login redirect without a real Access application in front of it.
  *
+ * `/mcp*` is listed now, ahead of the public catch-all, even though no MCP route exists yet. That
+ * ordering is the point: the catch-all is a default-public rule, so a route added later without a
+ * policy of its own would silently inherit anonymous access. Declaring the posture with the rest of
+ * the list means the Worker fails closed on that path from today, and the later phase that adds the
+ * route adds no authorization decision at all. It authenticates like `/api` and never redirects,
+ * because an MCP client is not a browser navigation and can no more complete a redirect to a login
+ * page than a `fetch` can.
+ *
  * @param audience Cloudflare Access Application Audience (AUD) tag that every authenticated request
  *   must carry in its JWT `aud` claim. Required, and threaded through from the Terraform output of
  *   the same name, because every Access application in a team shares one JWKS: without an `aud`
@@ -44,6 +52,9 @@ export function buildAccessPolicies(audience: string): PathPolicy[] {
     // Anonymous read-only share resolution. See the carve-out note above.
     { pattern: /^\/api\/shares(?:\/|$)/u, authenticate: false },
     { pattern: /^\/api(?:\/|$)/u, authenticate: true, redirect: false, audience },
+    // Reserved for the later MCP phase. Declared now so the path is never default-public; see the
+    // note above.
+    { pattern: /^\/mcp(?:\/|$)/u, authenticate: true, redirect: false, audience },
     { pattern: /^\/app(?:\/|$)/u, authenticate: true, redirect: true, audience },
     // The landing page, the blueprint gallery and the read-only share viewer.
     { pattern: /^\//u, authenticate: false }

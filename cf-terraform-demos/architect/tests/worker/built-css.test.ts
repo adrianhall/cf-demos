@@ -132,4 +132,41 @@ describe('built stylesheet contract', () => {
   it('keeps the print rules', () => {
     expect(css).toContain('print');
   });
+
+  describe('the in-app theme override', () => {
+    // The appearance control works by setting `color-scheme` on `<html>`, so every themed value has
+    // to be one `color-scheme` actually drives. A build that lowered these into a
+    // `prefers-color-scheme` polyfill would leave the control changing icons — which follow the
+    // browser's native handling — while backgrounds and borders stayed stuck in one scheme. That is
+    // invisible in `vite dev`, which passes `light-dark()` through untouched, so it can only be
+    // caught here.
+    it.each(['--cf-surface', '--cf-surface-alt', '--cf-border', '--cf-field-border'])(
+      'drives the %s token with a native light-dark() value',
+      (token) => {
+        const declaration = new RegExp(String.raw`${token}:\s*light-dark\(`, 'u');
+
+        expect(css).toMatch(declaration);
+      }
+    );
+
+    // The control clears the inline property to return to the system preference, which only falls
+    // back to following the OS if the stylesheet itself declares `light dark` at the root.
+    it('declares the root color-scheme the control clears back to', () => {
+      expect(css).toMatch(/:root\s*\{[^}]*color-scheme:\s*light dark/u);
+    });
+
+    // Every `<button>` opts out of native chrome. Without it, a browser paints a button's
+    // background using the *system's* appearance rather than this page's `color-scheme`, so an
+    // explicitly chosen scheme leaves icon-only controls showing the other scheme's background —
+    // a dark background behind a dark icon after choosing light mode.
+    it('opts buttons out of native chrome so the override reaches them', () => {
+      expect(css).toMatch(/button\s*\{[^}]*appearance:\s*none/u);
+    });
+
+    // The non-underlined treatment every chrome link depends on. The stylesheet has no global `a`
+    // rule, so losing this class returns the banner's links to underlined, link-coloured body text.
+    it('keeps the shared chrome-link opt-out', () => {
+      expect(css).toMatch(/\.nav-link\s*\{[^}]*text-decoration:\s*none/u);
+    });
+  });
 });

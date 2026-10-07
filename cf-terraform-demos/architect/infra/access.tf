@@ -79,10 +79,10 @@ resource "cloudflare_zero_trust_access_application" "app" {
       type = "public"
       uri  = "${local.hostname}/app*"
     },
-    {
-      type = "public"
-      uri  = "${local.hostname}/api/health"
-    },
+    # `/api/health` is deliberately absent alongside the anonymous share resolver below: a
+    # liveness probe that requires a verified identity cannot answer whether the deployment is
+    # serving traffic when authentication itself is the thing that is broken. Both fall through to
+    # the hostname-wide bypass application above.
     {
       type = "public"
       uri  = "${local.hostname}/api/me"
@@ -94,6 +94,16 @@ resource "cloudflare_zero_trust_access_application" "app" {
     {
       type = "public"
       uri  = "${local.hostname}/api/admin*"
+    },
+    # Reserved for the later MCP phase, and listed now for the same reason `../src/access-policies
+    # .ts` lists it: everything not enumerated here falls through to the hostname-wide bypass
+    # application above, so a path added later without an entry would be anonymously reachable at
+    # the edge. Declaring it here means the posture is already correct when the route appears, and
+    # a request to it today is challenged and then answered with this Worker's 404 — which is the
+    # right answer for a route that does not exist yet.
+    {
+      type = "public"
+      uri  = "${local.hostname}/mcp*"
     }
   ]
 

@@ -1,13 +1,22 @@
 import type { CloudflareToolkitVariables } from '@adrianhall/cloudflare-toolkit/hono';
+import type { UserService } from './application/user-service.ts';
 
 /**
- * Hono context variables added by this Worker: the toolkit's `Cloudflare_Access_Identity` and
- * `LOGGER`.
+ * Hono context variables added by this Worker, on top of the toolkit's `Cloudflare_Access_Identity`
+ * and `LOGGER`.
  *
- * Later phases attach request-scoped application services here, set once by the composition root in
- * `src/worker/index.ts`, so a route never constructs a repository of its own.
+ * The services here are set once by the composition root in `src/worker/index.ts` and read by
+ * middleware and route handlers. A handler therefore receives a service ready-made and never
+ * constructs a repository of its own, which is what keeps the routes → application → domain →
+ * infrastructure dependency direction one-way: nothing in `routes/` imports from
+ * `infrastructure/`.
  */
-export interface AppVariables extends CloudflareToolkitVariables {}
+export interface AppVariables extends CloudflareToolkitVariables {
+  /**
+   * User-directory use cases, backed by the D1 adapter the composition root injected.
+   */
+  USER_SERVICE: UserService;
+}
 
 /**
  * Hono environment shape shared by the top-level app and every sub-router/middleware in this

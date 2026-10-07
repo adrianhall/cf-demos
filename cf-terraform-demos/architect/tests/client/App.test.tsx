@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { App } from '../../src/client/App.tsx';
 
@@ -32,9 +32,27 @@ function visit(pathname: string): void {
 
 beforeEach(() => {
   visit('/');
+
+  // Every view now renders the shared banner, which resolves the identity on mount and mounts the
+  // appearance control. Neither is what these tests are about, so both are stubbed to the state
+  // that renders the least: an anonymous visitor with a light OS preference. The header's own suite
+  // covers every other combination.
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(null, { status: 401 }))
+  );
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => ({
+      addEventListener: vi.fn(),
+      matches: false,
+      removeEventListener: vi.fn()
+    }))
+  );
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   if (originalLocation) {
     Object.defineProperty(window, 'location', originalLocation);
   }
@@ -97,7 +115,7 @@ describe('App path selector', () => {
   });
 
   describe('authenticated paths', () => {
-    it.each(['/app', '/app/', '/app/admin', '/app/diagram/123'])(
+    it.each(['/app', '/app/', '/app/diagram/123'])(
       'renders the authenticated shell for %s',
       (pathname) => {
         visit(pathname);
@@ -106,29 +124,53 @@ describe('App path selector', () => {
         expect(screen.getByText(/loading/iu)).toBeInTheDocument();
       }
     );
+
+    // `/app/admin` reaches the shell's administrative gate rather than a view placeholder. Until
+    // `/api/me` resolves — which it never does for the anonymous stub here — the gate shows the
+    // wait state, because rendering the refusal immediately would flash "not allowed" at the
+    // actual administrator on every load.
+    //
+    // Scoped to `<main>` because the header shows its own identity wait state on this posture, so
+    // an unscoped query matches both and tells us nothing about which one rendered.
+    it('renders the authenticated shell for /app/admin', () => {
+      visit('/app/admin');
+      render(<App />);
+
+      expect(screen.getByRole('main')).toHaveTextContent(/verifying identity/iu);
+    });
   });
 
   describe('the Access boundary', () => {
-    // The landing page's link into the editor must be an ordinary anchor with a real href. A
-    // button with an onClick handler would resolve the path inside an already-loaded bundle,
-    // which is precisely the point at which Access can no longer intercept it.
+    // The landing page's links into the editor must be ordinary anchors with real hrefs. A button
+    // with an onClick handler would resolve the path inside an already-loaded bundle, which is
+    // precisely the point at which Access can no longer intercept it.
+    //
+    // Both the hero and the closing call-to-action banner offer the same pair, so these assert
+    // every matching link rather than a single one — a regression that broke only the second
+    // instance would otherwise pass.
     it('links into /app with a real document navigation', () => {
       visit('/');
       render(<App />);
 
-      const link = screen.getByRole('link', { name: /open the editor/iu });
+      const links = screen.getAllByRole('link', { name: /open the editor/iu });
 
-      expect(link).toHaveAttribute('href', '/app');
+      expect(links.length).toBeGreaterThan(0);
+      for (const link of links) {
+        expect(link.tagName).toBe('A');
+        expect(link).toHaveAttribute('href', '/app');
+      }
     });
 
-    it('links to the public blueprint gallery with a real anchor too', () => {
+    it('links to the public blueprint gallery with real anchors too', () => {
       visit('/');
       render(<App />);
 
-      expect(screen.getByRole('link', { name: /browse blueprints/iu })).toHaveAttribute(
-        'href',
-        '/blueprints'
-      );
+      const links = screen.getAllByRole('link', { name: /browse blueprints/iu });
+
+      expect(links.length).toBeGreaterThan(0);
+      for (const link of links) {
+        expect(link).toHaveAttribute('href', '/blueprints');
+      }
     });
   });
 });

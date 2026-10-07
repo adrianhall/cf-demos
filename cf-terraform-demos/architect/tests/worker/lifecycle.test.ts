@@ -258,6 +258,10 @@ describe('Terraform ownership', () => {
 
       expect(uris).not.toContain(`\${local.hostname}/api/*`);
       expect(uris.some((uri) => uri.includes('/api/shares'))).toBe(false);
+      // A liveness probe that requires identity cannot answer whether the deployment is serving
+      // traffic when authentication itself is the thing that is broken. Like the anonymous share
+      // resolver, it deliberately falls through to the hostname-wide bypass application.
+      expect(uris.some((uri) => uri.includes('/api/health'))).toBe(false);
     });
 
     // Admin authorization is an application decision re-checked on every request, not an Access

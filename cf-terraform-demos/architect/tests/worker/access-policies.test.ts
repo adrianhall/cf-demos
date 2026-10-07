@@ -58,6 +58,16 @@ describe('buildAccessPolicies', () => {
       }
     );
 
+    // Declared before the route exists, on purpose. The catch-all is a default-public rule, so a
+    // path added later without an entry of its own inherits anonymous access — and that is a
+    // failure that looks like nothing until someone finds the open endpoint.
+    it.each(['/mcp', '/mcp/', '/mcp/anything'])(
+      'requires authentication for the reserved %s',
+      (path) => {
+        expect(policyFor(path).authenticate).toBe(true);
+      }
+    );
+
     // Every Access application in a team shares one JWKS, so a token minted for an unrelated
     // application would pass signature validation. The audience is the only thing that stops it,
     // and a policy that authenticates without one would accept it.
@@ -75,9 +85,15 @@ describe('buildAccessPolicies', () => {
     // Without an explicit `redirect: false`, an API caller sending `Accept: text/html` receives
     // the HTML of a login page instead of a status its error handling can render — and a
     // WebSocket upgrade cannot follow such a redirect at all.
-    it.each(['/api/diagrams', '/api/me', '/api/admin/users'])('never redirects %s', (path) => {
-      expect(policyFor(path).redirect).toBe(false);
-    });
+    // `/mcp` is included for the same reason as the API paths and one more: an MCP client is never
+    // a browser navigation, so a redirect to a login page is as un-completable for it as for a
+    // `fetch`.
+    it.each(['/api/diagrams', '/api/me', '/api/admin/users', '/mcp'])(
+      'never redirects %s',
+      (path) => {
+        expect(policyFor(path).redirect).toBe(false);
+      }
+    );
 
     // A page navigation is the one case where a redirect to the login page is the right answer.
     it('redirects an unauthenticated page navigation into /app', () => {
@@ -107,7 +123,8 @@ describe('buildAccessPolicies', () => {
     // under `/app`. Both would be an authorization decision made by accident.
     it.each([
       ['/apifoo', false],
-      ['/application', false]
+      ['/application', false],
+      ['/mcpfoo', false]
     ])('treats %s as public rather than a prefix match', (path, authenticate) => {
       expect(policyFor(path).authenticate).toBe(authenticate);
     });
