@@ -29,7 +29,11 @@ export default defineConfig({
   // Ignore files matching these glob patterns. Patterns use gitignore-style matching,
   // rooted at the directory containing the configuration file. Files outside that directory
   // cannot be matched; patterns containing .. are rejected as a configuration error.
-  ignorePatterns: [],
+  // Architect's stylesheet is a source-faithful port. Keep its source formatting byte-for-byte so
+  // visual/source parity reviews are meaningful; its built-artifact test verifies the production
+  // values that could still regress. This is a deliberate root-level exception rather than a
+  // demo-local config, because a local config would replace the shared policy for every file.
+  ignorePatterns: ['cf-terraform-demos/architect/src/client/app.css'],
 
   // Enable JSDoc comment formatting.
   jsdoc: {

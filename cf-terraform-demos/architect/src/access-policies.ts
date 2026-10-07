@@ -1,0 +1,51 @@
+import type { PathPolicy } from '@adrianhall/cloudflare-toolkit/hono';
+
+/**
+ * Shared Cloudflare Access path policies, used by both the local development plugin
+ * (`cloudflareAccessPlugin` in `vite.config.ts`) and the deployed Worker's middleware
+ * (`createAccessMiddleware` in `src/worker/middleware/access.ts`).
+ *
+ * Keeping one definition for both is the point: local development and production evaluate the
+ * identical policy list, so an authorization mistake cannot hide behind a development-only bypass.
+ * The list mirrors the two Access applications in `infra/access.tf`, and the two are reviewed
+ * together — getting the ordering wrong breaks a visibly different thing in each place.
+ *
+ * Order matters: the first pattern that matches a request path wins, and the public catch-all is
+ * deliberately last. Every future authenticated path must be added _ahead_ of it so a new route
+ * cannot silently inherit public access.
+ *
+ * Three decisions are load-bearing:
+ *
+ * - **`/api/shares/*` is listed ahead of the general `/api/` policy.** The anonymous share-token
+ *   resolver lives under the otherwise authenticated `/api/` prefix, so without this earlier
+ *   carve-out it would authenticate. It matches the narrower `app` Access application in
+ *   `infra/access.tf`, whose destination list likewise omits it so the request falls through to the
+ *   hostname-wide public application in production.
+ * - **Every `/api/` entry sets `redirect: false` explicitly.** Without it, an API caller sending
+ *   `Accept: text/html` is answered with the HTML of a login page instead of an RFC 9457 `401` it
+ *   can render — and a future `WebSocket` constructor cannot follow such a redirect at all.
+ * - **`/app*` stays listed even though production never evaluates it here.** In production those
+ *   pages are served directly by the `ASSETS` binding behind the real Access application, so the
+ *   request never reaches this Worker. The entry exists so local development reproduces the same
+ *   pre-login redirect without a real Access application in front of it.
+ *
+ * @param audience Cloudflare Access Application Audience (AUD) tag that every authenticated request
+ *   must carry in its JWT `aud` claim. Required, and threaded through from the Terraform output of
+ *   the same name, because every Access application in a team shares one JWKS: without an `aud`
+ *   check, a token minted for an unrelated application in the same team would be accepted here
+ *   too.
+ * @returns The ordered policy list; the first pattern that matches a request path wins.
+ */
+export function buildAccessPolicies(audience: string): PathPolicy[] {
+  return [
+    // Liveness only. Public so the deployment can be probed without an identity, and it reveals
+    // nothing an anonymous visitor could not already infer from the landing page.
+    { pattern: /^\/api\/health(?:\/|$)/u, authenticate: false },
+    // Anonymous read-only share resolution. See the carve-out note above.
+    { pattern: /^\/api\/shares(?:\/|$)/u, authenticate: false },
+    { pattern: /^\/api(?:\/|$)/u, authenticate: true, redirect: false, audience },
+    { pattern: /^\/app(?:\/|$)/u, authenticate: true, redirect: true, audience },
+    // The landing page, the blueprint gallery and the read-only share viewer.
+    { pattern: /^\//u, authenticate: false }
+  ];
+}

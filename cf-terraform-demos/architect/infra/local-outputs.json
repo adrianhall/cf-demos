@@ -1,0 +1,47 @@
+{
+  "access_aud": {
+    "sensitive": false,
+    "type": "string",
+    "value": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "admin_email": {
+    "sensitive": false,
+    "type": "string",
+    "value": "admin@example.com"
+  },
+  "cloudflare_team_domain": {
+    "sensitive": false,
+    "type": "string",
+    "value": "local.cloudflareaccess.com"
+  },
+  "d1_database_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "00000000-0000-4000-8000-00000000a7c7"
+  },
+  "d1_database_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "architect-local-db"
+  },
+  "environment": {
+    "sensitive": false,
+    "type": "string",
+    "value": "development"
+  },
+  "hostname": {
+    "sensitive": false,
+    "type": "string",
+    "value": "architect.localhost"
+  },
+  "shares_kv_namespace_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "0000000000000000000000000000a7c7"
+  },
+  "worker_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "architect-local"
+  }
+}
