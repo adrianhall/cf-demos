@@ -1,500 +1,417 @@
-# Architect — Phased Implementation Plan
-
-## Delivery rules
-
-- Implement `vinext-demos/architect` only according to
-  [`01-specification.md`](./01-specification.md). The source implementation is behavioural prior
-  art, not a source of repository conventions.
-- Each phase is a shippable, passing repository state. Do not carry failing tests, temporary direct
-  binding calls, unformatted files, or undocumented product gaps into the next phase.
-- Use pnpm, `cf`, typed `cloudflare.config.ts`, Terraform, Oxfmt, Oxlint, the shared D1 migration
-  helper, `@demos/worker-common`, and `@adrianhall/cloudflare-toolkit` from the first commit.
-  Wrangler, per-demo `.env`, hand-written binding types, and generated deployment templates are
-  prohibited.
-- Re-confirm all moving surfaces — Vinext WebSocket handling, Cloudflare Access Managed OAuth,
-  current Terraform provider schema, Agents/MCP packages, Durable Objects semantics, Workers AI
-  model contract, and AI Gateway options — against current documentation before the phase that
-  relies on them. Record the result in this demo's README/decision record, not only in a commit
-  message.
-- Every phase ends with `pnpm check` and `pnpm test`. Runtime integration projects use a finite
-  timeout. Normal test suites stay offline; controlled real-account checks are manual, explicitly
-  named, and never part of `test` or `check`.
-- New or changed exports carry complete JSDoc as required by the repository root instructions.
-
-## Cross-phase test and observability contract
-
-Each feature adds tests at the lowest appropriate tier: pure domain/application tests, client DOM
-tests, Worker routing/authorization tests, then Workers-runtime integration tests for binding and
-socket behaviour. A test suite must assert negative security properties rather than merely omitting
-them: raw token/prompt/email/graph data must **not** occur in logs or storage where prohibited.
-
-Use request/diagram/operation IDs for structured logs. Log safe operation shape and error category,
-not content. Provider/model failures must bind and log the original cause safely before returning a
-sanitized problem response. Every feature that reaches a real provider additionally has one manual
-deployed success-and-failure reality check before it is declared complete.
-
----
-
-## Phase 1 — Foundation, infrastructure, and public shell
-
-### Phase 1 Goal
-
-Create the deployable Vinext application and prove the new repository lifecycle before porting
-product behaviour.
-
-### Phase 1 Deliverables
-
-1. Create the pnpm workspace package with pinned Vinext/React, Cloudflare Vite plugin, `cf`, Hono,
-   React Testing Library, Vitest, Terraform tooling, Oxfmt/Oxlint, worker-common, XYFlow, Zustand,
-   ELK, fflate, and icon dependencies.
-2. Create `cloudflare.config.ts`, typed `infra/outputs.ts`, committed `infra/local-outputs.json`,
-   `.gitignore` entries for `.cloudflare/` and Terraform outputs/state, generated-type inclusion,
-   and all required scripts.
-3. Provision Worker registration/bootstrap deployment, custom domain, D1, KV, public/authenticated
-   Access applications/policies, observability, and all scalar outputs. Add explicit Worker → D1/KV
-   dependency edges. Do not add AI Gateway or Durable Objects yet.
-4. Implement shared access policies, Access Vite plugin users, `createAccessMiddleware`, Hono
-   error/logging setup, same-origin middleware, `GET /api/me`, operator `ADMIN_EMAIL` check, and
-   upsert-on-auth user directory middleware.
-5. Add Vinext public pages `/`, `/blueprints`, protected `/app`, `/app/admin`, dynamic editor/share
-   placeholders, and app shell/header. Public assets (`/_next/*`) are explicitly bypassed.
-6. Establish three Vitest projects: client jsdom, Worker node, and Workers runtime with D1
-   migrations applied by `readD1Migrations()`/`applyD1Migrations()`.
-7. Write the initial README: root prerequisites, command lifecycle, Access boundaries, no-secret
-   policy, and planned feature layers.
+# Architect — Implementation Plan
+
+## 1. Delivery rules
+
+This plan implements the specification in [`01-specification.md`](./01-specification.md) and the
+porting discipline in [`00-introduction.md`](./00-introduction.md). It is intentionally ordered so
+that a working source UI is copied before any feature is reimplemented.
+
+### 1.1 Rules for every phase
+
+1. Read the matching source component, CSS, tests, and source-document section before changing its
+   equivalent. Do not infer behaviour from a screenshot when source code exists.
+2. Copy client data/CSS/components as a unit, then change only documented seam imports. Do not
+   rewrite JSX or CSS into a locally preferred style.
+3. For every defect or new requirement: add a failing behavioural test, run it to prove failure,
+   implement, rerun to prove success, then commit one conventional commit for that issue.
+4. Run `pnpm check` and `pnpm test` before closing each phase. Run the coverage gate when its
+   affected files change.
+5. Visually compare the running port with the surviving source deployment, `architect.cfapps.uk`, at
+   desktop and narrow widths. Test keyboard navigation, appearance modes, modal focus, and React
+   Flow interaction in a real browser; jsdom cannot validate geometry or CSS.
+6. Never introduce Wrangler, npm, a demo-local `.env`, or a hand-written replacement for a
+   `@demos/worker-common` concern.
+7. Never hard-code the Worker name or hostname. Both are Terraform variables
+   ([specification §1.3](./01-specification.md#13-naming-and-coexistence-with-the-source-deployment));
+   the source deployment at `architect.cfapps.uk` must keep working throughout, so a stale literal
+   in a script or test risks deleting or overwriting the reference implementation.
+8. Record every intentional visual/behavioural deviation in the relevant phase's README/spec update.
+   There should normally be none.
+
+### 1.2 Phase numbering
+
+Phases 1–10 deliver source parity. The source documents reserve Phases 11–15 for MCP, 16–20 for
+collaboration, and 21–26 for AI assistance; preserve that numbering so plans and decisions can be
+cross-referenced without translation.
+
+## 2. Phase 1 — Scaffold, lifecycle, and visual baseline
+
+### Goal
+
+Create `cf-terraform-demos/architect` as a locally working React/Vite/Cloudflare Worker project.
+Before building any product feature, prove the port can render the original stylesheet locally and
+can be provisioned and destroyed cleanly.
+
+### Deliverables
+
+1. Start from the `cf-terraform-demos` lifecycle conventions, not a copy of a Vue client.
+2. Add pnpm workspace package metadata, strict TypeScript, React/Vite configuration,
+   `@cloudflare/vite-plugin`, `@vitejs/plugin-react`, Hono, React Flow, Zustand, and the exact
+   source client dependencies needed for the first layer. Pin pre-release versions deliberately.
+3. Add `cloudflare.config.ts` using `defineWorker()`/`defineConfig()` and `requireTerraformOutputs`;
+   set compatibility date, observability, preview/Workers Dev and typed bindings explicitly.
+4. Add Terraform split by concern: `providers.tf`, `access.tf`, `architect.tf`, `outputs.tf`, plus
+   committed `local-outputs.json`. Terraform owns D1, KV, Worker registration/bootstrap, custom
+   hostname, and Access applications/policies; `cf` owns code upload.
+5. Declare `worker_name` and `hostname` as Terraform variables, defaulting to `cf-architect` and
+   `cf-architect.cfapps.uk`, and expose them as documented scalar outputs. Derive every Worker,
+   hostname, DNS, and Access resource from them. Nothing downstream — config, scripts, tests, or
+   docs — may restate either literal. This keeps the source deployment at `architect.cfapps.uk`
+   untouched and makes the eventual cutover a two-variable change
+   ([specification §1.3](./01-specification.md#13-naming-and-coexistence-with-the-source-deployment)).
+6. Add root-helper D1 migration scripts and required lifecycle scripts. `start` runs local
+   migrations then `cf dev --persist-to .cloudflare/state`; deploy writes ignored Terraform outputs,
+   runs remote migration, builds, then `cf deploy --prebuilt`; teardown deletes the Worker first,
+   resolving its name from Terraform output rather than a literal.
+7. Add the React SPA entry point and exact source `App.tsx` path selector with temporary source-like
+   view placeholders. Do not add a router.
+8. Copy source `app.css` in full before styling placeholders. Copy necessary CSS imports (including
+   React Flow), system font stack, tokens, resets and global rules unchanged.
+9. Configure Oxfmt, type-aware Oxlint/tsgolint, three Vitest projects, Istanbul coverage, generated
+   Worker types, and the built-stylesheet contract test.
+10. Add the composition root and a health/minimal API route solely to demonstrate Worker build and
+    RFC 9457 error handling.
+
+### Tests
+
+- Configuration/types generate locally using only committed local outputs.
+- Local D1 migration applies and local Access emulation protects an example API route.
+- Built CSS retains `light-dark()`, `#f6821f`, source font stack, and all required `--cf-*` tokens.
+- Terraform validate/fmt-check and lifecycle-script ordering are covered by `pnpm check`.
+- A naming contract check proves the Worker name and hostname resolve from Terraform output, and
+  that neither `architect.cfapps.uk` nor a bare `architect` Worker name appears as a literal in
+  configuration, scripts, or tests — the source deployment must be unreachable from this demo's
+  lifecycle commands.
+- Real-browser local review confirms global CSS, both themes, and responsive baseline render.
+
+### Exit criteria
+
+`pnpm start`, `pnpm check`, `pnpm test`, `pnpm deploy`, and `pnpm teardown` work against
+`cf-architect.cfapps.uk` while `architect.cfapps.uk` continues to serve the source implementation
+untouched. The local page visibly uses the source stylesheet; a missing CSS file or CSS-minifier
+regression fails a test.
+
+## 3. Phase 2 — Access, shell, and identity
+
+### Goal
+
+Provide the original landing page and common application chrome with production-equivalent Access
+behaviour, without duplicating authentication logic.
+
+### Deliverables
+
+1. Port `access-policies.ts`, adapting it to the common policy builder. Define public bypass,
+   authenticated `/app*`/API paths, explicit `redirect: false` for APIs, and future `/mcp*` place
+   holders only where Access ownership permits.
+2. Build Terraform Access resources: public bypass and authenticated applications, shared audience
+   output, `ADMIN_EMAIL` Worker variable, and path-specific custom-hostname setup. Derive every
+   application domain and destination from the `hostname` variable, so the port's Access policies
+   can never attach to the source deployment's hostname.
+3. Compose `createAccessMiddleware`, `currentIdentity`, `createMeRouter`, same-origin middleware,
+   structured logging, RFC 9457 handlers, and an admin middleware based solely on `ADMIN_EMAIL`.
+4. Port source `AppHeader`, `DarkModeToggle`, `useIdentity`, theme helpers, landing view and hero
+   diagram. Keep source CSS and DOM structure; substitute only endpoint and import paths.
+5. Add `GET /api/me`; authenticated requests update the user-directory service best-effort. The
+   public header treats unauthenticated identity resolution as anonymous.
+6. Port logout, public/authenticated navigation semantics, and exact header states.
+7. Create initial migrations for `diagrams` and `users`, with source comments retained.
+
+### Tests
+
+- Anonymous/public paths work; `/app*` and protected APIs challenge/reject as appropriate.
+- JWT audience and admin checks run in Workers runtime, including a non-admin `403`.
+- Foreign/missing origins and wrong JSON content types fail state-changing requests.
+- Header renders anonymous, signed-in, and admin states; theme cycles system/light/dark/system
+  without a control-size change; source navigation links have the expected destination.
+- Built CSS/test contracts confirm dark-mode override works after production build, not only dev.
+
+### Exit criteria
+
+A public visitor sees the source-faithful landing page; a signed-in visitor sees source-faithful
+application chrome and can sign out. No route relies on a hand-rolled Access verifier.
+
+## 4. Phase 3 — Domain, ports, D1 directory, and creation journey
+
+### Goal
+
+Build the first complete vertical slice: a signed-in user can create a blank or blueprint-backed
+diagram from the source-faithful blueprint gallery and find it in their dashboard.
+
+### Deliverables
+
+1. Port shared graph types, catalogue, blueprints, graph validation, and official vendored icons.
+   Split pure validation into `domain/` and expose constants needed by both client and Worker from
+   an explicitly shared module.
+2. Define diagram/user repository ports and D1 adapters. Add diagram application service methods for
+   list, create, get, update metadata, duplicate, delete, and graph save; inject them through the
+   composition root.
+3. Port client API modules, dashboard grid/cards, previews, timestamp utilities, confirmation modal,
+   and creation wiring.
+4. Port the blueprint gallery and preview **before adapting it**: real React Flow thumbnails,
+   All/Serverless/AI/Media filters, card activation, button-styled action, and permanent blank
+   canvas card.
+5. Port the source `CreateDiagramModal` as the single creation experience. Blueprint cards open it
+   over `/blueprints`; title/description seed from the selected blueprint; blank canvas begins
+   blank; cancel/close/Escape share one close path. Dashboard **Create diagram** links to
+   `/blueprints`, not an out-of-context form.
+6. Preserve source focus trap, focus restoration, modal target sizes, descriptive form labels, and
+   non-focusable thumbnails.
+
+### Tests
+
+- Pure graph and metadata validation rejects malformed values and canonicalises valid graphs.
+- Application-service owner isolation returns uniform non-enumerating `404`.
+- Integration tests prove create/list/get/duplicate/delete only affect the actor's diagrams.
+- Client tests cover every blueprint filter, thumbnail inertness, blank canvas persistence through
+  filtering, modal title/description defaults, close/cancel equivalence, and dashboard navigation.
+- Browser review checks the source's two-column creation modal, card actions, actual miniature
+  diagrams, and mobile layout.
+
+### Exit criteria
+
+The complete blank/blueprint creation transaction occurs on `/blueprints`; its result appears in My
+Diagrams. The presentation matches the source rather than a reconstructed approximation.
+
+## 5. Phase 4 — Single-user editor
+
+### Goal
+
+Port the full editable architecture canvas with all source interaction and accessibility behaviour.
 
-### Phase 1 Tests
-
-- Terraform/config output-name and binding contract; local D1 fixture uses the same database ID the
-  migration command consumes.
-- Access policy ordering, page redirect versus API non-redirect, public asset bypass, audience
-  enforcement, development-token production guard, `/api/me` admin/non-admin cases.
-- Client public/authenticated shells and keyboard-visible navigation.
-- Workers-runtime unauthenticated/authenticated/wrong-audience outcomes and finite timeouts.
-
-### Phase 1 Exit criteria
-
-`pnpm start` opens a public landing page and challenges `/app`; `pnpm deploy` then `pnpm teardown`
-works in the prescribed order; all required scripts and baseline checks pass.
-
----
-
-## Phase 2 — Domain contracts, catalog, and D1 diagram directory
-
-### Phase 2 Goal
-
-Port reviewed static data and build the safe, owner-scoped diagram foundation before any canvas UI.
-
-### Phase 2 Deliverables
-
-1. Port catalog, official SVG icons, edge definitions, eight blueprints, and shared graph types into
-   `src/shared/`; preserve stable product/blueprint/edge identifiers.
-2. Add initial D1 migration for `diagrams` and `users`; implement D1 repository adapters and domain
-   validators behind diagram repository ports.
-3. Implement application use cases and thin routes for owned diagram list/create/read/metadata
-   update/duplicate/delete. Add title/description limits, safe graph-shape validation, and
-   non-enumerating owner checks.
-4. Build dashboard card grid, creation dialog, blueprint gallery/preview, and dynamic
-   `/app/diagrams/[id]` loading shell. Public gallery permits browse but requires authentication to
-   create.
-5. Implement client API modules and route-level error/status presentation. React Flow previews are
-   non-focusable, `aria-hidden`, and pointer-inert.
+### Deliverables
 
-### Phase 2 Tests
+1. Port the Zustand store and client graph API, retaining undo/redo, dirty state, selected entity,
+   properties/palette preferences, loading/errors and debounced autosave semantics.
+2. Port custom `CFNode`, `CFEdge`, edge/node registries, product icon component, service palette,
+   details/properties panels, diagram canvas, toolbar and status bar.
+3. Port drag/drop plus the catalogue's accessible click fallback. Port the source **Connect nodes**
+   dialog and its pure connection/handle selection functions; do not rely on inaccessible React Flow
+   handles for the only keyboard path.
+4. Port browser-side ELK auto-layout behind a lazy `import()`. Maintain source separate state for
+   its loading/error control. Do not use ELK in a Worker.
+5. Implement application/API graph load/save routes and ensure the source autosave only writes
+   validated graph data through the diagram service.
+6. Preserve full-viewport CSS geometry, initial `fitView`, responsive side-drawer breakpoints,
+   animation/reduced-motion handling, canvas focus indicator, headings and read-only-safe props.
+
+### Tests
+
+- Unit test store history, graph operations, connection validation, handle selection and
+  preferences.
+- Integration test graph persistence and owner isolation.
+- Client tests cover palette search/collapse, keyboard connection dialog, panel behaviour,
+  undo/redo, autosave error state and read-only controls.
+- Manual browser tests cover drag/drop, node drag, pointer connection, keyboard connection, fit view
+  for fresh blueprints, narrow layout, theme, and reduced motion.
 
-- Catalog uniqueness, valid blueprint references, and graph/edge validation including invalid
-  endpoints and malformed persisted JSON.
-- D1 repository owner isolation and duplicate/delete behaviour.
-- Route authorization, same-origin/content-type rejection, no owner data in a foreign-id response.
-- Dashboard creation, keyboard dialog use, card navigation, accessible relative/absolute times, and
-  preview focus/pointer regression tests.
+### Exit criteria
 
-### Phase 2 Exit criteria
+A user can create, edit, autosave, reload, reopen, duplicate and delete a diagram with source
+single-user parity. A keyboard-only user can create connections through the native-form dialog.
 
-An authenticated user can create, list, open, rename, duplicate, and delete their own blueprint or
-blank diagram, with reload persistence and no other identity able to discover it.
+## 6. Phase 5 — Sharing
 
----
+### Goal
 
-## Phase 3 — Single-user editor and accessibility baseline
+Add secure anonymous, read-only live-pointer sharing without weakening owner isolation.
 
-### Phase 3 Goal
+### Deliverables
 
-Deliver the useful core product: an accessible, autosaving Cloudflare diagram editor.
+1. Add `diagram_shares` migration, share repository port/D1 adapter and `SHARES` KV adapter.
+2. Implement a domain digest function and application service for rotate/status/revoke/resolve.
+   Generate tokens with Web Crypto; retain only SHA-256 hex digest in D1/KV.
+3. Port source share controls and read-only share view. Show the raw URL exactly once after
+   creation; status never reconstructs it. Preserve source read-only canvas and view landmarks.
+4. Expose owner-only share routes and public resolver route with a limited projection. Ensure the
+   resolver is excluded from authenticated Access destinations.
+5. Log share creation/revocation without raw token, graph or email content.
 
-### Phase 3 Deliverables
+### Tests
 
-1. Port the XYFlow canvas, typed nodes/edges, searchable palette, property panel, toolbar, local
-   Zustand editor store, undo/redo, and debounced fallback graph autosave.
-2. Lazy-load ELK on first auto-layout; retain a no-layout/failure state rather than loading it in
-   the initial editor bundle.
-3. Implement pointer drag _and_ palette click fallback for node creation; typed edge creation by
-   drag and the native-select Connect nodes modal; edge/node properties and documentation links.
-4. Implement responsive drawer behaviour for palette/properties, minimap toggle, visible canvas
-   focus, status bar, real fit-to-view after nodes initialize, and reduced-motion edge animation.
-5. Add reusable focus-trapped dialog/menu hooks, persistent palette collapse and dark/light/system
-   theme preferences, and production-safe native `light-dark()` CSS configuration.
+- Token plaintext is absent from D1, KV, logs and non-create responses.
+- Valid anonymous share works; unknown, revoked, malformed and deleted targets yield indistinct
+  404s; a share immediately reflects subsequent graph changes.
+- Non-owners cannot create, inspect, revoke or resolve an owner's private diagram by guessing ids.
+- Client tests cover creation copy UI, one-time disclosure, revoke, and read-only controls.
 
-### Phase 3 Tests
+### Exit criteria
 
-- Store mutation/history and autosave debounce tests.
-- DOM keyboard path to create a node and connect two nodes without a pointer; disabled/failure
-  cases; labels for every icon-only control.
-- Focus trapping, Escape/outside menu dismissal, focus restoration, contrast-token contract, drawer
-  breakpoint semantics, `aria-hidden` thumbnail focus regression, reduced-motion rendering.
-- Browser-level manual/probed fit-to-view and production CSS theme-override check; mocked XYFlow
-  tests alone are insufficient for these layout properties.
+The owner can share a current diagram read-only; no token is retained in raw form anywhere.
 
-### Phase 3 Exit criteria
+## 7. Phase 6 — Administration, exports, print, and preferences
 
-One signed-in user can build, save, reopen, keyboard-edit, auto-layout, undo, and print a diagram
-without accessibility regressions inherited from the prior implementation.
+### Goal
 
----
+Finish Layer 1 parity with all source end-user and operator functionality.
 
-## Phase 4 — Digest-only sharing, moderation, and exports
+### Deliverables
 
-### Phase 4 Goal
+1. Add admin/user repository ports and D1 adapters plus admin service: paginated user directory,
+   diagram counts, diagram moderation delete and cascading share cleanup.
+2. Port source admin components, including accessible table/cell relationships and diagram controls.
+3. Port PNG/SVG export, DOM-free project-scaffold generator/ZIP, export menu, print control and all
+   menu dismissal behaviour.
+4. Port theme and palette preferences as guarded local-storage utilities, source print CSS and
+   source `light-dark()` theme semantics.
+5. Ensure toolbar/header behaviour reflects source decisions, notably no extra app-shell banner in
+   the editor and no malformed/underlined chrome controls.
 
-Complete the original single-user product layer.
+### Tests
 
-### Phase 4 Deliverables
+- Every admin route rejects every non-`ADMIN_EMAIL` actor and allows the configured admin.
+- Moderation delete removes a diagram and makes dependent share resolution fail.
+- Unit tests cover export filenames, SVG/scaffold content, menu dismissal and preference fallback.
+- Client tests cover print side effects, export controls, admin visibility, timestamps, card overlay
+  clickability and focus paths.
+- Browser review covers export/print trigger behaviour and all three theme modes in production.
 
-1. Add `diagram_shares` migration; D1 + KV sharing adapter; SHA-256-only token lifecycle; public
-   resolver route and `/s/[token]` read-only page.
-2. Add owner share controls that show a raw URL only on creation and support revocation. Keep
-   `/api/shares/*` explicitly public in Access policy/order while all share-management calls remain
-   authenticated owner routes.
-3. Add administrator directory/moderation routes and UI; reuse the owner-blind safe projection for
-   admin preview rather than exposing a broader diagram record.
-4. Port PNG/SVG export, ZIP scaffold generation, print mode, and all theme polish. Verify generic
-   scaffold output is documented as an artifact rather than this demo's deployment template.
-5. Write `DEMO.md` and `EXPLAIN-DEMO.md` for core editor, sharing security trade-off, D1/KV roles,
-   Access split, and admin design.
+### Exit criteria
 
-### Phase 4 Tests
+Layer 1 reaches source parity: catalogue, blueprints, dashboard, editor, sharing, admin, export,
+print, responsive design, theme, and documented accessibility corrections.
 
-- Token entropy/digest correctness; raw token absent from D1/KV/log fixtures; KV miss → D1 fallback
-  and backfill; revocation and live-pointer update behaviour.
-- Public anonymous share can read only the safe projection and cannot mutate; unknown/revoked share
-  does not disclose diagram existence.
-- Every non-admin receives 403 on every admin route; configured admin can moderate; deletion
-  invalidates associated sharing state.
-- Export filenames/scaffold ZIP contents, print side effects, production theme override, and
-  readable/link semantics.
+## 8. Phase 7 — Source bug regression audit and documentation
 
-### Phase 4 Exit criteria
+### Goal
 
-The core editor reaches feature parity: a user can safely share a live read-only diagram, export it,
-use preferences/print, and an operator can moderate without any raw token or authorization leak.
+Turn the source's accumulated operational knowledge into maintainable regression coverage and
+release-quality documentation rather than a list that must be rediscovered.
 
----
+### Deliverables
 
-## Phase 5 — MCP and Durable Object spike
+1. Audit Bugs 1–35 in `09-ARCHITECT.md` against the port. Assign each to a focused test, built-CSS
+   contract, or manual-browser verification step; document why geometry-only items need browser
+   verification.
+2. Run an accessibility review against WCAG 2.2 AA, including modal focus, contrast, headings,
+   keyboard canvas/connect routes, target sizes, motion and responsive reflow.
+3. Run a web-performance review. Confirm ELK is absent from initial bundle and import only occurs on
+   auto-layout use.
+4. Write `README.md`, `DEMO.md`, and `EXPLAIN-DEMO.md`: prerequisites, local/deploy/teardown, public
+   vs authenticated route model, source-port provenance, D1/KV trade-offs, no-raw-token rule, and
+   all deliberate limitations.
+5. Close coverage gaps to at least 80% across all authored source and verify complete JSDoc.
 
-### Phase 5 Goal
+### Tests and exit criteria
 
-Resolve the moving platform constraints before adding a public agent surface.
+`pnpm check`, `pnpm test`, `pnpm test:coverage`, `pnpm deploy`, live browser review and
+`pnpm teardown` pass in sequence. The README explains every resource and a clean account remains
+after teardown. Only then is Layer 1 considered complete.
 
-### Phase 5 Deliverables
+## 9. Phase 8 — Catalogue video links
 
-1. Use current Cloudflare documentation to prove the deployed `cf` Durable Object declaration,
-   `DiagramSession` class export, Hibernation API, RPC/fetch distinction, and test-pool WebSocket
-   behaviour. Reconcile the Vinext 101 workaround with current Vinext release behaviour.
-2. Validate current Access Managed OAuth/DCR Terraform schema and one real OpenCode-compatible
-   loopback authorization flow; do not change production account resources outside the controlled
-   spike request.
-3. Confirm current stateless MCP handler API and model-context SDK version; test a minimal protected
-   endpoint through Hono/Access, not a duplicate auth stack.
-4. Verify that workerd cannot use the browser's ELK bundle for server MCP auto-layout, or replace
-   this assumption with a tested server-safe option. Record final choice.
-5. Capture findings and update the README decision record before implementation begins.
+### Goal
 
-### Phase 5 Exit criteria
+Close the source's documented dead video-icon branch with genuine, current official resources.
 
-The exact Managed OAuth, DO, MCP handler, test setup, and server-layout decisions are verified and
-written down; no later implementation phase relies on source-repository assumptions alone.
+### Deliverables and tests
 
----
+1. Re-verify current official Cloudflare video URLs for selected catalogue products.
+2. Add useful `{ icon: 'video', title, url }` entries beside document links.
+3. Test the actual video icon rendering and link semantics.
 
-## Phase 6 — Remote MCP server and one-way agent live sync
+### Exit criteria
 
-### Phase 6 Goal
+At least one catalogue product exercises each supported documentation-link icon with a valid, useful
+destination.
 
-Let an external agent read and change its owner's diagrams, with an open editor visibly updating.
+## 10. Phase 9 — Source parity checkpoint
 
-### Phase 6 Deliverables
+### Goal
 
-1. Add the Managed OAuth configuration and `/mcp*` authenticated destination to the existing Access
-   application; add the shared policy with `redirect: false`.
-2. Implement domain graph mutations and application MCP services; expose all specified MCP tools and
-   resource. Reuse D1/share/export application ports in-process.
-3. Add `DiagramSession` as a hibernatable, SQLite-class Durable Object that has no durable graph
-   state. Implement owner-checked WebSocket upgrade and server-to-client `graph_updated` fan-out.
-4. Implement the scrub-and-set verified identity header helper, attachment-pinned identity, and
-   client WebSocket hook/toast. Forward the original upgrade request; never try to return a socket
-   from RPC.
-5. Re-export the class from `src/worker-entry.ts`; dispatch upgrades ahead of Vinext only by
-   `Upgrade` header; plain requests still get `426` from normal routing.
+Do not begin platform-expanding work until a release review confirms the port is faithful in a real
+browser and structurally compliant with the four-tier architecture.
 
-### Phase 6 Tests
+### Exit criteria
 
-- MCP owner isolation, schema descriptions, safe export and share tool results.
-- Unit and Workers-runtime tests that smuggled identity headers (including differently cased) are
-  discarded, socket attachment survives hibernation, and non-upgrade receives 426.
-- Connected editor sees a graph update from an MCP tool; raw graph/token is absent from logs.
-- Deployed OAuth/MCP/manual editor live-sync reality check.
+- All Layer 1 acceptance conditions in the specification pass.
+- No component was re-authored where source code was available without a documented reason.
+- A route/service/adapter dependency review finds no upward dependency and no route-created
+  repository.
+- Source and port are compared at landing, blueprints/create modal, dashboard, editor, share, admin,
+  theme and narrow viewport. This is the last review for which both deployments exist, so it is the
+  one that must be thorough.
 
-### Phase 6 Exit criteria
+### Cutover
 
-A signed-in MCP client can edit only its own diagram and an open owner editor tab updates promptly,
-without a refresh or an unauthenticated Durable Object path.
+Only once the above is signed off, and as a deliberate separate change:
 
----
+1. Decide the fate of the source deployment — release its hostname and destroy or retire its
+   resources — so the name is free.
+2. Change `worker_name` to `architect` and `hostname` to `architect.cfapps.uk`. No other source
+   change should be required; if one is, a literal escaped
+   [specification §1.3](./01-specification.md#13-naming-and-coexistence-with-the-source-deployment)
+   and the naming contract test needs tightening.
+3. Re-apply Terraform, re-deploy, and re-verify Access on both postures plus one authenticated round
+   trip on the new hostname.
+4. Update `README.md`, `DEMO.md`, and `EXPLAIN-DEMO.md` URLs.
 
-## Phase 7 — Collaboration spike and collaborator model
+Until step 1 is complete, treat `architect.cfapps.uk` as production belonging to someone else.
 
-### Phase 7 Goal
+## 11. Phases 11–15 — MCP and one-way agent live sync
 
-Establish the correctness argument for bidirectional multi-user editing and ship authorization/UI
-for owner-managed collaborators.
+These phases implement `09B-ARCHITECT-MCP.md` only after Phase 9.
 
-### Phase 7 Deliverables
+### Phase 11 — MCP/DO spike
 
-1. Re-confirm DO in-memory eviction, non-interleaving synchronous execution,
-   `blockConcurrencyWhile`, and hibernatable multi-socket test behaviour. Create a controlled race
-   proving the proposed write chain cannot let an older delayed persistence overwrite a newer graph.
-2. Add the `diagram_collaborators` migration and D1 adapter. Implement `findAccessible()` while
-   retaining owner-only methods for rename/delete/share/collaborator management.
-3. Add list/add/remove/leave collaborator routes and shared-with-me list; use safe 404 behaviour for
-   a never-seen email and non-members.
-4. Add dashboard Shared with me section and a focus-managed Collaborators dialog that keeps
-   anonymous share links visibly distinct from edit access.
+Load the Agents SDK, Durable Objects and Wrangler/cf documentation skills. Re-confirm current
+`createMcpHandler` APIs, Access Managed OAuth Terraform schema, remote OAuth flow, Durable Object
+migration requirements, `workerd` incompatibility of `elkjs`, and test/coverage support. Produce a
+short spike report before production code.
 
-### Phase 7 Tests
+### Phase 12 — MCP read and metadata tools
 
-- Owner/editor/non-member authorization matrix across all affected routes.
-- Owner cannot add self; an unknown-to-directory identity is safely rejected; idempotent add and
-  editor self-removal work.
-- Race spike asserts deterministic operation ordering and final D1 state, including deliberately
-  slow first persistence.
+Add `POST /mcp` with stateless current SDK handler, Access Managed OAuth on the existing Access
+application, MCP resource for a diagram, and services for list/get/create/rename/delete. Tools call
+application services in-process; no internal fetch. Test ownership, schemas and OAuth outcomes.
 
-### Phase 7 Exit criteria
+### Phase 13 — Graph mutation tools and live sync
 
-An owner can grant and revoke edit access to a previously signed-in identity; that identity sees the
-diagram in Shared with me but cannot perform owner-only operations.
+Add pure domain graph mutations and `DiagramSession`. The Worker verifies owner before forwarding an
+upgrade and scrubs/sets the identity header. The object hibernates sockets, holds no durable graph,
+and broadcasts only persisted updates. Test pre-upgrade authorization, 426 handling,
+header-smuggling defence, socket attachment identity, cold start and agent-update toast.
 
----
+### Phase 14 — MCP share and data exports
 
-## Phase 8 — Bidirectional operations, presence, and cursors
+Add share lifecycle and JSON/scaffold tool operations through existing services. Never expose
+browser-only PNG/SVG tools as server features. Test one-time raw share URL handling and encoded
+scaffold output.
 
-### Phase 8 Goal
+### Phase 15 — MCP verification
 
-Replace primary whole-graph editing with a shared, durable-object-serialized operation stream.
+Test real protocol/API conformance, OAuth flow, failure cases, no secret logging, durable-object
+hibernation path, and diagram ownership across HTTP/MCP. Document intentional last-write-wins
+behaviour between the browser's whole-graph autosave and its own agent.
 
-### Phase 8 Deliverables
+## 12. Phases 16–20 — Collaboration
 
-1. Hydrate `DiagramSession` graph/sequence from D1 with `blockConcurrencyWhile()`; implement
-   `applyOperation`, `applyWholeGraphReplace`, snapshot, and serialized fresh-graph write chain.
-2. Define and use the shared discriminated WebSocket protocol. Every human, MCP, and HTTP fallback
-   mutation reaches the same session port; `operation_rejected` is a user-recoverable result.
-3. Update the client to send debounced granular operations while connected, reconcile self echoes,
-   apply remote operations, and use whole-graph PUT only while a socket is unavailable.
-4. Add ephemeral presence stack, remote cursor overlay, and remote selection highlight. Color is
-   supplementary only; no presence/cursor data enters D1.
-5. Update MCP graph tools to invoke `applyOperation(origin: 'agent')`; remove old one-way-only
-   notification code.
+These phases implement `09C-COLLABORATIVE-EDITING.md`, extending `DiagramSession` rather than
+creating another per-diagram object.
 
-### Phase 8 Tests
+- **Phase 16:** spike current Hibernation WebSocket/RPC/test behaviour and write the report.
+- **Phase 17:** add collaborator migration, ports/adapters/services, owner-only API and UI.
+- **Phase 18:** turn the session into the serialized operation path; persist D1 before broadcast;
+  keep REST whole-graph save only as resilience fallback.
+- **Phase 19:** add ephemeral presence, cursor, selection and remote-cursor UI.
+- **Phase 20:** verify operation ordering, stale-target rejection, reconnect snapshots, owner vs
+  collaborator policy, hibernation reconstruction and no durable second graph copy.
 
-- Every operation kind, stale target rejection, cascade deletion, and type/edge validation.
-- Two real runtime WebSocket clients plus an MCP-originated operation converge to exactly the same
-  D1 graph and receive corresponding frames; simulated eviction rehydrates from D1.
-- Presence join/leave/cursor/selection flow and explicit assertion that no persistence happens.
-- Responsive and keyboard checks for presence UI/cursor labels.
+## 13. Phases 21–26 — AI assistance
 
-### Phase 8 Exit criteria
+These phases implement `09D-ARCHITECT-AICHAT.md`, after re-retrieving all current Workers AI, AI
+Gateway, Agents SDK and documentation-MCP guidance.
 
-Two collaborators see each other's node/edge edits, cursor, and selection live; agent changes are
-visible to both; D1 remains the only durable graph source across session eviction.
+- **Phase 21:** spike model, AI Gateway, tool-call wire schema, cost/log correlation and Durable
+  Object lifecycle.
+- **Phase 22:** implement validated agent tooling and Cloudflare documentation client.
+- **Phase 23:** add `DiagramSession` chat capability without bypassing shared operations/services.
+- **Phase 24:** port/add source-compatible in-editor chat UI and reloadable turn state.
+- **Phase 25:** add blueprint-page generation from a natural-language description.
+- **Phase 26:** verify authorization, prompt/tool validation, tool failures, streaming lifecycle,
+  persistence, broadcasts, observability and cleanup.
 
----
+## 14. Definition of complete
 
-## Phase 9 — AI gateway and assistant spike
-
-### Phase 9 Goal
-
-Resolve every external AI assumption before adding a billable, asynchronous feature.
-
-### Phase 9 Deliverables
-
-1. Use current Workers AI documentation and a bounded real-account test to select a tool-calling
-   model and fallback, confirm plain-gateway support and exact streaming/tool-call wire shape.
-2. Confirm Terraform provider fields for `cloudflare_ai_gateway`, provision a named gateway with
-   explicit privacy/log/rate/cache/spend settings, and add the AI binding/gateway id in typed
-   config.
-3. Confirm public Cloudflare documentation MCP client package/API from a Worker-compatible
-   environment, including timeout/close/error behaviour.
-4. Re-confirm and directly test that work started in a DO WebSocket handler completes after the
-   originating connection closes and later graph snapshot reflects it.
-5. Record confirmed contracts and cost/privacy implications before building assistant UI.
-
-### Phase 9 Exit criteria
-
-There is written, tested evidence for model, gateway, docs MCP, and disconnect semantics; no AI UI
-or direct `env.AI.run` call lands before this phase completes.
-
----
-
-## Phase 10 — AI tools, chat engine, and session execution
-
-### Phase 10 Goal
-
-Make the assistant operate the same graph API as every other actor.
-
-### Phase 10 Deliverables
-
-1. Create pure catalog/graph prompt-context, grid-position, tool schema/dispatcher, and docs-client
-   modules. The tool dispatcher produces existing graph operations or metadata commands; it does not
-   access D1, sockets, or a Durable Object.
-2. Implement the central gateway inference adapter and `runDiagramChatTurn()` with injected ports,
-   bounded rounds, every-round tool definitions, streamed text/tool-call accumulation, recoverable
-   malformed tool calls, source normalization, and safe log/event handling.
-3. Extend `DiagramSession` for `chat_message`, per-connection ephemeral messages, status/token/tool
-   result/done/error frames, `origin: 'ai-chat'`, and agent-change broadcast. Suppress the generic
-   remote-update toast for the initiating socket only.
-4. Add AI Gateway architecture guard: only its adapter calls `env.AI.run`; every invocation uses a
-   non-empty gateway ID.
-
-### Phase 10 Tests
-
-- Prompt context includes exact current IDs and does not contain irrelevant graph payload fields.
-- Tool validation/dispatch, docs-client success/timeout/malformed result, and no query/result
-  logging.
-- Fixture streamed model: tool round → shared mutation → final text; tool fragments, malformed JSON,
-  round cap, rejected operation, reasoning-token suppression, and duplicate-bubble batching
-  regression.
-- Real DO integration: first socket chats, second socket receives applied AI operation, D1 persists;
-  origin socket disconnect mid-turn and a later socket sees its completed graph.
-
-### Phase 10 Exit criteria
-
-A scripted AI turn safely changes D1 through `DiagramSession`, sources a documentation result, and
-remains correct if its initiating tab disappears.
-
----
-
-## Phase 11 — AI assistant UX and Generate with AI
-
-### Phase 11 Goal
-
-Expose the tested assistant through an accessible editor panel and public blueprint workflow.
-
-### Phase 11 Deliverables
-
-1. Build the shared right-side Details panel with Properties and AI Assistant tabs, expandable
-   persistence, and a toolbar toggle. Selecting a node returns focus/context to Properties; palette
-   collapse is a helpful one-time layout choice, not hidden state.
-2. Add accessible transcript (`role=log` with measured announcements), composer, stop/cancel,
-   streaming status, structured tool activity, source links, and failures without prompt disclosure.
-3. Add Generate with AI tile/modal in `/blueprints`: after authentication create a blank diagram,
-   use a short-lived existing live socket, allow refinement, then navigate to the saved editor.
-4. Run client auto-layout once a generation completes; preserve user edits and ordinary undo/redo
-   semantics for all assistant operations.
-5. Update README, demo script, and explainer with AI model/gateway policy, cost controls, docs
-   sources, ephemeral transcript policy, disconnect behaviour, and collaboration interaction.
-
-### Phase 11 Tests
-
-- Keyboard-only tabs/composer/dialog, focus restoration, transcript announcement behaviour, source
-  link semantics, stop/error states, and no duplicated streamed message after batching.
-- Scripted generate/refine/open flow; abandoned modal leaves a valid saved partial diagram, not an
-  error or secret-bearing cleanup artifact.
-- Two-user UI flow: one chats, one watches assistant operations arrive normally.
-
-### Phase 11 Exit criteria
-
-A presenter can generate a diagram from a description, refine it, open it, ask an in-editor
-question/change, watch a collaborator receive it live, and inspect the corresponding AI Gateway
-logs/cost in the dashboard.
-
----
-
-## Phase 12 — Cloudflare product catalog reconciliation
-
-### Phase 12 Goal
-
-Reconcile Architect's product catalog, official icons, documentation links, blueprint references,
-and generated-scaffold mapping against the **current** Cloudflare product set immediately before
-release. Product names and availability change independently of the editor code: for example, K2 was
-added and Pipelines was renamed **Basin Pipelines** during Cloudflare Birthday Week. The demo must
-teach the current platform without breaking diagrams saved under an earlier catalog.
-
-### Phase 12 Deliverables
-
-1. Review the current Cloudflare product catalog, developer documentation, announcement/changelog
-   material, and official icon source. Record the reviewed date and sources in the Architect
-   decision record.
-2. Classify every catalog difference explicitly as **add**, **rename**, **retire**, **merge**, or
-   **no change**. Do not silently drop a prior product simply because its marketing name or product
-   page changed.
-3. Add current products that belong in an architecture diagram — including K2 when it remains a
-   current Cloudflare product — with category, description, official icon where available, handles,
-   documentation links, and scaffold metadata where a scaffold can honestly support it.
-4. Rename products such as Pipelines to Basin Pipelines in their display label, description,
-   documentation links, icon source, and blueprint/palette copy **without changing their stable
-   `typeId`**. Existing diagram graph data stores `typeId`; preserving it makes every saved diagram
-   render the new name immediately without a D1 migration or a graph rewrite.
-5. For a genuinely retired or merged product, retain a compatibility catalog entry for every
-   previously issued `typeId` unless a reviewed migration is explicitly designed. Mark it as legacy
-   in the editor, link to its replacement/deprecation guidance, and ensure old diagrams continue to
-   render and export. Never reuse its ID for a different product.
-6. Reconcile the eight blueprints, AI prompt catalog context, MCP tool validation, generated
-   scaffold mapping, tests, and documentation against the result. A new product is not selectable by
-   an AI tool or a blueprint until its catalogue descriptor is complete and validated.
-
-### Phase 12 Tests
-
-- A compatibility fixture containing every historical `typeId` renders successfully, including
-  renamed and retired entries; no saved node falls through to an unknown-product placeholder.
-- A regression test asserts the former Pipelines ID is unchanged while its visible label is Basin
-  Pipelines, and the same pattern is exercised for every future rename.
-- Catalog uniqueness, official-icon resolution, current documentation URL validity where offline
-  checking is possible, category/handle/scaffold descriptor validation, and blueprint references.
-- AI/MCP schema tests prove the permitted product IDs are derived from the reconciled catalogue,
-  rather than a stale hand-maintained tool enum.
-
-### Phase 12 Exit criteria
-
-The catalog reflects the reviewed current Cloudflare product set, K2 and Basin Pipelines are
-represented appropriately, every rename retains its prior stable ID, and diagrams created before the
-reconciliation render, edit, share, and export without data migration.
-
----
-
-## Phase 13 — Final verification and presentation readiness
-
-### Phase 13 Goal
-
-Prove the full layered demo is safe, accessible, reproducible, and teachable.
-
-### Phase 13 Deliverables
-
-1. Close coverage gaps and run repository checks, production build, Terraform validation/format,
-   generated binding freshness, and architecture/security guards.
-2. Perform WCAG 2.2 AA and real-browser responsive/canvas review; run a production-built theme
-   override test and a web performance review, addressing actionable regressions.
-3. Execute manual deployed flows: public/Access boundaries; full core editor; digest-only share;
-   admin moderation; Managed OAuth MCP edit; two-user collaborator operations/presence; AI
-   generation and in-editor assistant; deliberate socket disconnect mid-AI turn; AI Gateway
-   dashboard evidence.
-4. Verify `pnpm deploy` followed by `pnpm teardown` deletes application code first and leaves all
-   Terraform-owned resources and the cf-owned Durable Object namespace clean.
-5. Finish README, `DEMO.md`, `EXPLAIN-DEMO.md`, and decision record with current versions/limits,
-   explicit non-goals, prerequisites, and all trade-offs.
-
-### Phase 13 Exit criteria
-
-The full script is reproducible from a clean checkout with only root `.env`, every required check
-passes, no security/accessibility regression from the inherited findings remains, and teardown
-leaves the account clean.
+Architect is complete only when its documented layer has source-faithful UX, passes all automated
+and visual gates, demonstrates the stated Cloudflare product lesson without redundant state or
+unowned resources, and can be deployed then completely removed by the commands in its README.
