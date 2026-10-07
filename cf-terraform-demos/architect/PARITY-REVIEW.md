@@ -16,8 +16,8 @@ The review used the following authorities:
 
 - `specs/architect/00-introduction.md`, `01-specification.md`, and `02-implementation.md`;
 - the surviving source repository at `~/gitlab/cf-demos/demos/architect`;
-- the surviving source deployment at `https://architect.cfapps.uk` for public desktop and narrow
-  browser comparison;
+- the surviving source deployment (whose hostname remains intentionally outside this demo's
+  lifecycle) for public desktop and narrow browser comparison;
 - the port's local Worker served with `cf dev` on `http://localhost:5174` for desktop review, and
   the local development instance already available on `http://localhost:5173` for authenticated
   Layer 1 flow evidence;
@@ -126,7 +126,7 @@ component-family replacement:
 
 ## Browser observations
 
-### Surviving source deployment: `architect.cfapps.uk`
+### Surviving source deployment
 
 - At desktop width, the public landing page rendered expected hero, CTA, header, source styling, and
   anonymous Sign in posture.
