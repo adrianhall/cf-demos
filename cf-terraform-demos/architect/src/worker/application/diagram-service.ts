@@ -6,9 +6,31 @@ import {
   validateUpdateDiagramInput
 } from '../domain/diagram-validation.ts';
 import type { Diagram, PublicDiagram } from '../domain/diagram.ts';
-import { EMPTY_GRAPH_DATA, validateGraphDataInput } from '../domain/graph.ts';
+import {
+  canonicalizeGraphData,
+  EMPTY_GRAPH_DATA,
+  type GraphData,
+  validateGraphDataInput
+} from '../domain/graph.ts';
 import type { DiagramRepository } from './ports/diagram-repository.ts';
+import type { DiagramSessionPort } from './ports/diagram-session.ts';
 import type { ShareRepository } from './ports/share-repository.ts';
+
+/**
+ * One pure graph mutation, as {@link DiagramService.mutateGraph} accepts it.
+ *
+ * Every function in `../domain/graph-mutations.ts` already has this shape once its arguments are
+ * bound, which is the point: the use case orchestrates load, validate, save and notify, while the
+ * domain owns what "adding a node" actually means. Taking a function rather than an operation
+ * enumeration keeps the application tier from growing a second copy of that vocabulary that could
+ * disagree with the first.
+ *
+ * @param graph The diagram's current graph, already parsed.
+ * @returns The new graph. Implementations never mutate their argument.
+ * @throws {ProblemDetailsError} When the mutation's target does not exist or its input conflicts
+ *   with the graph — see each function in `../domain/graph-mutations.ts`.
+ */
+export type GraphMutation = (graph: GraphData) => GraphData;
 
 /**
  * Use cases for a user's own diagrams — the tier between the HTTP API and persistence.
@@ -36,10 +58,15 @@ export class DiagramService {
    *   delete use case rather than to the route: an MCP tool deleting a diagram in a later phase
    *   must leave exactly the same state behind as the HTTP endpoint does, and it will if there is
    *   only one place that performs the delete at all.
+   * @param sessions Live-session coordination port, used to open an authorized editor connection
+   *   and to push a graph an agent changed. An interface rather than a Durable Object namespace, so
+   *   this service — and every test of it — stays independent of the coordination product; see
+   *   `./ports/diagram-session.ts`.
    */
   constructor(
     private readonly repository: DiagramRepository,
-    private readonly shares: ShareRepository
+    private readonly shares: ShareRepository,
+    private readonly sessions: DiagramSessionPort
   ) {}
 
   /**
@@ -173,6 +200,84 @@ export class DiagramService {
       throw notFound({ detail: 'Diagram not found.' });
     }
     return updatedAt;
+  }
+
+  /**
+   * Applies one granular mutation to a diagram's graph — the MCP tools' only write path.
+   *
+   * The sequence is fixed and every step of it matters:
+   *
+   * 1. **Resolve the owned diagram**, through the same `requireOwned` every other method uses, so an
+   *    agent is held to the identical non-enumerating `404` a browser gets.
+   * 2. **Apply one pure mutation** from `../domain/graph-mutations.ts`, which either returns a new
+   *    graph or throws because its target does not exist. Nothing has been written yet, so a
+   *    refusal leaves the stored diagram exactly as it was.
+   * 3. **Re-canonicalise** through the same `canonicalizeGraphData` the browser's autosave goes
+   *    through. The mutation functions are deliberately not responsible for this: one definition of
+   *    a storable graph, applied to every write, means a granular write cannot store a shape a
+   *    whole-graph write would have rejected.
+   * 4. **Persist**, then **notify**. In that order — see
+   *    {@link DiagramSessionPort.notifyGraphUpdated}.
+   *
+   * The stored graph is parsed with `JSON.parse` rather than defensively re-validated first. It was
+   * canonical when it was written, by step 3 and by every other write path, so treating it as
+   * suspect here would be asserting that the application's own invariant does not hold.
+   *
+   * @param actorEmail Verified Cloudflare Access identity making the change.
+   * @param id Unvalidated diagram id supplied by the caller.
+   * @param mutate The single mutation to apply; see {@link GraphMutation}.
+   * @returns The diagram as it now stands, carrying the new graph and `updatedAt` so a calling
+   *   agent can see the result of its own change without a second read.
+   * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown or
+   *   owned by another identity, or when the mutation targets a node or edge that does not exist;
+   *   `badRequest()` (400) when it supplies an id already in use; and `unprocessableContent()`
+   *   (422) when the result somehow fails canonical validation.
+   * @throws {Error} When the repository cannot read or write the row, or the session cannot be
+   *   notified. A notify failure is deliberately not swallowed: the write has already succeeded, so
+   *   the caller is told its change landed but may not have been pushed, rather than being told
+   *   nothing.
+   */
+  async mutateGraph(actorEmail: string, id: string, mutate: GraphMutation): Promise<Diagram> {
+    const diagram = await this.requireOwned(actorEmail, id);
+
+    const graphData = canonicalizeGraphData(mutate(JSON.parse(diagram.graphData) as GraphData));
+
+    const updatedAt = await this.repository.replaceGraph(diagram.id, graphData);
+    if (updatedAt === null) {
+      // The row disappeared between the ownership read and the write — a concurrent delete by the
+      // same owner. Nothing is broadcast, because there is no longer a diagram to push.
+      throw notFound({ detail: 'Diagram not found.' });
+    }
+
+    await this.sessions.notifyGraphUpdated(diagram.id, graphData, updatedAt);
+
+    return { ...diagram, graphData, updatedAt };
+  }
+
+  /**
+   * Opens an authorized live connection to one of the actor's own diagrams.
+   *
+   * Ownership is checked here, before the upgrade is forwarded, and that is the whole of this
+   * method's authorization work — the session itself never re-derives it. Putting the check in the
+   * use case rather than in the route is what makes it the same check `get`, `saveGraph` and every
+   * MCP tool perform: a connection is a way of reading a diagram, so it answers the identical
+   * non-enumerating `404`.
+   *
+   * @param actorEmail Verified Cloudflare Access identity opening the connection.
+   * @param id Unvalidated diagram id from the request path.
+   * @param request The viewer's own upgrade request, forwarded so the Hibernation API can complete
+   *   the protocol switch against it. Whatever identity headers it carries are discarded by the
+   *   adapter before the session sees it.
+   * @returns The `101 Switching Protocols` response, to be returned to the browser unchanged.
+   * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown or
+   *   owned by another identity.
+   * @throws {Error} When the repository cannot read the row or the session cannot accept the
+   *   connection.
+   */
+  async connectLiveSession(actorEmail: string, id: string, request: Request): Promise<Response> {
+    const diagram = await this.requireOwned(actorEmail, id);
+
+    return this.sessions.connect(diagram.id, request, actorEmail);
   }
 
   /**

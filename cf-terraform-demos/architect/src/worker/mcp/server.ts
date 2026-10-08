@@ -2,12 +2,19 @@ import { createMcpHandler } from 'agents/mcp/server';
 import { z } from 'zod';
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/server';
 import {
+  addEdgeTool,
+  addNodeTool,
+  autoLayoutDiagramTool,
   createDiagramTool,
   deleteDiagramTool,
   getDiagramTool,
   listDiagramsTool,
   type McpToolContext,
-  renameDiagramTool
+  removeEdgeTool,
+  removeNodeTool,
+  renameDiagramTool,
+  updateEdgeTool,
+  updateNodeTool
 } from './tools.ts';
 
 /**
@@ -61,6 +68,49 @@ const diagramIdSchema = z
 const OWNER_SCOPED =
   'Only ever acts on a diagram owned by the authenticated caller. A diagram id belonging to '
   + 'someone else is reported exactly like one that does not exist.';
+
+/**
+ * Appended to every tool that changes a diagram's graph.
+ *
+ * Says two things a model otherwise has to infer from behaviour: that the change is live, so it
+ * should not tell a user to reload; and that the change is immediate and whole, so it should not
+ * try to batch operations into a transaction this server does not offer.
+ */
+const LIVE_PUSH =
+  'The change is saved immediately and pushed to any editor tab the owner has open on this '
+  + 'diagram, so there is no separate save step and no need to ask them to reload.';
+
+/**
+ * Describes a node id argument, shared by every tool that addresses an existing node.
+ */
+const nodeIdSchema = z
+  .string()
+  .describe('The node\u2019s id, as returned in the diagram\u2019s graphData by get_diagram.');
+
+/**
+ * Describes an edge id argument, shared by every tool that addresses an existing edge.
+ */
+const edgeIdSchema = z
+  .string()
+  .describe('The edge\u2019s id, as returned in the diagram\u2019s graphData by get_diagram.');
+
+/**
+ * Describes a canvas position, shared by the node-creating and node-moving tools.
+ *
+ * The units are stated because a model has no other way to know them: a value that looks sensible
+ * in pixels on a 1,000-pixel screen is a reasonable canvas coordinate too, so a wrong guess would
+ * place a node plausibly rather than visibly wrongly.
+ */
+const positionSchema = z
+  .object({
+    x: z.number().describe('Horizontal canvas coordinate in flow units; larger is further right.'),
+    y: z.number().describe('Vertical canvas coordinate in flow units; larger is further down.')
+  })
+  .describe(
+    'Where to place the node on the canvas. Nodes are roughly 200 by 80 units, so leave at '
+      + 'least 260 horizontally and 160 vertically between them. Call auto_layout_diagram '
+      + 'afterwards rather than computing a tidy arrangement by hand.'
+  );
 
 /**
  * Builds the MCP server for one request, with every tool closed over that caller's identity.
@@ -228,6 +278,187 @@ export function createMcpServer(context: McpToolContext): McpServer {
       await deleteDiagramTool(context, diagramId);
 
       return { content: [{ text: `Diagram ${diagramId} deleted.`, type: 'text' }] };
+    }
+  );
+
+  server.registerTool(
+    'add_node',
+    {
+      title: 'Add node',
+      description:
+        'Add one Cloudflare service or external actor to a diagram\u2019s canvas. Supply your own '
+        + 'id to reference the new node from a follow-up add_edge call without reading the graph '
+        + `back first. ${OWNER_SCOPED} ${LIVE_PUSH}`,
+      inputSchema: z.object({
+        diagramId: diagramIdSchema,
+        id: z
+          .string()
+          .optional()
+          .describe(
+            'Id for the new node. Choose a short, readable one you can reference later. Omit to '
+              + 'have a UUID minted. Reusing an id already on the canvas is an error.'
+          ),
+        typeId: z
+          .string()
+          .describe(
+            'Catalogue product type, for example "worker", "d1", "r2" or "queues". An unknown '
+              + 'value is stored and renders with a neutral icon rather than being rejected.'
+          ),
+        label: z.string().describe('Text shown on the node, usually the component\u2019s name.'),
+        description: z
+          .string()
+          .optional()
+          .describe('Optional short annotation shown beneath the label.'),
+        position: positionSchema
+      })
+    },
+    async ({ diagramId, ...input }) => {
+      const diagram = await addNodeTool(context, diagramId, input);
+
+      return { content: [{ text: diagram.graphData, type: 'text' }] };
+    }
+  );
+
+  server.registerTool(
+    'update_node',
+    {
+      title: 'Update node',
+      description:
+        'Change an existing node\u2019s label, annotation and/or position. Every field is '
+        + 'optional and an omitted one is left exactly as it was, so renaming a node does not '
+        + `require resending its position. ${OWNER_SCOPED} ${LIVE_PUSH}`,
+      inputSchema: z.object({
+        diagramId: diagramIdSchema,
+        nodeId: nodeIdSchema,
+        label: z.string().optional().describe('New label. Omit to leave it unchanged.'),
+        description: z.string().optional().describe('New annotation. Omit to leave it unchanged.'),
+        position: positionSchema.optional()
+      })
+    },
+    async ({ diagramId, nodeId, ...patch }) => {
+      const diagram = await updateNodeTool(context, diagramId, nodeId, patch);
+
+      return { content: [{ text: diagram.graphData, type: 'text' }] };
+    }
+  );
+
+  server.registerTool(
+    'remove_node',
+    {
+      title: 'Remove node',
+      description:
+        'Remove a node and every edge connected to it. The cascade is deliberate: an edge '
+        + 'pointing at a node that no longer exists would not render and would silently corrupt '
+        + `the diagram. ${OWNER_SCOPED} ${LIVE_PUSH}`,
+      inputSchema: z.object({ diagramId: diagramIdSchema, nodeId: nodeIdSchema })
+    },
+    async ({ diagramId, nodeId }) => {
+      const diagram = await removeNodeTool(context, diagramId, nodeId);
+
+      return { content: [{ text: diagram.graphData, type: 'text' }] };
+    }
+  );
+
+  server.registerTool(
+    'add_edge',
+    {
+      title: 'Add edge',
+      description:
+        'Connect two nodes that are already on the canvas. Both endpoints must exist; an id that '
+        + 'names no node is an error and nothing is added. Add the nodes first, then the edges '
+        + `between them. ${OWNER_SCOPED} ${LIVE_PUSH}`,
+      inputSchema: z.object({
+        diagramId: diagramIdSchema,
+        id: z.string().optional().describe('Id for the new edge. Omit to have a UUID minted.'),
+        source: z.string().describe('Id of the node the connection starts from.'),
+        target: z.string().describe('Id of the node the connection ends at.'),
+        edgeType: z
+          .string()
+          .describe(
+            'One of "data-flow", "service-binding", "trigger" or "external", controlling the '
+              + 'line style and arrowheads. Use "service-binding" between two Cloudflare '
+              + 'products and "external" where traffic leaves the platform.'
+          ),
+        label: z.string().optional().describe('Optional text drawn at the midpoint of the line.'),
+        description: z.string().optional().describe('Optional longer annotation for the edge.'),
+        protocol: z
+          .string()
+          .optional()
+          .describe('Optional transport hint, for example "http", "ws" or "binding".')
+      })
+    },
+    async ({ diagramId, ...input }) => {
+      const diagram = await addEdgeTool(context, diagramId, input);
+
+      return { content: [{ text: diagram.graphData, type: 'text' }] };
+    }
+  );
+
+  server.registerTool(
+    'update_edge',
+    {
+      title: 'Update edge',
+      description:
+        'Change an existing edge\u2019s type, label, annotation and/or protocol. The endpoints '
+        + 'cannot be changed: remove the edge and add the one you want instead, so the change is '
+        + `explicit rather than a connection quietly becoming a different one. ${OWNER_SCOPED} `
+        + LIVE_PUSH,
+      inputSchema: z.object({
+        diagramId: diagramIdSchema,
+        edgeId: edgeIdSchema,
+        edgeType: z
+          .string()
+          .optional()
+          .describe(
+            'New edge type: "data-flow", "service-binding", "trigger" or "external". Omit to '
+              + 'leave it unchanged.'
+          ),
+        label: z.string().optional().describe('New midpoint label. Omit to leave it unchanged.'),
+        description: z.string().optional().describe('New annotation. Omit to leave it unchanged.'),
+        protocol: z.string().optional().describe('New transport hint. Omit to leave unchanged.')
+      })
+    },
+    async ({ diagramId, edgeId, ...patch }) => {
+      const diagram = await updateEdgeTool(context, diagramId, edgeId, patch);
+
+      return { content: [{ text: diagram.graphData, type: 'text' }] };
+    }
+  );
+
+  server.registerTool(
+    'remove_edge',
+    {
+      title: 'Remove edge',
+      description:
+        'Remove one connection, leaving both of the nodes it joined on the canvas. '
+        + `${OWNER_SCOPED} ${LIVE_PUSH}`,
+      inputSchema: z.object({ diagramId: diagramIdSchema, edgeId: edgeIdSchema })
+    },
+    async ({ diagramId, edgeId }) => {
+      const diagram = await removeEdgeTool(context, diagramId, edgeId);
+
+      return { content: [{ text: diagram.graphData, type: 'text' }] };
+    }
+  );
+
+  server.registerTool(
+    'auto_layout_diagram',
+    {
+      title: 'Auto-layout diagram',
+      description:
+        'Reposition every node onto a simple grid, with nodes that nothing points at on the top '
+        + 'row and each remaining node one row below whatever reaches it first. This produces a '
+        + 'visibly simpler arrangement than the Auto layout button in the editor, which runs a '
+        + 'proper layered layout engine in the browser that cannot run on the server \u2014 so '
+        + 'tell the user the result is a tidy-up rather than a polished layout, and suggest the '
+        + 'editor\u2019s own button if they want the better one. Edges and the current view are '
+        + `left alone. ${OWNER_SCOPED} ${LIVE_PUSH}`,
+      inputSchema: z.object({ diagramId: diagramIdSchema })
+    },
+    async ({ diagramId }) => {
+      const diagram = await autoLayoutDiagramTool(context, diagramId);
+
+      return { content: [{ text: diagram.graphData, type: 'text' }] };
     }
   );
 

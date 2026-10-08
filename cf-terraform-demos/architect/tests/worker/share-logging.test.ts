@@ -6,6 +6,7 @@ import type { AppBindings } from '../../src/worker/bindings.ts';
 import { createDiagramsRouter } from '../../src/worker/routes/diagrams.ts';
 import { createSharesRouter } from '../../src/worker/routes/shares.ts';
 import { FakeDiagramRepository } from './fake-diagram-repository.ts';
+import { FakeDiagramSessions } from './fake-diagram-sessions.ts';
 import { FakeShareRepository } from './fake-share-repository.ts';
 
 /**
@@ -53,7 +54,7 @@ function createApp(): {
 } {
   const diagrams = new FakeDiagramRepository();
   const shares = new FakeShareRepository();
-  const diagramService = new DiagramService(diagrams, shares);
+  const diagramService = new DiagramService(diagrams, shares, new FakeDiagramSessions());
   const shareService = new ShareService(shares, diagramService);
   const entries: LoggedEntry[] = [];
 

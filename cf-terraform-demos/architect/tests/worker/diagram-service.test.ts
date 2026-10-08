@@ -5,6 +5,7 @@ import type { Diagram, UpdateDiagramInput } from '../../src/worker/domain/diagra
 import { DEFAULT_DIAGRAM_TITLE } from '../../src/worker/domain/diagram.ts';
 import { EMPTY_GRAPH_DATA } from '../../src/worker/domain/graph.ts';
 import { FakeDiagramRepository } from './fake-diagram-repository.ts';
+import { FakeDiagramSessions } from './fake-diagram-sessions.ts';
 import { FakeShareRepository } from './fake-share-repository.ts';
 import { expectRejectedProblemStatus } from './problem-details.ts';
 
@@ -31,7 +32,7 @@ let service: DiagramService;
 
 beforeEach(() => {
   repository = new FakeDiagramRepository();
-  service = new DiagramService(repository, new FakeShareRepository());
+  service = new DiagramService(repository, new FakeShareRepository(), new FakeDiagramSessions());
 });
 
 describe('creating a diagram', () => {
@@ -377,12 +378,222 @@ describe('concurrent removal between the ownership read and the write', () => {
       'saveGraph',
       (svc: DiagramService, id: string) => svc.saveGraph(ALICE, id, { graphData: '{}' })
     ],
+    ['mutateGraph', (svc: DiagramService, id: string) => svc.mutateGraph(ALICE, id, (g) => g)],
     ['remove', (svc: DiagramService, id: string) => svc.remove(ALICE, id)]
   ])('reports %s as not found when the row disappeared mid-request', async (_name, run) => {
     const vanishing = new VanishingRepository();
-    const vanishingService = new DiagramService(vanishing, new FakeShareRepository());
+    const vanishingService = new DiagramService(
+      vanishing,
+      new FakeShareRepository(),
+      new FakeDiagramSessions()
+    );
     const diagram = await vanishingService.create(ALICE, {});
 
     await expectRejectedProblemStatus(run(vanishingService, diagram.id), 404);
+  });
+});
+
+describe('mutating a graph', () => {
+  /**
+   * Creates a diagram owned by Alice carrying one node.
+   *
+   * @param svc Service to create through, so the fixture goes down the same path the application
+   *   does rather than seeding a repository row the application could never have produced.
+   * @returns The new diagram.
+   */
+  async function withOneNode(svc: DiagramService): Promise<Diagram> {
+    const diagram = await svc.create(ALICE, {});
+    await svc.saveGraph(ALICE, diagram.id, {
+      graphData: JSON.stringify({
+        edges: [],
+        nodes: [{ data: { label: 'API' }, id: 'api', position: { x: 0, y: 0 }, type: 'cf-node' }],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      })
+    });
+    return diagram;
+  }
+
+  it('applies the mutation and returns the diagram carrying the new graph', async () => {
+    const diagram = await withOneNode(service);
+
+    const result = await service.mutateGraph(ALICE, diagram.id, (graph) => ({
+      ...graph,
+      nodes: [...graph.nodes, { id: 'added' }]
+    }));
+
+    expect((JSON.parse(result.graphData) as { nodes: { id: string }[] }).nodes).toEqual([
+      expect.objectContaining({ id: 'api' }),
+      { id: 'added' }
+    ]);
+  });
+
+  it('reports the new timestamp, so a caller sees its own change without a second read', async () => {
+    const diagram = await withOneNode(service);
+
+    const result = await service.mutateGraph(ALICE, diagram.id, (graph) => graph);
+
+    expect(result.updatedAt > diagram.updatedAt).toBe(true);
+  });
+
+  // Step 3 of the sequence. A granular write must not be able to store a shape a whole-graph
+  // write would have rejected, which is why the result goes through the same canonicaliser.
+  it('re-canonicalises the result through the same validation every write uses', async () => {
+    const diagram = await withOneNode(service);
+
+    await expectRejectedProblemStatus(
+      service.mutateGraph(ALICE, diagram.id, (graph) => ({ ...graph, nodes: [{ id: '' }] })),
+      422
+    );
+  });
+
+  it('defaults a viewport the mutation dropped, exactly as a whole-graph save would', async () => {
+    const diagram = await withOneNode(service);
+
+    const result = await service.mutateGraph(ALICE, diagram.id, (graph) => ({
+      ...graph,
+      viewport: undefined as unknown as { x: number; y: number; zoom: number }
+    }));
+
+    expect(JSON.parse(result.graphData)).toMatchObject({ viewport: { x: 0, y: 0, zoom: 1 } });
+  });
+
+  it('pushes the persisted graph to the diagram’s live session', async () => {
+    const sessions = new FakeDiagramSessions();
+    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const diagram = await withOneNode(svc);
+
+    const result = await svc.mutateGraph(ALICE, diagram.id, (graph) => graph);
+
+    expect(sessions.notifications).toEqual([
+      { diagramId: diagram.id, graphData: result.graphData, updatedAt: result.updatedAt }
+    ]);
+  });
+
+  // Persist first, broadcast second. Pushing first would let a connected browser render a graph
+  // that a later reload would not show, because the write that would have made it real never
+  // happened.
+  it('persists before it notifies', async () => {
+    const sessions = new FakeDiagramSessions();
+    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const diagram = await withOneNode(svc);
+    let storedWhenNotified: string | undefined;
+    sessions.notifyGraphUpdated = async (id, graphData, updatedAt) => {
+      storedWhenNotified = (await repository.find(id))?.graphData;
+      sessions.notifications.push({ diagramId: id, graphData, updatedAt });
+    };
+
+    const result = await svc.mutateGraph(ALICE, diagram.id, (graph) => ({
+      ...graph,
+      nodes: [...graph.nodes, { id: 'added' }]
+    }));
+
+    expect(storedWhenNotified).toBe(result.graphData);
+  });
+
+  // A refusal must leave the stored diagram untouched: the mutation throws before anything is
+  // written, so there is nothing to roll back.
+  it('writes nothing and notifies nobody when the mutation refuses', async () => {
+    const sessions = new FakeDiagramSessions();
+    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const diagram = await withOneNode(svc);
+    const before = await repository.find(diagram.id);
+
+    await expect(
+      svc.mutateGraph(ALICE, diagram.id, () => {
+        throw new Error('no such node');
+      })
+    ).rejects.toThrow('no such node');
+
+    expect((await repository.find(diagram.id))?.graphData).toBe(before?.graphData);
+    expect(sessions.notifications).toEqual([]);
+  });
+
+  // The write already landed, so the caller is told its change may not have been pushed rather
+  // than being told nothing at all.
+  it('surfaces a failed push rather than swallowing it', async () => {
+    const sessions = new FakeDiagramSessions();
+    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const diagram = await withOneNode(svc);
+    sessions.notifyError = new Error('session unreachable');
+
+    await expect(svc.mutateGraph(ALICE, diagram.id, (graph) => graph)).rejects.toThrow(
+      'session unreachable'
+    );
+    expect(await repository.find(diagram.id)).not.toBeNull();
+  });
+
+  it.each([
+    ['a foreign diagram', async () => (await service.create(BOB, {})).id],
+    ['an absent diagram', () => Promise.resolve(MISSING_ID)],
+    ['a malformed id', () => Promise.resolve('not-a-uuid')]
+  ])('refuses %s with the uniform 404 and never mutates', async (_label, resolveId) => {
+    const sessions = new FakeDiagramSessions();
+    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+
+    await expectRejectedProblemStatus(
+      svc.mutateGraph(ALICE, await resolveId(), (graph) => graph),
+      404
+    );
+    expect(sessions.notifications).toEqual([]);
+  });
+});
+
+describe('connecting a live session', () => {
+  it('forwards the upgrade once ownership is established', async () => {
+    const sessions = new FakeDiagramSessions();
+    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const diagram = await svc.create(ALICE, {});
+
+    // What this asserts is that the service resolved the right diagram and reached the port at
+    // all. The real `101` and its socket are covered against `workerd` in
+    // `../integration/live-sync.test.ts`, because Node can construct neither.
+    await svc.connectLiveSession(
+      ALICE,
+      diagram.id,
+      new Request('https://diagrams.test/api/diagrams/x/live', {
+        headers: { Upgrade: 'websocket' }
+      })
+    );
+
+    expect(sessions.connections).toEqual([{ diagramId: diagram.id, viewer: ALICE }]);
+  });
+
+  // The identity the session pins comes from the verified actor the service was given, never
+  // from the request — so there is nothing on the wire that could influence it.
+  it('pins the verified actor rather than anything on the request', async () => {
+    const sessions = new FakeDiagramSessions();
+    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const diagram = await svc.create(ALICE, {});
+
+    await svc.connectLiveSession(
+      ALICE,
+      diagram.id,
+      new Request('https://diagrams.test/api/diagrams/x/live', {
+        headers: { 'Upgrade': 'websocket', 'X-Architect-Identity': BOB }
+      })
+    );
+
+    expect(sessions.connections[0]?.viewer).toBe(ALICE);
+  });
+
+  it.each([
+    ['a foreign diagram', async () => (await service.create(BOB, {})).id],
+    ['an absent diagram', () => Promise.resolve(MISSING_ID)],
+    ['a malformed id', () => Promise.resolve('not-a-uuid')]
+  ])('refuses %s before the session is ever reached', async (_label, resolveId) => {
+    const sessions = new FakeDiagramSessions();
+    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+
+    await expectRejectedProblemStatus(
+      svc.connectLiveSession(
+        ALICE,
+        await resolveId(),
+        new Request('https://diagrams.test/api/diagrams/x/live', {
+          headers: { Upgrade: 'websocket' }
+        })
+      ),
+      404
+    );
+    expect(sessions.connections).toEqual([]);
   });
 });

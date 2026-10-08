@@ -14,6 +14,7 @@ import { isAdministrator } from './domain/user.ts';
 import { D1DiagramRepository } from './infrastructure/d1-diagram-repository.ts';
 import { D1KvShareRepository } from './infrastructure/d1-kv-share-repository.ts';
 import { D1UserRepository } from './infrastructure/d1-user-repository.ts';
+import { DurableDiagramSessions } from './infrastructure/durable-diagram-sessions.ts';
 import { accessMiddleware } from './middleware/access.ts';
 import { recordUserMiddleware } from './middleware/record-user.ts';
 import { enforceSameOriginJson } from './middleware/same-origin.ts';
@@ -38,6 +39,17 @@ import { createSharesRouter } from './routes/shares.ts';
  */
 const app = new Hono<AppBindings>();
 
+/**
+ * The `DiagramSession` Durable Object class, re-exported from the Worker's entry module.
+ *
+ * The export is not decorative: `exports.durableObject(...)` in `cloudflare.config.ts` declares a
+ * namespace backed by a class of exactly this name on this module, and the runtime resolves it
+ * against these exports. Keeping the re-export beside the composition root also makes the Worker's
+ * full public surface visible in one file — a default `fetch` handler and one Durable Object
+ * class.
+ */
+export { DiagramSession } from './infrastructure/diagram-session.ts';
+
 app.use(cloudflareLogger());
 
 /**
@@ -52,12 +64,15 @@ app.use(cloudflareLogger());
  * therefore receives a service ready-made, and could not construct a repository even if it tried:
  * nothing under `routes/` imports from `infrastructure/`.
  *
- * The wiring also records two relationships the tiers above deliberately cannot see. The share
+ * The wiring also records three relationships the tiers above deliberately cannot see. The share
  * adapter is the one component spanning both stores — D1 authoritative, KV disposable — and the
  * diagram service holds the share port purely so deleting a diagram revokes every link to it in the
- * same use case, however that delete was reached.
+ * same use case, however that delete was reached. The live-session adapter is the third: it is the
+ * only place that knows a diagram's live editors are reached through a Durable Object namespace, so
+ * the service that pushes an agent's change depends on an interface rather than on the product.
  *
- * @param context Hono request context supplying the `DB` D1 and `SHARES` KV bindings.
+ * @param context Hono request context supplying the `DB` D1, `SHARES` KV and `DIAGRAM_SESSIONS`
+ *   Durable Object bindings.
  * @param next Middleware continuation invoked after the services are attached.
  * @returns A promise fulfilled after the downstream middleware and selected route finish.
  */
@@ -66,7 +81,8 @@ app.use(async (context, next) => {
   const userRepository = new D1UserRepository(context.env.DB);
   const diagramService = new DiagramService(
     new D1DiagramRepository(context.env.DB),
-    shareRepository
+    shareRepository,
+    new DurableDiagramSessions(context.env.DIAGRAM_SESSIONS)
   );
 
   context.set('DIAGRAM_SERVICE', diagramService);

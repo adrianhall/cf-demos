@@ -152,11 +152,84 @@ The one deliberate source deviation is that this port generates typed `cf/config
 instead of the source demo's obsolete Wrangler scaffold. That change teaches the repository's
 current control plane rather than preserving retired deployment mechanics.
 
+## Live sync holds the socket where it survives
+
+An agent changing a diagram through `/mcp` has to reach an editor tab that is already open. That is
+a persistent-connection coordination problem, not a data-access one, so it is the one place in this
+demo that a Durable Object earns its keep: `DiagramSession`, one instance per diagram id, holding
+every WebSocket currently open on that diagram.
+
+The connection lives in the object rather than in a Worker because a Worker isolate can be evicted
+and the socket is then simply lost — nothing durable is holding it. It is accepted with
+`ctx.acceptWebSocket()`, the Hibernation API, so a tab left open overnight stays connected at the
+edge while the object is evicted and stops costing anything.
+
+**The session stores nothing.** D1 stays the one authoritative copy of every diagram; the object is
+only a fan-out point. Two independently persisted copies of one diagram can silently disagree, and
+reconciling them would be a whole second problem this demo does not need.
+
+Three consequences are worth reading the code for:
+
+- **The upgrade is forwarded, not replaced by RPC.** A `WebSocket` cannot be serialized across an
+  RPC boundary, and the Hibernation API completes the protocol switch against the incoming request,
+  so the request must reach the object. Every other call into it — `notifyGraphUpdated` — is a typed
+  RPC method. The upgrade is the exception, not the pattern.
+- **The identity therefore travels as a header, and is scrubbed in one function.**
+  `withVerifiedIdentity` deletes any inbound copy before setting the verified value, so the two
+  cannot be half-performed. The session may trust that header for one reason: it has no route of its
+  own, so the only way in is through a Worker that authenticated the caller and checked ownership
+  first. A smuggled header is asserted ignored at the unit level — including a differently-cased
+  spelling — and again through the real runtime.
+- **Persist, then broadcast.** Broadcasting first would let a browser render a graph a later reload
+  would not show.
+
+`GET /api/diagrams/:id/live` sits under `/api/` deliberately, so Access and `runWorkerFirst` already
+cover it. That policy uses `redirect: false`, which matters more here than anywhere else: a
+browser's `WebSocket` constructor cannot follow a redirect to a login page, so redirecting an
+unauthenticated upgrade would surface as an unexplained connection failure rather than an
+authentication error. A non-upgrade request gets `426 Upgrade Required`, not `400` — the request is
+well-formed and the diagram exists; it is the protocol that is wrong.
+
+## Last-write-wins is the designed boundary
+
+The live channel is **one-way**: server to client. The browser's own edits keep using the debounced
+whole-graph autosave. This layer adds a read channel, not a second write path.
+
+Concurrency between a user and their own agent is explicitly last-write-wins, which is the same
+model the autosave has always had — there is no partial-patch protocol in either direction. Two
+facts make that acceptable at this scope:
+
+- A push that arrives mid-edit replaces the canvas; the user's own pending autosave fires shortly
+  after and overwrites it back. That is a brief visual flicker, not data loss, because `updated_at`
+  always reflects whichever write actually landed last.
+- A tool call and an autosave landing together are resolved by D1: both are owner-scoped `UPDATE`
+  statements, so the last to commit wins outright. There is no read-modify-write race across two
+  identities, because every write is already scoped to one.
+
+The client makes one check rather than trusting the push blindly: a `graph_updated` frame is applied
+only when its `updatedAt` is newer than what the tab already holds, so a push that lost a race is
+discarded instead of reverting a change the user can see. When it is applied, a dismissible "Updated
+by an agent" notice explains why the canvas changed — a diagram that rewrites itself with no
+explanation reads as a bug rather than as the feature it is.
+
+Real concurrent-editor conflict resolution — presence, cursors, per-operation merge — is a later
+layer. This is a stated scope boundary chosen up front, not a limitation discovered afterwards.
+
 ## Infrastructure ownership and lifecycle
 
 Terraform owns resources with durable lifecycle: D1, KV, Worker registration/bootstrap, custom
 hostname, DNS route and Access applications/policies. `cf` owns code upload and deploy-time
 bindings. Neither creates the other's resources.
+
+The `DIAGRAM_SESSIONS` Durable Object namespace is the one exception, and it follows the same rule
+rather than breaking it. A namespace is defined by the class its Worker exports, so it is created by
+the deploy that uploads that class and retired when the code stops exporting it — Terraform cannot
+own its full lifecycle, and splitting it would give one resource two owners. It is declared in
+`cloudflare.config.ts` as `exports.durableObject({ storage: 'sqlite' })` plus a matching binding.
+`cf` models retirement as a `state: 'deleted'` entry on the export rather than as Wrangler's
+append-only migration tags, so removing a class is an edit to a live declaration rather than a tag
+that must never be reused. Deleting the Worker removes the namespace, and nothing is lost with it
+because the sessions store nothing.
 
 ```text
 pnpm deploy
@@ -172,10 +245,14 @@ port's lifecycle from reaching the separate source deployment.
 
 ## Deliberate limitations
 
-- This is Layer 1: one person's browser editor. MCP, collaboration, Durable Object live sync and AI
-  assistance are later layers, not incomplete hidden routes.
-- Whole-graph autosave is last-write-wins across simultaneous tabs. Granular ordered operations are
-  introduced only with collaboration.
+- Live sync is one-way. An agent's change reaches an open editor; a second person editing the same
+  diagram, presence, cursors and per-operation merge are a later layer, not hidden routes.
+- Whole-graph autosave is last-write-wins across simultaneous tabs, and the same applies between a
+  user and their own agent — see "Last-write-wins is the designed boundary" above. Granular ordered
+  operations exist server-side for the MCP tools only; the browser still saves the whole graph.
+- Server-side auto-layout is a deterministic grid, not ELK, because ELK cannot run in `workerd`. The
+  `auto_layout_diagram` tool description says so plainly, so a calling model does not promise a user
+  the editor-quality layout it will not get.
 - One anonymous link per diagram is active at a time, read-only, and non-recoverable after its
   one-time disclosure.
 - One configured administrator exists; the demo is not a general role-management system.

@@ -10,11 +10,16 @@ const { mockGetDiagram, mockSaveDiagramGraph, mockUpdateDiagram } = vi.hoisted((
   mockUpdateDiagram: vi.fn()
 }));
 vi.mock('../../src/client/api/diagrams.ts', () => ({
+  // The real URL builder rather than a stub: it is pure, it is the thing a test asserting on the
+  // socket's address cares about, and mocking it would make that assertion a tautology.
+  diagramLiveUrl: (id: string) => `ws://localhost/api/diagrams/${encodeURIComponent(id)}/live`,
   getDiagram: mockGetDiagram,
   saveDiagramGraph: mockSaveDiagramGraph,
   updateDiagram: mockUpdateDiagram
 }));
 
+const { installFakeWebSocket, mostRecentSocket, FakeWebSocket } =
+  await import('./fake-websocket.ts');
 const { useDiagramStore } = await import('../../src/client/stores/diagramStore.ts');
 const { DiagramCanvas } = await import('../../src/client/components/editor/DiagramCanvas.tsx');
 
@@ -61,6 +66,9 @@ async function renderLoaded() {
 
 beforeEach(() => {
   localStorage.clear();
+  // jsdom has no WebSocket at all, so the canvas's live-sync effect would throw on mount in every
+  // test in this file without a double in place.
+  installFakeWebSocket();
   vi.stubGlobal(
     'matchMedia',
     vi.fn(() => ({ addEventListener: vi.fn(), matches: false, removeEventListener: vi.fn() }))
@@ -83,7 +91,8 @@ beforeEach(() => {
     selectedEdgeId: null,
     selectedNodeId: null,
     title: 'Untitled Diagram',
-    undoStack: []
+    undoStack: [],
+    updatedAt: null
   });
   mockGetDiagram.mockReset();
   mockSaveDiagramGraph.mockReset().mockResolvedValue('2026-01-01T00:00:00.000Z');
@@ -920,5 +929,185 @@ describe('the read-only posture', () => {
       'Shared Diagram — Diagram editor'
     );
     expect(mockXyflow.mockFitView).toHaveBeenCalled();
+  });
+});
+
+describe('live sync', () => {
+  /**
+   * A graph pushed by an agent: one node that was not on the canvas before.
+   */
+  const PUSHED_GRAPH = JSON.stringify({
+    edges: [],
+    nodes: [{ data: { label: 'Queue' }, id: 'pushed', position: { x: 0, y: 0 }, type: 'cf-node' }],
+    viewport: { x: 0, y: 0, zoom: 1 }
+  });
+
+  /**
+   * Delivers a `graph_updated` frame on the canvas's socket.
+   *
+   * @param updatedAt Server timestamp the push carries.
+   * @param graphData Graph JSON the push carries.
+   * @returns A promise fulfilled once React has processed the resulting state change.
+   */
+  async function pushGraph(updatedAt: string, graphData: string = PUSHED_GRAPH): Promise<void> {
+    await act(async () => {
+      mostRecentSocket().simulateMessage({ graphData, type: 'graph_updated', updatedAt });
+    });
+  }
+
+  it('opens one socket for the loaded diagram on mount', async () => {
+    respondWithDiagram();
+
+    await renderLoaded();
+
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(mostRecentSocket().url).toBe('ws://localhost/api/diagrams/d1/live');
+  });
+
+  // The channel is strictly server-to-client. A canvas that started writing to it would be a
+  // second write path alongside the autosave, which is exactly what this phase does not add.
+  it('never writes to the socket', async () => {
+    respondWithDiagram();
+    await renderLoaded();
+
+    await pushGraph('2026-02-01T00:00:00.000Z');
+
+    expect(mostRecentSocket().sent).toEqual([]);
+  });
+
+  it('closes the socket and detaches its handler on unmount', async () => {
+    respondWithDiagram();
+    const view = await renderLoaded();
+    const socket = mostRecentSocket();
+
+    view.unmount();
+
+    expect(socket.closedByClient).toBe(true);
+    expect(socket.hasMessageListener()).toBe(false);
+  });
+
+  // An anonymous share viewer has no Access session, so the upgrade would be refused — a failed
+  // connection in a posture never meant to have one would be pure noise.
+  it('opens no socket in the read-only share posture', async () => {
+    render(
+      <DiagramCanvas
+        diagramId="d1"
+        readOnly
+        initialDiagram={{ description: null, graphData: EMPTY_GRAPH, id: 'd1', title: 'Shared' }}
+      />
+    );
+    await waitFor(() => expect(screen.getByTestId('react-flow')).toBeInTheDocument());
+
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
+  it('replaces the canvas when an agent’s change arrives', async () => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+
+    await pushGraph('2026-02-01T00:00:00.000Z');
+
+    expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['pushed']);
+  });
+
+  // The canvas must not change under the visitor with no explanation; that reads as a bug rather
+  // than as the feature it is.
+  it('explains the change with a dismissible notice', async () => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+
+    await pushGraph('2026-02-01T00:00:00.000Z');
+    const notice = screen.getByText('Updated by an agent');
+    // An `<output>`, which carries the `status` role natively, so the notice is announced without
+    // stealing focus — the change is informational, and taking focus would interrupt whatever the
+    // visitor was doing. Found by its text rather than by role alone, because the status bar is a
+    // `status` region too and a role query would match both.
+    const region = notice.closest('output');
+    expect(region).not.toBeNull();
+    expect(screen.getAllByRole('status')).toContain(region);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss update notice' }));
+
+    expect(screen.queryByText('Updated by an agent')).not.toBeInTheDocument();
+  });
+
+  it('shows no notice before anything has been pushed', async () => {
+    respondWithDiagram();
+
+    await renderLoaded();
+
+    expect(screen.queryByText('Updated by an agent')).not.toBeInTheDocument();
+  });
+
+  // A push that lost a race describes a version this tab has already moved past. Applying it
+  // would revert the canvas under the visitor, and announcing it would explain a change that did
+  // not happen.
+  it.each([
+    ['older', '2025-01-01T00:00:00.000Z'],
+    ['identical', '2026-01-01T00:00:00.000Z']
+  ])('discards an %s push and shows no notice', async (_label, updatedAt) => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+
+    await pushGraph(updatedAt);
+
+    expect(useDiagramStore.getState().nodes).toEqual([]);
+    expect(screen.queryByText('Updated by an agent')).not.toBeInTheDocument();
+  });
+
+  // The save records the server's own timestamp, which is what a later push is compared against.
+  it('discards a push older than the tab’s own most recent save', async () => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+    act(() => {
+      useDiagramStore.getState().markSaved('2026-03-01T00:00:00.000Z');
+    });
+
+    await pushGraph('2026-02-01T00:00:00.000Z');
+
+    expect(useDiagramStore.getState().nodes).toEqual([]);
+  });
+
+  it('leaves a pending local change pending rather than marking it saved', async () => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+    act(() => {
+      useDiagramStore.setState({ dirty: true });
+    });
+
+    await pushGraph('2026-02-01T00:00:00.000Z');
+
+    expect(useDiagramStore.getState().dirty).toBe(true);
+  });
+
+  // A frame the canvas cannot act on must not break a working editor: the visitor's diagram is
+  // intact and their own saves are unaffected, so there is nothing useful to report.
+  it.each([
+    ['malformed JSON', 'not json'],
+    ['an acknowledgement', JSON.stringify({ type: 'connected', viewer: 'alice@example.com' })],
+    ['a server error frame', JSON.stringify({ detail: 'read-only', type: 'error' })]
+  ])('ignores %s without disturbing the canvas', async (_label, payload) => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+
+    await act(async () => {
+      mostRecentSocket().simulateMessage(payload);
+    });
+
+    expect(useDiagramStore.getState().nodes).toEqual([]);
+    expect(screen.queryByText('Updated by an agent')).not.toBeInTheDocument();
+    expect(screen.getByTestId('react-flow')).toBeInTheDocument();
+  });
+
+  it('hides the notice in print mode along with every other piece of chrome', async () => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+    await pushGraph('2026-02-01T00:00:00.000Z');
+
+    act(() => {
+      useDiagramStore.getState().setPrintMode(true);
+    });
+
+    expect(screen.queryByText('Updated by an agent')).not.toBeInTheDocument();
   });
 });

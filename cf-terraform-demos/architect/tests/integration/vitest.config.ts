@@ -26,6 +26,13 @@ export default defineProject(async () => {
           compatibilityFlags: ['nodejs_compat'],
           d1Databases: ['DB'],
           kvNamespaces: ['SHARES'],
+          // The real Durable Object namespace, backed by the real class and the same storage
+          // engine production declares. The behaviour these tests cover — hibernatable sockets,
+          // attachment-pinned identity, fan-out to every open connection — has no meaningful
+          // fake, so it is exercised against the actual runtime.
+          durableObjects: {
+            DIAGRAM_SESSIONS: { className: 'DiagramSession', useSQLite: true }
+          },
           bindings: {
             // Matches the audience the suite signs development JWTs for. A test that signs a
             // token for a different audience must be rejected, which is what proves the Worker's
@@ -47,7 +54,19 @@ export default defineProject(async () => {
     test: {
       name: 'integration',
       // A finite budget so a blocked runtime test fails rather than hanging CI indefinitely.
+      // Every live-sync assertion ultimately waits for a WebSocket frame, and a frame that never
+      // arrives would otherwise wait forever: a socket has no equivalent of a failed HTTP
+      // response to reject on. The per-wait timeout in `./live-sync-fixtures.ts` is deliberately
+      // shorter, so a genuine delivery failure names the frame that never came instead of
+      // surfacing here as an anonymous timed-out test.
       testTimeout: 10_000,
+      // Teardown evicts every Durable Object and forces its sockets closed. Bounded separately
+      // because a hook that hangs stalls a whole file rather than failing one test.
+      hookTimeout: 15_000,
+      // Test files share one workerd runtime and its Durable Object storage. Running them
+      // concurrently starves hibernatable WebSocket delivery in this pool, so files run one at a
+      // time — Cloudflare's own guidance for suites that share a runtime this way.
+      fileParallelism: false,
       include: ['**/*.test.ts']
     }
   };

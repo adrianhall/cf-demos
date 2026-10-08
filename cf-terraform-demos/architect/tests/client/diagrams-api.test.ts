@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createDiagram,
   deleteDiagram,
+  diagramLiveUrl,
   duplicateDiagram,
   getDiagram,
   listDiagrams,
@@ -244,5 +245,46 @@ describe('failures', () => {
     );
 
     await expect(listDiagrams()).rejects.toThrow('Failed to fetch');
+  });
+});
+
+describe('diagramLiveUrl', () => {
+  /**
+   * Points `window.location.href` at an origin, so the scheme can be derived from it.
+   *
+   * @param href Page URL to pretend the browser is on.
+   */
+  function onPage(href: string): void {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, href },
+      writable: true
+    });
+  }
+
+  // The scheme is derived rather than written as a literal, so the socket is secure exactly when
+  // the page was.
+  it.each([
+    ['https:', 'https://diagrams.example/app/diagrams/d1', 'wss://diagrams.example'],
+    ['http:', 'http://localhost:5173/app/diagrams/d1', 'ws://localhost:5173']
+  ])('uses the page’s own %s scheme', (_label, href, expectedOrigin) => {
+    onPage(href);
+
+    expect(diagramLiveUrl('d1')).toBe(`${expectedOrigin}/api/diagrams/d1/live`);
+  });
+
+  it('escapes the diagram id', () => {
+    onPage('https://diagrams.example/app');
+
+    expect(diagramLiveUrl('a b/c')).toBe('wss://diagrams.example/api/diagrams/a%20b%2Fc/live');
+  });
+
+  // No credential in the URL. A browser's `WebSocket` constructor cannot set headers, so an API
+  // expecting a bearer token here would have to put it in the query string, where it would land
+  // in every proxy log. The Access cookie travels on the upgrade automatically instead.
+  it('carries no credential', () => {
+    onPage('https://diagrams.example/app');
+
+    expect(diagramLiveUrl('d1')).not.toContain('?');
   });
 });

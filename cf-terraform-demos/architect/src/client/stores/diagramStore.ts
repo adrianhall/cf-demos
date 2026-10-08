@@ -63,6 +63,18 @@ interface DiagramState {
    */
   description: string;
   /**
+   * Server-recorded ISO-8601 timestamp of the newest version of this diagram the tab knows about,
+   * or `null` when there is none — before the first load, and for the anonymous share viewer, which
+   * has no live channel and is never sent one.
+   *
+   * It exists for exactly one comparison: a live `graph_updated` push is applied only when its own
+   * timestamp is newer than this. Without it a push that lost a race — delivered after a later save
+   * had already been applied — would quietly revert the canvas to an older graph. It is a server
+   * value and is never computed here; {@link lastSavedAt} is the separate, local wall-clock reading
+   * the status bar shows and the two must not be confused.
+   */
+  updatedAt: string | null;
+  /**
    * Nodes currently on the canvas.
    */
   nodes: Node<CFNodeData>[];
@@ -145,6 +157,9 @@ interface DiagramActions {
    * @param nodes Parsed nodes.
    * @param edges Parsed edges.
    * @param viewport Parsed viewport.
+   * @param updatedAt Server-recorded timestamp of the version being loaded, or `null` when the
+   *   caller has none — the anonymous share viewer, which receives no timestamp and opens no live
+   *   channel to compare one against.
    * @returns Nothing. Dirty state and history are cleared, because what has just been loaded is
    *   exactly what the server holds and the previous diagram's history belongs to another
    *   document.
@@ -155,8 +170,37 @@ interface DiagramActions {
     description: string,
     nodes: Node<CFNodeData>[],
     edges: Edge<CFEdgeData>[],
-    viewport: Viewport
+    viewport: Viewport,
+    updatedAt?: string | null
   ) => void;
+  /**
+   * Replaces the graph with one an agent changed on the server, if it is genuinely newer.
+   *
+   * The newness check lives here rather than in the component so there is one rule rather than one
+   * per caller, and so it can be tested as state. A push carrying a timestamp no newer than
+   * {@link DiagramState.updatedAt} is discarded entirely: it describes a version this tab has
+   * already moved past, and applying it would revert the canvas under the user.
+   *
+   * The graph is replaced rather than merged, which is the same thing the initial load does and the
+   * same thing the autosave sends — this demo has no partial-patch protocol in either direction.
+   * `dirty` is deliberately left alone: the push is now the saved state, but any local change the
+   * user had pending is still pending, and clearing the flag would lose it.
+   *
+   * No undo entry is pushed. Ctrl+Z is for undoing _your own_ last action, and silently making it
+   * revert somebody else's change instead would be the more surprising behaviour.
+   *
+   * @param nodes Nodes from the pushed graph.
+   * @param edges Edges from the pushed graph.
+   * @param updatedAt Server timestamp the push carried.
+   * @returns `true` when the graph was replaced, and `false` when the push was discarded as stale.
+   *   The caller uses it to decide whether to show the "updated by an agent" toast, so a discarded
+   *   push explains nothing to the user — because nothing changed.
+   */
+  applyRemoteGraph: (
+    nodes: Node<CFNodeData>[],
+    edges: Edge<CFEdgeData>[],
+    updatedAt: string
+  ) => boolean;
   /**
    * React Flow's node-change handler. Records undo history for a structural change only.
    */
@@ -299,10 +343,12 @@ interface DiagramActions {
   /**
    * Marks a save as succeeded.
    *
+   * @param updatedAt Server-recorded timestamp the save returned, recorded so a live push that
+   *   describes an older version than this one is discarded rather than reverting the canvas.
    * @returns Nothing. Clears the dirty flag, so a change made _during_ the request stays pending
    *   and triggers the next autosave rather than being lost.
    */
-  markSaved: () => void;
+  markSaved: (updatedAt: string) => void;
   /**
    * Records a failed save.
    *
@@ -394,9 +440,10 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   selectedNodeId: null,
   title: 'Untitled Diagram',
   undoStack: [],
+  updatedAt: null,
   viewport: { x: 0, y: 0, zoom: 1 },
 
-  setDiagram: (id, title, description, nodes, edges, viewport) =>
+  setDiagram: (id, title, description, nodes, edges, viewport, updatedAt = null) =>
     set({
       description,
       diagramId: id,
@@ -406,8 +453,23 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       redoStack: [],
       title,
       undoStack: [],
+      updatedAt,
       viewport
     }),
+
+  applyRemoteGraph: (nodes, edges, updatedAt) => {
+    const current = get().updatedAt;
+    // A string comparison rather than parsed dates: every value here is a `Date#toISOString`
+    // result written by the server, and that format sorts chronologically as text. Parsing would
+    // add a failure mode — an unparseable value becoming `NaN`, which loses every comparison —
+    // for no gain.
+    if (current !== null && updatedAt <= current) {
+      return false;
+    }
+
+    set({ edges, nodes, updatedAt });
+    return true;
+  },
 
   onNodesChange: (changes: NodeChange[]) => {
     // Only an added or removed node is worth an undo entry. A drag fires a position change on
@@ -555,7 +617,8 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   setEdges: (edges) => set({ dirty: true, edges }),
 
   markSaving: () => set({ saveError: null, saving: true }),
-  markSaved: () => set({ dirty: false, lastSavedAt: Date.now(), saveError: null, saving: false }),
+  markSaved: (updatedAt) =>
+    set({ dirty: false, lastSavedAt: Date.now(), saveError: null, saving: false, updatedAt }),
   markSaveError: (error) => set({ saveError: error, saving: false }),
 
   setPrintMode: (printMode) => set({ printMode }),

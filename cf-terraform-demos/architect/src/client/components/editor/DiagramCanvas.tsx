@@ -13,7 +13,8 @@ import {
 } from '@xyflow/react';
 import { CATEGORY_COLORS, NODE_TYPE_MAP } from '../../../catalog.ts';
 import { CF_EDGE_TYPE, CF_NODE_TYPE } from '../../../graph-element-types.ts';
-import { getDiagram, saveDiagramGraph, updateDiagram } from '../../api/diagrams.ts';
+import type { SessionFrame } from '../../../live-sync-protocol.ts';
+import { diagramLiveUrl, getDiagram, saveDiagramGraph, updateDiagram } from '../../api/diagrams.ts';
 import type { SharedDiagram } from '../../api/shares.ts';
 import { useDiagramStore } from '../../stores/diagramStore.ts';
 import { edgeTypes } from './edges/edgeTypes.ts';
@@ -169,6 +170,7 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     onConnect,
     onViewportChange,
     setDiagram,
+    applyRemoteGraph,
     addNode,
     removeSelected,
     setSelectedNode,
@@ -191,12 +193,20 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
   const [loadError, setLoadError] = useState<string | null>(null);
   const diagramLoaded = useDiagramStore((state) => state.diagramId !== null);
 
+  // Whether an agent's change has arrived and the visitor has not yet dismissed the notice. Local
+  // component state rather than store state: it describes this tab's notification area, nothing
+  // else reads it, and putting it in the store would make a piece of transient UI part of the
+  // document's model.
+  const [agentUpdated, setAgentUpdated] = useState(false);
+
   useEffect(() => {
     // The share viewer's diagram arrived with the props, resolved anonymously by `/api/shares`.
     // Calling `getDiagram` here would be a request an anonymous visitor is not authorized to
     // make, and would answer `401` for a page they are entitled to see.
     if (readOnly && initialDiagram) {
       const parsed = parseGraphData(initialDiagram.graphData);
+      // No timestamp: the anonymous share projection deliberately carries none, and this posture
+      // opens no live channel, so there is nothing for one to be compared against.
       setDiagram(
         diagramId,
         initialDiagram.title,
@@ -224,7 +234,8 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
           diagram.description ?? '',
           parsed.nodes,
           parsed.edges,
-          parsed.viewport
+          parsed.viewport,
+          diagram.updatedAt
         );
       })
       .catch((error: unknown) => {
@@ -252,11 +263,13 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
           // Read at this moment rather than captured when the effect ran, so a change made during
           // the debounce is included rather than silently dropped.
           const state = useDiagramStore.getState();
-          await saveDiagramGraph(
+          const updatedAt = await saveDiagramGraph(
             diagramId,
             JSON.stringify({ edges: state.edges, nodes: state.nodes, viewport: state.viewport })
           );
-          markSaved();
+          // The server's own timestamp, recorded so a live push describing an older version than
+          // this save is discarded instead of reverting what was just written.
+          markSaved(updatedAt);
         } catch (error) {
           markSaveError(error instanceof Error ? error.message : 'Failed to save.');
         }
@@ -265,6 +278,77 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
 
     return () => clearTimeout(timer);
   }, [readOnly, dirty, diagramId, markSaving, markSaved, markSaveError]);
+
+  // Live sync. A one-way channel: the editor listens and never writes to it, because its own
+  // edits already have a write path in the autosave above. The socket exists so a change made by
+  // the owner's agent through the MCP endpoint appears here immediately rather than on the next
+  // reload — which is the whole point of holding the connection in a Durable Object.
+  //
+  // Opened once per diagram and closed on unmount, so navigating between diagrams never leaves a
+  // socket listening for a document that is no longer on screen. Not opened at all in read-only
+  // mode: an anonymous share viewer has no Access session, so the upgrade would be refused, and a
+  // failed connection in a posture that was never meant to have one would be pure noise.
+  useEffect(() => {
+    if (readOnly) {
+      return undefined;
+    }
+
+    const socket = new WebSocket(diagramLiveUrl(diagramId));
+
+    /**
+     * Applies one frame from the live session.
+     *
+     * The `switch` is exhaustive over `SessionFrame` by construction, so adding a frame to
+     * `src/live-sync-protocol.ts` fails the build here until it is handled — which is the reason
+     * that module is shared with the Worker rather than redeclared on each side.
+     *
+     * @param event Message event carrying one JSON-encoded frame.
+     * @returns Nothing.
+     */
+    const onMessage = (event: MessageEvent): void => {
+      let frame: SessionFrame;
+      try {
+        frame = JSON.parse(String(event.data)) as SessionFrame;
+      } catch {
+        // A frame this client cannot parse is not something it can act on, and there is nothing
+        // useful to tell the visitor about it: their diagram is intact and their own saves are
+        // unaffected. Ignoring it keeps a malformed push from breaking a working editor.
+        return;
+      }
+
+      switch (frame.type) {
+        case 'graph_updated': {
+          const parsed = parseGraphData(frame.graphData);
+          // The toast is shown only when the store actually took the update. A push that lost a
+          // race is discarded, and announcing a change that did not happen would be worse than
+          // saying nothing.
+          if (applyRemoteGraph(parsed.nodes, parsed.edges, frame.updatedAt)) {
+            setAgentUpdated(true);
+          }
+          return;
+        }
+        case 'connected':
+          // Acknowledgement only. The identity is echoed from the socket attachment the server
+          // pinned, and the editor already knows who it is, so there is nothing to apply.
+          return;
+        case 'error':
+          // This channel is read-only, so the only way to receive one of these is to have sent
+          // something — which this component never does. Nothing is shown to the visitor,
+          // because nothing of theirs failed.
+          return;
+      }
+    };
+
+    socket.addEventListener('message', onMessage);
+
+    return () => {
+      socket.removeEventListener('message', onMessage);
+      // Closed unconditionally, including while still connecting: a socket abandoned mid-handshake
+      // would otherwise finish opening after the component has gone and stay open until the tab
+      // is closed.
+      socket.close();
+    };
+  }, [readOnly, diagramId, applyRemoteGraph]);
 
   // The last line of defence for unsaved work: a visitor who closes the tab within the debounce
   // window is asked first. The browser shows its own wording, so there is no message to provide.
@@ -563,6 +647,27 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
           <ServicePalette onAddNode={onAddNodeFromPalette} />
         )}
         <div className="diagram-editor__canvas">
+          {/* Why the canvas just changed. Without this the diagram rewrites itself under the
+              visitor with no explanation, which reads as a bug rather than as the feature it is.
+              An `<output>`, which carries the `status` role natively, so the notice is announced
+              without stealing focus — the change is informational, and taking focus would
+              interrupt whatever the visitor was doing. The same element the status bar uses, for
+              the same reason. Dismissible rather than self-expiring: a notice that vanished on
+              its own could be missed entirely by somebody who had looked away. Hidden in print
+              mode along with every other piece of editor chrome. */}
+          {agentUpdated && !printMode && (
+            <output className="live-update-toast">
+              <span>Updated by an agent</span>
+              <button
+                type="button"
+                className="live-update-toast__dismiss"
+                onClick={() => setAgentUpdated(false)}
+                aria-label="Dismiss update notice"
+              >
+                ×
+              </button>
+            </output>
+          )}
           {/* The printed page's own title block. The editor shows the title in the toolbar,
               which print mode has just removed, so without this the paper carries a diagram with
               no name on it. Pointer-inert, so it cannot intercept a click on the canvas beneath

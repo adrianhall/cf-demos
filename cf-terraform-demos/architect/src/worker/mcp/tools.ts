@@ -1,6 +1,19 @@
 import type { Logger } from '@adrianhall/cloudflare-toolkit/logging';
-import type { DiagramService } from '../application/diagram-service.ts';
+import type { DiagramService, GraphMutation } from '../application/diagram-service.ts';
 import type { Diagram } from '../domain/diagram.ts';
+import {
+  addEdge,
+  type AddEdgeInput,
+  addNode,
+  type AddNodeInput,
+  autoLayout,
+  type EdgePatch,
+  type NodePatch,
+  removeEdge,
+  removeNode,
+  updateEdge,
+  updateNode
+} from '../domain/graph-mutations.ts';
 import type { LogVia } from '../logging.ts';
 
 /**
@@ -210,4 +223,204 @@ export async function deleteDiagramTool(context: McpToolContext, diagramId: stri
   await context.diagrams.remove(context.actorEmail, diagramId);
 
   context.logger.info('diagram_deleted', { diagramId, via: VIA });
+}
+
+/**
+ * Applies one graph mutation to an owned diagram and pushes the result to every open editor.
+ *
+ * Every graph-mutating tool below is one line over this function, which is the point: load, mutate,
+ * re-canonicalise, save and notify happen in exactly one place (`DiagramService.mutateGraph`), so a
+ * tool added later cannot accidentally skip the validation, or the ownership check, or the push. A
+ * tool that needed its own version of this sequence would be a second chance to get the ordering
+ * wrong.
+ *
+ * @param context Resolved tool context carrying the verified identity and the diagram service.
+ * @param diagramId Untrusted diagram id supplied by the caller.
+ * @param mutate The single pure mutation to apply.
+ * @param kind Short label recorded on the structured log event, so an operator reading Workers Logs
+ *   can see which granular operation an agent performed without a second event name per tool.
+ * @returns The diagram as it now stands, graph included.
+ * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown or owned
+ *   by another identity, or when the mutation's target node or edge does not exist; and
+ *   `badRequest()` (400) when it supplies an id already taken.
+ * @throws {Error} When the repository cannot read or write the row, or the live session cannot be
+ *   notified.
+ */
+async function applyGraphMutation(
+  context: McpToolContext,
+  diagramId: string,
+  mutate: GraphMutation,
+  kind: string
+): Promise<Diagram> {
+  const diagram = await context.diagrams.mutateGraph(context.actorEmail, diagramId, mutate);
+
+  // The same `diagram_updated` event the browser's own autosave emits, distinguished only by
+  // `via`. One event name for one thing that happened, whoever did it — see `../logging.ts`.
+  context.logger.info('diagram_updated', { diagramId: diagram.id, kind, via: VIA });
+  return diagram;
+}
+
+/**
+ * Adds a service node to one of the caller's own diagrams.
+ *
+ * @param context Resolved tool context carrying the verified identity and the diagram service.
+ * @param diagramId Untrusted diagram id supplied by the caller.
+ * @param input Fields for the new node, including an optional caller-chosen id so a following
+ *   `add_edge` can reference it without reading the graph back.
+ * @returns The diagram with the node appended.
+ * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is absent or foreign, and
+ *   `badRequest()` (400) when the chosen node id is already in use.
+ * @throws {Error} When the repository cannot write or the session cannot be notified.
+ */
+export async function addNodeTool(
+  context: McpToolContext,
+  diagramId: string,
+  input: AddNodeInput
+): Promise<Diagram> {
+  return applyGraphMutation(context, diagramId, (graph) => addNode(graph, input), 'add_node');
+}
+
+/**
+ * Changes one node's label, description and/or position on an owned diagram.
+ *
+ * @param context Resolved tool context carrying the verified identity and the diagram service.
+ * @param diagramId Untrusted diagram id supplied by the caller.
+ * @param nodeId Id of the node to change.
+ * @param patch Fields to merge; an omitted field is left unchanged.
+ * @returns The diagram with the node updated.
+ * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is absent or foreign, or when
+ *   the diagram has no node with that id.
+ * @throws {Error} When the repository cannot write or the session cannot be notified.
+ */
+export async function updateNodeTool(
+  context: McpToolContext,
+  diagramId: string,
+  nodeId: string,
+  patch: NodePatch
+): Promise<Diagram> {
+  return applyGraphMutation(
+    context,
+    diagramId,
+    (graph) => updateNode(graph, nodeId, patch),
+    'update_node'
+  );
+}
+
+/**
+ * Removes a node from an owned diagram, along with every edge connected to it.
+ *
+ * The cascade belongs to the domain (`../domain/graph-mutations.ts`) rather than being restated
+ * here, so an agent's removal leaves exactly the graph any other caller's removal would.
+ *
+ * @param context Resolved tool context carrying the verified identity and the diagram service.
+ * @param diagramId Untrusted diagram id supplied by the caller.
+ * @param nodeId Id of the node to remove.
+ * @returns The diagram without that node or any edge touching it.
+ * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is absent or foreign, or when
+ *   the diagram has no node with that id.
+ * @throws {Error} When the repository cannot write or the session cannot be notified.
+ */
+export async function removeNodeTool(
+  context: McpToolContext,
+  diagramId: string,
+  nodeId: string
+): Promise<Diagram> {
+  return applyGraphMutation(
+    context,
+    diagramId,
+    (graph) => removeNode(graph, nodeId),
+    'remove_node'
+  );
+}
+
+/**
+ * Connects two existing nodes on an owned diagram.
+ *
+ * @param context Resolved tool context carrying the verified identity and the diagram service.
+ * @param diagramId Untrusted diagram id supplied by the caller.
+ * @param input Fields for the new edge, including both endpoint node ids.
+ * @returns The diagram with the edge appended.
+ * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is absent or foreign, or when
+ *   either endpoint names no node in the graph; and `badRequest()` (400) when the chosen edge id is
+ *   already in use.
+ * @throws {Error} When the repository cannot write or the session cannot be notified.
+ */
+export async function addEdgeTool(
+  context: McpToolContext,
+  diagramId: string,
+  input: AddEdgeInput
+): Promise<Diagram> {
+  return applyGraphMutation(context, diagramId, (graph) => addEdge(graph, input), 'add_edge');
+}
+
+/**
+ * Changes one edge's type, label, description and/or protocol on an owned diagram.
+ *
+ * @param context Resolved tool context carrying the verified identity and the diagram service.
+ * @param diagramId Untrusted diagram id supplied by the caller.
+ * @param edgeId Id of the edge to change.
+ * @param patch Fields to merge; an omitted field is left unchanged.
+ * @returns The diagram with the edge updated.
+ * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is absent or foreign, or when
+ *   the diagram has no edge with that id.
+ * @throws {Error} When the repository cannot write or the session cannot be notified.
+ */
+export async function updateEdgeTool(
+  context: McpToolContext,
+  diagramId: string,
+  edgeId: string,
+  patch: EdgePatch
+): Promise<Diagram> {
+  return applyGraphMutation(
+    context,
+    diagramId,
+    (graph) => updateEdge(graph, edgeId, patch),
+    'update_edge'
+  );
+}
+
+/**
+ * Removes one edge from an owned diagram, leaving both of its nodes in place.
+ *
+ * @param context Resolved tool context carrying the verified identity and the diagram service.
+ * @param diagramId Untrusted diagram id supplied by the caller.
+ * @param edgeId Id of the edge to remove.
+ * @returns The diagram without that edge.
+ * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is absent or foreign, or when
+ *   the diagram has no edge with that id.
+ * @throws {Error} When the repository cannot write or the session cannot be notified.
+ */
+export async function removeEdgeTool(
+  context: McpToolContext,
+  diagramId: string,
+  edgeId: string
+): Promise<Diagram> {
+  return applyGraphMutation(
+    context,
+    diagramId,
+    (graph) => removeEdge(graph, edgeId),
+    'remove_edge'
+  );
+}
+
+/**
+ * Rearranges every node on an owned diagram onto a deterministic grid.
+ *
+ * It goes through the same single mutation path as every tool above, rather than being treated as a
+ * whole-graph replacement, because it is exactly that: one function of the current graph. The
+ * layout it produces is deliberately simpler than the editor's own ELK-based button — see
+ * `autoLayout` in `../domain/graph-mutations.ts`, and the tool description in `./server.ts`, which
+ * says so to the calling model.
+ *
+ * @param context Resolved tool context carrying the verified identity and the diagram service.
+ * @param diagramId Untrusted diagram id supplied by the caller.
+ * @returns The diagram with every node repositioned; edges and viewport unchanged.
+ * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is absent or foreign.
+ * @throws {Error} When the repository cannot write or the session cannot be notified.
+ */
+export async function autoLayoutDiagramTool(
+  context: McpToolContext,
+  diagramId: string
+): Promise<Diagram> {
+  return applyGraphMutation(context, diagramId, autoLayout, 'auto_layout');
 }

@@ -9,6 +9,7 @@ const { mockGetDiagram, mockListDiagrams } = vi.hoisted(() => ({
 }));
 vi.mock('../../src/client/api/diagrams.ts', () => ({
   deleteDiagram: vi.fn(),
+  diagramLiveUrl: (id: string) => `ws://localhost/api/diagrams/${encodeURIComponent(id)}/live`,
   duplicateDiagram: vi.fn(),
   getDiagram: mockGetDiagram,
   listDiagrams: mockListDiagrams,
@@ -16,6 +17,7 @@ vi.mock('../../src/client/api/diagrams.ts', () => ({
   updateDiagram: vi.fn()
 }));
 
+const { installFakeWebSocket } = await import('./fake-websocket.ts');
 const { AppShellView } = await import('../../src/client/views/AppShellView.tsx');
 
 /**
@@ -42,6 +44,9 @@ function visit(pathname: string): void {
 
 beforeEach(() => {
   mockListDiagrams.mockReset().mockResolvedValue([]);
+  // The editor canvas this shell routes into opens a live-sync socket on mount, and jsdom has no
+  // WebSocket at all.
+  installFakeWebSocket();
   vi.stubGlobal(
     'matchMedia',
     vi.fn(() => ({ addEventListener: vi.fn(), matches: false, removeEventListener: vi.fn() }))

@@ -3,6 +3,7 @@ import type { AdminService } from './application/admin-service.ts';
 import type { DiagramService } from './application/diagram-service.ts';
 import type { ShareService } from './application/share-service.ts';
 import type { UserService } from './application/user-service.ts';
+import type { DiagramSession } from './infrastructure/diagram-session.ts';
 
 /**
  * Hono context variables added by this Worker, on top of the toolkit's `Cloudflare_Access_Identity`
@@ -55,13 +56,26 @@ export interface AppVariables extends CloudflareToolkitVariables {
  */
 export interface AppBindings {
   /**
-   * Worker bindings generated from `cloudflare.config.ts` by `cf workers types`.
+   * Worker bindings generated from `cloudflare.config.ts` by `cf workers types`, including the `DB`
+   * D1 database, the `SHARES` KV namespace and the `DIAGRAM_SESSIONS` Durable Object namespace.
+   *
+   * `DIAGRAM_SESSIONS` is narrowed to `DurableObjectNamespace<DiagramSession>` here. The generated
+   * type is the unparameterised `DurableObjectNamespace`, because `cf`'s inference can only recover
+   * the class's methods when the binding names its defining Worker by _config reference_ — and this
+   * Worker binds a class it defines itself, so it must name itself by the string in
+   * `values.workerName`, which the inference cannot follow back to a module. Restating the type
+   * parameter here recovers the typed RPC surface (`notifyGraphUpdated`) that
+   * `infrastructure/durable-diagram-sessions.ts` relies on, so a signature change in
+   * `DiagramSession` still fails the build at its call site rather than at runtime.
    *
    * `ENVIRONMENT` intentionally does not exist in local development: its absence selects the
    * toolkit's development logging defaults without needing an untracked `.dev.vars` file.
    * Production binds it explicitly as `"production"`.
    */
-  Bindings: Env & { ENVIRONMENT?: string };
+  Bindings: Omit<Env, 'DIAGRAM_SESSIONS'> & {
+    DIAGRAM_SESSIONS: DurableObjectNamespace<DiagramSession>;
+    ENVIRONMENT?: string;
+  };
   /**
    * Request-scoped application values set by this Worker's middleware.
    */

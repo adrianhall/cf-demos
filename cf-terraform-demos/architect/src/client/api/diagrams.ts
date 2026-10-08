@@ -264,6 +264,25 @@ export async function duplicateDiagram(id: string): Promise<DiagramSummary> {
 }
 
 /**
+ * Builds the same-origin WebSocket URL for a diagram's live session.
+ *
+ * The scheme is derived from the page's own rather than written as a literal, so the socket uses
+ * `wss:` exactly when the page was served over HTTPS. No credential appears in this URL: a
+ * browser's `WebSocket` constructor cannot set request headers, so an API that expected a bearer
+ * token here would have to put it in the query string, where it would land in every proxy log. The
+ * Access session cookie travels on the upgrade request automatically, which is why the endpoint is
+ * authenticated by exactly the same middleware as every other `/api/` route.
+ *
+ * @param id Diagram id.
+ * @returns The `ws:` or `wss:` URL of that diagram's live endpoint, matching the page's scheme.
+ */
+export function diagramLiveUrl(id: string): string {
+  const url = new URL(`/api/diagrams/${encodeURIComponent(id)}/live`, window.location.href);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
+}
+
+/**
  * Deletes a diagram.
  *
  * Does not go through {@link request}: the endpoint answers `204` with no body, which

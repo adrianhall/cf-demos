@@ -4,6 +4,7 @@ import type { ShareRepository } from '../../src/worker/application/ports/share-r
 import { ShareService } from '../../src/worker/application/share-service.ts';
 import { shareTokenDigest } from '../../src/worker/domain/share-token.ts';
 import { FakeDiagramRepository } from './fake-diagram-repository.ts';
+import { FakeDiagramSessions } from './fake-diagram-sessions.ts';
 import { FakeShareRepository } from './fake-share-repository.ts';
 import { expectRejectedProblemStatus } from './problem-details.ts';
 
@@ -32,7 +33,7 @@ let service: ShareService;
 beforeEach(() => {
   diagrams = new FakeDiagramRepository();
   shares = new FakeShareRepository();
-  diagramService = new DiagramService(diagrams, shares);
+  diagramService = new DiagramService(diagrams, shares, new FakeDiagramSessions());
   service = new ShareService(shares, diagramService);
 });
 

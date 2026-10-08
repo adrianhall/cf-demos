@@ -57,6 +57,7 @@ beforeEach(() => {
     selectedNodeId: null,
     title: 'Untitled Diagram',
     undoStack: [],
+    updatedAt: null,
     viewport: { x: 0, y: 0, zoom: 1 }
   });
 });
@@ -376,12 +377,15 @@ describe('metadata and save state', () => {
 
     expect(useDiagramStore.getState().saving).toBe(true);
 
-    useDiagramStore.getState().markSaved();
+    useDiagramStore.getState().markSaved('2026-02-01T00:00:00.000Z');
 
     let state = useDiagramStore.getState();
 
     expect(state.saving).toBe(false);
     expect(state.dirty).toBe(false);
+    // The server's timestamp, not a local clock reading. A live push older than this is
+    // discarded, so recording it is what stops a late push reverting a save.
+    expect(state.updatedAt).toBe('2026-02-01T00:00:00.000Z');
     expect(state.lastSavedAt).not.toBeNull();
 
     useDiagramStore.getState().markSaveError('Network error');
@@ -467,5 +471,92 @@ describe('undo and redo', () => {
     useDiagramStore.getState().undo();
 
     expect(useDiagramStore.getState().nodes[0]?.data.label).toBe('worker');
+  });
+});
+
+describe('applying a remote graph', () => {
+  const PUSHED_NODES = [makeNode('pushed')];
+
+  beforeEach(() => {
+    useDiagramStore
+      .getState()
+      .setDiagram(
+        'd1',
+        'Live',
+        '',
+        [makeNode('local')],
+        [],
+        { x: 0, y: 0, zoom: 1 },
+        '2026-01-01T00:00:00.000Z'
+      );
+  });
+
+  it('replaces the graph and records the pushed timestamp', () => {
+    const applied = useDiagramStore
+      .getState()
+      .applyRemoteGraph(PUSHED_NODES, [], '2026-02-01T00:00:00.000Z');
+
+    const state = useDiagramStore.getState();
+    expect(applied).toBe(true);
+    expect(state.nodes.map((node) => node.id)).toEqual(['pushed']);
+    expect(state.updatedAt).toBe('2026-02-01T00:00:00.000Z');
+  });
+
+  // A push that lost a race describes a version this tab has already moved past; applying it
+  // would revert the canvas under the user.
+  it.each([
+    ['older', '2025-01-01T00:00:00.000Z'],
+    ['identical', '2026-01-01T00:00:00.000Z']
+  ])('discards an %s push without touching the graph', (_label, updatedAt) => {
+    const applied = useDiagramStore.getState().applyRemoteGraph(PUSHED_NODES, [], updatedAt);
+
+    const state = useDiagramStore.getState();
+    expect(applied).toBe(false);
+    expect(state.nodes.map((node) => node.id)).toEqual(['local']);
+    expect(state.updatedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  // Nothing has been loaded yet, so there is no version to be newer than — accepting the push is
+  // the only answer that leaves the tab showing something real.
+  it('accepts any push when the tab knows of no version yet', () => {
+    useDiagramStore.setState({ updatedAt: null });
+
+    expect(
+      useDiagramStore.getState().applyRemoteGraph(PUSHED_NODES, [], '2020-01-01T00:00:00.000Z')
+    ).toBe(true);
+  });
+
+  // The push is the saved state, but a local change the user had pending is still pending, and
+  // clearing the flag would lose it on the next autosave.
+  it('leaves a pending local change pending', () => {
+    useDiagramStore.setState({ dirty: true });
+
+    useDiagramStore.getState().applyRemoteGraph(PUSHED_NODES, [], '2026-02-01T00:00:00.000Z');
+
+    expect(useDiagramStore.getState().dirty).toBe(true);
+  });
+
+  // Ctrl+Z is for undoing your own last action. Making it revert somebody else's change instead
+  // would be the more surprising behaviour.
+  it('records no undo entry, so Ctrl+Z still undoes the user’s own last action', () => {
+    useDiagramStore.getState().applyRemoteGraph(PUSHED_NODES, [], '2026-02-01T00:00:00.000Z');
+
+    expect(useDiagramStore.getState().undoStack).toEqual([]);
+  });
+
+  it('leaves the viewport alone, because a push is not a navigation', () => {
+    useDiagramStore.getState().onViewportChange({ x: 42, y: 7, zoom: 2 });
+
+    useDiagramStore.getState().applyRemoteGraph(PUSHED_NODES, [], '2026-02-01T00:00:00.000Z');
+
+    expect(useDiagramStore.getState().viewport).toEqual({ x: 42, y: 7, zoom: 2 });
+  });
+
+  // The share viewer loads without one and opens no live channel, so there is nothing for a
+  // timestamp to be compared against.
+  it('records no timestamp when a diagram is loaded without one', () => {
+    useDiagramStore.getState().setDiagram('d2', 'Shared', '', [], [], { x: 0, y: 0, zoom: 1 });
+
+    expect(useDiagramStore.getState().updatedAt).toBeNull();
   });
 });

@@ -188,7 +188,7 @@ describe('the MCP endpoint', () => {
     expect(response.headers.get('content-type')).toContain('application/problem+json');
   });
 
-  it('advertises only Phase 12 read and metadata tools with described schemas', async () => {
+  it('advertises the read, metadata and graph tools with described schemas', async () => {
     const response = await send(await mcpRequestAs(ALICE, 'tools/list', {}));
     const body = (await response.json()) as {
       result: {
@@ -206,7 +206,14 @@ describe('the MCP endpoint', () => {
       'get_diagram',
       'create_diagram',
       'rename_diagram',
-      'delete_diagram'
+      'delete_diagram',
+      'add_node',
+      'update_node',
+      'remove_node',
+      'add_edge',
+      'update_edge',
+      'remove_edge',
+      'auto_layout_diagram'
     ]);
     for (const tool of body.result.tools) {
       expect(tool.description).toContain('authenticated caller');
@@ -214,6 +221,21 @@ describe('the MCP endpoint', () => {
         expect(property).toMatchObject({ description: expect.any(String) as string });
       }
     }
+  });
+
+  // The grid is visibly simpler than the editor's own ELK-based button, which cannot run on the
+  // server. Saying so in the description is what stops a model promising the user a quality of
+  // layout this tool will not deliver — the same honesty standard every other description here is
+  // held to, and the one most easily lost in a later edit.
+  it('tells a calling model the server-side layout is the simpler one', async () => {
+    const response = await send(await mcpRequestAs(ALICE, 'tools/list', {}));
+    const body = (await response.json()) as {
+      result: { tools: { description?: string; name: string }[] };
+    };
+
+    const layout = body.result.tools.find((tool) => tool.name === 'auto_layout_diagram');
+    expect(layout?.description).toContain('simpler');
+    expect(layout?.description).toContain('editor');
   });
 
   it('lets a non-browser MCP caller create, list, read, rename and delete its own diagram', async () => {

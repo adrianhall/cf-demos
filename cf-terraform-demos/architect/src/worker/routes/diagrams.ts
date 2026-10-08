@@ -1,5 +1,10 @@
 import { Hono } from 'hono';
-import { currentIdentityEmail, jsonBodyLimit, readJsonBody } from '@demos/worker-common';
+import {
+  currentIdentityEmail,
+  jsonBodyLimit,
+  readJsonBody,
+  upgradeRequired
+} from '@demos/worker-common';
 import type { AppBindings } from '../bindings.ts';
 import type { LogVia } from '../logging.ts';
 
@@ -161,6 +166,55 @@ export function createDiagramsRouter(): Hono<AppBindings> {
 
     context.var.LOGGER.info('diagram_updated', { diagramId: id, kind: 'graph', via: VIA });
     return context.json({ updatedAt });
+  });
+
+  /**
+   * Opens the editor's live connection to one of the signed-in identity's own diagrams.
+   *
+   * The route lives under `/api/` deliberately rather than needing a path of its own. That prefix
+   * is already an authenticating, non-redirecting entry in `src/access-policies.ts` and already
+   * listed in `cloudflare.config.ts`'s `runWorkerFirst`, so this endpoint inherits both decisions
+   * instead of adding a third place either could be got wrong. `redirect: false` matters here more
+   * than anywhere else in the application: a browser's `WebSocket` constructor cannot follow a
+   * redirect to a login page, so an unauthenticated upgrade would surface as an unexplained
+   * connection failure rather than as an authentication error.
+   *
+   * The `Upgrade` header is checked here, in the transport tier, because it is a fact about the
+   * HTTP request rather than a business rule — the service should not have to know what protocol
+   * its caller arrived over. A plain `GET` is answered `426 Upgrade Required`, which says precisely
+   * what is wrong: the request is well-formed and the diagram exists, it is the protocol that is
+   * wrong, so the `400` a generic rejection would give would be actively misleading.
+   *
+   * The router's `jsonBodyLimit` is mounted above but is a no-op here, because an upgrade request
+   * carries no body and the middleware returns immediately for one that does not.
+   *
+   * The response is returned verbatim. Rebuilding it would drop the `webSocket` property, which is
+   * the one part of the response that matters.
+   *
+   * @param context Hono request context carrying the verified identity, the untrusted `id` path
+   *   parameter and the diagram service.
+   * @returns A `101 Switching Protocols` response handing the socket to the browser.
+   * @throws {ProblemDetailsError} `426` when the request is not a WebSocket upgrade, and `404` when
+   *   the diagram is malformed, unknown or foreign — the same non-enumerating answer every other
+   *   diagram route gives, so a connection attempt cannot be used to probe for ids.
+   * @throws {NullError} When mounted without the Access middleware in front of it.
+   * @throws {Error} When the repository cannot read the row or the session cannot accept the
+   *   connection.
+   */
+  router.get('/:id/live', async (context) => {
+    if (context.req.header('Upgrade')?.toLowerCase() !== 'websocket') {
+      throw upgradeRequired('This endpoint accepts WebSocket connections only.');
+    }
+
+    const id = context.req.param('id');
+    const response = await context.var.DIAGRAM_SERVICE.connectLiveSession(
+      currentIdentityEmail(context),
+      id,
+      context.req.raw
+    );
+
+    context.var.LOGGER.info('diagram_live_connected', { diagramId: id, via: VIA });
+    return response;
   });
 
   /**

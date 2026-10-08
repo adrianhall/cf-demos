@@ -5,11 +5,13 @@ vi.mock('@xyflow/react', () => import('./mock-xyflow.tsx'));
 
 const { mockGetDiagram } = vi.hoisted(() => ({ mockGetDiagram: vi.fn() }));
 vi.mock('../../src/client/api/diagrams.ts', () => ({
+  diagramLiveUrl: (id: string) => `ws://localhost/api/diagrams/${encodeURIComponent(id)}/live`,
   getDiagram: mockGetDiagram,
   saveDiagramGraph: vi.fn(),
   updateDiagram: vi.fn()
 }));
 
+const { installFakeWebSocket } = await import('./fake-websocket.ts');
 const { EditorView } = await import('../../src/client/views/EditorView.tsx');
 const { AppShellView } = await import('../../src/client/views/AppShellView.tsx');
 
@@ -37,6 +39,8 @@ function visit(pathname: string): void {
 
 beforeEach(() => {
   localStorage.clear();
+  // The editor canvas opens a live-sync socket on mount, and jsdom has no WebSocket at all.
+  installFakeWebSocket();
   vi.stubGlobal(
     'matchMedia',
     vi.fn(() => ({ addEventListener: vi.fn(), matches: false, removeEventListener: vi.fn() }))
