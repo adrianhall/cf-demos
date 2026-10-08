@@ -63,7 +63,7 @@ export const TOOL_GROUPS: ToolGroup[] = [
   {
     title: 'Exporting',
     tools: ['export_diagram'],
-    note: 'json or scaffold. Images are browser-only \u2014 see the note on images above.'
+    note: 'json, svg or scaffold. SVG is a standalone vector image generated from the stored graph; PNG remains browser-only.'
   }
 ];
 

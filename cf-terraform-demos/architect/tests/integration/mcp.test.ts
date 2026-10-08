@@ -595,6 +595,13 @@ describe('the MCP endpoint', () => {
       nodes: [{ id: 'api' }, { id: 'store' }]
     });
 
+    const asSvg = await callTool(ALICE, 'export_diagram', { diagramId, format: 'svg' });
+    const svg = toolText(asSvg.body);
+    expect(svg).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
+    expect(svg).toContain('<title>Billing Service</title>');
+    expect(svg).toContain('Edge API');
+    expect(svg).toContain('User Data');
+
     const asScaffold = await callTool(ALICE, 'export_diagram', { diagramId, format: 'scaffold' });
     const resource = toolResource(asScaffold.body);
 
@@ -609,7 +616,7 @@ describe('the MCP endpoint', () => {
   it('refuses an export of a diagram owned by somebody else', async () => {
     const diagramId = await seedDiagram(ALICE, 'Alice exports');
 
-    for (const format of ['json', 'scaffold']) {
+    for (const format of ['json', 'scaffold', 'svg']) {
       const refused = await callTool(MALLORY, 'export_diagram', { diagramId, format });
       expect(refused.body).toMatchObject({
         result: { content: [{ text: 'Diagram not found.' }], isError: true }
@@ -617,10 +624,9 @@ describe('the MCP endpoint', () => {
     }
   });
 
-  // A model that assumed "export" covered images would promise the user a PNG and then have
-  // nothing to hand over. The absence is deliberate — there is no server-side canvas to
-  // rasterise — so the description has to say so, and this pins that it keeps saying so.
-  it('tells a calling model that image export is browser-only', async () => {
+  // A model has to distinguish the vector image the Worker can produce from the raster image it
+  // cannot. This pins both halves so a later wording edit cannot hide SVG or promise PNG.
+  it('tells a calling model that SVG works and PNG is browser-only', async () => {
     const response = await send(await mcpRequestAs(ALICE, 'tools/list', {}));
     const body = (await response.json()) as {
       result: {
@@ -635,8 +641,9 @@ describe('the MCP endpoint', () => {
     const exportTool = body.result.tools.find((tool) => tool.name === 'export_diagram');
     expect(exportTool?.description).toContain('PNG');
     expect(exportTool?.description).toContain('SVG');
-    expect(exportTool?.description).toContain('browser');
-    expect(exportTool?.inputSchema.properties?.format?.enum).toEqual(['json', 'scaffold']);
+    expect(exportTool?.description).toContain('browser-only');
+    expect(exportTool?.description).toContain('markdown');
+    expect(exportTool?.inputSchema.properties?.format?.enum).toEqual(['json', 'scaffold', 'svg']);
 
     // The same honesty standard applies to the share tools: a model must not offer to look a
     // lost link up, because nothing can.

@@ -1,9 +1,9 @@
 /**
- * @file Export filenames and the browser download that uses them. Both are deliberately
- *   browser-only concerns: a PNG or SVG of this canvas is a rasterisation of what the visitor's own
- *   browser laid out, which a Worker has no DOM to reproduce. The specification says so explicitly,
- *   and the later MCP layer therefore exposes JSON and project-scaffold exports rather than
- *   pretending a server can take a screenshot.
+ * @file Export filenames and the browser download that uses them. This module names and saves the
+ *   editor's pixel-faithful canvas captures: PNG or SVG generated from what the visitor's own
+ *   browser laid out, which a Worker has no DOM to reproduce. The MCP layer's server-side SVG is a
+ *   different contract — a pure vector drawing from stored GraphData, not a screenshot — and PNG
+ *   remains browser-only.
  */
 
 /**

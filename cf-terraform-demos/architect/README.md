@@ -388,19 +388,25 @@ both kinds of delete without a counter to drift.
 
 ## Export and print
 
-PNG and SVG export are browser-only because they capture the actual DOM/React Flow layout. The
-browser computes the whole graph's bounds and a fitted transform, independent of the visitor's
-current pan/zoom, then downloads a white-background image with a timestamped filesystem-safe
-filename. Project export is DOM-free: a pure generator maps catalogue nodes into a ZIP containing a
-typed `cloudflare.config.ts`, Worker/Hono/Astro entry point, package scripts and optional Drizzle/D1
+The editor's PNG and SVG exports capture the actual DOM/React Flow layout. The browser computes the
+whole graph's bounds and a fitted transform, independent of the visitor's current pan/zoom, then
+downloads a white-background image with a timestamped filesystem-safe filename. Project export is
+DOM-free: a pure generator maps catalogue nodes into a ZIP containing a typed
+`cloudflare.config.ts`, Worker/Hono/Astro entry point, package scripts and optional Drizzle/D1
 files.
 
-Because the generator is DOM-free, the Worker imports it directly: the `export_diagram` MCP tool
-calls the same `generateScaffold`, zips it with `fflate` server-side and returns base64, so an agent
-and the toolbar button produce byte-identical projects. PNG and SVG are deliberately absent from
-that tool for the opposite reason — there is no server-side browser rendering in this demo — and the
-tool description states the gap so a calling model redirects the user to the editor's own button
-instead of promising an image.
+The MCP surface adds a second SVG path with a different contract: `graph-svg.ts` is a pure domain
+transform from canonical `GraphData` to a self-contained vector document. It draws the same nodes,
+labels, category colours, edge types and connections at their stored coordinates, but does not try
+to screenshot browser-only details such as official product glyphs, theme, selection or viewport. An
+agent can save that text as `.svg` and reference it directly from Markdown. PNG remains browser-only
+because turning the canvas into pixels still needs a renderer.
+
+The same purity principle covers the other MCP exports. `export_diagram` returns canonical JSON,
+that standalone SVG, or calls the same `generateScaffold` as the toolbar, zips it with `fflate`
+server-side and returns base64, so an agent and the toolbar produce byte-identical projects. The
+tool description states the SVG/PNG boundary explicitly so a model neither hides a capability it has
+nor promises one it does not.
 
 The generated scaffold is the one deliberate Phase 6 behaviour difference from the source. The
 source emitted `wrangler.toml` and Wrangler commands. This repository exists to teach the `cf`
@@ -445,9 +451,9 @@ Terraform defaults reserved for this port.
   diagram. Losing a raw URL requires rotation because the server stores only its digest.
 - Administration is intentionally one configured identity. There is no role table, invitation flow,
   or first-user bootstrap.
-- Browser image export captures rendered DOM and therefore has no server API, and none through MCP
-  either: `export_diagram` offers `json` and `scaffold` only. Project export is a portable starter,
-  not a complete reverse-engineering of arbitrary diagram topology.
+- Browser image export captures rendered DOM and therefore cannot be reproduced pixel-for-pixel on
+  the server. MCP's `svg` is a separate graph-derived vector drawing; PNG stays browser-only.
+  Project export is a portable starter, not a complete reverse-engineering of arbitrary topology.
 - ELK auto-layout is browser-only and downloaded only when requested. It is absent from Workers
   because ELK cannot execute in `workerd`.
 - The generated scaffold intentionally uses `cf`, unlike the Wrangler-based source scaffold. This is

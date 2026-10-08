@@ -12,9 +12,8 @@ import { MCP_GUIDE_ROUTE } from '../../src/mcp-route.ts';
  *   could hand a reader a working URL pointing at the wrong application. The tool catalogue must
  *   match the catalogue the MCP handler actually registers. A guide that advertises a tool the
  *   server does not serve is worse than no guide, and nothing but a test connects the two lists.
- *   The image limitation must stay stated. It is the one place a reader's reasonable expectation is
- *   wrong, and a later edit that softened it into "export your diagram" would leave the page
- *   implying the agent can produce a picture.
+ *   The image boundary must stay exact. SVG is a real server capability now, while PNG still needs
+ *   the browser; collapsing either side into a generic "image export" would make the guide lie.
  */
 
 /**
@@ -129,46 +128,44 @@ describe('McpGuideView', () => {
   });
 
   describe('honesty about images', () => {
-    // The whole point of the two image examples. A later edit that softened this into "export
-    // your diagram" would leave the page implying the agent can produce a picture.
-    it('says plainly that export_diagram offers json and scaffold only', () => {
+    it('shows a working SVG export flow', () => {
       render(<McpGuideView />);
 
-      expect(screen.getByText(/offers json and scaffold only/iu)).toBeInTheDocument();
+      expect(screen.getByText(/format "svg"/iu)).toBeInTheDocument();
+      expect(screen.getByText(/complete SVG document as text/iu)).toBeInTheDocument();
+      expect(screen.getByText(/writes it verbatim/iu)).toBeInTheDocument();
     });
 
-    it('explains why, rather than only that', () => {
+    it('shows the complete markdown embed flow', () => {
       render(<McpGuideView />);
 
-      expect(screen.getByText(/no DOM in a Worker/iu)).toBeInTheDocument();
+      expect(screen.getByText(/normal markdown image reference/iu)).toBeInTheDocument();
+      expect(
+        screen.getByText(/!\[Checkout service architecture\]\(docs\/checkout-architecture\.svg\)/u)
+      ).toBeInTheDocument();
     });
 
-    it('points the reader at the editor export button as the working alternative', () => {
+    it('keeps the smaller PNG-only limitation accurate', () => {
       render(<McpGuideView />);
 
-      expect(screen.getByText(/Use the Export button in the editor/iu)).toBeInTheDocument();
+      expect(screen.getByText(/PNG is still browser-only/iu)).toBeInTheDocument();
+      expect(screen.getByText(/needs the DOM and renderer/iu)).toBeInTheDocument();
+      expect(screen.getByText(/specifically need PNG/iu)).toBeInTheDocument();
     });
 
-    it('offers the adjacent things the agent can do instead', () => {
+    it('explains that server SVG is graph-derived rather than a screenshot', () => {
       render(<McpGuideView />);
 
-      expect(screen.getByText(/export_diagram with json/iu)).toBeInTheDocument();
-      expect(screen.getByText(/create_share_link instead/iu)).toBeInTheDocument();
+      expect(screen.getByText(/builds SVG directly from the stored graph/iu)).toBeInTheDocument();
+      expect(screen.getByText(/does not reproduce the editor/iu)).toBeInTheDocument();
     });
 
-    // Without this the gap reads as a permanent property of the design rather than as a phase
-    // that has not shipped.
-    it('records that a server-side SVG export is planned', () => {
-      render(<McpGuideView />);
-
-      expect(screen.getByText(/planned future phase/iu)).toBeInTheDocument();
-    });
-
-    // The page must never claim an image is obtainable through the agent.
-    it('never offers an agent-produced image', () => {
+    it('does not retain the stale no-image-capability claim', () => {
       const { container } = render(<McpGuideView />);
 
-      expect(container.textContent).not.toMatch(/the agent (?:can|will) (?:produce|generate) a/iu);
+      expect(container.textContent).not.toMatch(/no image capability/iu);
+      expect(container.textContent).not.toMatch(/PNG and SVG are .*browser-only/iu);
+      expect(container.textContent).not.toMatch(/planned future phase/iu);
     });
   });
 

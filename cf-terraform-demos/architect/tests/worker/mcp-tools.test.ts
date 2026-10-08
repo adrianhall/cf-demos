@@ -679,6 +679,20 @@ describe('MCP export tool', () => {
     expect(JSON.parse(exported.data)).toEqual(JSON.parse(EXPORTABLE_GRAPH));
   });
 
+  it('returns SVG as XML text named after the diagram', async () => {
+    const { context } = createContext();
+    const diagram = await exportable(context, 'Billing & <Storage>');
+
+    const exported = await exportDiagramTool(context, diagram.id, 'svg');
+
+    expect(exported.format).toBe('svg');
+    expect(exported.mimeType).toBe('image/svg+xml');
+    expect(exported.data).toContain('<title>Billing &amp; &lt;Storage&gt;</title>');
+    expect(exported.data).toContain('Edge API');
+    expect(exported.data).toContain('User Data');
+    expect(exported.data).toContain('stroke-dasharray="8 4"');
+  });
+
   it('zips the same project the editor’s own export button generates', async () => {
     const { context } = createContext();
     const diagram = await exportable(context);
@@ -740,7 +754,7 @@ describe('MCP export tool', () => {
     expect(unpack(exported.data).size).toBe(0);
   });
 
-  it.each(['json', 'scaffold'] as const)(
+  it.each(['json', 'scaffold', 'svg'] as const)(
     'refuses a %s export of a diagram owned by somebody else',
     async (format) => {
       const alice = createContext(ALICE);
@@ -766,6 +780,7 @@ describe('MCP export tool', () => {
     entries.length = 0;
 
     await exportDiagramTool(context, diagram.id, 'json');
+    await exportDiagramTool(context, diagram.id, 'svg');
     await exportDiagramTool(context, diagram.id, 'scaffold');
 
     expect(entries).toEqual([]);

@@ -36,10 +36,11 @@ const EXPORT_FIT_PADDING = 0.25;
 /**
  * The export control: a menu offering PNG, SVG and a downloadable starter project.
  *
- * **Every export happens in the browser, and must.** PNG and SVG are rasterisations of what this
- * visitor's own browser laid out — fonts, computed colours, the current colour scheme — none of
- * which a Worker has a DOM to reproduce. That is a documented non-goal rather than a gap, and it is
- * why the later MCP layer exposes JSON and project exports but not these two.
+ * **These two image exports happen in the browser, and must.** They capture what this visitor's own
+ * browser laid out — fonts, computed colours, the current colour scheme — none of which a Worker
+ * has a DOM to reproduce. The MCP layer has a separate pure GraphData → SVG transform for a
+ * portable vector drawing; it is deliberately not this pixel-faithful canvas capture. PNG remains
+ * available only here.
  *
  * The image export does **not** capture what is on screen. It computes the diagram's own bounding
  * box and a matching transform, so the file contains the whole diagram neatly framed regardless of

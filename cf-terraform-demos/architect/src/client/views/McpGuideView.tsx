@@ -107,15 +107,12 @@ interface ExamplePrompt {
    */
   outcome: string;
   /**
-   * Tool names the agent calls, in the order it calls them. Empty when the request cannot be served
-   * by a tool at all, which is itself the point of the example.
+   * Tool names the agent calls, in the order it calls them.
    */
   tools: string[];
   /**
-   * What the MCP server genuinely cannot do here, stated plainly, and the route that does work.
-   *
-   * Present on exactly the examples where a reader's reasonable expectation is wrong. Writing the
-   * gap next to the prompt that triggers it is deliberate: a limitation recorded only in a footnote
+   * Optional qualification shown next to an example where a neighbouring format still has a real
+   * limitation. Writing it next to the prompt is deliberate: a boundary recorded only in a footnote
    * is one a reader meets as a surprise.
    */
   gap?: { limitation: string; instead: string };
@@ -151,42 +148,35 @@ const PROMPTS: ExamplePrompt[] = [
   },
   {
     title: 'Download an image of a diagram',
-    prompt: 'Export that diagram as a PNG and save it to my desktop.',
+    prompt:
+      'Export that diagram as SVG and save it as docs/checkout-architecture.svg. Then tell me the '
+      + 'path you wrote.',
     outcome:
-      'The agent should decline, and its tools are described so that it does rather than '
-      + 'promising a file it cannot produce.',
-    tools: [],
+      'The agent calls export_diagram with format "svg", receives a complete SVG document as text, '
+      + 'and writes it verbatim to the requested path. The picture comes from the stored graph — '
+      + 'not a screenshot — so it includes every node and edge regardless of the editor\u2019s current '
+      + 'pan and zoom.',
+    tools: ['export_diagram'],
     gap: {
       limitation:
-        'The MCP server has no image capability today. export_diagram offers json and scaffold '
-        + 'only. PNG and SVG are produced by rasterising the live React Flow canvas with '
-        + 'html-to-image, and there is no DOM in a Worker to rasterise, so there is nothing for a '
-        + 'server-side tool to capture.',
+        'PNG is still browser-only. Producing pixels means rasterising the live canvas, which '
+        + 'needs the DOM and renderer a Worker does not have.',
       instead:
-        'Use the Export button in the editor, which produces the PNG or SVG in your browser and '
-        + 'saves it locally. The agent can still hand you the diagram as data — ask it for '
-        + 'export_diagram with json for the raw graph, or with scaffold for a ready-to-deploy '
-        + 'Cloudflare starter project.'
+        'Ask the agent for SVG when a vector image works, or use the editor\u2019s Export button when '
+        + 'you specifically need PNG.'
     }
   },
   {
     title: 'Put a diagram into a markdown document',
-    prompt: 'Insert an image of that diagram into the architecture section of my README.',
+    prompt:
+      'Export that diagram as docs/checkout-architecture.svg, then add it to the Architecture '
+      + 'section of README.md with the alt text "Checkout service architecture".',
     outcome:
-      'The agent can edit the document, but it cannot originate the image, for exactly the reason '
-      + 'above — so the picture has to come from the editor first.',
-    tools: [],
-    gap: {
-      limitation:
-        'There is no tool that returns an image, so an agent cannot produce the file your '
-        + 'markdown would reference.',
-      instead:
-        'Export the PNG or SVG from the editor, save it next to your document, and reference it '
-        + 'from the markdown. If a live view suits the document better than a still image, ask '
-        + 'the agent for create_share_link instead: that returns a read-only URL anyone can open '
-        + 'without signing in, which you can link from the page and which always shows the '
-        + 'current diagram rather than a snapshot.'
-    }
+      'The agent exports the SVG, saves it beside the document, and adds a normal markdown image '
+      + 'reference such as ![Checkout service architecture](docs/checkout-architecture.svg). The '
+      + 'SVG is self-contained, so the repository can render it without an Architect login or a '
+      + 'live share link.',
+    tools: ['export_diagram']
   }
 ];
 
@@ -250,9 +240,9 @@ function GuideNote({ icon: NoteIcon, title, children }: GuideNoteProps) {
  * stale literal here could hand a reader a working URL pointing at the wrong deployment.
  *
  * Everything the page claims is true of the code it describes. The tool list mirrors
- * `src/worker/mcp/server.ts`, the authentication story mirrors `infra/access.tf`, and the image gap
- * is stated rather than elided, because `export_diagram` genuinely offers `json` and `scaffold`
- * only.
+ * `src/worker/mcp/server.ts`, the authentication story mirrors `infra/access.tf`, and the image
+ * boundary is stated rather than elided: `export_diagram` can produce a pure server-side SVG, while
+ * PNG still needs the browser renderer.
  *
  * @returns The guide page.
  */
@@ -350,8 +340,7 @@ export function McpGuideView() {
             What to ask it
           </h2>
           <p className="guide__text">
-            Four things worth trying first, including two that do not work the way most people
-            expect.
+            Four things worth trying first, including a complete SVG-to-markdown workflow.
           </p>
           <div className="guide__prompts">
             {PROMPTS.map((example) => (
@@ -371,17 +360,18 @@ export function McpGuideView() {
                   </p>
                 )}
                 {example.gap && (
-                  <GuideNote icon={AlertTriangle} title="Not available through the agent">
+                  <GuideNote icon={AlertTriangle} title="PNG still needs the browser">
                     {example.gap.limitation} {example.gap.instead}
                   </GuideNote>
                 )}
               </article>
             ))}
           </div>
-          <GuideNote icon={AlertTriangle} title="Images: planned, not permanent">
-            A server-side SVG export is a planned future phase of this demo. Until it ships, treat
-            an image as something the editor produces and you save &mdash; not something the agent
-            can hand you.
+          <GuideNote icon={AlertTriangle} title="SVG is a drawing, not a screenshot">
+            The server builds SVG directly from the stored graph, so it preserves the architecture,
+            labels and catalogue edge styles without a DOM. It does not reproduce the editor&rsquo;s
+            current theme, product glyphs, selection state, pan or zoom. Use the editor&rsquo;s
+            Export button when you need a pixel-faithful PNG of the live canvas.
           </GuideNote>
         </section>
 

@@ -94,9 +94,11 @@ while nobody touches it.
 6. Ask it: _"Download this diagram's Cloudflare project scaffold."_ Open the resulting ZIP and show
    that its `cloudflare.config.ts` already contains the D1 binding for the node the agent added
    moments ago — the same generator the editor's Export button uses, running server-side.
-7. Ask it for a PNG. It should decline and point you at the editor's Export button instead. That is
-   the tool description doing its job: there is no server-side canvas to rasterise, and a model that
-   promised an image would have nothing to hand over.
+7. Ask it: _"Export this diagram as `docs/architecture.svg` and add it to the Architecture section
+   of my README."_ Open both files: the SVG is a real self-contained picture with the same nodes,
+   connections and labels, and the Markdown references it with a normal image link. Then ask for a
+   PNG. It should point you at the editor's Export button — vector markup is a pure graph transform,
+   but pixels still need a browser renderer. That distinction is the tool description doing its job.
 8. Open Workers Logs and filter for `diagram_updated`. The events from step 3 carry `via: "mcp"`.
    Make one edit in the browser and show the next event carrying `via: "api"`. One event name for
    one thing that happened, distinguished only by transport — which is how an operator answers "was

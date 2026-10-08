@@ -54,14 +54,19 @@ const MAX_ENTRY_BYTES = 1_000_000;
  * - The tool functions and their schemas, 1,085,097 (+10,724);
  * - Importing `generateScaffold`, which pulls in `src/catalog.ts` and the `?raw` starter-project
  *   templates, 1,122,572 (+37,475);
- * - Importing `fflate` to zip the result server-side, 1,139,108 (+16,536).
+ * - Importing `fflate` to zip the result server-side, 1,139,108 (+16,536);
+ * - The pure GraphData → SVG transform, including its edge routing, escaping and catalogue style
+ *   lookup, 1,165,271 (+26,163). It deliberately embeds no product-icon assets, which keeps the
+ *   measured change to code and catalogue references rather than pulling the roughly 140 KB icon
+ *   directory into the Worker.
  *
- * Both of those last two are the point of the design rather than overhead to trim: the generator is
- * shared with the browser's own export button precisely so the two produce identical projects, and
- * zipping has to happen somewhere. 1.23 MB therefore leaves roughly the same proportional allowance
- * the previous 1.1 MB ceiling left — enough for Vite's stable chunking to move, while still
- * tripping on a second accidental copy of either SDK. This is Worker code; it does not change the
- * client chunk budget above, which is why the two contracts are separate.
+ * Those additions are the point of the design rather than overhead to trim: the generator is shared
+ * with the browser's own export button precisely so the two produce identical projects, zipping has
+ * to happen somewhere, and SVG is the new server capability being protected. 1.23 MB therefore
+ * leaves roughly the same proportional allowance the previous 1.1 MB ceiling left — enough for
+ * Vite's stable chunking to move, while still tripping on a second accidental copy of either SDK.
+ * This is Worker code; it does not change the client chunk budget above, which is why the two
+ * contracts are separate.
  */
 const MAX_WORKER_BUNDLE_BYTES = 1_230_000;
 

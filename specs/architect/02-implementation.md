@@ -635,6 +635,76 @@ The one manual step remains the deployed Managed OAuth round trip, which cannot 
 because it is an Access-edge feature; `MCP-VALIDATION.md` is the runbook and is not a substitute
 for running it once against a real deployment.
 
+### Phase 15a — Server-side SVG export
+
+#### Goal
+
+Let an authenticated agent produce a real diagram image and embed it in a Markdown document, without
+a DOM, Browser Rendering binding or second representation of the graph. The image is a pure vector
+transform from canonical `GraphData`, so it belongs in the domain tier beside the pure graph
+mutations and every transport that renders a graph can produce the same architecture.
+
+This is **deliberate new scope**, numbered 15a so it follows the MCP surface it extends without
+colliding with the reserved 16–20 collaboration and 21–26 AI ranges. It consciously diverges from
+`09B-ARCHITECT-MCP.md`'s Non-Goals. That document excluded “Raster (PNG/SVG) export” because the only
+known image path rasterised the live React Flow canvas with `html-to-image`, and a Worker has no DOM.
+That reasoning still excludes PNG and a pixel-faithful canvas capture. It does not exclude writing
+vector markup directly from `GraphData`: no rasterisation or renderer is involved, so the premise
+that made the original exclusion correct simply does not apply.
+
+#### Deliverables
+
+1. Add a pure `GraphData` → SVG domain transform with no binding, fetch, storage, DOM or runtime
+   dependency. It computes a non-degenerate viewBox from actual node extents plus padding, including
+   empty, single-node and disconnected graphs.
+2. Draw labelled catalogue-coloured node shapes at stored positions and render edge colour,
+   solid/dashed/dotted style, arrowheads and labels from the catalogue. The node shows both the
+   user-controlled instance label and the catalogue product name, so the architecture stays legible
+   without relying on an icon.
+3. Do not embed the vendored official product glyphs. They are possible to inline, but a dynamic
+   catalogue lookup would pull the entire roughly 140 KB icon set into the Worker bundle; an exported
+   file also distributes Cloudflare brand marks outside the product UI. A category-coloured swatch
+   plus the exact searchable product label carries the same architectural information with less
+   output, no path/licensing ambiguity and better screen-reader text. Record that trade-off in the
+   transform rather than leaving a missing icon unexplained.
+4. XML-escape every user-controlled string before it enters text or an attribute: node label and
+   description, edge label and diagram title. A label containing markup, ampersands and both quote
+   forms must remain literal parsed text, never create an element.
+5. Extend `export_diagram` with `format: "svg"`. Return the complete `image/svg+xml` document as an
+   MCP text block, not base64 and not a resource blob; it is text and an agent needs to save it
+   verbatim. Keep the existing owner-scoped service call and uniform non-enumerating `404`.
+6. Rewrite the public `/guides/mcp` image examples as real working flows: export SVG, save it, and
+   reference it from Markdown. Retain only the narrower accurate note that PNG remains browser-only.
+   Update `README.md`, `EXPLAIN-DEMO.md`, `DEMO.md` and `MCP-VALIDATION.md` so none retains the stale
+   “no image capability” claim.
+
+#### Tests
+
+- Parse generated output as `image/svg+xml` and assert its structure, namespace, title, positive
+  viewBox, node/edge groups, styles and markers. Substring matching alone is not evidence that the
+  bytes form a valid SVG document.
+- Explicitly inject a node/edge/title string containing `<script>`, `&`, double quotes and single
+  quotes; prove parsing succeeds, no `script` element exists and the parsed text remains literal.
+- Cover empty, single, disconnected, negative-coordinate, malformed-but-canonical-storable and
+  dangling-edge cases, plus horizontal/vertical straight and bent routes.
+- Cover SVG through the plain tool function and over the real MCP handler, including text-block
+  transport, schema enumeration, title/content and the same non-owner `404` as JSON/scaffold.
+- Render a real multi-node blueprint in a real browser and compare it with the editor: the same nodes
+  occupy recognisably the same arrangement, every connection reaches the right endpoints, labels
+  are legible, and the computed viewBox clips nothing. Embed that file from Markdown and confirm the
+  preview displays it.
+- Measure the production Worker bundle against the existing 1,230,000-byte ceiling. Record the
+  before/after bytes; if the transform exceeds the remaining measured allowance, raise the ceiling
+  only with the same evidence and explanation Phase 14 required.
+
+#### Exit criteria
+
+`export_diagram(format: "svg")` returns valid, owner-scoped, standalone vector markup that an agent
+can save and embed from Markdown; a real blueprint has been inspected in a browser beside the editor;
+PNG remains accurately documented as browser-only; the Worker bundle contract still holds; and
+`pnpm fix`, `pnpm check`, `pnpm test` and `pnpm test:coverage` pass at 100% statements, branches,
+functions and lines.
+
 #### Three defects found while closing the gaps
 
 Each was a latent fault rather than a coverage inconvenience, which is the argument for closing

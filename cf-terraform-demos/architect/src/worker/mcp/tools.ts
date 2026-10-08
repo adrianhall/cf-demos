@@ -17,6 +17,7 @@ import {
   updateEdge,
   updateNode
 } from '../domain/graph-mutations.ts';
+import { renderGraphSvg } from '../domain/graph-svg.ts';
 import type { GraphData } from '../domain/graph.ts';
 import type { CreatedShare, ShareStatus } from '../domain/share.ts';
 import type { LogVia } from '../logging.ts';
@@ -36,8 +37,9 @@ import type { LogVia } from '../logging.ts';
  *   transform over a list of nodes and edges, with no `document`, no canvas and no React Flow
  *   runtime anywhere in it or in the `src/catalog.ts` module it reads — which is precisely why the
  *   browser's export button and an agent's `export_diagram` call can share one generator and
- *   produce byte-identical projects. PNG and SVG cannot be shared that way, and are therefore
- *   absent; see {@link exportDiagramTool}.
+ *   produce byte-identical projects. SVG follows the same principle: its pure transform lives in
+ *   the domain tier (`../domain/graph-svg.ts`) and this transport only selects it. PNG still needs
+ *   a renderer and remains browser-only; see {@link exportDiagramTool}.
  */
 
 /**
@@ -547,14 +549,13 @@ export async function revokeShareLinkTool(
 /**
  * The formats `export_diagram` can produce.
  *
- * Both are pure data transforms, which is the whole reason this list has two entries rather than
- * four. PNG and SVG are deliberately absent: the editor produces them by rasterising the live React
- * Flow canvas with `html-to-image` (`../../client/components/editor/toolbar/ExportButton.tsx`), and
- * a Worker has no DOM, no fonts and no computed styles to reproduce. There is no server-side
- * browser rendering in this demo, so offering them here would mean promising a capability that does
- * not exist. {@link exportDiagramTool}'s own tool description says so to the calling model.
+ * All three are pure transforms. `svg` is deliberately a vector drawing generated from
+ * {@link GraphData}, not the browser's `html-to-image` capture of a live React Flow DOM. PNG is
+ * still absent because converting either representation to pixels needs the renderer this Worker
+ * intentionally does not have. {@link exportDiagramTool}'s own tool description says so to the
+ * calling model.
  */
-export type ExportFormat = 'json' | 'scaffold';
+export type ExportFormat = 'json' | 'scaffold' | 'svg';
 
 /**
  * What {@link exportDiagramTool} returns.
@@ -565,13 +566,15 @@ export interface ExportedDiagram {
    */
   format: ExportFormat;
   /**
-   * MIME type of {@link ExportedDiagram.data}: `application/json` or `application/zip`.
+   * MIME type of {@link ExportedDiagram.data}: `application/json`, `image/svg+xml` or
+   * `application/zip`.
    */
   mimeType: string;
   /**
-   * For `json`, the diagram's canonical `graphData` text verbatim. For `scaffold`, the generated
-   * project's ZIP bytes as base64 — an MCP resource content block's `blob` field is defined as
-   * base64 text, not raw binary, so the encoding belongs here rather than at the protocol edge.
+   * For `json`, the diagram's canonical `graphData` text verbatim; for `svg`, a standalone SVG
+   * document; for `scaffold`, the generated project's ZIP bytes as base64 — an MCP resource content
+   * block's `blob` field is defined as base64 text, not raw binary, so the encoding belongs here
+   * rather than at the protocol edge.
    */
   data: string;
 }
@@ -630,24 +633,26 @@ interface ScaffoldSourceEdge extends Record<string, unknown> {
 }
 
 /**
- * Exports one of the caller's own diagrams as graph JSON or as a starter-project archive.
+ * Exports one of the caller's own diagrams as graph JSON, as a standalone SVG image or as a
+ * starter-project archive.
  *
  * `scaffold` calls the **same** `generateScaffold` the editor's own export button calls
  * (`../../client/lib/scaffold.ts`), zipped with `fflate` here instead of in the browser, so the two
  * surfaces hand a reader byte-identical projects rather than two implementations that agree today.
- * The generator is a pure data transform with no DOM dependency, which is what makes sharing it
- * possible at all.
+ * `svg` calls the domain tier's pure {@link renderGraphSvg} transform, so it needs no browser and
+ * every server transport draws the same architecture.
  *
- * **PNG and SVG are deliberately not offered.** They are rasterisations of the live canvas, and
- * this demo has no server-side browser rendering; the tool description in `./server.ts` states that
- * plainly so a calling model does not promise a user an image it cannot produce.
+ * **PNG is deliberately not offered.** It is a rasterisation of the live canvas, and this demo has
+ * no server-side browser rendering; the tool description in `./server.ts` states that plainly so a
+ * calling model does not promise a user an image it cannot produce.
  *
  * Nothing is logged. An export reads a diagram without changing it, and the only field that would
  * distinguish one export from another is the content itself.
  *
  * @param context Resolved tool context carrying the verified identity and the diagram service.
  * @param diagramId Untrusted diagram id supplied by the caller.
- * @param format `json` for the canonical graph, `scaffold` for a base64 project archive.
+ * @param format `json` for the canonical graph, `svg` for the standalone vector image, or
+ *   `scaffold` for a base64 project archive.
  * @returns The exported bytes and the MIME type describing them. A diagram with neither a Worker
  *   nor a bindable service produces an empty archive, because `generateScaffold` declines to invent
  *   a project out of external actors; the caller is told so by the tool description rather than by
@@ -673,6 +678,14 @@ export async function exportDiagramTool(
   // so treating the stored graph as suspect here would assert the application's own invariant
   // does not hold.
   const graph = JSON.parse(diagram.graphData) as GraphData;
+  if (format === 'svg') {
+    return {
+      data: renderGraphSvg(graph, { title: diagram.title }),
+      format,
+      mimeType: 'image/svg+xml'
+    };
+  }
+
   const files = generateScaffold({
     edges: (graph.edges as ScaffoldSourceEdge[]).map((edge) => ({
       edgeType: typeof edge.data?.edgeType === 'string' ? edge.data.edgeType : undefined,

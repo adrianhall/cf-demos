@@ -14,10 +14,11 @@ import vanillaIndex from './scaffold-templates/vanilla/src/index.ts?raw';
  * @file Turns a diagram into a downloadable starter project — a `Map` of file path to file content,
  *   which the export control zips in the browser. **Pure, and deliberately DOM-free.** Nothing here
  *   touches `document`, a canvas, or React Flow's runtime: it reads a plain list of nodes and
- *   edges. That is what lets the same generator be reached by the later MCP tool layer, where there
- *   is no browser at all, while PNG and SVG export cannot be. **What it generates is `cf`-native,
- *   which is a deliberate departure from the source.** The application this is ported from emitted
- *   a Wrangler project: a `wrangler.toml` and `wrangler deploy` scripts. This demo exists to teach
+ *   edges. That is what lets the same generator be reached by the MCP tool layer, where there is no
+ *   browser at all; its sibling domain transform now does the same for a graph-derived SVG, while
+ *   PNG and a pixel-faithful canvas capture still cannot. **What it generates is `cf`-native, which
+ *   is a deliberate departure from the source.** The application this is ported from emitted a
+ *   Wrangler project: a `wrangler.toml` and `wrangler deploy` scripts. This demo exists to teach
  *   the `cf` control plane that supersedes Wrangler, and handing a reader a starter project built
  *   on the superseded tool would teach the opposite of the surrounding demo. The generated project
  *   therefore declares its bindings in a typed `cloudflare.config.ts` through

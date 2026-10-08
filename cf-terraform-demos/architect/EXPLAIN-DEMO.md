@@ -141,23 +141,31 @@ bundle contract checks that ELK's algorithm marker occurs in exactly that one ch
 chunk stays below an inlining tripwire. Opening an editor therefore does not transfer the optional
 layout engine; the button is the network boundary.
 
-## Export and print stay client-side
+## Browser capture, pure SVG and print are separate contracts
 
-PNG/SVG export captures the actual React Flow DOM using graph bounds and a fitted transform, so the
-file is independent of the current viewport. This cannot be reproduced faithfully in the Worker.
-Print mode similarly manipulates page layout, colour scheme and the native print dialog, then
+The editor's PNG/SVG export captures the actual React Flow DOM using graph bounds and a fitted
+transform, so the file is independent of the current viewport. This cannot be reproduced faithfully
+in the Worker: browser fonts, computed styles, theme and product-icon DOM are not part of the stored
+graph. Print mode similarly manipulates page layout, colour scheme and the native print dialog, then
 restores every change after print/cancel/unmount.
 
-Project export is different: it is a pure graph-to-files transformation and produces a ZIP starter.
-The one deliberate source deviation is that this port generates typed `cf/config` and `cf` commands
-instead of the source demo's obsolete Wrangler scaffold. That change teaches the repository's
-current control plane rather than preserving retired deployment mechanics.
+That does not mean a Worker cannot produce SVG. `graph-svg.ts` is a pure domain transform over
+canonical `GraphData`: it computes its viewBox from node extents, draws labelled catalogue-coloured
+shapes at the stored coordinates, and renders edge colour, dash style, arrowhead and label from the
+same catalogue the React Flow renderer uses. It is a vector description, not a DOM screenshot. The
+distinction is why server-side SVG is possible while PNG remains browser-only, and why the output
+optimises for a correct, legible architecture rather than pixel fidelity to one open tab.
 
-That purity is why the `export_diagram` MCP tool can offer `json` and `scaffold` and nothing else:
-the Worker imports the **same** `generateScaffold`, zips it with `fflate` server-side and returns
-base64, so an agent and the toolbar button hand a reader byte-identical projects. PNG and SVG have
-no such shared path, and the tool's own description says so to the calling model rather than leaving
-it to infer the gap from a failure.
+Product export is another pure graph transform and produces a ZIP starter. The one deliberate source
+deviation is that this port generates typed `cf/config` and `cf` commands instead of the source
+demo's obsolete Wrangler scaffold. That change teaches the repository's current control plane rather
+than preserving retired deployment mechanics.
+
+The `export_diagram` MCP tool therefore offers `json`, `svg` and `scaffold`. SVG is returned as text
+so an agent can write it verbatim into a repository and embed it in Markdown; the Worker imports the
+**same** `generateScaffold` as the toolbar and returns that ZIP as base64, so both surfaces hand a
+reader byte-identical projects. PNG remains out because pixels need a renderer. The tool's own
+description states all three facts rather than leaving a model to infer them from a failed call.
 
 ## A second transport, not a second application
 
@@ -195,7 +203,7 @@ inventing a value.
 
 One honest consequence runs through the whole catalogue: a tool's description is its contract with a
 model that will never read this file. So `auto_layout_diagram` says plainly that its grid is simpler
-than the editor's own layered layout, `export_diagram` says PNG and SVG are browser-only, and
+than the editor's own layered layout, `export_diagram` says SVG works while PNG is browser-only, and
 `get_share_status` says it can never reproduce a lost link. A model told none of that would promise
 a user something the server cannot do, which is a worse failure than refusing.
 
@@ -333,9 +341,9 @@ port's lifecycle from reaching the separate source deployment.
   one-time disclosure. That holds for the `create_share_link` tool exactly as it holds for the
   button: `get_share_status` reports that a link exists and when, because only a digest was kept.
 - One configured administrator exists; the demo is not a general role-management system.
-- PNG/SVG export requires a browser DOM. There is no server image-rendering service, so
-  `export_diagram` offers `json` and `scaffold` only and its description tells a calling model to
-  send the user to the editor's own button for an image.
+- Pixel-faithful browser capture and PNG require a DOM and renderer. `export_diagram` instead offers
+  a pure graph-derived SVG alongside `json` and `scaffold`; its description sends a user to the
+  editor only when they specifically need PNG or the live canvas's exact appearance.
 - Auto-layout is a convenience, not a semantic architecture validator.
 - The catalog models Cloudflare products and common external actors; it is not infrastructure import
   or bidirectional IaC synchronization.

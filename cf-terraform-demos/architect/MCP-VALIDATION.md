@@ -115,7 +115,8 @@ client-side discovery completed.
 
 The point of covering every category is that each one reaches a different part of the system: a read
 touches D1 only; a mutation additionally reaches the Durable Object; sharing reaches KV; and an
-export runs the scaffold generator. A failure in any one of them is invisible from the others.
+export runs the scaffold generator or the pure SVG transform. A failure in any one of them is
+invisible from the others.
 
 Work through these in order, against a scratch diagram you are happy to delete.
 
@@ -133,13 +134,21 @@ Work through these in order, against a scratch diagram you are happy to delete.
    window: the anonymous read-only viewer should show the nodes the agent just added. Then ask for
    the share status — it must report that a link is active and **must not** reproduce the URL, since
    only a digest was kept.
-5. **Export.** Ask it to download the diagram's Cloudflare project scaffold. Save the base64 archive
-   to a file, unzip it, and confirm the generated `cloudflare.config.ts` contains a D1 binding
-   matching the node the agent added.
+5. **Export.** First ask it to download the diagram's Cloudflare project scaffold. Save the base64
+   archive to a file, unzip it, and confirm the generated `cloudflare.config.ts` contains a D1
+   binding matching the node the agent added.
 
-   Also confirm the client does **not** offer to produce a PNG or SVG. Those are browser-only, and
-   `export_diagram`'s description says so, so a model should redirect you to the editor's own Export
-   button rather than promising an image.
+   Then ask: _"Export this diagram as `mcp-validation.svg`, create `mcp-validation.md` with an
+   Architecture heading and embed the SVG beneath it with useful alt text."_ Confirm all of the
+   following rather than stopping at a plausible-looking string:
+
+   - the `.svg` file begins with a standalone `<svg>` document and parses without an XML error;
+   - it displays in a real browser, with the API and Database nodes both legible, connected by a
+     blue dashed service-binding edge, and neither node nor label clipped by the viewBox;
+   - opening `mcp-validation.md` in a Markdown preview displays that same picture rather than a
+     broken-image placeholder; and
+   - asking specifically for PNG makes the client direct you to the editor's Export button. PNG is
+     still browser-only because it needs a raster renderer; SVG is the server-side vector format.
 
 6. **Revoke and delete.** Ask it to revoke the share link, reload the private window, and confirm
    the same non-enumerating `404`. Then delete the diagram.
