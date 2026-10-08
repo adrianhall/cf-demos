@@ -408,37 +408,196 @@ page it models. `pnpm check`, `pnpm test` and the coverage gate pass.
 
 These phases implement `09B-ARCHITECT-MCP.md` only after Phase 9.
 
-### Phase 11 — MCP/DO spike
+The source document was written for a Wrangler-deployed demo. Every instruction it gives about
+`wrangler.jsonc.tpl`, `durable_objects.bindings` and `new_sqlite_classes` migrations is void here
+and is replaced by the `cf` equivalents recorded in
+[`03-mcp-spike.md`](./03-mcp-spike.md#4-declaring-a-durable-object-under-cf). That report is the
+authority for these phases wherever it and the source document disagree.
 
-Load the Agents SDK, Durable Objects and Wrangler/cf documentation skills. Re-confirm current
-`createMcpHandler` APIs, Access Managed OAuth Terraform schema, remote OAuth flow, Durable Object
-migration requirements, `workerd` incompatibility of `elkjs`, and test/coverage support. Produce a
-short spike report before production code.
+### Phase 11 — MCP/DO spike — **complete**
+
+#### Goal
+
+Re-confirm every fast-moving surface these phases depend on before writing production code, against
+the versions this repository actually resolves rather than against the source document or its own
+spike report.
+
+#### Deliverables
+
+1. [`03-mcp-spike.md`](./03-mcp-spike.md), answering the current stateless MCP mechanism and exact
+   versions to pin; the Access Managed OAuth schema at the pinned provider; the `cf` Durable Object
+   declaration that replaces Wrangler's migrations; whether `elkjs` runs in `workerd`; hibernatable
+   WebSocket test support; and what Phases 12–15 must do differently.
+2. `agents@0.27.0` and `@modelcontextprotocol/server@2.0.0` added to the demo's dependencies as
+   exact pins, with `pnpm install` run from the repository root. `zod` was already present.
+
+#### Tests
+
+- `pnpm check`, `pnpm test` and the coverage gate pass with the dependencies installed.
+- The built Worker bundle is unchanged, because nothing imports them yet — proved by the existing
+  built-bundle contract test rather than asserted.
+- A throwaway Workers-runtime probe established the `elkjs` result empirically and was deleted; a
+  second throwaway probe established the SDK bundles for `workerd` and was deleted.
+
+#### Exit criteria
+
+Four findings change the later phases and are recorded rather than carried as folklore.
+`@modelcontextprotocol/server` must be pinned to `2.0.0`, because `agents@0.27.0` peer-pins it
+exactly and the newest published `2.3.1` is an unmet peer. The handler can be built once at module
+scope, because its factory receives a per-request context — so the source demo's handler-per-request
+workaround for cross-tenant identity leakage is no longer needed. The pinned Terraform provider has
+moved to 5.27.0 within its `~> 5.22` constraint and still offers Dynamic Client Registration as the
+only registration mechanism. And `elkjs` still fails in `workerd`, so Phase 13's grid fallback is
+confirmed rather than contingent.
 
 ### Phase 12 — MCP read and metadata tools
 
-Add `POST /mcp` with stateless current SDK handler, Access Managed OAuth on the existing Access
-application, MCP resource for a diagram, and services for list/get/create/rename/delete. Tools call
-application services in-process; no internal fetch. Test ownership, schemas and OAuth outcomes.
+#### Goal
+
+Serve an authenticated, stateless MCP endpoint at `POST /mcp` offering the read and metadata half of
+the tool catalogue, reusing the existing Access application and the existing diagram services.
+
+#### Deliverables
+
+1. Add `oauth_configuration` to `infra/access.tf`'s existing `app` application — no second
+   application and no second policy. Enable dynamic client registration with loopback and localhost
+   allowances, and pair a short access-token lifetime with a long grant session so Access
+   re-evaluates policy on every silent refresh. `/mcp*` is already a destination on that resource.
+2. Add `/mcp*` to `assets.runWorkerFirst` in `cloudflare.config.ts`. `/mcp` is not under the
+   existing `/api/*`, so without its own entry every MCP request falls through to the
+   single-page-application asset fallback and 404s. `src/access-policies.ts` already covers the
+   path, so no authorization decision is added here.
+3. Implement `src/worker/mcp/server.ts`: a server factory plus one module-scope `createMcpHandler`,
+   with `route: '/mcp'` and `allowedHostnames` derived from the Terraform `hostname` output. Scope
+   the caller's identity through the factory's request context, never through a module-scope value.
+4. Mount it at `POST /mcp` in the composition root behind the existing Access middleware, and carve
+   `/mcp` out of `enforceSameOriginJson` with a comment: that middleware rejects a request carrying
+   neither `Origin` nor `Sec-Fetch-Site`, which is every non-browser MCP client, and its CSRF
+   reasoning does not apply to a bearer-authenticated caller.
+5. Implement `list_diagrams`, `get_diagram` (tool plus an `architect://diagrams/{id}` resource),
+   `create_diagram`, `rename_diagram` and `delete_diagram` as thin wrappers over the existing
+   diagram application service. Tools call services in-process; never an internal fetch.
+6. Describe every input field with `.describe()`, and state each tool's ownership scoping in its own
+   description so a calling model need not infer the security model from behaviour.
+7. Extend the existing structured log events with `via: 'api' | 'mcp'`.
+
+#### Tests
+
+- An unauthenticated request to `/mcp` is rejected; a request authenticated as a different identity
+  gets the same non-enumerating `404` every diagram route returns, never a `403`.
+- The same-origin carve-out is asserted, so a later tightening of that middleware cannot silently
+  break every tool call.
+- Each tool's schema and ownership scoping, against a fixture D1.
+
+#### Exit criteria
+
+An MCP client can list, create, rename and delete a diagram against a locally running instance
+authenticated with a development JWT. `terraform validate` and `terraform fmt -check` pass; the real
+Managed OAuth round trip is Phase 15's manual check and no phase runs `terraform plan` against the
+account.
 
 ### Phase 13 — Graph mutation tools and live sync
 
-Add pure domain graph mutations and `DiagramSession`. The Worker verifies owner before forwarding an
-upgrade and scrubs/sets the identity header. The object hibernates sockets, holds no durable graph,
-and broadcasts only persisted updates. Test pre-upgrade authorization, 426 handling,
-header-smuggling defence, socket attachment identity, cold start and agent-update toast.
+#### Goal
+
+Let an agent change a diagram's graph and have an open editor tab update live, without adding a
+second write path or a second durable copy of the graph.
+
+#### Deliverables
+
+1. Pure graph-mutation functions in the domain tier — add, update and remove for nodes and edges,
+   with node removal cascading to its edges — unit-tested against fixture graphs with no D1, Worker
+   or MCP involvement.
+2. `autoLayout` as a deterministic grid placement, ordered by a breadth-first traversal from the
+   graph's edges. `elkjs` does not run in `workerd`
+   ([spike §5](./03-mcp-spike.md#5-elkjs-in-workerd--re-verified-and-it-still-fails)), and the
+   `auto_layout_diagram` tool description must say plainly that it produces a simpler arrangement
+   than the editor's own auto-layout button.
+3. A `DiagramSession` Durable Object holding no durable graph of its own: D1 stays authoritative and
+   the object is only a live fan-out point. Declare it in `cloudflare.config.ts` as
+   `exports.durableObject({ storage: 'sqlite' })` plus a matching `bindings.durableObject`, which is
+   what replaces Wrangler's `new_sqlite_classes` migration. Terraform owns nothing of the namespace.
+4. `GET /api/diagrams/:id/live`, under the existing `/api/` prefix so Access and `runWorkerFirst`
+   already cover it. The Worker verifies ownership before forwarding the upgrade, and scrubs any
+   inbound copy of the identity header before setting the verified one, in a single named function.
+5. Accept with `ctx.acceptWebSocket()`, pin the identity with `serializeAttachment()`, and answer a
+   non-upgrade request with `426 Upgrade Required` via `upgradeRequired()`. Persist before
+   broadcasting. Share one discriminated-union frame module between the object and the browser.
+6. Client: open the socket on mount, close on unmount, replace the store's graph on a newer update,
+   and show the "updated by an agent" toast so the canvas does not change without explanation.
+
+#### Tests
+
+- Pre-upgrade authorization, `426` handling, and a smuggled identity header ignored — at the unit
+  level including a differently-cased spelling, and again in the Workers-runtime suite.
+- Identity read from the socket attachment rather than any frame.
+- Reconstruction after `evictAllDurableObjects({ webSockets: 'close' })`, the automated proxy for a
+  hibernating session waking up.
+- Two simulated connections to one diagram both receive the push from a single graph-mutating tool
+  call.
+- `tests/integration/vitest.config.ts` gains the namespace declaration, `fileParallelism: false` and
+  a finite `hookTimeout` alongside its existing `testTimeout`
+  ([spike §6](./03-mcp-spike.md#6-testing-hibernatable-websockets-in-this-repository)).
+
+#### Exit criteria
+
+A graph-mutating tool call reaches an open, connected socket within the same test run.
 
 ### Phase 14 — MCP share and data exports
 
-Add share lifecycle and JSON/scaffold tool operations through existing services. Never expose
-browser-only PNG/SVG tools as server features. Test one-time raw share URL handling and encoded
-scaffold output.
+#### Goal
+
+Complete the tool catalogue with the sharing lifecycle and the two export formats that are pure data
+transforms.
+
+#### Deliverables
+
+1. `create_share_link`, `get_share_status` and `revoke_share_link`, wrapping the existing share
+   service exactly as the REST share routes do.
+2. `export_diagram` in `json` and `scaffold` formats only, reusing the existing DOM-free scaffold
+   generator. PNG and SVG stay browser-only: they depend on the live canvas, and exposing them as
+   server tools would mean promising a capability this demo does not have.
+
+#### Tests
+
+- The raw share URL is disclosed exactly once, on creation, and never reconstructed by status.
+- Both export formats' content, including the encoded scaffold.
+- A revoked or nonexistent diagram behaves identically to the REST routes' `404` posture.
+
+#### Exit criteria
+
+An agent can create a share link and retrieve a project scaffold using only tool calls.
 
 ### Phase 15 — MCP verification
 
-Test real protocol/API conformance, OAuth flow, failure cases, no secret logging, durable-object
-hibernation path, and diagram ownership across HTTP/MCP. Document intentional last-write-wins
-behaviour between the browser's whole-graph autosave and its own agent.
+#### Goal
+
+Prove the whole surface end to end and document the behaviour a presenter and a reader need to
+understand.
+
+#### Deliverables
+
+1. Close coverage gaps across all three Vitest projects, including the new session, mutation and MCP
+   modules.
+2. Run formatting, linting, type checking, coverage, the production build, `terraform fmt -check`
+   and `terraform validate`. No Wrangler generation step exists here; `cf workers types` already
+   runs as part of `check:types`.
+3. Extend `README.md`, `DEMO.md` and `EXPLAIN-DEMO.md`: the `/mcp` endpoint, Managed OAuth as an
+   operator-visible setting to verify after deploy, a presenter script showing a live agent edit
+   appearing in an open tab, and the `via: "mcp"` log field distinguishing it from a browser edit.
+4. Document the intentional last-write-wins behaviour between the browser's whole-graph autosave and
+   its owner's own agent as a deliberate scope boundary, not a defect — real concurrent-editor
+   conflict resolution is Phases 16–20.
+
+#### Tests
+
+Protocol conformance, OAuth failure cases, absence of secret logging, the hibernation path, and
+diagram ownership holding identically across HTTP and MCP.
+
+#### Exit criteria
+
+`pnpm check`, `pnpm test` and the coverage gate pass. The one manual step is the deployed Managed
+OAuth round trip, which cannot be emulated locally because it is an Access-edge feature.
 
 ## 12. Phases 16–20 — Collaboration
 

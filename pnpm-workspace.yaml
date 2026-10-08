@@ -5,3 +5,9 @@ packages:
 allowBuilds:
   workerd: true
   esbuild: true
+  # Pulled in transitively by `agents` (through `@babel/plugin-proposal-decorators`, which backs
+  # the SDK's optional `@callable` Vite transform). Its install script only prints a funding
+  # notice, and no demo imports it, so it is denied rather than allowed.
+  core-js-pure: false
+minimumReleaseAgeExclude:
+  - agents@0.27.0

@@ -45,7 +45,9 @@
   "dependencies": {
     "@adrianhall/cloudflare-toolkit": "^2.7.0",
     "@demos/worker-common": "workspace:*",
+    "@modelcontextprotocol/server": "2.0.0",
     "@xyflow/react": "12.12.0",
+    "agents": "0.27.0",
     "elkjs": "0.12.0",
     "fflate": "0.8.3",
     "hono": "4.13.13",
