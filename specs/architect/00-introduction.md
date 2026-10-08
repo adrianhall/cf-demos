@@ -256,7 +256,10 @@ Everything else. Specifically, and verbatim wherever the file can simply be copi
 - `app.css` in full, including the `--cf-*` token names and the contrast-ratio comments that justify
   each value.
 - The catalog (42 products, vendored official icons), the 8 blueprints, and the node/edge visual
-  model.
+  model. (The 8 blueprints are the porting floor, not a ceiling: Phase 10 of
+  [`02-implementation.md`](./02-implementation.md) adds 14 more so the gallery covers every
+  published Developer Platform reference architecture. That is new scope layered on top of a
+  faithful port, not a change to what is being ported.)
 - Every client component: `AppHeader`, `DarkModeToggle`, `ProductIcon`, `CFNode`, `CFEdge`,
   `ServicePalette`, `PropertiesPanel`, `DetailsPanel`, `Toolbar` and its controls,
   `BlueprintGallery`, `BlueprintPreview`, `CreateDiagramModal`, `DiagramGrid`, `DiagramCard`, the

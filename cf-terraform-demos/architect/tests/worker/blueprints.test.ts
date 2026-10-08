@@ -25,7 +25,7 @@ function parse(graphData: string): GraphData {
 
 describe('blueprints', () => {
   it('defines the full documented set of templates', () => {
-    expect(BLUEPRINTS).toHaveLength(8);
+    expect(BLUEPRINTS).toHaveLength(22);
   });
 
   // A duplicate makes `BLUEPRINT_MAP` keep whichever entry was built last, so creating from that
@@ -58,7 +58,32 @@ describe('blueprints', () => {
   it('uses only the documented gallery categories', () => {
     const categories = new Set(BLUEPRINTS.map((blueprint) => blueprint.category));
 
-    expect([...categories].sort()).toEqual(['AI', 'Media', 'Serverless']);
+    expect([...categories].sort()).toEqual(['AI', 'Media', 'Serverless', 'Storage']);
+  });
+
+  // The reference-architecture templates are transcriptions of a specific published diagram, so a
+  // missing or hand-edited URL loses the only pointer back to the prose that justifies the graph.
+  it('points every reference-architecture template at a canonical Cloudflare URL', () => {
+    const referenced = BLUEPRINTS.filter((blueprint) => blueprint.referenceUrl !== undefined);
+
+    // The four source-ported templates that map onto no single published diagram.
+    expect(referenced).toHaveLength(BLUEPRINTS.length - 4);
+
+    for (const blueprint of referenced) {
+      expect(blueprint.referenceUrl, `${blueprint.id} needs an absolute docs URL`).toMatch(
+        /^https:\/\/developers\.cloudflare\.com\/reference-architecture\/diagrams\/[a-z-]+\/[a-z0-9-]+\/$/
+      );
+    }
+  });
+
+  // A duplicated URL means two templates claim to be the same published architecture, which is
+  // either a copy-paste slip or a genuine duplicate blueprint.
+  it('maps at most one template onto each reference architecture', () => {
+    const urls = BLUEPRINTS.flatMap((blueprint) =>
+      blueprint.referenceUrl === undefined ? [] : [blueprint.referenceUrl]
+    );
+
+    expect(new Set(urls).size).toBe(urls.length);
   });
 
   it('serialises every graph as valid JSON with nodes, edges and a viewport', () => {

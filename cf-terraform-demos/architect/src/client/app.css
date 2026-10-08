@@ -859,6 +859,15 @@ button {
   margin: 0.5rem 0 0;
 }
 
+/* Provenance link for a blueprint transcribed from a published Cloudflare reference
+   architecture (`./CreateDiagramModal.tsx`). Deliberately a prose link rather than one of the
+   chrome controls: it leaves the application, so it keeps the default underline affordance that
+   `.app-shell__nav-link` and `.button` opt out of. */
+.create-diagram-modal__reference {
+  font-size: 0.85rem;
+  margin: 0.75rem 0 0;
+}
+
 /* Bug 8 (docs/09-ARCHITECT.md Phase 10): "./toolbar/ConnectNodesModal.tsx"'s validation message
    (self-connection, or an exact source/target/edge-type duplicate). Not shared with
    `.create-diagram-modal__error` above -- same visual treatment, but the two modals are

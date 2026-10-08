@@ -116,6 +116,20 @@ function CreateForm({ blueprint, onClose }: CreateFormProps) {
             rows={3}
           />
 
+          {/* Provenance for the templates transcribed from a published Cloudflare reference
+              architecture. It lives here rather than on the gallery card because a card is a
+              single activation target — a link inside it would be a nested interactive element —
+              and because this is the point at which someone is deciding whether this really is
+              the pattern they want. A prose link, so it keeps the normal underlined affordance
+              rather than the chrome treatment. */}
+          {blueprint?.referenceUrl && (
+            <p className="create-diagram-modal__reference">
+              <a href={blueprint.referenceUrl} target="_blank" rel="noopener noreferrer">
+                Read the reference architecture
+              </a>
+            </p>
+          )}
+
           {error && (
             <p className="create-diagram-modal__error" role="alert">
               {error}

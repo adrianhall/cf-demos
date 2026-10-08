@@ -6,13 +6,13 @@ Cloudflare Worker, D1, Workers KV, Static Assets and Cloudflare Access.
 This directory contains **Phases 1–7 (Layer 1)** of the port: the deployable lifecycle and complete
 source stylesheet; production-equivalent Cloudflare Access policy; the source application header,
 identity states, three-state appearance control, landing page, catalogue-backed hero diagram; the
-initial user-directory side effect; the complete creation journey — the eight blueprint templates,
-the filterable gallery with real React Flow thumbnails, the two-column create modal, and the
-personal dashboard with duplicate and delete — the full single-user editor, read-only anonymous
-sharing, the administrator directory and moderation surface, browser PNG/SVG/scaffold exports, print
-mode, guarded local preferences, the complete 35-finding source regression audit, WCAG 2.2 AA
-review, and production-bundle performance contract. See [`BUG-AUDIT.md`](BUG-AUDIT.md) for the
-bug-by-bug evidence and browser record, [`DEMO.md`](DEMO.md) for a presentation walkthrough, and
+initial user-directory side effect; the complete creation journey — the 22 blueprint templates, the
+filterable gallery with real React Flow thumbnails, the two-column create modal, and the personal
+dashboard with duplicate and delete — the full single-user editor, read-only anonymous sharing, the
+administrator directory and moderation surface, browser PNG/SVG/scaffold exports, print mode,
+guarded local preferences, the complete 35-finding source regression audit, WCAG 2.2 AA review, and
+production-bundle performance contract. See [`BUG-AUDIT.md`](BUG-AUDIT.md) for the bug-by-bug
+evidence and browser record, [`DEMO.md`](DEMO.md) for a presentation walkthrough, and
 [`EXPLAIN-DEMO.md`](EXPLAIN-DEMO.md) for the architectural lessons.
 
 The editor retains the source Zustand model, undo/redo, 500 ms whole-graph autosave, searchable and

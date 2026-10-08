@@ -89,6 +89,49 @@ describe('CreateDiagramModal', () => {
       expect(screen.queryByTestId('react-flow')).not.toBeInTheDocument();
     });
 
+    // Provenance for a template transcribed from a published reference architecture. It belongs
+    // here rather than on a gallery card, which is a single activation target.
+    it('links to the reference architecture a template was transcribed from', () => {
+      render(
+        <CreateDiagramModal
+          open
+          onClose={vi.fn()}
+          blueprint={{
+            ...SAMPLE,
+            referenceUrl:
+              'https://developers.cloudflare.com/reference-architecture/diagrams/ai/ai-rag/'
+          }}
+        />
+      );
+
+      const link = screen.getByRole('link', { name: /reference architecture/iu });
+
+      expect(link).toHaveAttribute(
+        'href',
+        'https://developers.cloudflare.com/reference-architecture/diagrams/ai/ai-rag/'
+      );
+      // Opening a new tab without `noopener` would hand the docs page a `window.opener` handle
+      // back into an authenticated session.
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      expect(link).toHaveAttribute('target', '_blank');
+    });
+
+    it('omits the reference link for a template that has no published diagram', () => {
+      render(<CreateDiagramModal open onClose={vi.fn()} blueprint={SAMPLE} />);
+
+      expect(
+        screen.queryByRole('link', { name: /reference architecture/iu })
+      ).not.toBeInTheDocument();
+    });
+
+    it('omits the reference link for a blank canvas', () => {
+      render(<CreateDiagramModal open onClose={vi.fn()} blueprint={null} />);
+
+      expect(
+        screen.queryByRole('link', { name: /reference architecture/iu })
+      ).not.toBeInTheDocument();
+    });
+
     it('names the dialog after the template, or after the blank-canvas heading', () => {
       const { unmount } = render(<CreateDiagramModal open onClose={vi.fn()} blueprint={SAMPLE} />);
 

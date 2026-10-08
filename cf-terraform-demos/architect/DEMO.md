@@ -26,9 +26,12 @@ A 15–20 minute Layer 1 walkthrough. See [`README.md`](README.md) for setup/lif
 
 ## 2. Create and edit (5 minutes)
 
-1. Sign in and choose **+ New Diagram** → **API Gateway**.
+1. Sign in and choose **+ New Diagram** → **API Gateway**. The gallery holds 22 templates filtered
+   by AI, Serverless, Media and Storage; 18 of them transcribe a published Cloudflare
+   [Developer Platform reference architecture](https://developers.cloudflare.com/reference-architecture/by-solution/#developer-platform).
 2. In the create dialog, point out initial focus, labelled fields, Escape/Cancel/close equivalence,
-   and the real miniature React Flow preview.
+   the real miniature React Flow preview, and the link back to the reference architecture the
+   template came from.
 3. Create the diagram. The seven-node blueprint is centred and fitted on first render.
 4. Add a product from the service palette by keyboard activation, then edit its label/description.
 5. Use **Connect nodes** with only the keyboard. This native-form route is the WCAG alternative to

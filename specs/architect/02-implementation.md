@@ -30,9 +30,9 @@ that a working source UI is copied before any feature is reimplemented.
 
 ### 1.2 Phase numbering
 
-Phases 1–10 deliver source parity. The source documents reserve Phases 11–15 for MCP, 16–20 for
-collaboration, and 21–26 for AI assistance; preserve that numbering so plans and decisions can be
-cross-referenced without translation.
+Phases 1–9 deliver source parity and Phase 10 extends the blueprint gallery beyond it. The source
+documents reserve Phases 11–15 for MCP, 16–20 for collaboration, and 21–26 for AI assistance;
+preserve that numbering so plans and decisions can be cross-referenced without translation.
 
 ## 2. Phase 1 — Scaffold, lifecycle, and visual baseline
 
@@ -346,6 +346,63 @@ Only once the above is signed off, and as a deliberate separate change:
 4. Update `README.md`, `DEMO.md`, and `EXPLAIN-DEMO.md` URLs.
 
 Until step 1 is complete, treat `architect.cfapps.uk` as production belonging to someone else.
+
+## 10a. Phase 10 — Reference-architecture blueprint expansion
+
+### Goal
+
+Grow the blueprint gallery from the source application's 8 templates to cover every Cloudflare
+**Developer Platform** reference architecture, so the gallery teaches the published architecture
+catalogue rather than an arbitrary sample of it.
+
+This is **new scope, not a dropped port item.** The source application shipped 8 blueprints and the
+port reproduced all 8 faithfully in Phase 3; nothing was lost in porting. The source's set simply
+predates, and never tracked,
+[Find by solution → Developer Platform](https://developers.cloudflare.com/reference-architecture/by-solution/#developer-platform),
+which lists 18 diagrams across AI, Serverless and Storage. Four of those 18 were already
+represented, so this phase adds the missing 14 and reaches 22 templates in total.
+
+### Deliverables
+
+1. Map the existing 8 templates against the 18 published diagrams before authoring anything. The
+   four already covered are RAG (`ai-rag`), Fullstack Applications (`fullstack-app`), Programmable
+   Platforms (`multi-tenant-saas`) and Serverless global APIs (`api-gateway`); they are not
+   duplicated or re-authored. `event-driven`, `media-pipeline`, `bff` and `realtime-collab` remain
+   as source-ported templates with no published counterpart.
+2. Add 14 blueprints, each transcribed from its page's numbered request flow rather than invented:
+   five AI (automatic captioning, composable AI, content-based asset creation, multi-vendor
+   observability, BigQuery ingestion), four Serverless (optimized image delivery, A/B testing,
+   serverless ETL, image content management) and five Storage (egress-free multi-cloud, on-demand
+   migration, event notifications, user-generated content, control/data plane).
+3. Introduce the **Storage** category. The gallery derives its filter pills from the template data,
+   so the new pill must appear with no gallery change; verify that rather than assuming it.
+4. Add an optional `referenceUrl` to `Blueprint` recording the canonical documentation page, and
+   surface it in the create-diagram modal. It must not go on a gallery card: a card is a single
+   activation target, so a link inside it would be a nested interactive element.
+5. Use only the existing 42 catalogue products. This phase adds no catalogue entries; where a
+   published diagram names a non-Cloudflare component, model it with the generic external actor
+   nodes the catalogue already provides.
+6. Update the blueprint count and category wording in `README.md`, `DEMO.md`, the specification's
+   port inventory, and the introduction's layer description.
+
+### Tests
+
+- The template count, the category set including Storage, and one-template-per-reference-URL.
+- Every `referenceUrl` is an absolute canonical reference-architecture URL, and every template
+  without one is a deliberate source-ported exception.
+- Existing structural invariants continue to cover the new templates: catalogue type resolution,
+  intra-blueprint edge endpoints, canonical graph form, shared React Flow type keys, and unique
+  node/edge ids.
+- Client tests cover the reference link's presence, absence for blank canvas and for an unreferenced
+  template, and its `noopener noreferrer` target semantics.
+- The gallery's data-driven filter tests must cover the new category without modification.
+- Browser review confirms the new thumbnails render as real diagrams at desktop and narrow widths.
+
+### Exit criteria
+
+The gallery offers 22 templates under All/Serverless/AI/Media/Storage, every Developer Platform
+reference architecture is represented exactly once, and each transcribed template links back to the
+page it models. `pnpm check`, `pnpm test` and the coverage gate pass.
 
 ## 11. Phases 11–15 — MCP and one-way agent live sync
 
