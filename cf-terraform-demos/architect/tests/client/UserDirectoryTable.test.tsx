@@ -63,6 +63,34 @@ describe('loading', () => {
 
     await waitFor(() => expect(mockListUsers).toHaveBeenCalledWith({ limit: 20, offset: 0 }));
   });
+
+  // A directory page routinely outlives the component: an administrator who clicks away while a
+  // page is in flight unmounts the table before the response lands. Committing it then is
+  // discarded work pretending to be a render, and React reports it as an update to an unmounted
+  // component — so the effect's cleanup flag is what keeps the console clean and the work honest.
+  it('does not commit a page that arrived after the administrator navigated away', async () => {
+    let deliver: (value: ReturnType<typeof page>) => void = () => undefined;
+    mockListUsers.mockReturnValue(
+      new Promise<ReturnType<typeof page>>((resolve) => {
+        deliver = resolve;
+      })
+    );
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      const { unmount } = render(<UserDirectoryTable />);
+      unmount();
+
+      deliver(page([user()]));
+      // One turn is enough for the `.then` chain the effect left behind to run to completion.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
+  });
 });
 
 describe('the rows', () => {

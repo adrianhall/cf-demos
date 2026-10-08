@@ -255,6 +255,24 @@ describe('auto layout', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
+  // The other menu item, and the default one, so neither branch of the direction choice is
+  // reachable only through the option that happens to be tested. `DOWN` is what the button does
+  // with no menu at all, so an option that quietly stopped selecting it would look like no change
+  // until somebody had switched to `RIGHT` first.
+  it('lays out downward when the top-to-bottom option is chosen', async () => {
+    withTwoNodes();
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose layout direction' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '↓ Top to bottom' }));
+
+    await waitFor(() => expect(mockElkLayout).toHaveBeenCalled());
+    expect(mockElkLayout.mock.calls[0]?.[0]).toMatchObject({
+      layoutOptions: { 'elk.direction': 'DOWN' }
+    });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
   it('remembers the chosen direction for the next press', async () => {
     withTwoNodes();
     render(<Toolbar />);

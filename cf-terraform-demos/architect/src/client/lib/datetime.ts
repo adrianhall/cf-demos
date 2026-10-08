@@ -71,20 +71,32 @@ export function formatRelativeDate(iso: string, now: Date = new Date()): string 
   const deltaSeconds = (new Date(iso).getTime() - now.getTime()) / 1000;
   const absoluteSeconds = Math.abs(deltaSeconds);
 
+  // An unparseable timestamp yields `NaN`, which compares false against every rung below and
+  // would reach `Intl.RelativeTimeFormat.format(NaN)` — and that throws a `RangeError` rather
+  // than returning something odd. Thrown from a render, it takes the whole dashboard down over a
+  // single malformed row, so it is caught here and reported as the one honest thing that can be
+  // said about a date nobody can read.
+  if (Number.isNaN(absoluteSeconds)) {
+    return 'unknown';
+  }
+
   if (absoluteSeconds < 60) {
     return 'just now';
   }
 
   const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
 
-  // Exhaustive by construction: the guard above has ruled out anything under a minute, and the
-  // final rung is one minute, so some rung always matches.
+  // Exhaustive by construction, now that it genuinely is: the two guards above have ruled out
+  // `NaN` and anything under a minute, and the final rung is one minute, so some rung always
+  // matches. The `NaN` guard is what makes that claim true — without it this loop fell through
+  // for an unreadable date, which is how the throw below was discovered.
   for (const { seconds, unit } of RELATIVE_UNITS) {
     if (absoluteSeconds >= seconds) {
       return formatter.format(Math.round(deltaSeconds / seconds), unit);
     }
   }
 
-  // Unreachable. Present to satisfy the compiler, which cannot see the loop's exhaustiveness.
-  return formatter.format(Math.round(deltaSeconds / 60), 'minute');
+  /* istanbul ignore next -- the loop above is exhaustive for every value reaching it; this line
+     exists only because the compiler cannot see that, and no input can execute it. */
+  return 'unknown';
 }

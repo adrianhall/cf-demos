@@ -481,6 +481,38 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
   }, [printMode, fitView, getNodes, getNodesBounds, setPrintMode]);
 
   /**
+   * Adds one catalogue service to the canvas at a screen point, ignoring an unknown type.
+   *
+   * Both ways of adding a service go through here — dropping one and activating one from the
+   * keyboard — so the two cannot drift into producing differently-shaped nodes, and the "is this a
+   * product we know?" decision is taken once. A drag from outside the palette (a file, a link,
+   * another tab) carries no type of ours, and inventing a node for it would be surprising; the
+   * keyboard path cannot produce an unknown type at all, because the palette only renders the
+   * catalogue, but it inherits the same guard for free rather than restating it.
+   *
+   * @param typeId Catalogue type to add. Anything the catalogue does not define is ignored.
+   * @param screenPoint Where on screen the node should appear, converted to canvas coordinates here
+   *   so neither caller has to know about React Flow's viewport transform.
+   * @returns Nothing.
+   */
+  const addCatalogueNode = useCallback(
+    (typeId: string, screenPoint: { x: number; y: number }) => {
+      const typeDef = NODE_TYPE_MAP.get(typeId);
+      if (!typeId || !typeDef) {
+        return;
+      }
+
+      addNode({
+        data: { description: '', label: typeDef.label, typeId },
+        id: `${typeId}-${Date.now()}`,
+        position: screenToFlowPosition(screenPoint),
+        type: CF_NODE_TYPE
+      });
+    },
+    [screenToFlowPosition, addNode]
+  );
+
+  /**
    * Adds a service dropped from the palette, at the point it was dropped.
    *
    * @param event Drop event carrying the catalogue type.
@@ -489,22 +521,12 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
-      const typeId = event.dataTransfer.getData('application/cf-node-type');
-      const typeDef = NODE_TYPE_MAP.get(typeId);
-      // Ignored rather than guessed at: a drag from outside the palette — a file, a link, another
-      // tab — carries no type of ours, and inventing a node for it would be surprising.
-      if (!typeId || !typeDef) {
-        return;
-      }
-
-      addNode({
-        data: { description: '', label: typeDef.label, typeId },
-        id: `${typeId}-${Date.now()}`,
-        position: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
-        type: CF_NODE_TYPE
+      addCatalogueNode(event.dataTransfer.getData('application/cf-node-type'), {
+        x: event.clientX,
+        y: event.clientY
       });
     },
-    [screenToFlowPosition, addNode]
+    [addCatalogueNode]
   );
 
   /**
@@ -529,22 +551,9 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
    */
   const onAddNodeFromPalette = useCallback(
     (typeId: string) => {
-      const typeDef = NODE_TYPE_MAP.get(typeId);
-      if (!typeDef) {
-        return;
-      }
-
-      addNode({
-        data: { description: '', label: typeDef.label, typeId },
-        id: `${typeId}-${Date.now()}`,
-        position: screenToFlowPosition({
-          x: window.innerWidth / 2,
-          y: window.innerHeight / 2
-        }),
-        type: CF_NODE_TYPE
-      });
+      addCatalogueNode(typeId, { x: window.innerWidth / 2, y: window.innerHeight / 2 });
     },
-    [screenToFlowPosition, addNode]
+    [addCatalogueNode]
   );
 
   const onNodeClick = useCallback(

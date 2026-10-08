@@ -21,6 +21,42 @@ import type { McpToolContext } from '../mcp/tools.ts';
 const contextsByRequest = new WeakMap<Request, McpToolContext>();
 
 /**
+ * Records the verified context for one request, immediately before it is handed to the handler.
+ *
+ * Paired with {@link requireToolContext} and named rather than inlined for the same reason
+ * `withVerifiedIdentity` is a named function in `../infrastructure/session-protocol.ts`: the
+ * recording and the lookup are two halves of one rule, and a rule split across two anonymous
+ * expressions is a rule somebody edits half of.
+ *
+ * @param request The very `Request` object the handler will be given, which is also what it passes
+ *   back to its server factory as `requestInfo`. Identity is keyed on that object rather than on
+ *   any value inside it, so no two concurrent callers can collide.
+ * @param context Verified per-request tool context to scope this request's tools to.
+ */
+export function recordToolContext(request: Request, context: McpToolContext): void {
+  contextsByRequest.set(request, context);
+}
+
+/**
+ * Reads back the verified context for one request, refusing to run without it.
+ *
+ * @param request The request the MCP handler is serving, as received by its server factory.
+ * @returns The context {@link recordToolContext} recorded for that exact request.
+ * @throws {Error} When no context was recorded. That means the handler was invoked with a request
+ *   this router never saw, so there is no verified identity to scope the tools to — and building a
+ *   server with a guessed identity is the only outcome worse than refusing. The MCP SDK turns the
+ *   throw into a JSON-RPC error, so a caller is told the request failed rather than being served
+ *   somebody else's diagrams.
+ */
+export function requireToolContext(request: Request): McpToolContext {
+  const context = contextsByRequest.get(request);
+  if (context === undefined) {
+    throw new Error('No verified MCP tool context was recorded for this request.');
+  }
+  return context;
+}
+
+/**
  * The one module-scope stateless handler this isolate serves.
  *
  * `createMcpHandler` needs `allowedHostnames` when it is constructed, while a Worker binding is
@@ -57,16 +93,7 @@ function handlerFor(hostname: string): { fetch: (request: Request) => Promise<Re
 
   // This is the one `createMcpHandler` construction per Worker isolate. Its factory, not the
   // handler, runs per request and looks up the context keyed by that original Request.
-  handler = createArchitectMcpHandler(hostname, (request) => {
-    const context = contextsByRequest.get(request);
-    if (context === undefined) {
-      // Fail closed, loudly. Reaching here would mean the handler had been invoked with a request
-      // this router never saw — so there is no verified identity to scope the tools to, and
-      // guessing one would be the only worse option than refusing.
-      throw new Error('No verified MCP tool context was recorded for this request.');
-    }
-    return context;
-  });
+  handler = createArchitectMcpHandler(hostname, requireToolContext);
   configuredHostname = hostname;
 
   return handler;
@@ -118,7 +145,7 @@ export function createMcpRouter(): Hono<AppBindings> {
     }
 
     const request = context.req.raw;
-    contextsByRequest.set(request, {
+    recordToolContext(request, {
       actorEmail: currentIdentityEmail(context),
       diagrams: context.var.DIAGRAM_SERVICE,
       logger: context.var.LOGGER,

@@ -253,8 +253,15 @@ describe('with an edge selected', () => {
     expect(useDiagramStore.getState().edges[0]?.data?.protocol).toBeUndefined();
   });
 
+  // An edge persisted before the data payload existed has no `data` key at all, and still has to
+  // render something editable. Set directly rather than through `selectEdge`, because that
+  // helper's default parameter turns an explicit `undefined` into a real data flow — so calling
+  // it with `undefined` would assert the ordinary case under the name of this one.
   it('treats an edge with no data at all as a data flow', () => {
-    selectEdge(undefined);
+    useDiagramStore.setState({
+      edges: [{ id: 'e1', source: 'a', target: 'b' }],
+      selectedEdgeId: 'e1'
+    });
     render(<DetailsPanel />);
 
     expect(screen.getByLabelText('Edge Type')).toHaveValue('data-flow');

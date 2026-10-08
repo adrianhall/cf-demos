@@ -290,6 +290,27 @@ describe('addEdge', () => {
     });
   });
 
+  // Each optional field is omitted independently, so the whole set has to be exercised rather
+  // than a representative one: an absent key and a key holding `undefined` serialize differently
+  // into `graphData`, and the canvas reads one of them as an annotation it should render.
+  it('carries every optional field when all are supplied', () => {
+    const result = addEdge(graphOf([nodeOf('a'), nodeOf('b')]), {
+      description: 'Writes user rows on each request.',
+      edgeType: 'service-binding',
+      label: 'writes',
+      protocol: 'binding',
+      source: 'a',
+      target: 'b'
+    });
+
+    expect(result.edges[0]?.data).toEqual({
+      description: 'Writes user rows on each request.',
+      edgeType: 'service-binding',
+      label: 'writes',
+      protocol: 'binding'
+    });
+  });
+
   it('mints an id when the caller supplies none, and honours one when given', () => {
     const base = graphOf([nodeOf('a'), nodeOf('b')]);
 

@@ -56,4 +56,16 @@ describe('formatRelativeDate', () => {
   it('defaults its reference instant to the current time', () => {
     expect(formatRelativeDate(new Date().toISOString())).toBe('just now');
   });
+
+  // Not a hypothetical. `Intl.RelativeTimeFormat.format(NaN)` throws a `RangeError` rather than
+  // returning something odd, and thrown from a render that takes the whole dashboard down — so a
+  // single unreadable `updated_at` would blank a list of perfectly good diagrams. Saying
+  // "unknown" is the one honest thing available about a date nobody can read.
+  it.each([
+    ['an unparseable string', 'not-a-date'],
+    ['an empty string', ''],
+    ['a date-shaped string that is not a date', '2026-13-45T99:99:99Z']
+  ])('reports %s as unknown rather than throwing', (_label, iso) => {
+    expect(formatRelativeDate(iso, NOW)).toBe('unknown');
+  });
 });

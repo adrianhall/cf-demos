@@ -117,6 +117,54 @@ async function mcpRequestAs(
 }
 
 /**
+ * Every tool this server advertises, with the arguments that exercise it against a fixture diagram.
+ *
+ * Written out rather than derived from `tools/list`, deliberately. Deriving it would make a
+ * catalogue assertion compare the server against itself, so deleting a tool would quietly delete
+ * its coverage too. This list is the independent statement of what the catalogue must contain,
+ * which is what lets `tools/list` be checked against something rather than against its own output.
+ */
+const TOOL_CATALOGUE: {
+  /**
+   * How the tool is reached: `mutating` tools change a graph, `reading` ones do not.
+   */
+  category: 'export' | 'graph' | 'metadata' | 'read' | 'share';
+  /**
+   * Registered tool name.
+   */
+  name: string;
+  /**
+   * Arguments to call it with, before the fixture diagram id is added.
+   */
+  args: Record<string, unknown>;
+}[] = [
+  { args: {}, category: 'read', name: 'list_diagrams' },
+  { args: {}, category: 'read', name: 'get_diagram' },
+  { args: { title: 'Created in a catalogue sweep' }, category: 'metadata', name: 'create_diagram' },
+  { args: { title: 'Renamed in a catalogue sweep' }, category: 'metadata', name: 'rename_diagram' },
+  {
+    args: { id: 'swept', label: 'Swept', position: { x: 0, y: 0 }, typeId: 'worker' },
+    category: 'graph',
+    name: 'add_node'
+  },
+  { args: { label: 'Swept again', nodeId: 'swept' }, category: 'graph', name: 'update_node' },
+  {
+    args: { edgeType: 'service-binding', id: 'swept-edge', source: 'swept', target: 'swept' },
+    category: 'graph',
+    name: 'add_edge'
+  },
+  { args: { edgeId: 'swept-edge', label: 'swept' }, category: 'graph', name: 'update_edge' },
+  { args: { edgeId: 'swept-edge' }, category: 'graph', name: 'remove_edge' },
+  { args: { nodeId: 'swept' }, category: 'graph', name: 'remove_node' },
+  { args: {}, category: 'graph', name: 'auto_layout_diagram' },
+  { args: {}, category: 'share', name: 'create_share_link' },
+  { args: {}, category: 'share', name: 'get_share_status' },
+  { args: {}, category: 'share', name: 'revoke_share_link' },
+  { args: { format: 'json' }, category: 'export', name: 'export_diagram' },
+  { args: {}, category: 'metadata', name: 'delete_diagram' }
+];
+
+/**
  * Dispatches a request through the Worker under test.
  *
  * @param request Request to dispatch.
@@ -174,6 +222,27 @@ function toolText(body: Record<string, unknown>): string {
   }
 
   return first.text;
+}
+
+/**
+ * Reads the message from a `tools/call` payload that reported a failed tool.
+ *
+ * Separate from {@link toolText}, which refuses an error result: the ownership comparison needs the
+ * _refusal_ text specifically, so that the wording an agent is shown can be compared with the
+ * wording the HTTP API returns.
+ *
+ * @param body Parsed JSON-RPC response payload.
+ * @returns The failed tool's message.
+ * @throws {Error} When the payload is not a failed tool result, so a passing assertion cannot be
+ *   produced by a successful call that happened to contain the expected text.
+ */
+function toolErrorText(body: Record<string, unknown>): string {
+  const result = body.result as { content?: { text?: string }[]; isError?: boolean } | undefined;
+  const text = result?.content?.[0]?.text;
+  if (result?.isError !== true || typeof text !== 'string') {
+    throw new Error(`Expected a failed MCP tool result, received ${JSON.stringify(body)}.`);
+  }
+  return text;
 }
 
 /**
@@ -557,5 +626,299 @@ describe('the MCP endpoint', () => {
     // lost link up, because nothing can.
     const status = body.result.tools.find((tool) => tool.name === 'get_share_status');
     expect(status?.description).toContain('never returns the link');
+  });
+
+  // Protocol conformance against the real handler rather than against a client library's idea of
+  // it. A model never sees this server's source — it sees `tools/list`, and decides what to call
+  // from that alone — so the catalogue and the schemas are the public contract, and a tool that
+  // disappears from it has disappeared regardless of whether its function still exists.
+  describe('protocol conformance', () => {
+    it('advertises exactly the catalogue, with no tool missing and none added', async () => {
+      const response = await send(await mcpRequestAs(ALICE, 'tools/list', {}));
+      const body = (await response.json()) as { result: { tools: { name: string }[] } };
+
+      expect(new Set(body.result.tools.map((tool) => tool.name))).toEqual(
+        new Set(TOOL_CATALOGUE.map((tool) => tool.name))
+      );
+    });
+
+    // Every advertised tool declares an object schema whose every property is described. A model
+    // chooses arguments from these descriptions, so an undescribed field is a field it has to
+    // guess at — and a guess at, say, canvas units places a node plausibly rather than visibly
+    // wrongly, which is the failure nobody notices.
+    it('advertises a described object schema for every tool', async () => {
+      const response = await send(await mcpRequestAs(ALICE, 'tools/list', {}));
+      const body = (await response.json()) as {
+        result: {
+          tools: {
+            description?: string;
+            inputSchema: { properties?: Record<string, unknown>; type?: string };
+            name: string;
+            title?: string;
+          }[];
+        };
+      };
+
+      for (const tool of body.result.tools) {
+        expect(tool.inputSchema.type, `${tool.name} input schema`).toBe('object');
+        expect(tool.title, `${tool.name} title`).toEqual(expect.any(String));
+        expect(tool.description?.length ?? 0, `${tool.name} description`).toBeGreaterThan(40);
+        for (const [field, property] of Object.entries(tool.inputSchema.properties ?? {})) {
+          expect(property, `${tool.name}.${field}`).toMatchObject({
+            description: expect.any(String) as string
+          });
+        }
+      }
+    });
+
+    // An actual round trip of every tool in the catalogue, in an order that leaves the fixture
+    // consistent. A tool whose registered schema rejects the arguments its own description
+    // promises fails here and nowhere else: a unit test calls the tool function directly and
+    // never sees the schema at all.
+    it('round-trips every tool in the catalogue over the wire', async () => {
+      const diagramId = await seedDiagram(ALICE, 'Catalogue sweep');
+      const reached = new Set<string>();
+
+      for (const { args, name } of TOOL_CATALOGUE) {
+        const includesDiagram = name !== 'list_diagrams' && name !== 'create_diagram';
+        const { body, status } = await callTool(ALICE, name, {
+          ...args,
+          ...(includesDiagram ? { diagramId } : {})
+        });
+
+        expect(status, `${name} transport status`).toBe(200);
+        expect(body, `${name} result`).not.toMatchObject({ result: { isError: true } });
+        expect(body, `${name} JSON-RPC error`).not.toHaveProperty('error');
+        reached.add(name);
+      }
+
+      expect(reached.size).toBe(TOOL_CATALOGUE.length);
+    });
+
+    // The protocol's own error channel, which is not an HTTP status. A failed tool call is a
+    // `200` carrying `isError: true`, because the JSON-RPC call itself succeeded — and a client
+    // that treated the status as the result would report every refusal as a success.
+    it('reports a refused tool call as a 200 carrying isError', async () => {
+      const refused = await callTool(ALICE, 'get_diagram', {
+        diagramId: '11111111-1111-4111-8111-111111111111'
+      });
+
+      expect(refused.status).toBe(200);
+      expect(refused.body).toMatchObject({
+        id: 1,
+        jsonrpc: '2.0',
+        result: { content: [{ text: 'Diagram not found.', type: 'text' }], isError: true }
+      });
+    });
+
+    it('reports an unknown tool as a JSON-RPC error rather than an empty success', async () => {
+      const unknown = await callTool(ALICE, 'drop_database');
+
+      expect(unknown.status).toBe(200);
+      expect(unknown.body).toHaveProperty('error');
+    });
+
+    // Four declarations have to agree on the literal `/mcp` for a tool call to work at all: the
+    // handler's own `route`, the Hono mount, the `runWorkerFirst` entry and the same-origin
+    // carve-out. Three of them are exact matches and one is a prefix, so a sibling path is
+    // authenticated and reaches the Worker but is served by nothing — which this pins, because a
+    // future route accidentally added under the prefix would otherwise inherit the carve-out
+    // silently.
+    it('serves no path but the configured route, and extends its carve-out to none either', async () => {
+      const token = await signDevJwt(ALICE, { audience: AUD });
+
+      /**
+       * Posts an MCP-shaped body to one path as a verified caller.
+       *
+       * @param path Path to post to.
+       * @param browserLike Whether to send the `Sec-Fetch-Site` header a browser would, which is
+       *   what distinguishes the same-origin refusal from the routing one.
+       * @returns The response status.
+       */
+      async function postTo(path: string, browserLike: boolean): Promise<number> {
+        const response = await send(
+          new Request(`${ORIGIN}${path}`, {
+            body: JSON.stringify({ id: 1, jsonrpc: '2.0', method: 'tools/list', params: {} }),
+            headers: {
+              'accept': 'application/json, text/event-stream',
+              'content-type': 'application/json',
+              'host': HOST,
+              ...(browserLike ? { 'sec-fetch-site': 'same-origin' } : {}),
+              [JWT_HEADER]: token
+            },
+            method: 'POST'
+          })
+        );
+        await response.text();
+        return response.status;
+      }
+
+      // The carve-out is an exact pathname match, so a sibling path is still guarded and a
+      // non-browser caller is refused there before routing even looks at it.
+      expect(await postTo('/mcp/tools', false)).toBe(403);
+
+      // Past that guard, nothing serves the sibling path: the router mounts only `/mcp`, and the
+      // handler would 404 it in turn even if the router did not.
+      expect(await postTo('/mcp/tools', true)).toBe(404);
+
+      // And the real route still works, so the two refusals above are about the path rather than
+      // about anything this test did to the request.
+      expect(await postTo('/mcp', false)).toBe(200);
+    });
+  });
+
+  // Managed OAuth itself cannot be emulated locally — Access resolves an opaque token at its own
+  // edge — but everything it hands this Worker can be. Access forwards a signed
+  // `Cf-Access-Jwt-Assertion` header, so from here an OAuth-authenticated MCP client is
+  // indistinguishable from a browser, and these are the three ways that header fails.
+  describe('authentication failures at the MCP endpoint', () => {
+    it('refuses a request with no credential at all', async () => {
+      const response = await send(mcpRequest('tools/list', {}));
+      await response.text();
+
+      expect(response.status).toBe(401);
+      expect(response.headers.get('content-type')).toContain('application/problem+json');
+    });
+
+    // The defence that matters most, and the reason an `aud` check is not optional: every Access
+    // application in a team shares one JWKS, so a token minted for an unrelated application —
+    // including one an attacker legitimately holds for a different app on the same team — passes
+    // signature validation. The audience check is the only thing that refuses it.
+    it('refuses a correctly signed token minted for a different Access application', async () => {
+      const response = await send(
+        mcpRequest('tools/list', {}, await signDevJwt(ALICE, { audience: 'b'.repeat(64) }))
+      );
+      await response.text();
+
+      expect(response.status).toBe(401);
+    });
+
+    it('refuses an expired token', async () => {
+      const response = await send(
+        mcpRequest('tools/list', {}, await signDevJwt(ALICE, { audience: AUD, lifetime: -60 }))
+      );
+      await response.text();
+
+      expect(response.status).toBe(401);
+    });
+
+    // Refused *before* the handler, not by it. The body is an RFC 9457 problem document rather
+    // than a JSON-RPC error, which is the correct layering: the request never became an MCP
+    // message, so answering it in MCP's vocabulary would imply the server had read it.
+    it('answers with a problem document rather than a JSON-RPC error', async () => {
+      const response = await send(
+        mcpRequest('tools/call', { arguments: {}, name: 'list_diagrams' })
+      );
+      const body = (await response.json()) as Record<string, unknown>;
+
+      expect(body).not.toHaveProperty('jsonrpc');
+      expect(body).toMatchObject({ status: 401 });
+    });
+
+    // A browser's `WebSocket` and a non-browser MCP client are alike in one way that matters: a
+    // `302` to a login page is something neither can follow. `redirect: false` on the `/mcp`
+    // policy is what makes the refusal legible instead of arriving as HTML.
+    it('never redirects an MCP client to a login page', async () => {
+      const request = mcpRequest('tools/list', {});
+      request.headers.set('Accept', 'text/html');
+
+      const response = await send(request);
+      await response.text();
+
+      expect(response.status).toBe(401);
+      expect(response.headers.get('location')).toBeNull();
+    });
+  });
+
+  // The headline security property of the whole design, stated as one test rather than left to be
+  // inferred from two suites. MCP is a second transport over the same use cases, so the only way
+  // it can hold a *different* ownership rule is if somebody wrote a second one — and this is what
+  // would notice.
+  describe('diagram ownership holds identically across HTTP and MCP', () => {
+    it('answers a non-owner with the same non-enumerating 404 on both transports', async () => {
+      const diagramId = await seedDiagram(ALICE, 'Alice’s only copy');
+      const absentId = '11111111-1111-4111-8111-111111111111';
+      const mallorysToken = await signDevJwt(MALLORY, { audience: AUD });
+
+      /**
+       * Reads one diagram over the browser's own HTTP route as Mallory.
+       *
+       * @param id Diagram id to request.
+       * @returns The status and the response body as text.
+       */
+      async function overHttp(id: string): Promise<{ body: string; status: number }> {
+        const response = await send(
+          new Request(`${ORIGIN}/api/diagrams/${id}`, {
+            headers: { 'sec-fetch-site': 'same-origin', [JWT_HEADER]: mallorysToken }
+          })
+        );
+        return { body: await response.text(), status: response.status };
+      }
+
+      const httpForeign = await overHttp(diagramId);
+      const httpAbsent = await overHttp(absentId);
+      const mcpForeign = await callTool(MALLORY, 'get_diagram', { diagramId });
+      const mcpAbsent = await callTool(MALLORY, 'get_diagram', { diagramId: absentId });
+
+      // HTTP: a foreign diagram and an absent one are byte-identical, so a `404` cannot confirm a
+      // guessed id is real.
+      expect(httpForeign.status).toBe(404);
+      expect(httpForeign).toEqual(httpAbsent);
+
+      // MCP: the same, in the protocol's own error vocabulary.
+      expect(mcpForeign.body).toMatchObject({
+        result: { content: [{ text: 'Diagram not found.' }], isError: true }
+      });
+      expect(mcpForeign.body).toEqual(mcpAbsent.body);
+
+      // And the two transports agree on the wording, because there is one rule in one private
+      // method of `DiagramService` rather than two that happen to match today.
+      expect(httpForeign.body).toContain('Diagram not found.');
+      expect(toolErrorText(mcpForeign.body)).toBe('Diagram not found.');
+
+      // Alice's diagram is untouched by every one of those attempts.
+      const stillHers = await callTool(ALICE, 'get_diagram', { diagramId });
+      expect(JSON.parse(toolText(stillHers.body))).toMatchObject({ id: diagramId });
+    });
+
+    // Reading is the headline case; writing is the one with consequences. Every mutating tool
+    // reaches D1 through the same service the HTTP routes use, so a non-owner is refused before
+    // anything is written — asserted by reading the row back rather than by trusting the refusal.
+    it('refuses every mutating tool for a non-owner and writes nothing', async () => {
+      const diagramId = await seedDiagram(ALICE, 'Not Mallory’s');
+      const before = await callTool(ALICE, 'get_diagram', { diagramId });
+
+      for (const { args, category, name } of TOOL_CATALOGUE) {
+        if (category !== 'graph') {
+          continue;
+        }
+        const refused = await callTool(MALLORY, name, { ...args, diagramId });
+        expect(refused.body, `${name} as a non-owner`).toMatchObject({
+          result: { content: [{ text: 'Diagram not found.' }], isError: true }
+        });
+      }
+
+      const after = await callTool(ALICE, 'get_diagram', { diagramId });
+      expect(JSON.parse(toolText(after.body))).toMatchObject({
+        graphData: (JSON.parse(toolText(before.body)) as { graphData: string }).graphData
+      });
+    });
+
+    // The owner derives from the verified Access identity and from nothing else. A tool argument
+    // is attacker-controlled input and a model can be talked into supplying one, so the tools
+    // accept no owner field — and an unexpected one is ignored rather than honoured.
+    it('ignores an owner supplied as a tool argument', async () => {
+      const created = await callTool(MALLORY, 'create_diagram', {
+        ownerEmail: ALICE,
+        title: 'Claimed for Alice'
+      });
+      const diagram = JSON.parse(toolText(created.body)) as { id: string; ownerEmail: string };
+
+      expect(diagram.ownerEmail).toBe(MALLORY);
+
+      // And Alice genuinely cannot see it, which is the fact the field would have changed.
+      const asAlice = await callTool(ALICE, 'get_diagram', { diagramId: diagram.id });
+      expect(asAlice.body).toMatchObject({ result: { isError: true } });
+    });
   });
 });

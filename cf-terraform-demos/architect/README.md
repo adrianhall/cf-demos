@@ -3,17 +3,25 @@
 Architect is a Cloudflare-centric architecture diagram tool: a React Flow canvas backed by a
 Cloudflare Worker, D1, Workers KV, Static Assets and Cloudflare Access.
 
-This directory contains **Phases 1–7 (Layer 1)** of the port: the deployable lifecycle and complete
-source stylesheet; production-equivalent Cloudflare Access policy; the source application header,
-identity states, three-state appearance control, landing page, catalogue-backed hero diagram; the
-initial user-directory side effect; the complete creation journey — the 22 blueprint templates, the
-filterable gallery with real React Flow thumbnails, the two-column create modal, and the personal
-dashboard with duplicate and delete — the full single-user editor, read-only anonymous sharing, the
-administrator directory and moderation surface, browser PNG/SVG/scaffold exports, print mode,
-guarded local preferences, the complete 35-finding source regression audit, WCAG 2.2 AA review, and
-production-bundle performance contract. See [`BUG-AUDIT.md`](BUG-AUDIT.md) for the bug-by-bug
-evidence and browser record, [`DEMO.md`](DEMO.md) for a presentation walkthrough, and
-[`EXPLAIN-DEMO.md`](EXPLAIN-DEMO.md) for the architectural lessons.
+This directory contains **Layer 1 (Phases 1–10) and the MCP layer (Phases 11–15)**: the deployable
+lifecycle and complete source stylesheet; production-equivalent Cloudflare Access policy; the source
+application header, identity states, three-state appearance control, landing page, catalogue-backed
+hero diagram; the initial user-directory side effect; the complete creation journey — the 22
+blueprint templates, the filterable gallery with real React Flow thumbnails, the two-column create
+modal, and the personal dashboard with duplicate and delete — the full single-user editor, read-only
+anonymous sharing, the administrator directory and moderation surface, browser PNG/SVG/scaffold
+exports, print mode, guarded local preferences, the complete 35-finding source regression audit,
+WCAG 2.2 AA review, and production-bundle performance contract.
+
+On top of that, an authenticated **remote MCP server** at `POST /mcp` lets an agent harness work on
+a diagram with exactly its owner's authority, and a `DiagramSession` Durable Object pushes an
+agent's change to any editor tab already open on that diagram — live, with a visible explanation.
+Both are described below.
+
+See [`BUG-AUDIT.md`](BUG-AUDIT.md) for the bug-by-bug evidence and browser record,
+[`DEMO.md`](DEMO.md) for a presentation walkthrough, [`EXPLAIN-DEMO.md`](EXPLAIN-DEMO.md) for the
+architectural lessons, and [`MCP-VALIDATION.md`](MCP-VALIDATION.md) for the one manual check the
+test suite cannot perform.
 
 The editor retains the source Zustand model, undo/redo, 500 ms whole-graph autosave, searchable and
 persistently collapsible service palette, drag/drop and click-to-add paths, node/edge properties,
@@ -125,8 +133,8 @@ reverse ordering if the lifecycle is invoked directly.
 Terraform owns two applications on the configured hostname:
 
 - a hostname-wide public bypass for the landing page, blueprint gallery and anonymous share viewer;
-- a narrower authenticated application for `/app*`, management APIs and the reserved future `/mcp*`
-  path.
+- a narrower authenticated application for `/app*`, the management APIs and `/mcp*`, carrying the
+  Managed OAuth configuration the remote MCP endpoint needs.
 
 The authenticated application deliberately enumerates API destinations rather than claiming
 `/api/*`, because the later anonymous share resolver lives under that prefix and must stay public.
@@ -196,7 +204,109 @@ The Worker currently exposes:
   projection;
 - `GET /api/admin/users` — administrator-only, paginated user directory with live diagram counts;
 - `GET /api/admin/diagrams/:id` — administrator-only, owner-blind moderation preview;
-- `DELETE /api/admin/diagrams/:id` — administrator-only moderation delete with share cleanup.
+- `DELETE /api/admin/diagrams/:id` — administrator-only moderation delete with share cleanup;
+- `GET /api/diagrams/:id/live` — owner-only WebSocket upgrade onto a diagram's live session; a
+  non-upgrade request receives `426 Upgrade Required`;
+- `POST /mcp` — the remote MCP endpoint, described below.
+
+## The remote MCP endpoint
+
+`POST /mcp` serves a stateless remote Model Context Protocol server, so an agent harness can work on
+a diagram with the same authority its owner has in the browser and no more. It offers sixteen tools:
+reading and listing, creating/renaming/deleting, node and edge mutation with a server-side grid
+auto-layout, the sharing lifecycle, and `json`/`scaffold` export.
+
+Three things about it are worth knowing before reading the code.
+
+**It adds no authorization decision.** `/mcp*` has been an authenticating, non-redirecting entry in
+[`src/access-policies.ts`](src/access-policies.ts) and a destination on the Terraform-owned
+authenticated Access application since before the route existed. Every tool reaches storage through
+the same `DiagramService` and `ShareService` the HTTP routes use, as in-process calls rather than an
+internal fetch, so an agent and a browser are held to one ownership rule rather than to two that
+agree today. A diagram belonging to somebody else produces the identical non-enumerating `404` on
+both transports, and there is a test that says so in exactly those terms.
+
+**The identity never comes from the protocol.** Access resolves an MCP client's opaque OAuth token
+at its own edge and forwards a signed `Cf-Access-Jwt-Assertion` header, so from the Worker's point
+of view an agent's request is indistinguishable from a browser's. The handler is therefore built
+once at module scope and the caller's identity reaches a tool through the handler's per-request
+server factory — a tool closure belongs to exactly one caller, and nothing identity-shaped is ever
+stored on the handler. The SDK's `authInfo` is deliberately unused: it carries OAuth client
+metadata, not a user, and there is no bearer token here for the Worker to inspect.
+
+**`/mcp` is carved out of the same-origin middleware, on purpose.** That middleware rejects a
+state-changing request carrying neither `Origin` nor `Sec-Fetch-Site`, which is every non-browser
+MCP client. Its CSRF reasoning does not apply to a bearer-authenticated caller — cross-site request
+forgery rides an _ambient_ credential a browser attaches, and no browser attaches an Access OAuth
+token — so the exemption costs nothing. It is an exact pathname match and is asserted in a test, so
+a route added later under the same prefix does not inherit it.
+
+Structured log events carry `via: "api" | "mcp"`, so Workers Logs distinguishes an agent's change
+from a browser button click without a second event name or a second table. No log line carries a
+share token, graph content or an email address, and that claim is asserted across the whole tool
+catalogue rather than tool by tool.
+
+## Live sessions and the `DIAGRAM_SESSIONS` Durable Object
+
+An agent's change has to reach an editor tab that is already open, which is a persistent-connection
+coordination problem rather than a data-access one — the one place in this demo where a Durable
+Object earns its keep. `DiagramSession`, one instance per diagram id, holds every WebSocket
+currently open on that diagram.
+
+**It stores nothing.** D1 remains the single authoritative copy of every diagram; the object never
+calls `ctx.storage` at all, and a test asserts the storage is empty after a push. Two independently
+persisted copies of one diagram can silently disagree, and reconciling them would be a whole second
+problem this demo does not need. What the object contributes is the one thing D1 cannot: it knows
+which browsers are connected right now.
+
+Connections are accepted with `ctx.acceptWebSocket()` — the Hibernation API — so a tab left open
+overnight stays connected at the edge while the object is evicted and stops costing anything.
+Anything the session needs after that reconstruction lives in a socket attachment, because an
+instance field would be empty at exactly the moment the value is needed.
+
+The channel is **one-way**: server to client. The browser's own edits keep using the debounced
+whole-graph autosave they always have. A frame sent by a client is answered with an explanation
+rather than acted on.
+
+The namespace is declared in [`cloudflare.config.ts`](cloudflare.config.ts) as
+`exports.durableObject({ storage: 'sqlite' })` plus a matching binding, which is what replaces
+Wrangler's `new_sqlite_classes` migration. **Terraform owns nothing of it**, and that follows the
+ownership rule rather than breaking it: a namespace is defined by the class its Worker exports, so
+it is created by the deploy that uploads that class and retired when the code stops exporting it.
+Splitting it would give one resource two owners. Deleting the Worker removes the namespace, and
+nothing is lost with it.
+
+## After deploying: verify Managed OAuth
+
+`infra/access.tf` adds `oauth_configuration` to the **existing** authenticated Access application —
+no second application and no second policy, because Access resolves the most specific application
+for a request and a second one covering `/mcp*` would shadow the first. The attribute turns Access
+itself into the OAuth 2.1 authorization server a non-browser MCP client needs.
+
+It is worth confirming in the Zero Trust dashboard after a deploy, because it is the one part of the
+MCP surface with no offline coverage — Managed OAuth is an Access-edge feature and cannot be
+emulated locally. Local development exercises `/mcp` with a development JWT through the identical
+policy list, which proves the Worker's half of the exchange and nothing about Access's.
+
+Open **Access → Applications → `<demo> app`** and confirm: Managed OAuth is enabled; Dynamic Client
+Registration is on with both the loopback and localhost allowances; the access-token lifetime is 15
+minutes against a 336-hour grant session; and `/mcp*` is in the destination list.
+
+Two of those deserve a sentence each. The loopback allowance is not laxity — Managed OAuth's
+`allowed_uris` field requires `https`, while OAuth 2.1's native-app loopback exception means agent
+harnesses redirect to a plain `http://127.0.0.1:…` address, so it is the only mechanism that admits
+such a client at all. And the short token lifetime is load-bearing rather than a tuning preference:
+Access re-evaluates policy on every silent refresh, so a revoked identity loses access within one
+token lifetime instead of at its next interactive login.
+
+[`MCP-VALIDATION.md`](MCP-VALIDATION.md) is the step-by-step runbook for the full round trip,
+including connecting a real client and calling one tool from every category. It is re-runnable after
+a later change to the MCP surface.
+
+**No additional API-token permission is needed.** Managed OAuth is an attribute of an Access
+application this demo already creates, and the Durable Object namespace is created by the Worker
+upload rather than by an API call of its own, so the token permissions documented in the
+repository-root [`.env.example`](../../.env.example) are unchanged by the MCP work.
 
 Every administrative path rechecks the verified identity against `ADMIN_EMAIL`, including a path
 that does not exist: an ordinary identity receives `403` before routing and cannot use response
@@ -303,14 +413,15 @@ all restore the prior colour scheme and remove the injected `@page` rule.
 
 A deployment creates exactly these resources:
 
-| Resource                                           | Lifecycle owner | Purpose                                           |
-| -------------------------------------------------- | --------------- | ------------------------------------------------- |
-| Worker registration, bootstrap and custom hostname | Terraform       | Stable application identity and route             |
-| Worker code and deploy-time bindings               | `cf`            | The built Hono/React application                  |
-| D1 database                                        | Terraform       | Authoritative diagrams, users and share lifecycle |
-| Workers KV namespace                               | Terraform       | Disposable digest → diagram-id share lookup cache |
-| Public bypass Access application/policy            | Terraform       | Public landing, gallery and share routes          |
-| Authenticated Access application/policy            | Terraform       | `/app*` and management APIs                       |
+| Resource                                           | Lifecycle owner | Purpose                                                 |
+| -------------------------------------------------- | --------------- | ------------------------------------------------------- |
+| Worker registration, bootstrap and custom hostname | Terraform       | Stable application identity and route                   |
+| Worker code and deploy-time bindings               | `cf`            | The built Hono/React application                        |
+| D1 database                                        | Terraform       | Authoritative diagrams, users and share lifecycle       |
+| Workers KV namespace                               | Terraform       | Disposable digest → diagram-id share lookup cache       |
+| `DIAGRAM_SESSIONS` Durable Object namespace        | `cf`            | Live fan-out to open editors; stores nothing            |
+| Public bypass Access application/policy            | Terraform       | Public landing, gallery and share routes                |
+| Authenticated Access application/policy            | Terraform       | `/app*`, management APIs, `/mcp*` and its Managed OAuth |
 
 `pnpm teardown` deletes the deployed Worker before Terraform destroys its D1/KV/Access/hostname
 resources. That ordering releases live bindings first. It does not touch the separate source
@@ -319,10 +430,13 @@ Terraform defaults reserved for this port.
 
 ## Deliberate limitations
 
-- Layer 1 is a single-user editor. MCP, live collaboration and AI assistance are specified future
-  layers, not partially hidden features in this build.
-- Whole-graph autosave is last-write-wins within one owner's browser sessions; collaborative
-  operation ordering belongs to the later Durable Object layer.
+- Live sync is one-way: an agent's change reaches an open editor, and the browser keeps saving the
+  whole graph over HTTP. A second person editing the same diagram, presence and cursors are a later
+  layer, not hidden routes.
+- Whole-graph autosave is last-write-wins — across one owner's own browser sessions, and equally
+  between that owner and their own agent. That is a stated scope boundary rather than a defect; see
+  [`EXPLAIN-DEMO.md`](EXPLAIN-DEMO.md). Collaborative operation ordering belongs to the later
+  collaboration layer.
 - Anonymous shares are read-only live pointers, not snapshots, and there is one active link per
   diagram. Losing a raw URL requires rotation because the server stores only its digest.
 - Administration is intentionally one configured identity. There is no role table, invitation flow,
@@ -353,7 +467,8 @@ a 602.34 kB initial JS entry and a separate 1,431.11 kB ELK chunk loaded only by
   → diagram id, with no identity and no relational query involved. Every read falls back to D1 on a
   miss, which also covers the short window before a new key has propagated between locations, so
   losing the whole namespace costs a slower first lookup per link and nothing else.
-- A later **Durable Object** coordinates live sockets only. It does not keep a second durable graph.
+- A **Durable Object** coordinates live sockets only. It keeps no second durable graph, and no
+  storage at all.
 
 The migrations preserve three deliberate schema decisions: no foreign keys, no `users.is_admin`
 column, and no column anywhere a raw share token could be written. The single administrator is

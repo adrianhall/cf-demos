@@ -66,8 +66,9 @@ which handles propagation delay and means the namespace can be rebuilt without d
 eventual consistency is acceptable because it never authorizes a mutation and never holds the
 canonical share state.
 
-A later Durable Object layer will coordinate live sockets only; it will not persist another graph.
-That narrow role avoids two independently durable copies silently disagreeing.
+The `DiagramSession` Durable Object coordinates live sockets only; it persists nothing at all. That
+narrow role avoids two independently durable copies silently disagreeing — see "Why a Durable Object
+here specifically" below.
 
 ## The raw share token does not exist at rest
 
@@ -158,12 +159,66 @@ base64, so an agent and the toolbar button hand a reader byte-identical projects
 no such shared path, and the tool's own description says so to the calling model rather than leaving
 it to infer the gap from a failure.
 
-## Live sync holds the socket where it survives
+## A second transport, not a second application
 
-An agent changing a diagram through `/mcp` has to reach an editor tab that is already open. That is
-a persistent-connection coordination problem, not a data-access one, so it is the one place in this
-demo that a Durable Object earns its keep: `DiagramSession`, one instance per diagram id, holding
-every WebSocket currently open on that diagram.
+The remote MCP server at `POST /mcp` is the clearest payoff of the four-tier separation, and it is
+worth being precise about why. Adding an agent-facing surface to an application usually means
+writing a second one: a second way in, a second place the ownership rule is expressed, and a second
+set of validation that has to be kept in step with the first by review. This demo adds none of that.
+Every tool calls the same `DiagramService` and `ShareService` the HTTP routes were given, as an
+in-process call rather than an internal fetch, so the agent transport inherits the ownership rule,
+the validation and the uniform non-enumerating `404` rather than reproducing them.
+
+That is why the test that matters most is the one asserting a non-owner gets the same refusal, in
+the same words, from both `GET /api/diagrams/:id` and `get_diagram`. It is not checking that two
+implementations agree; it is checking that there is still only one.
+
+The design also teaches three things about remote MCP on Workers specifically.
+
+**Stateless is the right default, and here it is right on the merits.** Every tool's state is a D1
+row, so nothing needs to survive between two MCP requests, and an MCP session identifier would be a
+second place for durable data to hide. The deprecated `McpAgent` would have created exactly that
+hiding place for no benefit.
+
+**Per-request identity does not require a per-request handler.** The obvious hazard with a
+module-scope handler is freezing the first caller's identity into a singleton that then serves
+everyone, and the obvious remedy — constructing a fresh handler per request — is no longer
+necessary. `createMcpHandler` invokes its server _factory_ once per request, so a server instance,
+and therefore every tool closure registered on it, is already scoped to one caller. Nothing
+identity-shaped is stored on the handler, which is what makes a single long-lived one safe.
+
+**The identity arrives as a header, not as a token.** Cloudflare Access resolves an MCP client's
+opaque OAuth token at the edge and forwards a signed `Cf-Access-Jwt-Assertion`, so the Worker sees
+exactly what it sees for a browser and needs no OAuth code of its own. The SDK's `authInfo` is
+deliberately unused: it describes an OAuth _client_, not a user, and populating it would mean
+inventing a value.
+
+One honest consequence runs through the whole catalogue: a tool's description is its contract with a
+model that will never read this file. So `auto_layout_diagram` says plainly that its grid is simpler
+than the editor's own layered layout, `export_diagram` says PNG and SVG are browser-only, and
+`get_share_status` says it can never reproduce a lost link. A model told none of that would promise
+a user something the server cannot do, which is a worse failure than refusing.
+
+## Why a Durable Object here specifically
+
+This repository's default posture is to avoid a Durable Object. Most state belongs in D1 or KV, and
+most "live" requirements are adequately served by a reload or a poll — choosing an object for them
+adds a coordination primitive to a problem that did not have one.
+
+Live sync is the case that genuinely does. An agent changing a diagram through `/mcp` has to reach
+an editor tab that is already open, and "push the instant something changes to every currently
+connected client" is a persistent-connection fan-out problem rather than a data-access one. Neither
+D1 nor KV has any notion of a connected reader, and no amount of polling produces the demo's central
+moment, which is that the canvas updates _as the agent acts_.
+
+The justification is narrow and the object is narrow to match. It provides exactly two things D1
+cannot: it holds the open WebSockets, and it is a single addressable point per diagram, so there is
+no "which replica holds the sockets" question to answer. It provides nothing else — in particular no
+storage, which is the discipline that keeps the justification honest. The moment such an object
+starts keeping a copy of the data it is fanning out, the "coordination, not data access" argument
+stops being true and two durable copies begin disagreeing.
+
+`DiagramSession`, one instance per diagram id, holds every WebSocket currently open on that diagram.
 
 The connection lives in the object rather than in a Worker because a Worker isolate can be evicted
 and the socket is then simply lost — nothing durable is holding it. It is accepted with
@@ -201,25 +256,40 @@ well-formed and the diagram exists; it is the protocol that is wrong.
 The live channel is **one-way**: server to client. The browser's own edits keep using the debounced
 whole-graph autosave. This layer adds a read channel, not a second write path.
 
-Concurrency between a user and their own agent is explicitly last-write-wins, which is the same
-model the autosave has always had — there is no partial-patch protocol in either direction. Two
-facts make that acceptable at this scope:
+That asymmetry is the whole concurrency design, and it is worth stating as a decision rather than
+leaving to be inferred. Two writers reach a diagram's graph: the browser, which replaces the whole
+graph on a 500 ms debounce, and the owner's own agent, which applies one granular mutation per tool
+call. They are not merged. The last write to commit wins outright, which is exactly the model the
+autosave has had since before MCP existed — there is no partial-patch protocol in either direction,
+so there is nothing for a merge to operate on.
 
-- A push that arrives mid-edit replaces the canvas; the user's own pending autosave fires shortly
-  after and overwrites it back. That is a brief visual flicker, not data loss, because `updated_at`
-  always reflects whichever write actually landed last.
-- A tool call and an autosave landing together are resolved by D1: both are owner-scoped `UPDATE`
-  statements, so the last to commit wins outright. There is no read-modify-write race across two
-  identities, because every write is already scoped to one.
+Three facts make that acceptable **at this scope**, and naming the scope is the point:
 
-The client makes one check rather than trusting the push blindly: a `graph_updated` frame is applied
-only when its `updatedAt` is newer than what the tab already holds, so a push that lost a race is
-discarded instead of reverting a change the user can see. When it is applied, a dismissible "Updated
-by an agent" notice explains why the canvas changed — a diagram that rewrites itself with no
-explanation reads as a bug rather than as the feature it is.
+- **Both writers are the same person.** An agent acts with its owner's identity and no other; every
+  write is an owner-scoped `UPDATE ... WHERE id = ? AND owner_email = ?`. There is no
+  read-modify-write race across two identities, because there is only ever one identity involved.
+- **A lost race costs a repaint, not data.** A push that arrives mid-edit replaces the canvas; the
+  user's own pending autosave fires shortly after and overwrites it back. That is a brief visual
+  flicker, and `updated_at` always reflects whichever write actually landed last, so the diagram is
+  never in a state neither writer produced.
+- **The client refuses a stale push.** A `graph_updated` frame is applied only when its `updatedAt`
+  is newer than what the tab already holds, so a push that lost a race is discarded rather than
+  reverting a change the user can see.
 
-Real concurrent-editor conflict resolution — presence, cursors, per-operation merge — is a later
-layer. This is a stated scope boundary chosen up front, not a limitation discovered afterwards.
+When a push is applied, a dismissible "Updated by an agent" notice explains why the canvas changed.
+A diagram that rewrites itself with no explanation reads as a bug rather than as the feature it is.
+
+**What this deliberately does not solve**, and would need to before the scope widens: two people
+editing one diagram. Every assumption above fails there. The writers are no longer one identity, so
+a whole-graph replace silently discards somebody else's work rather than one's own; a flicker
+becomes data loss; and `updated_at` stops being enough to decide what should win, because the two
+writes were not alternatives but independent changes that both wanted to happen. Fixing that needs
+per-operation ordering, a serialized write path through the session, and presence so a person can
+see they are not alone — which is what the later collaboration phases add, by extending this same
+`DiagramSession` rather than building a second per-diagram object beside it.
+
+This boundary was chosen up front and is recorded here so it reads as the scope decision it is,
+rather than being discovered later and written up as a limitation.
 
 ## Infrastructure ownership and lifecycle
 
@@ -273,10 +343,21 @@ port's lifecycle from reaching the separate source deployment.
 ## Quality evidence
 
 - Three Vitest projects cover client behaviour, pure Worker/application code, and the real Workers
-  runtime with D1 migrations and Access outcomes.
+  runtime with D1 migrations, Access outcomes and real hibernatable WebSockets.
 - Istanbul includes all authored `src/**/*.{ts,tsx}` and enforces 80% statements, branches,
-  functions and lines; Phase 7 records over 99% in every category.
+  functions and lines; the MCP layer is complete at 100% in every category.
 - `pnpm check` regenerates binding types and verifies strict TypeScript, Oxfmt, type-aware Oxlint,
   naming safety, built CSS/bundle contracts and Terraform validation/formatting.
+- The MCP surface is proved over the wire rather than through its functions: `tools/list` and
+  `tools/call` round trips against the real handler, every tool in the catalogue exercised, the
+  three authentication failures that matter (no credential, an audience belonging to another Access
+  application in the same team, an expired token), and one named test asserting that a non-owner
+  receives the identical non-enumerating `404` from HTTP and from MCP.
+- A separate suite asserts that **nothing** the MCP surface logs carries a share token, graph
+  content or an email address — across the whole catalogue in one pass, so a seventeenth tool added
+  without that discipline fails it.
 - The local browser pass covers desktop/narrow geometry, themes, modal focus, initial fit, keyboard
   connection and responsive drawers. It complements rather than duplicates DOM tests.
+- One thing is deliberately not automated: the Managed OAuth round trip, which is an Access-edge
+  feature with no local emulation. [`MCP-VALIDATION.md`](MCP-VALIDATION.md) is the re-runnable
+  operator runbook for it.

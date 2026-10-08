@@ -147,6 +147,34 @@ describe('refusing an impossible connection', () => {
 });
 
 describe('making the connection', () => {
+  // Both ends are editable, and the source end has to be exercised in its own right: the dialog
+  // pre-selects a source from the canvas selection, so a source control that silently ignored a
+  // change would still produce a plausible edge — just not the one the visitor asked for. This is
+  // also the only keyboard-reachable way to reverse a connection's direction, which is the whole
+  // point of the dialog existing alongside dragging a handle.
+  it('connects from a source the visitor chose rather than the pre-selected one', () => {
+    const onClose = vi.fn();
+    render(<ConnectNodesModal open onClose={onClose} />);
+
+    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'c' } });
+    fireEvent.change(screen.getByLabelText('Target'), { target: { value: 'b' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    expect(useDiagramStore.getState().edges[0]).toMatchObject({ source: 'c', target: 'b' });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  // Changing the source into the current target is refused for the same reason changing the
+  // target is, which proves the validation reads both controls rather than watching one.
+  it('refuses a self-connection reached by changing the source', () => {
+    render(<ConnectNodesModal open onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'b' } });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('A node cannot be connected to itself.');
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeDisabled();
+  });
+
   it('creates the chosen edge and closes', () => {
     const onClose = vi.fn();
     render(<ConnectNodesModal open onClose={onClose} />);

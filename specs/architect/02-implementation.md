@@ -568,7 +568,7 @@ transforms.
 
 An agent can create a share link and retrieve a project scaffold using only tool calls.
 
-### Phase 15 — MCP verification
+### Phase 15 — MCP verification — **complete**
 
 #### Goal
 
@@ -577,27 +577,86 @@ understand.
 
 #### Deliverables
 
-1. Close coverage gaps across all three Vitest projects, including the new session, mutation and MCP
-   modules.
-2. Run formatting, linting, type checking, coverage, the production build, `terraform fmt -check`
-   and `terraform validate`. No Wrangler generation step exists here; `cf workers types` already
-   runs as part of `check:types`.
-3. Extend `README.md`, `DEMO.md` and `EXPLAIN-DEMO.md`: the `/mcp` endpoint, Managed OAuth as an
-   operator-visible setting to verify after deploy, a presenter script showing a live agent edit
-   appearing in an open tab, and the `via: "mcp"` log field distinguishing it from a browser edit.
-4. Document the intentional last-write-wins behaviour between the browser's whole-graph autosave and
-   its owner's own agent as a deliberate scope boundary, not a defect — real concurrent-editor
-   conflict resolution is Phases 16–20.
+1. Coverage is **100% of statements, branches, functions and lines** across all three Vitest
+   projects, up from 99.48/98.47/99.48/99.45. Every previously-uncovered branch was closed by a
+   behavioural test rather than by an exemption, except one line in `formatRelativeDate` whose
+   unreachability is now true rather than merely asserted — see below.
+2. Formatting, linting, type checking, coverage, the production build, `terraform fmt -check` and
+   `terraform validate` all pass. There is no Wrangler generation step; `cf workers types` runs
+   inside `check:types`.
+3. `README.md` documents `POST /mcp` and `GET /api/diagrams/:id/live`, the `DIAGRAM_SESSIONS`
+   namespace and what it does and does not store, Managed OAuth as an operator-visible setting to
+   confirm after a deploy, and the fact that no additional API-token permission is required.
+   `DEMO.md` gains the side-by-side presenter section — editor and terminal on one screen, an agent
+   adding nodes, the canvas updating live, then `via: "mcp"` beside `via: "api"` in Workers Logs —
+   plus the share-link and scaffold beats. `EXPLAIN-DEMO.md` gains "A second transport, not a
+   second application" and "Why a Durable Object here specifically", the latter stating why this
+   case clears a bar the repository's default posture otherwise sets against one.
+4. The last-write-wins boundary is recorded in `EXPLAIN-DEMO.md` as a designed scope boundary, with
+   the three facts that make it acceptable (one identity, a repaint rather than data loss, and the
+   client's staleness check) and an explicit statement of what fails the moment a second human
+   edits — which is what Phases 16–20 exist to fix by extending `DiagramSession`.
+5. `cf-terraform-demos/architect/MCP-VALIDATION.md` is the re-runnable operator runbook for the
+   Managed OAuth round trip, covering the dashboard settings to confirm, connecting a real client,
+   completing the browser login, calling one tool from every catalogue category, the `via` field in
+   the logs, and the silent-refresh check. It records why `allow_any_on_loopback` is the only
+   mechanism that can admit OpenCode's fixed `http://127.0.0.1:19876/mcp/oauth/callback` redirect:
+   `allowed_uris` requires `https`.
 
 #### Tests
 
-Protocol conformance, OAuth failure cases, absence of secret logging, the hibernation path, and
-diagram ownership holding identically across HTTP and MCP.
+- **Protocol conformance**: `tools/list` asserted against an independently written catalogue
+  (rather than against the server's own output), a described object schema and non-trivial
+  description on every tool, an over-the-wire `tools/call` round trip of all sixteen tools, the
+  protocol's own `isError` channel distinguished from an HTTP status, an unknown tool, and the
+  exact-route match including the sibling path that inherits neither the route nor the same-origin
+  carve-out.
+- **Authentication failures at `/mcp`**: no credential; a correctly signed token minted for a
+  different Access application in the same team (the check that matters, because the team shares
+  one JWKS); an expired token; the refusal arriving as an RFC 9457 problem document rather than a
+  JSON-RPC error; and never a login redirect.
+- **Absence of secret logging**: `tests/worker/mcp-logging.test.ts` drives the whole catalogue in
+  one pass and asserts no raw share token, no graph content and no email address reaches either the
+  structured logger or the console — plus the positive half, that every mutation *is* logged by
+  diagram id with `via: 'mcp'`, without which the negative assertions could be satisfied by logging
+  nothing.
+- **Hibernation**: reconstruction after `evictAllDurableObjects({ webSockets: 'close' })`, storage
+  proved empty, a socket closed mid-fan-out not aborting delivery to the rest, and `webSocketError`
+  releasing a failed connection identically to a clean close.
+- **Ownership across transports**: one named test asserting that the same non-owner, against the
+  same diagram, receives the identical non-enumerating `404` from `GET /api/diagrams/:id` and from
+  `get_diagram`; that every mutating tool refuses a non-owner and writes nothing; and that an owner
+  supplied as a tool argument is ignored.
 
 #### Exit criteria
 
-`pnpm check`, `pnpm test` and the coverage gate pass. The one manual step is the deployed Managed
-OAuth round trip, which cannot be emulated locally because it is an Access-edge feature.
+`pnpm fix`, `pnpm check`, `pnpm test` and `pnpm test:coverage` all pass, at 100% on every metric.
+The one manual step remains the deployed Managed OAuth round trip, which cannot be emulated locally
+because it is an Access-edge feature; `MCP-VALIDATION.md` is the runbook and is not a substitute
+for running it once against a real deployment.
+
+#### Three defects found while closing the gaps
+
+Each was a latent fault rather than a coverage inconvenience, which is the argument for closing
+gaps with behavioural tests instead of exemptions.
+
+1. **`formatRelativeDate` threw on an unparseable timestamp.** The fall-through after its unit loop
+   was commented "unreachable", and was reachable: a `NaN` delta compares false against every rung
+   and reached `Intl.RelativeTimeFormat.format(NaN)`, which throws a `RangeError`. Thrown from a
+   render, one malformed `updated_at` would have blanked the whole dashboard. It now returns
+   `'unknown'`, and the fall-through is genuinely unreachable.
+2. **A test asserted the wrong thing under the right name.** `DetailsPanel`'s "treats an edge with
+   no data at all as a data flow" passed `undefined` to a helper with a default parameter, so it
+   exercised the ordinary case. The edge is now constructed without a `data` key.
+3. **The keyboard and drop paths duplicated a catalogue guard.** `DiagramCanvas` had two
+   independent "is this a product we know?" checks, one of them unreachable because the palette
+   only renders the catalogue. They are now one `addCatalogueNode` helper, so the decision is taken
+   once and both paths produce identically-shaped nodes by construction.
+
+Three small refactors made guards testable without weakening them: `recordToolContext` /
+`requireToolContext` name the two halves of the per-request identity rule in `routes/mcp.ts`,
+`createMcpServerForRequest` exposes the factory's one fail-closed guard, and
+`singleTemplateVariable` turns a resource-template cast into a function that can be proved correct.
 
 ## 12. Phases 16–20 — Collaboration
 

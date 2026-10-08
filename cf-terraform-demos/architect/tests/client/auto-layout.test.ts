@@ -53,6 +53,38 @@ describe('remapEdgeHandles', () => {
     expect(remapEdgeHandles([edge], nodes, 'DOWN')[0]).toBe(edge);
   });
 
+  // A node can genuinely carry a type the catalogue does not know: `add_node` stores an unknown
+  // `typeId` rather than rejecting it, so that an agent naming a product this build has never
+  // heard of draws something instead of failing. Such a node declares no default handles, and the
+  // remap has to leave the edge's existing ones alone rather than point it at a handle that will
+  // not be rendered — an edge attached to a handle that does not exist disappears from the
+  // canvas, which is a worse outcome than a tidier arrow.
+  it('leaves handles alone for a node whose type the catalogue does not know', () => {
+    const unknown = [
+      { data: { label: 'A', typeId: 'some-future-product' }, id: 'a', position: { x: 0, y: 0 } },
+      { data: { label: 'B', typeId: 'another-one' }, id: 'b', position: { x: 0, y: 0 } }
+    ];
+
+    const [remapped] = remapEdgeHandles(
+      [
+        {
+          id: 'e1',
+          source: 'a',
+          sourceHandle: 'custom-source',
+          target: 'b',
+          targetHandle: 'custom-target'
+        }
+      ],
+      unknown,
+      'DOWN'
+    );
+
+    expect(remapped).toMatchObject({
+      sourceHandle: 'custom-source',
+      targetHandle: 'custom-target'
+    });
+  });
+
   it('leaves an edge alone when it references a node the diagram does not contain', () => {
     const [remapped] = remapEdgeHandles(
       [

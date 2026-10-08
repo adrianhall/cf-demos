@@ -117,6 +117,32 @@ const positionSchema = z
   );
 
 /**
+ * Normalizes a resource-template variable to the single value this server's templates can produce.
+ *
+ * `architect://diagrams/{id}` has no explode modifier, so a match either yields exactly one string
+ * for `id` or does not match at all — verified against the SDK's own template matcher, which
+ * returns `null` rather than a partial match for `architect://diagrams/` and for a value containing
+ * a separator. The SDK nonetheless types every variable as `string | string[] | undefined`, because
+ * that union covers every template shape it supports rather than this one.
+ *
+ * The normalization is therefore a type obligation rather than a behavioural branch, and it is a
+ * named function so it can be proved correct directly instead of being asserted away with a cast
+ * the compiler cannot check. The empty-string fallbacks are deliberate: an id of `''` reaches
+ * {@link getDiagramTool} and is refused with the same non-enumerating "Diagram not found." every
+ * other unknown id gets, which is a better outcome than a thrown `TypeError` a model cannot act
+ * on.
+ *
+ * @param raw Variable value as the SDK's `Variables` type admits it.
+ * @returns The single value, the first of a list, or an empty string when the variable is absent.
+ */
+export function singleTemplateVariable(raw: string | string[] | undefined): string {
+  if (Array.isArray(raw)) {
+    return raw[0] ?? '';
+  }
+  return raw ?? '';
+}
+
+/**
  * Builds the MCP server for one request, with every tool closed over that caller's identity.
  *
  * This is the factory `createMcpHandler` invokes, and the per-request scoping of identity rests
@@ -194,13 +220,9 @@ export function createMcpServer(context: McpToolContext): McpServer {
       mimeType: 'application/json'
     },
     async (uri, variables) => {
-      // `{id}` has no explode modifier, so this template can only ever match a single value. The
-      // SDK's `Variables` type is a `string | string[]` union covering every possible template
-      // shape rather than a real possibility for this one, so the array case is normalised here
-      // instead of being asserted away.
-      const raw = variables.id;
-      const id = Array.isArray(raw) ? (raw[0] ?? '') : (raw ?? '');
-      const { diagram } = await getDiagramTool(context, id);
+      // See `singleTemplateVariable`: a type obligation of the SDK's `Variables` union, not a
+      // behavioural branch of this template.
+      const { diagram } = await getDiagramTool(context, singleTemplateVariable(variables.id));
 
       return {
         contents: [{ mimeType: 'application/json', text: JSON.stringify(diagram), uri: uri.href }]
@@ -578,6 +600,54 @@ export function createMcpServer(context: McpToolContext): McpServer {
 }
 
 /**
+ * The per-request context the MCP handler hands its server factory.
+ *
+ * Declared here rather than imported because `@modelcontextprotocol/server@2.0.0` does not export
+ * the type by name, and restating only the one field this factory reads keeps the dependency
+ * narrow: a later release adding fields cannot break this signature, and a release _removing_
+ * `requestInfo` breaks the build here, at the one place that relies on it, rather than at runtime.
+ */
+export interface McpFactoryRequestContext {
+  /**
+   * The original `Request` the handler is serving.
+   *
+   * Set on every HTTP invocation, on both the modern and the legacy-compatibility lane — read out
+   * of the handler's own compiled source rather than inferred from its types, because the whole
+   * per-request identity design rests on it. Optional in the SDK's own declaration because the
+   * factory contract also admits a non-HTTP transport such as stdio.
+   */
+  requestInfo?: Request;
+}
+
+/**
+ * Builds one caller's MCP server from the handler's per-request context.
+ *
+ * Separated from {@link createArchitectMcpHandler} and exported so its one guard can be proved
+ * directly. That guard is the hinge of the whole identity design: everything safe about a
+ * module-scope handler follows from a server — and therefore every tool closure registered on it —
+ * being built per request, for exactly one verified caller.
+ *
+ * @param requestContext Context the handler supplies when it invokes its factory.
+ * @param buildContext Resolves the verified tool context from the request being served.
+ * @returns A server carrying this caller's tools and resources.
+ * @throws {Error} When the factory was invoked without an HTTP request. Unreachable through this
+ *   Worker — the handler sets `requestInfo` on every HTTP invocation and the Worker exposes no
+ *   other transport — so this is a guard against a future SDK or mounting change rather than
+ *   against a caller. A tool built without an identity must never run, so the factory refuses
+ *   instead of producing a server scoped to nobody.
+ */
+export function createMcpServerForRequest(
+  requestContext: McpFactoryRequestContext,
+  buildContext: (request: Request) => McpToolContext
+): McpServer {
+  if (requestContext.requestInfo === undefined) {
+    throw new Error('The MCP server factory was invoked without an HTTP request.');
+  }
+
+  return createMcpServer(buildContext(requestContext.requestInfo));
+}
+
+/**
  * Creates the stateless MCP handler for one hostname.
  *
  * Stateless is right here on its own merits rather than by default: every tool's state is a D1 row,
@@ -610,16 +680,7 @@ export function createArchitectMcpHandler(
   buildContext: (request: Request) => McpToolContext
 ): { fetch: (request: Request) => Promise<Response> } {
   return createMcpHandler(
-    (requestContext) => {
-      // `requestInfo` is set on every HTTP invocation of this handler, on both protocol eras.
-      // Its absence would mean the factory had been reached some other way — a stdio connection,
-      // which this Worker has no route to — and a tool built without an identity must never run.
-      if (requestContext.requestInfo === undefined) {
-        throw new Error('The MCP server factory was invoked without an HTTP request.');
-      }
-
-      return createMcpServer(buildContext(requestContext.requestInfo));
-    },
+    (requestContext) => createMcpServerForRequest(requestContext, buildContext),
     {
       route: MCP_ROUTE,
       allowedHostnames: [hostname, 'localhost', '127.0.0.1', '[::1]']

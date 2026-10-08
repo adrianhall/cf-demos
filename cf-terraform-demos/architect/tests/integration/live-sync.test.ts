@@ -93,6 +93,34 @@ describe('live sync', () => {
     return { connected: await nextFrameOfType(socket, 'connected'), socket };
   }
 
+  /**
+   * Waits until exactly one of two client sockets has observed its close, and returns the other.
+   *
+   * The server closed one of them, but which client that is depends on the order the runtime
+   * happens to list its sockets in, which is not specified. Polling the two `readyState` values is
+   * what turns that unknown into an answer, and it is bounded so a close that never propagates
+   * fails here rather than as an anonymous frame timeout later.
+   *
+   * @param first One connected client socket.
+   * @param second The other connected client socket.
+   * @returns Whichever socket is still open.
+   * @throws {Error} When the close has not propagated within the window, or when both or neither
+   *   socket closed — either of which would mean the fixture, not the session, is at fault.
+   */
+  async function settleOneClosed(first: WebSocket, second: WebSocket): Promise<WebSocket> {
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const open = [first, second].filter((socket) => socket.readyState === WebSocket.OPEN);
+      if (open.length === 1) {
+        return open[0] as WebSocket;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    throw new Error(
+      `Expected exactly one socket to close; states are ${first.readyState} and ${second.readyState}.`
+    );
+  }
+
   describe('authorization before the upgrade', () => {
     it('accepts an owner’s authenticated upgrade', async () => {
       const diagramId = await createDiagram();
@@ -429,6 +457,74 @@ describe('live sync', () => {
       // eviction waits for in-flight requests to drain before it closes anything — so skipping
       // this turns a passing test into a hung teardown.
       await response.text();
+    });
+
+    // A tab closing between the runtime listing the sockets and the session reaching theirs is an
+    // ordinary race, not a failure, and sending to a closed socket throws. One departing viewer
+    // must not abort delivery to everybody after them in the list, so the fan-out checks each
+    // socket's state — and that check is only observable by arranging the race deliberately.
+    it('still reaches a live connection when another closed mid-fan-out', async () => {
+      const diagramId = await createDiagram();
+      await saveGraph(diagramId, ONE_NODE);
+      const first = await connect(diagramId);
+      const second = await connect(diagramId);
+
+      // The close and the push happen in the same turn inside the object, which is the race this
+      // guard exists for and the only way to reproduce it deterministically. A socket closed from
+      // the server side is still *in* `getWebSockets()` — as `CLOSING`, verified here rather than
+      // assumed — so the fan-out genuinely reaches it, and sending on it would throw and abort
+      // delivery to everybody listed after it. Letting the close settle first would instead remove
+      // it from the list and quietly test nothing.
+      // Both clients are listening before the push, because the push happens inside the call
+      // below and a listener attached afterwards would have missed it.
+      const pushes = [
+        nextFrameOfType(first.socket, 'graph_updated'),
+        nextFrameOfType(second.socket, 'graph_updated')
+      ];
+
+      const states = await runInDurableObject(
+        testEnv.DIAGRAM_SESSIONS.getByName(diagramId),
+        async (instance, state) => {
+          (state.getWebSockets()[0] as WebSocket).close(1000, 'Tab closed.');
+          const duringFanOut = state.getWebSockets().map((socket) => socket.readyState);
+          await instance.notifyGraphUpdated('{"nodes":[],"edges":[],"viewport":{}}', 'now');
+          return duringFanOut;
+        }
+      );
+
+      // One socket departing, one still open — so the push had to step over the first to reach
+      // the second.
+      expect(states).toContain(WebSocket.CLOSING);
+      expect(states).toContain(WebSocket.OPEN);
+
+      // Whichever client survived received it. Which of the two the runtime lists first is not
+      // specified, so the test races both rather than assuming the list mirrors connect order.
+      expect(await Promise.race(pushes)).toMatchObject({
+        type: 'graph_updated',
+        updatedAt: 'now'
+      });
+      expect(await settleOneClosed(first.socket, second.socket)).toBeDefined();
+    });
+
+    // A viewer whose connection errored and one who closed their tab are both simply gone from
+    // this object's point of view, and it holds no per-socket state for either to leave behind.
+    // The handler is declared so its absence cannot be read as missing cleanup; asserting it is
+    // what stops that intent rotting into code a later reader deletes.
+    it('releases a failed connection exactly as it releases a clean close', async () => {
+      const diagramId = await createDiagram();
+      await connect(diagramId);
+
+      const stored = await runInDurableObject(
+        testEnv.DIAGRAM_SESSIONS.getByName(diagramId),
+        async (instance, state) => {
+          const server = state.getWebSockets()[0] as WebSocket;
+          instance.webSocketError(server, new Error('Connection reset.'));
+          instance.webSocketClose(server, 1006, 'Abnormal closure.');
+          return [...(await state.storage.list()).keys()];
+        }
+      );
+
+      expect(stored).toEqual([]);
     });
 
     // A socket with no provable identity must not exist. Closing beats answering, which is the
