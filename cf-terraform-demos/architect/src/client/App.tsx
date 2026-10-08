@@ -1,6 +1,8 @@
+import { MCP_GUIDE_ROUTE } from '../mcp-route.ts';
 import { AppShellView } from './views/AppShellView.tsx';
 import { BlueprintsView } from './views/BlueprintsView.tsx';
 import { LandingView } from './views/LandingView.tsx';
+import { McpGuideView } from './views/McpGuideView.tsx';
 import { ShareView } from './views/ShareView.tsx';
 
 /**
@@ -14,8 +16,11 @@ import { ShareView } from './views/ShareView.tsx';
  * runs. A client-side router would resolve the path inside an already-loaded bundle, which is
  * exactly the interception point this design needs to keep.
  *
- * `/blueprints` and `/s/:token` need no such interception: both are public either way, so they are
- * reachable identically whether or not the visitor is signed in.
+ * `/blueprints`, `/guides/mcp` and `/s/:token` need no such interception: all three are public
+ * either way, so they are reachable identically whether or not the visitor is signed in. The guide
+ * page is public for a stronger reason than the other two — it explains how to sign in, so putting
+ * it behind a login would make it useless exactly when it is needed. See `MCP_GUIDE_ROUTE` in
+ * `../mcp-route.ts` for the path prefix it must stay clear of to keep that posture.
  *
  * @returns The view matching `window.location.pathname`.
  */
@@ -26,6 +31,9 @@ export function App() {
   }
   if (pathname === '/blueprints') {
     return <BlueprintsView />;
+  }
+  if (pathname === MCP_GUIDE_ROUTE) {
+    return <McpGuideView />;
   }
   const shareMatch = /^\/s\/([^/]+)\/?$/u.exec(pathname);
   if (shareMatch?.[1]) {

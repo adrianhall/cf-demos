@@ -1,6 +1,7 @@
 import { createMcpHandler } from 'agents/mcp/server';
 import { z } from 'zod';
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/server';
+import { MCP_ROUTE } from '../../mcp-route.ts';
 import {
   addEdgeTool,
   addNodeTool,
@@ -48,8 +49,12 @@ const SERVER_VERSION = '1.0.0';
  * mounts it must use the identical literal — see `../routes/mcp.ts`. It is also the prefix
  * `src/access-policies.ts` authenticates and `cloudflare.config.ts` lists in `runWorkerFirst`;
  * those three agreeing is what makes a tool call reach authenticated Worker code at all.
+ *
+ * Re-exported from `src/mcp-route.ts` rather than declared here, because the public guide page
+ * needs the same value and cannot import this module: it would drag the MCP SDK and the `agents`
+ * runtime into the browser bundle. The Worker's own imports are unchanged by the move.
  */
-export const MCP_ROUTE = '/mcp';
+export { MCP_ROUTE };
 
 /**
  * Describes a diagram id argument, shared by every tool that takes one.

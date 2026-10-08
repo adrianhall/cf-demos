@@ -1,5 +1,5 @@
-# One hostname, two Access postures. The landing page, the blueprint gallery and a read-only
-# share link are genuinely public; the dashboard, the editor and every management API require a
+# One hostname, two Access postures. The landing page, the blueprint gallery, the MCP connection
+# guide and a read-only share link are genuinely public; the dashboard, the editor and every management API require a
 # verified identity. Cloudflare Access resolves that by matching the *most specific* application
 # for a request, so the pair below is ordered by specificity, not by precedence: the hostname-wide
 # bypass is the fallback, and the path-scoped authenticated application in front of it covers only
@@ -100,6 +100,11 @@ resource "cloudflare_zero_trust_access_application" "app" {
     # application, so a path without an entry would be anonymously reachable at the edge. The entry
     # was added before the route existed, so the posture was already correct when the route
     # appeared rather than becoming correct afterwards.
+    #
+    # This wildcard matches a partial path segment: `/mcp*` also covers `/mcp-guide`. That is why
+    # the public connection guide lives at `/guides/mcp` instead — see `../src/mcp-route.ts` and the
+    # Access-posture contract in `../tests/worker/lifecycle.test.ts`. A guide under this prefix would
+    # be challenged at the edge even though the Worker's stricter MCP policy regex left it public.
     {
       type = "public"
       uri  = "${local.hostname}/mcp*"

@@ -56,7 +56,11 @@ export function buildAccessPolicies(audience: string): PathPolicy[] {
     // note above.
     { pattern: /^\/mcp(?:\/|$)/u, authenticate: true, redirect: false, audience },
     { pattern: /^\/app(?:\/|$)/u, authenticate: true, redirect: true, audience },
-    // The landing page, the blueprint gallery and the read-only share viewer.
+    // The landing page, the blueprint gallery, the MCP connection guide and the read-only share
+    // viewer. The guide deliberately lives at `/guides/mcp`, not `/mcp-guide`: Terraform's
+    // authenticated `${local.hostname}/mcp*` destination wildcard would capture the latter at the
+    // Access edge even though the stricter regular expression above would not, silently making the
+    // page that explains how to sign in demand a login first. See `./mcp-route.ts`.
     { pattern: /^\//u, authenticate: false }
   ];
 }

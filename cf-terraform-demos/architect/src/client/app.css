@@ -2036,3 +2036,242 @@ button {
   background: var(--cf-surface-alt);
   border-top: 1px solid var(--cf-border);
 }
+
+/* MCP guide (public) ------------------------------------------------------ */
+
+/* Narrower than `.landing`'s 72rem and than `.app-shell__main`'s 64rem default. This page is
+   running prose rather than a card grid, and a measure much beyond ~70 characters is harder to
+   read, not more generous -- the code blocks inside it scroll horizontally on their own rather
+   than demanding page width (see `.copy-block__pre`). Must stay after `.app-shell__main` in
+   source order for the override to win, like `.blueprints-view` above. */
+.guide {
+  max-width: 54rem;
+}
+
+.guide__intro {
+  padding: 1rem 0 2rem;
+}
+
+.guide__lede {
+  color: light-dark(#3f3f46, #d4d4d8);
+  font-size: 1.125rem;
+  margin: 0;
+}
+
+.guide__section {
+  border-top: 1px solid var(--cf-border);
+  padding: 2rem 0;
+}
+
+.guide__section-title {
+  margin: 0 0 0.75rem;
+}
+
+.guide__subsection-title {
+  margin: 2rem 0 0.5rem;
+}
+
+.guide__text {
+  color: light-dark(#3f3f46, #d4d4d8);
+  margin: 0 0 1rem;
+}
+
+/* Inline code in running prose. Deliberately not `--cf-surface-alt` alone: a background with no
+   border is easy to miss at small sizes against `--cf-surface`, and these identifiers (tool
+   names, config keys) are exactly the strings a reader retypes. */
+.guide code {
+  background: var(--cf-surface-alt);
+  border: 1px solid var(--cf-border);
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+  padding: 0.1em 0.3em;
+  /* An identifier like `auto_layout_diagram` has no space to break at, so without this it forces
+     the whole column wider at 390px rather than wrapping. */
+  overflow-wrap: anywhere;
+}
+
+/* Copy block ------------------------------------------------------------- */
+
+.copy-block {
+  background: var(--cf-surface-alt);
+  border: 1px solid var(--cf-border);
+  border-radius: 0.5rem;
+  margin: 0 0 1rem;
+  /* A `<pre>` contributes its unbroken line as its min-content width. This block sits inside a
+     CSS Grid item below, whose default `min-width: auto` honours that contribution even though
+     the `<pre>` itself scrolls — at 390px the prompt card consequently grew to 921px and gave the
+     *whole page* a horizontal scrollbar. Let the block shrink below min-content; the intentional
+     scrollbar stays on `.copy-block__pre`, where keyboard and pointer users can both reach it. */
+  min-width: 0;
+  overflow: hidden;
+}
+
+.copy-block__bar {
+  align-items: center;
+  border-bottom: 1px solid var(--cf-border);
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 0.375rem 0.375rem 0.375rem 0.75rem;
+}
+
+.copy-block__language {
+  color: light-dark(#555, #aaa);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  /* The bar is `justify-content: space-between`, so with no language caption the button would
+     jump to the left edge. This keeps the button right-aligned either way. */
+  margin-right: auto;
+  text-transform: uppercase;
+}
+
+/* WCAG 2.2 AA target size (2.5.8) is 24x24 CSS pixels minimum. The padding alone clears it, but
+   the minimums are explicit so a later font-size change cannot silently drop below them -- the
+   same treatment `.modal__close` and `.diagram-card__menu-button` already carry. */
+.copy-block__button {
+  flex: 0 0 auto;
+  font-size: 0.8125rem;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0.25rem 0.75rem;
+}
+
+.copy-block__pre {
+  /* The one construct on this page that genuinely cannot reflow: wrapping a JSON snippet or a
+     shell command at an arbitrary column would change what a reader copies by eye. It scrolls
+     instead, and carries `tabIndex={0}` in the component so the scroll is keyboard-reachable
+     (WCAG 2.1.1). */
+  margin: 0;
+  overflow-x: auto;
+  padding: 0.75rem;
+}
+
+.copy-block__pre code {
+  /* The page sets a bordered inline-code treatment above; inside a block it would draw a box
+     around the whole snippet and around nothing meaningful. */
+  background: none;
+  border: none;
+  font-size: 0.8125rem;
+  padding: 0;
+}
+
+.copy-block__pre:focus-visible {
+  outline: 2px solid var(--cf-orange);
+  outline-offset: -2px;
+}
+
+/* Guide notes ------------------------------------------------------------ */
+
+.guide__note {
+  background: var(--cf-surface-alt);
+  border: 1px solid var(--cf-border);
+  border-left: 3px solid var(--cf-orange-dark);
+  border-radius: 0.375rem;
+  display: flex;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 0.875rem 1rem;
+}
+
+/* Decorative -- every note carries a real text title, so the icon is `aria-hidden` and the
+   callout reads identically with images off. `--cf-orange-dark` clears 1.4.11's 3:1 non-text
+   minimum against both surfaces (~4:1), unlike the brighter `--cf-orange`. */
+.guide__note-icon {
+  color: var(--cf-orange-dark);
+  flex: 0 0 auto;
+  margin-top: 0.125rem;
+}
+
+.guide__note-title {
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+
+.guide__note-body {
+  color: light-dark(#3f3f46, #d4d4d8);
+  margin: 0;
+}
+
+/* Operator commands ------------------------------------------------------- */
+
+.guide__commands {
+  margin: 0;
+}
+
+.guide__command {
+  margin-bottom: 1rem;
+}
+
+.guide__command dt {
+  margin: 0;
+}
+
+.guide__command-purpose {
+  color: light-dark(#3f3f46, #d4d4d8);
+  margin: -0.5rem 0 0;
+}
+
+/* Example prompts --------------------------------------------------------- */
+
+.guide__prompts {
+  display: grid;
+  gap: 1.5rem;
+  /* Grid items default to `min-width: auto`, which means the unbroken line inside a descendant
+     `<pre>` can become the card's minimum width even though that `<pre>` has `overflow-x: auto`.
+     `minmax(0, 1fr)` is the standard opt-out: the track follows the viewport and the code block,
+     not the page, owns the overflow. */
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.guide__prompt {
+  background: var(--cf-surface);
+  border: 1px solid var(--cf-border);
+  border-radius: 0.5rem;
+  min-width: 0;
+  padding: 1.25rem;
+}
+
+.guide__prompt-title {
+  margin: 0 0 0.75rem;
+}
+
+.guide__prompt-tools {
+  color: light-dark(#555, #aaa);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.guide__prompt-tools-label {
+  font-weight: 600;
+}
+
+/* Tool catalogue ---------------------------------------------------------- */
+
+.guide__catalogue {
+  display: grid;
+  gap: 1.25rem;
+  margin: 0;
+}
+
+.guide__catalogue-title {
+  font-weight: 600;
+  margin-bottom: 0.375rem;
+}
+
+.guide__catalogue-body {
+  margin: 0;
+}
+
+.guide__catalogue-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0 0 0.375rem;
+}
+
+.guide__catalogue-note {
+  color: light-dark(#555, #aaa);
+  font-size: 0.875rem;
+  margin: 0;
+}

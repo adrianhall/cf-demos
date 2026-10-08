@@ -1,4 +1,5 @@
 import { LogIn, LogOut } from 'react-feather';
+import { MCP_GUIDE_ROUTE } from '../../mcp-route.ts';
 import type { IdentityState } from '../hooks/useIdentity.ts';
 import { DarkModeToggle } from './DarkModeToggle.tsx';
 
@@ -15,7 +16,7 @@ const LOGOUT_PATH = '/cdn-cgi/access/logout';
  * Which page is rendering the header. Used only to omit the nav link pointing at the page the
  * visitor is already on.
  */
-export type AppHeaderPage = 'dashboard' | 'admin' | 'blueprints' | 'landing';
+export type AppHeaderPage = 'dashboard' | 'admin' | 'blueprints' | 'landing' | 'mcp-guide';
 
 /**
  * Whether the page rendering the header sits behind Cloudflare Access.
@@ -88,6 +89,11 @@ export function AppHeader({ identity, current, access }: AppHeaderProps) {
   // already carries its own "My Diagrams" heading.
   const showDashboardLink = current !== 'dashboard';
 
+  // Likewise suppressed on the guide itself. Shown to everybody, signed in or not: the page
+  // explains how to connect an agent *before* signing in, so hiding it from anonymous visitors
+  // would withhold it from precisely the reader it was written for.
+  const showGuideLink = current !== 'mcp-guide';
+
   return (
     <header className="app-shell__header">
       <a className="app-shell__name nav-link" href={brandHref}>
@@ -96,6 +102,11 @@ export function AppHeader({ identity, current, access }: AppHeaderProps) {
       {showDashboardLink && (
         <a className="app-shell__nav-link nav-link" href="/app">
           My Diagrams
+        </a>
+      )}
+      {showGuideLink && (
+        <a className="app-shell__nav-link nav-link" href={MCP_GUIDE_ROUTE}>
+          Connect an agent
         </a>
       )}
       {identity.isAdmin && (

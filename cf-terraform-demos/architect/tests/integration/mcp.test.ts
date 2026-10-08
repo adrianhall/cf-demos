@@ -2,6 +2,7 @@ import { applyD1Migrations } from 'cloudflare:test';
 import { env, exports } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { JWT_HEADER, signDevJwt } from '@adrianhall/cloudflare-toolkit/testing';
+import { advertisedToolNames } from '../../src/client/views/mcp-tool-catalogue.ts';
 
 /**
  * @file The remote MCP endpoint through the real Workers runtime. The unit suite covers each tool
@@ -335,6 +336,21 @@ describe('the MCP endpoint', () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get('content-type')).toContain('application/problem+json');
+  });
+
+  // The public guide page at `/guides/mcp` tells a reader what this server offers *before* they
+  // connect, so its list has to be the list. Nothing else connects the two: a tool added to the
+  // server without being added to the page leaves the guide quietly understating the surface,
+  // and a tool removed leaves it advertising something that no longer answers. Checked against a
+  // real `tools/list` response rather than against the registration source, so it is the served
+  // catalogue being compared.
+  it('serves exactly the catalogue the public guide page advertises', async () => {
+    const response = await send(await mcpRequestAs(ALICE, 'tools/list', {}));
+    const body = (await response.json()) as { result: { tools: { name: string }[] } };
+
+    const served = body.result.tools.map((tool) => tool.name).sort();
+
+    expect(served).toEqual([...advertisedToolNames()].sort());
   });
 
   it('advertises the read, metadata and graph tools with described schemas', async () => {

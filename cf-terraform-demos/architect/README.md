@@ -77,10 +77,11 @@ The local Access emulator offers two identities:
 - `admin@example.com`, matching the committed local `ADMIN_EMAIL` placeholder;
 - `alice@example.com`, an ordinary user.
 
-The source-faithful landing page is available at the URL printed by `cf dev`. `/api/health` is
-public; `/api/me` and future management APIs exercise the same Access middleware and audience check
-used in production. The common header treats an unauthenticated `/api/me` response as an ordinary
-anonymous state on a public page, while an Access-gated `/app*` page surfaces it as an error.
+The source-faithful landing page is available at the URL printed by `cf dev`, and its **Connect an
+agent** link opens the public MCP guide at `/guides/mcp`. `/api/health` is public; `/api/me` and
+management APIs exercise the same Access middleware and audience check used in production. The
+common header treats an unauthenticated `/api/me` response as an ordinary anonymous state on a
+public page, while an Access-gated `/app*` page surfaces it as an error.
 
 The appearance control cycles system → light → dark → system. System is represented by **no stored
 preference and no inline `color-scheme` override**; explicit light/dark choices are persisted. This
@@ -132,15 +133,18 @@ reverse ordering if the lifecycle is invoked directly.
 
 Terraform owns two applications on the configured hostname:
 
-- a hostname-wide public bypass for the landing page, blueprint gallery and anonymous share viewer;
+- a hostname-wide public bypass for the landing page, blueprint gallery, MCP connection guide and
+  anonymous share viewer;
 - a narrower authenticated application for `/app*`, the management APIs and `/mcp*`, carrying the
   Managed OAuth configuration the remote MCP endpoint needs.
 
 The authenticated application deliberately enumerates API destinations rather than claiming
-`/api/*`, because the later anonymous share resolver lives under that prefix and must stay public.
-The same ordered policy builder drives local Access emulation and Worker-side verification; every
-API and MCP policy uses `redirect: false`, so a programmatic caller receives an RFC 9457 `401`
-rather than HTML from a login redirect.
+`/api/*`, because the anonymous share resolver lives under that prefix and must stay public. The
+public MCP guide likewise lives at `/guides/mcp`, not `/mcp-guide`: Access path wildcards match a
+partial segment, so the authenticated `/mcp*` destination would quietly challenge the latter even
+though the Worker's stricter MCP policy regex did not. The same ordered policy builder drives local
+Access emulation and Worker-side verification; every API and MCP policy uses `redirect: false`, so a
+programmatic caller receives an RFC 9457 `401` rather than HTML from a login redirect.
 
 Edge Access is not authorization. The Worker validates the exact Access application audience, and
 administrative routes additionally compare the verified email to the Terraform-provided

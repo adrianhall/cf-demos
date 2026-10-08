@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PathPolicy } from '@adrianhall/cloudflare-toolkit/hono';
 import { buildAccessPolicies } from '../../src/access-policies.ts';
+import { MCP_GUIDE_ROUTE } from '../../src/mcp-route.ts';
 
 /**
  * Audience used throughout. The value is irrelevant to the policy shape; what matters is that every
@@ -40,6 +41,21 @@ describe('buildAccessPolicies', () => {
 
     it('leaves the health probe public so it can answer when authentication is what is broken', () => {
       expect(policyFor('/api/health').authenticate).toBe(false);
+    });
+
+    // The guide page teaches a visitor how to connect an agent — including how to sign in — so a
+    // login in front of it would make it useless at the one moment it is needed. It is public by
+    // falling through to the catch-all, which means the thing worth pinning is that no earlier
+    // pattern claims it.
+    it('leaves the MCP guide page public', () => {
+      expect(policyFor(MCP_GUIDE_ROUTE).authenticate).toBe(false);
+    });
+
+    it('resolves the MCP guide page through the public catch-all rather than any earlier rule', () => {
+      const policies = buildAccessPolicies(AUDIENCE);
+      const matched = policies.findIndex((policy) => policy.pattern.test(MCP_GUIDE_ROUTE));
+
+      expect(matched).toBe(policies.length - 1);
     });
   });
 

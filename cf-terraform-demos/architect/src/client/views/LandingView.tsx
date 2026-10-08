@@ -13,6 +13,7 @@ import {
   Terminal,
   Users
 } from 'react-feather';
+import { MCP_GUIDE_ROUTE } from '../../mcp-route.ts';
 import { AppHeader } from '../components/AppHeader.tsx';
 import { HeroDiagram } from '../components/landing/HeroDiagram.tsx';
 import { useIdentity } from '../hooks/useIdentity.ts';
@@ -157,6 +158,9 @@ export function LandingView() {
               </a>
               <a className="button" href="/blueprints">
                 Browse blueprints
+              </a>
+              <a className="button" href={MCP_GUIDE_ROUTE}>
+                Connect an agent
               </a>
             </div>
           </div>

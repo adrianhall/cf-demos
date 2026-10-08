@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { App } from '../../src/client/App.tsx';
+import { MCP_GUIDE_ROUTE } from '../../src/mcp-route.ts';
 
 /**
  * @file The path selector is the one piece of routing this application has, and it is load-bearing
@@ -77,6 +78,26 @@ describe('App path selector', () => {
       render(<App />);
 
       expect(screen.getByRole('heading', { name: /start a new diagram/iu })).toBeInTheDocument();
+    });
+
+    it('renders the MCP guide for /guides/mcp', () => {
+      visit(MCP_GUIDE_ROUTE);
+      render(<App />);
+
+      expect(
+        screen.getByRole('heading', { name: /connect an AI agent to your diagrams/iu })
+      ).toBeInTheDocument();
+    });
+
+    // An exact match, like `/blueprints`. A `startsWith` would make the guide answer for every
+    // path beneath it, which would hide a typo as a working page.
+    it('falls through to the landing page for a path merely beneath the guide', () => {
+      visit(`${MCP_GUIDE_ROUTE}/extra`);
+      render(<App />);
+
+      expect(
+        screen.getByRole('heading', { name: /design your cloudflare architecture/iu })
+      ).toBeInTheDocument();
     });
 
     it('renders the share viewer for /s/:token', () => {

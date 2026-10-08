@@ -2,6 +2,7 @@ import { applyD1Migrations } from 'cloudflare:test';
 import { env, exports } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { JWT_HEADER, signDevJwt } from '@adrianhall/cloudflare-toolkit/testing';
+import { MCP_GUIDE_ROUTE } from '../../src/mcp-route.ts';
 
 /**
  * Test-only bindings injected by the integration Vitest project (`./vitest.config.ts`).
@@ -128,6 +129,38 @@ describe('Architect Worker', () => {
       const response = await send(await requestAs(ALICE, '/api/health'));
 
       expect(response.status).toBe(200);
+    });
+
+    // The guide page explains how to connect an agent, including how to sign in, so a login in
+    // front of it would make it useless exactly when it is needed. The Worker must not challenge
+    // it and must not redirect it.
+    //
+    // There is no asset binding in this pool, so the page itself is not served here — a `404`
+    // from the application's own not-found handler is the expected result and is the right
+    // assertion anyway. What is being pinned is that the request reaches routing at all rather
+    // than being stopped by the Access middleware, which is what a `401` or a `302` would mean.
+    it('never challenges the public MCP guide page', async () => {
+      const response = await send(new Request(`${ORIGIN}${MCP_GUIDE_ROUTE}`));
+
+      expect(response.status).not.toBe(401);
+      expect(response.status).not.toBe(302);
+      expect(response.headers.get('location')).toBeNull();
+    });
+
+    // The failure this guards is a page at `/mcp-guide`, which the Worker's `/^\/mcp(?:\/|$)/u`
+    // policy would leave public while Terraform's `${hostname}/mcp*` destination captured it at
+    // the edge — a disagreement no offline test would see.
+    it('keeps the guide page clear of the authenticated MCP prefix', () => {
+      expect(MCP_GUIDE_ROUTE.startsWith('/mcp')).toBe(false);
+    });
+
+    // The endpoint itself still authenticates, and still answers rather than redirecting: an MCP
+    // client is not a browser navigation and can no more follow a redirect than a `fetch` can.
+    it('still authenticates the MCP endpoint the guide points at', async () => {
+      const response = await send(new Request(`${ORIGIN}/mcp`, { method: 'POST' }));
+
+      expect(response.status).toBe(401);
+      expect(response.headers.get('location')).toBeNull();
     });
   });
 

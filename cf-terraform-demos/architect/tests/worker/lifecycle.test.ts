@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import packageJson from '../../package.json' with { type: 'json' };
+import { MCP_GUIDE_ROUTE } from '../../src/mcp-route.ts';
 
 /**
  * @file Asserts the lifecycle contract the family conventions require, and the naming discipline
@@ -270,6 +271,43 @@ describe('Terraform ownership', () => {
       const access = await readTerraform('access.tf');
 
       expect(access).not.toContain('admin_email');
+    });
+
+    // The public guide page's posture, asserted at the layer that would actually break it.
+    //
+    // `src/access-policies.ts` cannot catch this and neither can the Workers-runtime suite: in
+    // production a page is served straight from the asset store behind the real Access
+    // application, so the Worker never sees the request at all. The only thing standing between
+    // the guide page and a login screen is its absence from the destination globs below.
+    //
+    // An Access path wildcard matches a *partial segment* — Cloudflare documents
+    // `example.com/foo*` as covering `example.com/food` — so `${hostname}/mcp*` would capture a
+    // guide page at `/mcp-guide`. The Worker's own `/^\/mcp(?:\/|$)/u` policy would not, so the
+    // two layers would disagree, every offline test would pass, and only the deployment would
+    // redirect. This expands each destination glob the same way Access does and requires that
+    // none of them claims the guide page.
+    it('leaves the public MCP guide page outside every authenticated destination', async () => {
+      const access = await readTerraform('access.tf');
+      const paths = [...access.matchAll(/uri\s*=\s*"\$\{local\.hostname\}([^"]*)"/gu)].map(
+        (match) => match[1] as string
+      );
+
+      expect(paths).toContain('/mcp*');
+      for (const path of paths) {
+        const pattern = new RegExp(
+          `^${path
+            .split('*')
+            .map((part) => part.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`))
+            .join('.*')}$`,
+          'u'
+        );
+
+        expect(
+          pattern.test(MCP_GUIDE_ROUTE),
+          `the "${path}" Access destination would capture the public guide page at `
+            + `${MCP_GUIDE_ROUTE}, putting a login in front of the page that explains how to sign in`
+        ).toBe(false);
+      }
     });
   });
 });

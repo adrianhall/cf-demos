@@ -247,10 +247,34 @@ describe('AppHeader', () => {
       expect(screen.queryByRole('link', { name: 'My Diagrams' })).not.toBeInTheDocument();
     });
 
-    it.each(['admin', 'blueprints', 'landing'] as const)('shows My Diagrams on %s', (current) => {
-      renderHeader(ALICE, 'authenticated', current);
+    it.each(['admin', 'blueprints', 'landing', 'mcp-guide'] as const)(
+      'shows My Diagrams on %s',
+      (current) => {
+        renderHeader(ALICE, 'authenticated', current);
 
-      expect(screen.getByRole('link', { name: 'My Diagrams' })).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'My Diagrams' })).toBeInTheDocument();
+      }
+    );
+
+    // Offered to anonymous visitors too, which is the point: the page it leads to explains how to
+    // connect an agent *before* signing in, so hiding it until after a login would withhold it
+    // from the reader it was written for.
+    it.each([
+      ['an anonymous visitor', ANONYMOUS],
+      ['a signed-in owner', ALICE]
+    ])('offers %s the agent guide', (_description, identity) => {
+      renderHeader(identity, 'public', 'landing');
+
+      expect(screen.getByRole('link', { name: 'Connect an agent' })).toHaveAttribute(
+        'href',
+        '/guides/mcp'
+      );
+    });
+
+    it('omits the agent guide link on the guide itself', () => {
+      renderHeader(ALICE, 'public', 'mcp-guide');
+
+      expect(screen.queryByRole('link', { name: 'Connect an agent' })).not.toBeInTheDocument();
     });
 
     // The stylesheet has no global `a` rule, so an anchor without this class keeps the browser's
