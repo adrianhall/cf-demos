@@ -79,7 +79,8 @@ function handlerFor(hostname: string): { fetch: (request: Request) => Promise<Re
  * request to the MCP handler, and does nothing else: no authentication of its own, because the
  * Access middleware in `../index.ts` already covers `/mcp` through the shared policy list in
  * `src/access-policies.ts`; and no authorization of its own, because every tool reaches storage
- * through {@link DiagramService}, which owns the ownership rule for the HTTP API too.
+ * through {@link DiagramService} or {@link ShareService}, which own the ownership rule for the HTTP
+ * API too.
  *
  * The route literal must match `MCP_ROUTE` exactly. The handler performs its own route match and
  * answers `404` for any other pathname, so a mismatch here would surface as every tool call failing
@@ -98,8 +99,8 @@ export function createMcpRouter(): Hono<AppBindings> {
   /**
    * Serves one MCP request as the verified caller.
    *
-   * @param context Hono request context carrying the verified identity, the diagram service, the
-   *   request-scoped logger and the `PUBLIC_HOSTNAME` binding.
+   * @param context Hono request context carrying the verified identity, the diagram and share
+   *   services, the request-scoped logger and the `PUBLIC_HOSTNAME` binding.
    * @returns The MCP handler's response — a JSON-RPC result, an error object, or an SSE stream,
    *   depending on what the client asked for.
    * @throws {NullError} When mounted without the Access middleware in front of it, so no verified
@@ -120,7 +121,13 @@ export function createMcpRouter(): Hono<AppBindings> {
     contextsByRequest.set(request, {
       actorEmail: currentIdentityEmail(context),
       diagrams: context.var.DIAGRAM_SERVICE,
-      logger: context.var.LOGGER
+      logger: context.var.LOGGER,
+      // The share tools resolve their returned link against this, exactly as
+      // `POST /api/diagrams/:id/share` resolves it against the request it is answering. An origin
+      // belongs to the request rather than to the use case, so it travels with the context
+      // instead of being read from a binding or written as a literal.
+      requestUrl: context.req.url,
+      shares: context.var.SHARE_SERVICE
     });
 
     return handlerFor(hostname).fetch(request);

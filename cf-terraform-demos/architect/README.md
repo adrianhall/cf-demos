@@ -281,6 +281,13 @@ filename. Project export is DOM-free: a pure generator maps catalogue nodes into
 typed `cloudflare.config.ts`, Worker/Hono/Astro entry point, package scripts and optional Drizzle/D1
 files.
 
+Because the generator is DOM-free, the Worker imports it directly: the `export_diagram` MCP tool
+calls the same `generateScaffold`, zips it with `fflate` server-side and returns base64, so an agent
+and the toolbar button produce byte-identical projects. PNG and SVG are deliberately absent from
+that tool for the opposite reason — there is no server-side browser rendering in this demo — and the
+tool description states the gap so a calling model redirects the user to the editor's own button
+instead of promising an image.
+
 The generated scaffold is the one deliberate Phase 6 behaviour difference from the source. The
 source emitted `wrangler.toml` and Wrangler commands. This repository exists to teach the `cf`
 control plane that supersedes Wrangler, so the generated starter uses `cf/config`, `cf dev`,
@@ -320,8 +327,9 @@ Terraform defaults reserved for this port.
   diagram. Losing a raw URL requires rotation because the server stores only its digest.
 - Administration is intentionally one configured identity. There is no role table, invitation flow,
   or first-user bootstrap.
-- Browser image export captures rendered DOM and therefore has no server API. Project export is a
-  portable starter, not a complete reverse-engineering of arbitrary diagram topology.
+- Browser image export captures rendered DOM and therefore has no server API, and none through MCP
+  either: `export_diagram` offers `json` and `scaffold` only. Project export is a portable starter,
+  not a complete reverse-engineering of arbitrary diagram topology.
 - ELK auto-layout is browser-only and downloaded only when requested. It is absent from Workers
   because ELK cannot execute in `workerd`.
 - The generated scaffold intentionally uses `cf`, unlike the Wrangler-based source scaffold. This is

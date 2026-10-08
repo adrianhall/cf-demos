@@ -1,18 +1,24 @@
-import { describe, expect, it } from 'vitest';
+import { unzipSync, strFromU8 } from 'fflate';
+import { describe, expect, it, vi } from 'vitest';
 import { DiagramService } from '../../src/worker/application/diagram-service.ts';
+import { ShareService } from '../../src/worker/application/share-service.ts';
 import type { Diagram } from '../../src/worker/domain/diagram.ts';
 import {
   addEdgeTool,
   addNodeTool,
   autoLayoutDiagramTool,
   createDiagramTool,
+  createShareLinkTool,
   deleteDiagramTool,
+  exportDiagramTool,
   getDiagramTool,
+  getShareStatusTool,
   listDiagramsTool,
   type McpToolContext,
   removeEdgeTool,
   removeNodeTool,
   renameDiagramTool,
+  revokeShareLinkTool,
   updateEdgeTool,
   updateNodeTool
 } from '../../src/worker/mcp/tools.ts';
@@ -39,6 +45,14 @@ const ALICE = 'alice@example.com';
 const MALLORY = 'mallory@example.com';
 
 /**
+ * Origin the share tools resolve their returned link against.
+ *
+ * Fictional on purpose: it is never a live deployment, so no assertion here can be satisfied by —
+ * or reach — a real host. The real value comes from the request being served.
+ */
+const ORIGIN = 'https://diagrams.test/mcp';
+
+/**
  * Records one structured MCP log event.
  */
 interface LogEntry {
@@ -56,30 +70,34 @@ interface LogEntry {
  * Builds the real diagram service over in-memory ports and one request-scoped MCP context.
  *
  * @param actorEmail Verified identity the context should represent.
- * @returns The context, backing repository, recording session port, and captured log events.
+ * @returns The context, backing repositories, recording session port, and captured log events.
  */
 function createContext(actorEmail: string = ALICE): {
   context: McpToolContext;
   diagrams: FakeDiagramRepository;
   entries: LogEntry[];
   sessions: FakeDiagramSessions;
+  shares: FakeShareRepository;
 } {
   const diagrams = new FakeDiagramRepository();
   const shares = new FakeShareRepository();
   const sessions = new FakeDiagramSessions();
   const entries: LogEntry[] = [];
+  const diagramService = new DiagramService(diagrams, shares, sessions);
 
   const context: McpToolContext = {
     actorEmail,
-    diagrams: new DiagramService(diagrams, shares, sessions),
+    diagrams: diagramService,
     logger: {
       info(event: string, logContext?: Record<string, unknown>): void {
         entries.push({ context: logContext ?? {}, event });
       }
-    }
+    },
+    requestUrl: ORIGIN,
+    shares: new ShareService(shares, diagramService)
   };
 
-  return { context, diagrams, entries, sessions };
+  return { context, diagrams, entries, sessions, shares };
 }
 
 /**
@@ -432,5 +450,324 @@ describe('MCP graph mutation tools', () => {
 
     expect((await alice.diagrams.find(diagram.id))?.graphData).toBe(before?.graphData);
     expect(mallory.sessions.notifications).toEqual([]);
+  });
+});
+
+describe('MCP share tools', () => {
+  it('mints a link, resolves it against the request origin and logs only the diagram id', async () => {
+    const { context, entries } = createContext();
+    const diagram = await createFixture(context, 'Shared');
+    entries.length = 0;
+
+    const share = await createShareLinkTool(context, diagram.id);
+
+    expect(share.url).toBe(`https://diagrams.test/s/${share.token}`);
+    expect(share.createdAt).toEqual(expect.any(String));
+    expect(entries).toEqual([
+      { context: { diagramId: diagram.id, via: 'mcp' }, event: 'diagram_shared' }
+    ]);
+    expect(JSON.stringify(entries)).not.toContain(share.token);
+  });
+
+  // The rule the whole sharing design rests on: a token is disclosed by the call that mints it
+  // and by nothing else, ever. Only its digest is stored, so there is no second response, no
+  // second tool and no retry that could produce it again — which is also why a lost link can only
+  // be replaced, never recovered.
+  it('discloses the raw token exactly once and never again', async () => {
+    const { context, shares } = createContext();
+    const diagram = await createFixture(context, 'Shared');
+
+    const share = await createShareLinkTool(context, diagram.id);
+
+    const status = await getShareStatusTool(context, diagram.id);
+    expect(status).toEqual({ active: true, createdAt: share.createdAt });
+    expect(JSON.stringify(status)).not.toContain(share.token);
+
+    // Nothing the repository holds carries the plaintext either, so no later read of any kind
+    // could reconstruct it — the digest really is all that was kept.
+    expect(JSON.stringify([...shares.rows, ...shares.lookup])).not.toContain(share.token);
+
+    // Every other tool that returns the diagram is checked too, because a token leaking through
+    // an unrelated payload would defeat the rule just as completely.
+    const read = await getDiagramTool(context, diagram.id);
+    const listed = await listDiagramsTool(context);
+    const exported = await exportDiagramTool(context, diagram.id, 'json');
+    expect(JSON.stringify([read, listed, exported])).not.toContain(share.token);
+  });
+
+  it('rotates, so a second link revokes the first', async () => {
+    const { context } = createContext();
+    const diagram = await createFixture(context, 'Shared');
+
+    const first = await createShareLinkTool(context, diagram.id);
+    const second = await createShareLinkTool(context, diagram.id);
+
+    expect(second.token).not.toBe(first.token);
+    await expect(context.shares.resolve(second.token)).resolves.toMatchObject({ id: diagram.id });
+    await expectRejectedProblemStatus(context.shares.resolve(first.token), 404);
+  });
+
+  it('reports no active link before one is minted', async () => {
+    const { context } = createContext();
+    const diagram = await createFixture(context, 'Unshared');
+
+    await expect(getShareStatusTool(context, diagram.id)).resolves.toEqual({
+      active: false,
+      createdAt: null
+    });
+  });
+
+  it('revokes an active link, logs it without the token, and refuses a second revocation', async () => {
+    const { context, entries } = createContext();
+    const diagram = await createFixture(context, 'Shared');
+    const share = await createShareLinkTool(context, diagram.id);
+    entries.length = 0;
+
+    await revokeShareLinkTool(context, diagram.id);
+
+    expect(entries).toEqual([
+      { context: { diagramId: diagram.id, via: 'mcp' }, event: 'diagram_share_revoked' }
+    ]);
+    expect(JSON.stringify(entries)).not.toContain(share.token);
+    await expect(getShareStatusTool(context, diagram.id)).resolves.toEqual({
+      active: false,
+      createdAt: null
+    });
+    // Revoking nothing is refused rather than succeeding quietly, exactly as the REST route
+    // refuses it: the caller asked about a link that is not there.
+    await expectRejectedProblemStatus(revokeShareLinkTool(context, diagram.id), 404);
+  });
+
+  // The whole catalogue is held to one non-enumerating rule, and sharing is where getting it
+  // wrong would be worst: a `403` here would confirm that a guessed id is somebody's real
+  // diagram, and the tool that follows mints a live link to it.
+  it.each([
+    ['create_share_link', createShareLinkTool],
+    ['get_share_status', getShareStatusTool],
+    ['revoke_share_link', revokeShareLinkTool]
+  ])('refuses %s against a diagram owned by somebody else', async (_name, run) => {
+    const alice = createContext(ALICE);
+    const mallory = createContext(MALLORY);
+    const diagram = await createFixture(alice.context, 'Alice only');
+    await createShareLinkTool(alice.context, diagram.id);
+
+    await expectRejectedProblemStatus(run(mallory.context, diagram.id), 404);
+
+    // Still active: a refused revocation must not have reached the store on its way to the
+    // refusal.
+    await expect(getShareStatusTool(alice.context, diagram.id)).resolves.toMatchObject({
+      active: true
+    });
+  });
+
+  it('reports a foreign and an absent diagram identically', async () => {
+    const alice = createContext(ALICE);
+    const mallory = createContext(MALLORY);
+    const diagram = await createFixture(alice.context, 'Alice only');
+
+    const messages = await Promise.all(
+      [diagram.id, '11111111-1111-4111-8111-111111111111'].map(async (id) => {
+        try {
+          await createShareLinkTool(mallory.context, id);
+          return 'unexpected success';
+        } catch (error) {
+          return error instanceof Error ? error.message : String(error);
+        }
+      })
+    );
+
+    expect(messages).toEqual(['Diagram not found.', 'Diagram not found.']);
+  });
+
+  // Belt and braces against the structured logger being bypassed entirely. A token written
+  // straight to the console would never appear in `entries`, and the console is shipped to the
+  // same observability backend the logger is.
+  it('writes no token to the console', async () => {
+    const spies = (['debug', 'error', 'info', 'log', 'warn'] as const).map((method) =>
+      vi.spyOn(console, method).mockImplementation(() => {})
+    );
+
+    try {
+      const { context } = createContext();
+      const diagram = await createFixture(context, 'Shared');
+      const share = await createShareLinkTool(context, diagram.id);
+
+      await getShareStatusTool(context, diagram.id);
+      await revokeShareLinkTool(context, diagram.id);
+
+      for (const spy of spies) {
+        for (const call of spy.mock.calls) {
+          expect(JSON.stringify(call)).not.toContain(share.token);
+        }
+      }
+    } finally {
+      for (const spy of spies) {
+        spy.mockRestore();
+      }
+    }
+  });
+});
+
+describe('MCP export tool', () => {
+  /**
+   * A graph with one Worker and one D1 database, so the generated project has both an entry point
+   * and a binding to assert.
+   */
+  const EXPORTABLE_GRAPH = JSON.stringify({
+    edges: [{ data: { edgeType: 'service-binding' }, id: 'link', source: 'api', target: 'store' }],
+    nodes: [
+      {
+        data: { label: 'Edge API', typeId: 'worker' },
+        id: 'api',
+        position: { x: 0, y: 0 },
+        type: 'cf-node'
+      },
+      {
+        data: { label: 'User Data', typeId: 'd1' },
+        id: 'store',
+        position: { x: 0, y: 200 },
+        type: 'cf-node'
+      }
+    ],
+    viewport: { x: 0, y: 0, zoom: 1 }
+  });
+
+  /**
+   * Creates a diagram carrying {@link EXPORTABLE_GRAPH}.
+   *
+   * @param context Tool context whose identity will own it.
+   * @param title Title to give it, which becomes the generated project's name.
+   * @returns The seeded diagram.
+   */
+  async function exportable(context: McpToolContext, title = 'Billing Service'): Promise<Diagram> {
+    const diagram = await createDiagramTool(context, { title });
+    await context.diagrams.saveGraph(context.actorEmail, diagram.id, {
+      graphData: EXPORTABLE_GRAPH
+    });
+    return diagram;
+  }
+
+  /**
+   * Decodes a base64 scaffold export back into its files.
+   *
+   * @param data Base64 ZIP bytes as the tool returned them.
+   * @returns File path to file contents.
+   */
+  function unpack(data: string): Map<string, string> {
+    const bytes = Uint8Array.from(atob(data), (character) => character.charCodeAt(0));
+
+    return new Map(
+      Object.entries(unzipSync(bytes)).map(([path, contents]) => [path, strFromU8(contents)])
+    );
+  }
+
+  // Asserted against the stored row rather than against the fixture text: the application
+  // canonicalises on every write, so "verbatim" means byte-identical to what is in storage, not
+  // to whatever key order the caller happened to send.
+  it('returns the stored graph verbatim as JSON', async () => {
+    const { context, diagrams } = createContext();
+    const diagram = await exportable(context);
+    const stored = await diagrams.find(diagram.id);
+
+    const exported = await exportDiagramTool(context, diagram.id, 'json');
+
+    expect(exported).toEqual({
+      data: stored?.graphData,
+      format: 'json',
+      mimeType: 'application/json'
+    });
+    expect(JSON.parse(exported.data)).toEqual(JSON.parse(EXPORTABLE_GRAPH));
+  });
+
+  it('zips the same project the editor’s own export button generates', async () => {
+    const { context } = createContext();
+    const diagram = await exportable(context);
+
+    const exported = await exportDiagramTool(context, diagram.id, 'scaffold');
+    const files = unpack(exported.data);
+
+    expect(exported.format).toBe('scaffold');
+    expect(exported.mimeType).toBe('application/zip');
+    expect([...files.keys()].sort()).toEqual([
+      'README.md',
+      'cloudflare.config.ts',
+      'drizzle.config.ts',
+      'migrations/0001_initial.sql',
+      'package.json',
+      'src/db/client.ts',
+      'src/db/schema.ts',
+      'src/index.ts',
+      'tsconfig.json'
+    ]);
+    // The diagram's own vocabulary reaches the generated project: the title becomes the Worker
+    // name and the node's label becomes its binding.
+    expect(files.get('cloudflare.config.ts')).toContain("'billing-service'");
+    expect(files.get('cloudflare.config.ts')).toContain('USER_DATA: bindings.d1(');
+    // `cf`-native, not Wrangler — the same deliberate departure the browser export makes.
+    expect(files.get('cloudflare.config.ts')).toContain("from 'cf/config'");
+  });
+
+  // The server cannot know a node's shape — `../domain/graph.ts` validates only that each element
+  // has a non-empty string id — so a graph the editor has not written must not crash an export.
+  it('skips graph elements that carry no catalogue type or label', async () => {
+    const { context } = createContext();
+    const diagram = await createDiagramTool(context, { title: 'Sparse' });
+    await context.diagrams.saveGraph(context.actorEmail, diagram.id, {
+      graphData: JSON.stringify({
+        edges: [{ id: 'dangling' }],
+        nodes: [
+          { id: 'bare' },
+          { data: { label: 'Mystery', typeId: 'not-a-product' }, id: 'unknown' },
+          { data: { label: 'API', typeId: 'worker' }, id: 'api' }
+        ]
+      })
+    });
+
+    const files = unpack((await exportDiagramTool(context, diagram.id, 'scaffold')).data);
+
+    expect(files.has('cloudflare.config.ts')).toBe(true);
+    expect(files.get('cloudflare.config.ts')).not.toContain('Mystery');
+  });
+
+  // An empty archive rather than an error: a diagram of nothing but external actors has no
+  // Cloudflare service to configure, which is a fact about the diagram and not a failure.
+  it('produces an empty archive for a diagram with nothing to provision', async () => {
+    const { context } = createContext();
+    const diagram = await createFixture(context, 'Empty');
+
+    const exported = await exportDiagramTool(context, diagram.id, 'scaffold');
+
+    expect(unpack(exported.data).size).toBe(0);
+  });
+
+  it.each(['json', 'scaffold'] as const)(
+    'refuses a %s export of a diagram owned by somebody else',
+    async (format) => {
+      const alice = createContext(ALICE);
+      const mallory = createContext(MALLORY);
+      const diagram = await exportable(alice.context);
+
+      await expectRejectedProblemStatus(
+        exportDiagramTool(mallory.context, diagram.id, format),
+        404
+      );
+      await expectRejectedProblemStatus(
+        exportDiagramTool(mallory.context, '11111111-1111-4111-8111-111111111111', format),
+        404
+      );
+    }
+  );
+
+  // Reading is not an event: there is no state change to correlate, and the only distinguishing
+  // value would be the exported content itself.
+  it('logs nothing at all', async () => {
+    const { context, entries } = createContext();
+    const diagram = await exportable(context);
+    entries.length = 0;
+
+    await exportDiagramTool(context, diagram.id, 'json');
+    await exportDiagramTool(context, diagram.id, 'scaffold');
+
+    expect(entries).toEqual([]);
   });
 });

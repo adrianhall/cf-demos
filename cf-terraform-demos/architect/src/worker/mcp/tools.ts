@@ -1,5 +1,8 @@
+import { strToU8, zipSync } from 'fflate';
 import type { Logger } from '@adrianhall/cloudflare-toolkit/logging';
+import { generateScaffold } from '../../client/lib/scaffold.ts';
 import type { DiagramService, GraphMutation } from '../application/diagram-service.ts';
+import type { ShareService } from '../application/share-service.ts';
 import type { Diagram } from '../domain/diagram.ts';
 import {
   addEdge,
@@ -14,6 +17,8 @@ import {
   updateEdge,
   updateNode
 } from '../domain/graph-mutations.ts';
+import type { GraphData } from '../domain/graph.ts';
+import type { CreatedShare, ShareStatus } from '../domain/share.ts';
 import type { LogVia } from '../logging.ts';
 
 /**
@@ -25,7 +30,14 @@ import type { LogVia } from '../logging.ts';
  *   tier was written to take raw untrusted values rather than pre-validated ones. They are
  *   separated from `./server.ts` so the behaviour can be unit-tested against in-memory repository
  *   doubles with no MCP protocol, no Worker runtime and no HTTP involved. `./server.ts` then only
- *   has to be right about schemas and descriptions.
+ *   has to be right about schemas and descriptions. The export tools are the one place this file
+ *   reaches outside the Worker tier, importing `generateScaffold` from
+ *   `src/client/lib/scaffold.ts`. That is deliberate and safe: the generator is a pure data
+ *   transform over a list of nodes and edges, with no `document`, no canvas and no React Flow
+ *   runtime anywhere in it or in the `src/catalog.ts` module it reads — which is precisely why the
+ *   browser's export button and an agent's `export_diagram` call can share one generator and
+ *   produce byte-identical projects. PNG and SVG cannot be shared that way, and are therefore
+ *   absent; see {@link exportDiagramTool}.
  */
 
 /**
@@ -58,6 +70,22 @@ export interface McpToolContext {
    * composition root, carrying the same validation and the same uniform `404`.
    */
   diagrams: DiagramService;
+  /**
+   * Sharing use cases — again the very instance `/api/diagrams/:id/share` was given, so an agent
+   * minting a link goes through the same rotation, the same digest-only storage and the same
+   * ownership refusal a browser does.
+   */
+  shares: ShareService;
+  /**
+   * Absolute URL of the `/mcp` request being served, used only to resolve the share URL
+   * {@link createShareLinkTool} returns against this deployment's own origin.
+   *
+   * Taken from the request rather than from a binding or a literal for the same reason `POST
+   * /api/diagrams/:id/share` resolves it against `context.req.url`: an origin is a property of the
+   * request, not of the use case, which is why {@link ShareService.rotate} returns a bare token and
+   * leaves the URL to whichever transport is answering.
+   */
+  requestUrl: string;
   /**
    * Request-scoped structured logger.
    *
@@ -423,4 +451,245 @@ export async function autoLayoutDiagramTool(
   diagramId: string
 ): Promise<Diagram> {
   return applyGraphMutation(context, diagramId, autoLayout, 'auto_layout');
+}
+
+/**
+ * What `create_share_link` returns: the minted token plus the URL assembled from it.
+ *
+ * The same shape `POST /api/diagrams/:id/share` already answers with, so an agent and a browser
+ * receive an identical payload for an identical operation. It extends {@link CreatedShare} rather
+ * than redeclaring its fields, because the domain type is where the "this is the only type carrying
+ * a raw token" rule is written and a parallel declaration would quietly escape it.
+ */
+export interface CreateShareLinkResult extends CreatedShare {
+  /**
+   * Absolute, ready-to-open share URL — `<origin>/s/<token>`.
+   *
+   * Contains the raw token by construction, which is why this object is disclosed exactly once and
+   * never logged: see {@link createShareLinkTool}.
+   */
+  url: string;
+}
+
+/**
+ * Mints a read-only share link for one of the caller's own diagrams, replacing any active link.
+ *
+ * **This result is the only moment the raw token exists outside the caller's own memory.** Only its
+ * SHA-256 digest is persisted (`../domain/share-token.ts`), so the server genuinely cannot
+ * reproduce the link afterwards — {@link getShareStatusTool} reports that a link is active and
+ * when, and nothing more. An owner who loses the link mints a new one, which revokes this one. The
+ * log line below carries the diagram id and the transport and deliberately nothing else: a log is
+ * shipped to an observability backend, retained, and read by people who have no business holding a
+ * live bearer credential.
+ *
+ * @param context Resolved tool context carrying the verified identity, the share service and the
+ *   request URL the returned link is resolved against.
+ * @param diagramId Untrusted diagram id supplied by the caller.
+ * @returns The new token, its creation timestamp and the absolute share URL.
+ * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown or owned
+ *   by another identity — refused before anything is minted, so guessing ids cannot create shares.
+ * @throws {Error} When the repository cannot read or write the rows.
+ */
+export async function createShareLinkTool(
+  context: McpToolContext,
+  diagramId: string
+): Promise<CreateShareLinkResult> {
+  const share = await context.shares.rotate(context.actorEmail, diagramId);
+
+  context.logger.info('diagram_shared', { diagramId, via: VIA });
+
+  return { ...share, url: new URL(`/s/${share.token}`, context.requestUrl).toString() };
+}
+
+/**
+ * Reports whether one of the caller's own diagrams currently has an active share link.
+ *
+ * Never returns the link, and cannot: see {@link createShareLinkTool}. Nothing is logged here
+ * either, because the only value that would distinguish one status read from another is the one
+ * value that must never be written down.
+ *
+ * @param context Resolved tool context carrying the verified identity and the share service.
+ * @param diagramId Untrusted diagram id supplied by the caller.
+ * @returns Whether a link is active, and when it was created.
+ * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown or owned
+ *   by another identity.
+ * @throws {Error} When the repository cannot read the rows.
+ */
+export async function getShareStatusTool(
+  context: McpToolContext,
+  diagramId: string
+): Promise<ShareStatus> {
+  return context.shares.getStatus(context.actorEmail, diagramId);
+}
+
+/**
+ * Revokes the active share link on one of the caller's own diagrams.
+ *
+ * A diagram with no active link is refused rather than succeeding quietly, exactly as `DELETE
+ * /api/diagrams/:id/share` refuses it: the caller asked about a link that is not there.
+ *
+ * @param context Resolved tool context carrying the verified identity and the share service.
+ * @param diagramId Untrusted diagram id supplied by the caller.
+ * @returns A promise fulfilled once the link no longer resolves.
+ * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown or owned
+ *   by another identity, or when it has no active link.
+ * @throws {Error} When the repository cannot read or write the rows.
+ */
+export async function revokeShareLinkTool(
+  context: McpToolContext,
+  diagramId: string
+): Promise<void> {
+  await context.shares.revoke(context.actorEmail, diagramId);
+
+  context.logger.info('diagram_share_revoked', { diagramId, via: VIA });
+}
+
+/**
+ * The formats `export_diagram` can produce.
+ *
+ * Both are pure data transforms, which is the whole reason this list has two entries rather than
+ * four. PNG and SVG are deliberately absent: the editor produces them by rasterising the live React
+ * Flow canvas with `html-to-image` (`../../client/components/editor/toolbar/ExportButton.tsx`), and
+ * a Worker has no DOM, no fonts and no computed styles to reproduce. There is no server-side
+ * browser rendering in this demo, so offering them here would mean promising a capability that does
+ * not exist. {@link exportDiagramTool}'s own tool description says so to the calling model.
+ */
+export type ExportFormat = 'json' | 'scaffold';
+
+/**
+ * What {@link exportDiagramTool} returns.
+ */
+export interface ExportedDiagram {
+  /**
+   * Which format was produced, echoed back so a caller branching on it cannot misread the payload.
+   */
+  format: ExportFormat;
+  /**
+   * MIME type of {@link ExportedDiagram.data}: `application/json` or `application/zip`.
+   */
+  mimeType: string;
+  /**
+   * For `json`, the diagram's canonical `graphData` text verbatim. For `scaffold`, the generated
+   * project's ZIP bytes as base64 — an MCP resource content block's `blob` field is defined as
+   * base64 text, not raw binary, so the encoding belongs here rather than at the protocol edge.
+   */
+  data: string;
+}
+
+/**
+ * Base64-encodes bytes without spreading the array onto the call stack.
+ *
+ * `btoa(String.fromCharCode(...bytes))` is the shorter spelling and the wrong one: spreading an
+ * array into a call's arguments is bounded by the engine's argument limit, so it works for every
+ * scaffold anyone will generate and then throws `RangeError` for the one that is unusually large.
+ * Accumulating byte by byte has no such ceiling.
+ *
+ * @param bytes Raw bytes to encode.
+ * @returns Standard, non-URL-safe base64 text.
+ */
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+/**
+ * One graph node as {@link exportDiagramTool} reads it.
+ *
+ * Every field is optional and typed as `unknown`, because the Worker genuinely does not know a
+ * node's shape — `../domain/graph.ts` validates only that each element is an object with a
+ * non-empty string `id`, so that the client can add a field without a server deploy. A node missing
+ * `data.typeId` or `data.label` therefore contributes nothing to the generated project, which is
+ * exactly what `generateScaffold` already does with a type it does not recognise.
+ */
+interface ScaffoldSourceNode extends Record<string, unknown> {
+  /**
+   * React Flow's per-node payload, carrying the catalogue type and the label when present.
+   */
+  data?: { typeId?: unknown; label?: unknown };
+}
+
+/**
+ * One graph edge as {@link exportDiagramTool} reads it, symmetric to {@link ScaffoldSourceNode}.
+ */
+interface ScaffoldSourceEdge extends Record<string, unknown> {
+  /**
+   * Id of the node the edge leaves.
+   */
+  source?: unknown;
+  /**
+   * Id of the node the edge reaches.
+   */
+  target?: unknown;
+  /**
+   * React Flow's per-edge payload, carrying the catalogue edge type when present.
+   */
+  data?: { edgeType?: unknown };
+}
+
+/**
+ * Exports one of the caller's own diagrams as graph JSON or as a starter-project archive.
+ *
+ * `scaffold` calls the **same** `generateScaffold` the editor's own export button calls
+ * (`../../client/lib/scaffold.ts`), zipped with `fflate` here instead of in the browser, so the two
+ * surfaces hand a reader byte-identical projects rather than two implementations that agree today.
+ * The generator is a pure data transform with no DOM dependency, which is what makes sharing it
+ * possible at all.
+ *
+ * **PNG and SVG are deliberately not offered.** They are rasterisations of the live canvas, and
+ * this demo has no server-side browser rendering; the tool description in `./server.ts` states that
+ * plainly so a calling model does not promise a user an image it cannot produce.
+ *
+ * Nothing is logged. An export reads a diagram without changing it, and the only field that would
+ * distinguish one export from another is the content itself.
+ *
+ * @param context Resolved tool context carrying the verified identity and the diagram service.
+ * @param diagramId Untrusted diagram id supplied by the caller.
+ * @param format `json` for the canonical graph, `scaffold` for a base64 project archive.
+ * @returns The exported bytes and the MIME type describing them. A diagram with neither a Worker
+ *   nor a bindable service produces an empty archive, because `generateScaffold` declines to invent
+ *   a project out of external actors; the caller is told so by the tool description rather than by
+ *   an error, since an empty canvas is not a failure.
+ * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown or owned
+ *   by another identity.
+ * @throws {Error} When the repository cannot read the row.
+ */
+export async function exportDiagramTool(
+  context: McpToolContext,
+  diagramId: string,
+  format: ExportFormat
+): Promise<ExportedDiagram> {
+  const diagram = await context.diagrams.get(context.actorEmail, diagramId);
+
+  if (format === 'json') {
+    // Verbatim, not re-serialised. The stored text is already canonical, so re-encoding it would
+    // mean the bytes an agent receives were never the bytes the application stored.
+    return { data: diagram.graphData, format, mimeType: 'application/json' };
+  }
+
+  // Parsed rather than defensively re-validated: every write path canonicalises before storing,
+  // so treating the stored graph as suspect here would assert the application's own invariant
+  // does not hold.
+  const graph = JSON.parse(diagram.graphData) as GraphData;
+  const files = generateScaffold({
+    edges: (graph.edges as ScaffoldSourceEdge[]).map((edge) => ({
+      edgeType: typeof edge.data?.edgeType === 'string' ? edge.data.edgeType : undefined,
+      source: typeof edge.source === 'string' ? edge.source : '',
+      target: typeof edge.target === 'string' ? edge.target : ''
+    })),
+    nodes: (graph.nodes as ScaffoldSourceNode[]).map((node) => ({
+      label: typeof node.data?.label === 'string' ? node.data.label : '',
+      typeId: typeof node.data?.typeId === 'string' ? node.data.typeId : ''
+    })),
+    title: diagram.title
+  });
+
+  const archive: Record<string, Uint8Array> = {};
+  for (const [path, contents] of files) {
+    archive[path] = strToU8(contents);
+  }
+
+  return { data: toBase64(zipSync(archive)), format, mimeType: 'application/zip' };
 }

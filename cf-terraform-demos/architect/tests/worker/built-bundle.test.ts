@@ -45,14 +45,25 @@ const MAX_ENTRY_BYTES = 1_000_000;
 /**
  * Ceiling for the Worker bundle, in bytes.
  *
- * Phase 12 makes the first Worker-side import of the Agents SDK's stateless MCP handler and the MCP
- * server SDK. Phase 11 measured the otherwise unchanged bundle at 308,282 bytes and a minimal
- * import probe at 992,540 bytes; the finished endpoint is 1,022,518 bytes, so 1.1 MB leaves a
- * small, deliberate allowance for Vite's stable chunking changes while staying a tripwire for a
- * second accidental copy of the SDK. This is Worker code — it does not change the client chunk
- * budget above, which is why the two contracts are separate.
+ * Raised deliberately, from measurements rather than from whatever the build happened to produce.
+ * The Agents SDK's stateless MCP handler and the MCP server SDK dominate the figure: the Worker was
+ * 308,282 bytes before anything imported them and 992,540 with a minimal import probe. The endpoint
+ * and its graph tools then took it to 1,074,373, and the share and export tools account for the
+ * rest in three separately measured steps:
+ *
+ * - The tool functions and their schemas, 1,085,097 (+10,724);
+ * - Importing `generateScaffold`, which pulls in `src/catalog.ts` and the `?raw` starter-project
+ *   templates, 1,122,572 (+37,475);
+ * - Importing `fflate` to zip the result server-side, 1,139,108 (+16,536).
+ *
+ * Both of those last two are the point of the design rather than overhead to trim: the generator is
+ * shared with the browser's own export button precisely so the two produce identical projects, and
+ * zipping has to happen somewhere. 1.23 MB therefore leaves roughly the same proportional allowance
+ * the previous 1.1 MB ceiling left — enough for Vite's stable chunking to move, while still
+ * tripping on a second accidental copy of either SDK. This is Worker code; it does not change the
+ * client chunk budget above, which is why the two contracts are separate.
  */
-const MAX_WORKER_BUNDLE_BYTES = 1_100_000;
+const MAX_WORKER_BUNDLE_BYTES = 1_230_000;
 
 /**
  * Lists the built JavaScript chunks.
@@ -121,7 +132,7 @@ describe('built bundle contract', () => {
     expect(containing[0]).toContain(ELK_CHUNK_MARKER);
   });
 
-  it('keeps the stateless MCP server implementation within its measured Worker budget', async () => {
+  it('keeps the MCP server, scaffold generator and zip within their measured Worker budget', async () => {
     await expect(stat(WORKER_BUNDLE)).resolves.toMatchObject({
       size: expect.any(Number) as number
     });

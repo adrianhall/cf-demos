@@ -152,6 +152,12 @@ The one deliberate source deviation is that this port generates typed `cf/config
 instead of the source demo's obsolete Wrangler scaffold. That change teaches the repository's
 current control plane rather than preserving retired deployment mechanics.
 
+That purity is why the `export_diagram` MCP tool can offer `json` and `scaffold` and nothing else:
+the Worker imports the **same** `generateScaffold`, zips it with `fflate` server-side and returns
+base64, so an agent and the toolbar button hand a reader byte-identical projects. PNG and SVG have
+no such shared path, and the tool's own description says so to the calling model rather than leaving
+it to infer the gap from a failure.
+
 ## Live sync holds the socket where it survives
 
 An agent changing a diagram through `/mcp` has to reach an editor tab that is already open. That is
@@ -254,9 +260,12 @@ port's lifecycle from reaching the separate source deployment.
   `auto_layout_diagram` tool description says so plainly, so a calling model does not promise a user
   the editor-quality layout it will not get.
 - One anonymous link per diagram is active at a time, read-only, and non-recoverable after its
-  one-time disclosure.
+  one-time disclosure. That holds for the `create_share_link` tool exactly as it holds for the
+  button: `get_share_status` reports that a link exists and when, because only a digest was kept.
 - One configured administrator exists; the demo is not a general role-management system.
-- PNG/SVG export requires a browser DOM. There is no server image-rendering service.
+- PNG/SVG export requires a browser DOM. There is no server image-rendering service, so
+  `export_diagram` offers `json` and `scaffold` only and its description tells a calling model to
+  send the user to the editor's own button for an image.
 - Auto-layout is a convenience, not a semantic architecture validator.
 - The catalog models Cloudflare products and common external actors; it is not infrastructure import
   or bidirectional IaC synchronization.
