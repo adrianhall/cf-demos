@@ -24,12 +24,17 @@ const FOREIGN_ORIGIN = 'https://attacker.test';
 /**
  * Builds an application whose every method is guarded by the middleware under test.
  *
- * @returns An application answering any method on `/api/thing` with `204`, if the guard admits it.
+ * @returns An application answering any method on `/api/thing` or `/mcp` with `204`, if the guard
+ *   admits it.
  */
 function buildApp(): Hono {
   const app = new Hono();
   app.use(enforceSameOriginJson);
   app.all('/api/thing', (context) => context.body(null, 204));
+  // This is deliberately only a middleware test, not an authentication test. The real application
+  // has Access ahead of the guard; this route pins only the fact that the non-browser MCP request
+  // reaches the handler, so a later tightening cannot silently make every tool call answer 403.
+  app.all('/mcp', (context) => context.body(null, 204));
   app.onError(problemDetailsErrorHandler());
   return app;
 }
@@ -39,13 +44,44 @@ function buildApp(): Hono {
  *
  * @param method HTTP method to use.
  * @param headers Headers to send.
+ * @param path Path whose guard behaviour to exercise.
  * @returns The response.
  */
-async function send(method: string, headers: Record<string, string> = {}): Promise<Response> {
-  return buildApp().request(`${ORIGIN}/api/thing`, { headers, method });
+async function send(
+  method: string,
+  headers: Record<string, string> = {},
+  path: '/api/thing' | '/mcp' = '/api/thing'
+): Promise<Response> {
+  return buildApp().request(`${ORIGIN}${path}`, { headers, method });
 }
 
 describe('enforceSameOriginJson', () => {
+  describe('the bearer-authenticated MCP carve-out', () => {
+    // An MCP client is not a browser and sends neither `Origin` nor `Sec-Fetch-Site`. This stays
+    // admitted because the route is authenticated by Access before this middleware runs; a future
+    // change that removes the path check would otherwise turn every tool call into a misleading
+    // `403 Cross-origin requests are not permitted.` response.
+    it('admits a POST to /mcp carrying neither browser origin signal nor a JSON content type', async () => {
+      const response = await send('POST', {}, '/mcp');
+
+      expect(response.status).toBe(204);
+    });
+
+    // Exact pathname only: `/mcp/anything` is not a route this phase serves and must not become an
+    // accidental bypass for a later browser-facing mutation endpoint just because it shares a
+    // prefix with MCP.
+    it('does not exempt another path sharing the MCP prefix', async () => {
+      const app = new Hono();
+      app.use(enforceSameOriginJson);
+      app.all('/mcp/anything', (context) => context.body(null, 204));
+      app.onError(problemDetailsErrorHandler());
+
+      const response = await app.request(`${ORIGIN}/mcp/anything`, { method: 'POST' });
+
+      expect(response.status).toBe(403);
+    });
+  });
+
   describe('safe methods', () => {
     // A cross-origin page may legitimately cause these, and the browser's own rules stop it reading
     // the response. Guarding them would reject an ordinary anonymous page load.

@@ -53,10 +53,15 @@ export default defineConfig({
         // fallback is what makes `/app/diagrams/:id` and `/s/:token` resolve to that one
         // document instead of a 404.
         notFoundHandling: 'single-page-application',
-        // Only the API is handled by Worker code. Pages are served straight from the asset store,
-        // which in production means Cloudflare Access gates them at the edge before any Worker
-        // invocation — the Worker is never on the critical path for a page load.
-        runWorkerFirst: ['/api/*']
+        // Only the API and the MCP endpoint are handled by Worker code. Pages are served straight
+        // from the asset store, which in production means Cloudflare Access gates them at the edge
+        // before any Worker invocation — the Worker is never on the critical path for a page load.
+        //
+        // `/mcp*` needs its own entry because it is not under `/api/`: without it every MCP
+        // request falls through to the single-page-application asset fallback and is answered with
+        // the application's own HTML document, which an MCP client reports as a protocol error
+        // rather than as a routing mistake.
+        runWorkerFirst: ['/api/*', '/mcp*']
       },
 
       observability: {
@@ -88,6 +93,13 @@ export default defineConfig({
         ACCESS_AUD: bindings.text(values.accessAud),
         ADMIN_EMAIL: bindings.text(values.adminEmail),
         CLOUDFLARE_TEAM_DOMAIN: bindings.text(values.cloudflareTeamDomain),
+        // The MCP handler performs its own `Host` header validation and its default allowlist
+        // covers only localhost and `workers.dev`, neither of which is this demo's custom
+        // hostname. Binding the Terraform `hostname` output is what keeps `POST /mcp` reachable
+        // on the deployed domain — and binding it rather than writing the literal is what keeps
+        // this demo's lifecycle away from the deployment it was ported from. See
+        // `src/worker/mcp/server.ts`.
+        PUBLIC_HOSTNAME: bindings.text(values.hostname),
         // Deliberately absent in development: its absence selects the toolkit's development logging
         // defaults without requiring an untracked `.dev.vars` file.
         ...(isProduction ? { ENVIRONMENT: bindings.text(values.environment) } : {})

@@ -95,17 +95,58 @@ resource "cloudflare_zero_trust_access_application" "app" {
       type = "public"
       uri  = "${local.hostname}/api/admin*"
     },
-    # Reserved for the later MCP phase, and listed now for the same reason `../src/access-policies
-    # .ts` lists it: everything not enumerated here falls through to the hostname-wide bypass
-    # application above, so a path added later without an entry would be anonymously reachable at
-    # the edge. Declaring it here means the posture is already correct when the route appears, and
-    # a request to it today is challenged and then answered with this Worker's 404 — which is the
-    # right answer for a route that does not exist yet.
+    # The remote MCP endpoint (`../src/worker/routes/mcp.ts`), listed for the same reason as every
+    # entry above: everything not enumerated here falls through to the hostname-wide bypass
+    # application, so a path without an entry would be anonymously reachable at the edge. The entry
+    # was added before the route existed, so the posture was already correct when the route
+    # appeared rather than becoming correct afterwards.
     {
       type = "public"
       uri  = "${local.hostname}/mcp*"
     }
   ]
+
+  # Turns Access itself into the OAuth 2.1 authorization server a non-browser MCP client needs.
+  # Without it, a client that cannot complete a browser login redirect is answered with a 302 it
+  # can never follow, which surfaces as an unexplained connection failure rather than as an
+  # authentication prompt.
+  #
+  # This is deliberately on the *existing* application rather than a second one. Access resolves
+  # the most specific application for a request, so a second application covering `/mcp*` would
+  # shadow this one and the two policy lists would then have to be kept in step by review. One
+  # application means an identity that can sign in to the editor can sign in to the MCP endpoint,
+  # and nobody else can — by construction rather than by agreement.
+  #
+  # The attribute is still documented as beta by the provider; see
+  # specs/architect/03-mcp-spike.md §3 for the field set confirmed against the resolved provider
+  # binary rather than against the registry documentation.
+  oauth_configuration = {
+    enabled = true
+
+    # Dynamic Client Registration is the only registration mechanism Access offers: there is no
+    # Client ID Metadata Documents field anywhere in the schema, and Access never advertises
+    # support for it, so per the MCP specification's own client priority order even a fully
+    # CIMD-capable client falls back to DCR here.
+    #
+    # The two loopback/localhost flags are not a lazier alternative to a narrow `allowed_uris`
+    # list. `allowed_uris` requires an `https` URL, while OAuth 2.1's native-app loopback
+    # exception means an agent harness redirects to a plain `http://127.0.0.1:…` address, so these
+    # flags are the only mechanism that can admit such a client at all.
+    dynamic_client_registration = {
+      enabled                = true
+      allow_any_on_loopback  = true
+      allow_any_on_localhost = true
+    }
+
+    # A short access token paired with a long grant session, which is Cloudflare's recommended
+    # shape for an agent client and is load-bearing rather than a tuning preference: Access
+    # re-evaluates policy on every silent refresh, so a revoked identity loses access within one
+    # token lifetime instead of at its next interactive login.
+    grant = {
+      access_token_lifetime = "15m"
+      session_duration      = "336h"
+    }
+  }
 
   policies = [{
     id         = cloudflare_zero_trust_access_policy.authenticated_users.id

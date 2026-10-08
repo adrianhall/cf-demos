@@ -33,6 +33,10 @@ export default defineProject(async () => {
             ACCESS_AUD: 'a'.repeat(64),
             ADMIN_EMAIL: 'admin@example.com',
             CLOUDFLARE_TEAM_DOMAIN: 'local.cloudflareaccess.com',
+            // The MCP handler validates Host itself. A fictional binding keeps the runtime suite
+            // hermetic while proving the value is supplied through the Worker configuration rather
+            // than hard-coded in the handler.
+            PUBLIC_HOSTNAME: 'diagrams.test',
             ENVIRONMENT: 'test',
             // Parsed migrations applied by the suite's `beforeAll` hook.
             TEST_MIGRATIONS: migrations

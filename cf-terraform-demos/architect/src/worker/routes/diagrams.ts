@@ -1,6 +1,16 @@
 import { Hono } from 'hono';
 import { currentIdentityEmail, jsonBodyLimit, readJsonBody } from '@demos/worker-common';
 import type { AppBindings } from '../bindings.ts';
+import type { LogVia } from '../logging.ts';
+
+/**
+ * Transport recorded on every structured log event this router emits.
+ *
+ * The same field the MCP tools set to `'mcp'` (`../mcp/tools.ts`), so one Workers Logs query
+ * separates a person clicking a button from their own agent calling a tool. Both surfaces reach the
+ * identical use cases, so without this field the two are indistinguishable in observability.
+ */
+const VIA: LogVia = 'api';
 
 /**
  * Largest accepted JSON body on this router, in bytes.
@@ -74,7 +84,7 @@ export function createDiagramsRouter(): Hono<AppBindings> {
 
     // The id, not the title or the graph: a log line should be enough to correlate a request
     // without becoming a copy of the user's content.
-    context.var.LOGGER.info('diagram_created', { diagramId: diagram.id });
+    context.var.LOGGER.info('diagram_created', { diagramId: diagram.id, via: VIA });
     return context.json({ diagram }, 201);
   });
 
@@ -95,7 +105,7 @@ export function createDiagramsRouter(): Hono<AppBindings> {
 
     // An id and the operation are enough to correlate a request. The graph, title and verified
     // identity are user content and do not belong in an operational log.
-    context.var.LOGGER.info('diagram_opened', { diagramId: diagram.id });
+    context.var.LOGGER.info('diagram_opened', { diagramId: diagram.id, via: VIA });
     return context.json({ diagram });
   });
 
@@ -117,7 +127,11 @@ export function createDiagramsRouter(): Hono<AppBindings> {
       await readJsonBody(context.req.raw)
     );
 
-    context.var.LOGGER.info('diagram_updated', { diagramId: diagram.id, kind: 'metadata' });
+    context.var.LOGGER.info('diagram_updated', {
+      diagramId: diagram.id,
+      kind: 'metadata',
+      via: VIA
+    });
     return context.json({ diagram });
   });
 
@@ -145,7 +159,7 @@ export function createDiagramsRouter(): Hono<AppBindings> {
       await readJsonBody(context.req.raw)
     );
 
-    context.var.LOGGER.info('diagram_updated', { diagramId: id, kind: 'graph' });
+    context.var.LOGGER.info('diagram_updated', { diagramId: id, kind: 'graph', via: VIA });
     return context.json({ updatedAt });
   });
 
@@ -171,7 +185,11 @@ export function createDiagramsRouter(): Hono<AppBindings> {
       source
     );
 
-    context.var.LOGGER.info('diagram_duplicated', { diagramId: diagram.id, sourceId: source });
+    context.var.LOGGER.info('diagram_duplicated', {
+      diagramId: diagram.id,
+      sourceId: source,
+      via: VIA
+    });
     return context.json({ diagram }, 201);
   });
 
@@ -189,7 +207,7 @@ export function createDiagramsRouter(): Hono<AppBindings> {
     const id = context.req.param('id');
     await context.var.DIAGRAM_SERVICE.remove(currentIdentityEmail(context), id);
 
-    context.var.LOGGER.info('diagram_deleted', { diagramId: id });
+    context.var.LOGGER.info('diagram_deleted', { diagramId: id, via: VIA });
     return new Response(null, { status: 204 });
   });
 
@@ -240,7 +258,7 @@ export function createDiagramsRouter(): Hono<AppBindings> {
 
     // The diagram id and the operation, exactly as every other log line here: the token is a
     // bearer credential and the one value that must never reach an operational log.
-    context.var.LOGGER.info('diagram_shared', { diagramId: id });
+    context.var.LOGGER.info('diagram_shared', { diagramId: id, via: VIA });
 
     return context.json(
       {
@@ -267,7 +285,7 @@ export function createDiagramsRouter(): Hono<AppBindings> {
     const id = context.req.param('id');
     await context.var.SHARE_SERVICE.revoke(currentIdentityEmail(context), id);
 
-    context.var.LOGGER.info('diagram_share_revoked', { diagramId: id });
+    context.var.LOGGER.info('diagram_share_revoked', { diagramId: id, via: VIA });
     return new Response(null, { status: 204 });
   });
 

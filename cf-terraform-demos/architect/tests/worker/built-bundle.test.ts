@@ -22,6 +22,14 @@ const ASSET_DIR = path.resolve(
 );
 
 /**
+ * The one Worker bundle emitted by the Cloudflare Vite plugin.
+ */
+const WORKER_BUNDLE = path.resolve(
+  import.meta.dirname,
+  '../../.cloudflare/output/v0/workers/default/bundle/index.js'
+);
+
+/**
  * Marker identifying ELK's own emitted chunk.
  */
 const ELK_CHUNK_MARKER = 'elk';
@@ -33,6 +41,18 @@ const ELK_CHUNK_MARKER = 'elk';
  * approaching this size means the lazy import has collapsed back into a static one.
  */
 const MAX_ENTRY_BYTES = 1_000_000;
+
+/**
+ * Ceiling for the Worker bundle, in bytes.
+ *
+ * Phase 12 makes the first Worker-side import of the Agents SDK's stateless MCP handler and the MCP
+ * server SDK. Phase 11 measured the otherwise unchanged bundle at 308,282 bytes and a minimal
+ * import probe at 992,540 bytes; the finished endpoint is 1,022,518 bytes, so 1.1 MB leaves a
+ * small, deliberate allowance for Vite's stable chunking changes while staying a tripwire for a
+ * second accidental copy of the SDK. This is Worker code — it does not change the client chunk
+ * budget above, which is why the two contracts are separate.
+ */
+const MAX_WORKER_BUNDLE_BYTES = 1_100_000;
 
 /**
  * Lists the built JavaScript chunks.
@@ -99,5 +119,12 @@ describe('built bundle contract', () => {
 
     expect(containing).toHaveLength(1);
     expect(containing[0]).toContain(ELK_CHUNK_MARKER);
+  });
+
+  it('keeps the stateless MCP server implementation within its measured Worker budget', async () => {
+    await expect(stat(WORKER_BUNDLE)).resolves.toMatchObject({
+      size: expect.any(Number) as number
+    });
+    expect((await stat(WORKER_BUNDLE)).size).toBeLessThan(MAX_WORKER_BUNDLE_BYTES);
   });
 });

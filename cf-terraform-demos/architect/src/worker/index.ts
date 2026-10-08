@@ -20,6 +20,7 @@ import { enforceSameOriginJson } from './middleware/same-origin.ts';
 import { createAdminRouter } from './routes/admin.ts';
 import { createDiagramsRouter } from './routes/diagrams.ts';
 import { createHealthRouter } from './routes/health.ts';
+import { createMcpRouter, MCP_ROUTE } from './routes/mcp.ts';
 import { createSharesRouter } from './routes/shares.ts';
 
 /**
@@ -115,6 +116,14 @@ app.route('/api/shares', createSharesRouter());
 // middleware re-derives the comparison against `ADMIN_EMAIL` from the verified JWT on every
 // request. See `./routes/admin.ts`.
 app.route('/api/admin', createAdminRouter());
+
+// The remote MCP endpoint, behind the same Access middleware as everything above it — `/mcp` has
+// been an authenticating, non-redirecting entry in `src/access-policies.ts` since before this
+// route existed, so mounting it adds no authorization decision at all. Its tools reach the same
+// `DIAGRAM_SERVICE` instance the HTTP routes were given, as in-process calls, so an agent and a
+// browser are held to one ownership rule rather than two agreeing ones. Mounted at `MCP_ROUTE`
+// rather than a literal because the handler matches that pathname exactly; see `./routes/mcp.ts`.
+app.route(MCP_ROUTE, createMcpRouter());
 
 // `includeStack` is gated on `import.meta.env.DEV`, which Vite replaces with the literal `false`
 // in a production build, so a deployed Worker can never emit a stack trace to a client.

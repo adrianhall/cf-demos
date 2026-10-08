@@ -118,7 +118,9 @@ describe('share logging', () => {
     const response = await app.request(jsonRequest(`/api/diagrams/${diagram.id}/share`, 'POST'));
     const share = (await response.json()) as { token: string };
 
-    expect(entries).toEqual([{ context: { diagramId: diagram.id }, event: 'diagram_shared' }]);
+    expect(entries).toEqual([
+      { context: { diagramId: diagram.id, via: 'api' }, event: 'diagram_shared' }
+    ]);
     expect(JSON.stringify(entries)).not.toContain(share.token);
   });
 
@@ -134,7 +136,7 @@ describe('share logging', () => {
     await app.request(jsonRequest(`/api/diagrams/${diagram.id}/share`, 'DELETE'));
 
     expect(entries).toEqual([
-      { context: { diagramId: diagram.id }, event: 'diagram_share_revoked' }
+      { context: { diagramId: diagram.id, via: 'api' }, event: 'diagram_share_revoked' }
     ]);
     expect(JSON.stringify(entries)).not.toContain(share.token);
   });

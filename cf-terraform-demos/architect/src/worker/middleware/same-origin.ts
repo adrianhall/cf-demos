@@ -19,6 +19,33 @@ const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const JSON_BODY_METHODS = new Set(['POST', 'PUT', 'PATCH']);
 
 /**
+ * Paths this middleware deliberately does not guard.
+ *
+ * Only the remote MCP endpoint is listed, and the carve-out is explicit rather than a side effect
+ * of where the middleware happens to be mounted, so removing it is a decision somebody has to take
+ * rather than something a refactor can do by accident.
+ *
+ * **Why `/mcp` is exempt.** The checks below exist to stop a page the user did not write causing a
+ * state-changing request from their browser. Both of their signals — `Sec-Fetch-Site` and `Origin`
+ * — are set by a _browser_, and the "neither header present" case is rejected precisely because a
+ * legitimate same-origin browser `fetch` always sends one. An MCP client is not a browser: it sends
+ * neither, so every tool call would be refused with a `403` that looks exactly like an Access
+ * failure while being nothing of the kind.
+ *
+ * Relaxing it costs nothing here, because the attack the middleware prevents does not exist on this
+ * route. Cross-site request forgery works by riding an _ambient_ credential — a cookie the browser
+ * attaches whether or not the page meant to. An MCP client authenticates with an OAuth bearer token
+ * that Cloudflare Access resolves at the edge; no browser attaches it, no page can cause it to be
+ * sent, and a request without it never reaches this Worker at all because the Access middleware
+ * refuses it first.
+ *
+ * The media-type check goes with it for a smaller reason: the MCP handler performs its own, with
+ * the protocol's own `415` answer, so duplicating it here would only change which error a client
+ * sees.
+ */
+const UNGUARDED_PATHS = new Set(['/mcp']);
+
+/**
  * Matches exactly the `application/json` media type, optionally followed by parameters.
  *
  * Anchored and explicit about what may follow the type, rather than a prefix test: `startsWith`
@@ -50,12 +77,23 @@ const JSON_MEDIA_TYPE = /^application\/json\s*(?:;.*)?$/iu;
  * only send safelisted types and cannot be preflighted away — cannot reach a mutating endpoint at
  * all.
  *
+ * {@link UNGUARDED_PATHS} is exempt. Read that constant's documentation before adding to it: the
+ * exemption is sound for a bearer-authenticated non-browser caller and unsound for anything a
+ * browser can reach.
+ *
  * @throws {ProblemDetailsError} `403` when a state-changing request is cross-origin or carries
  *   neither origin signal, and `415` when a body-carrying method's `Content-Type` is not
  *   `application/json`.
  */
 export const enforceSameOriginJson: MiddlewareHandler<AppBindings> = async (context, next) => {
   if (!STATE_CHANGING_METHODS.has(context.req.method)) {
+    await next();
+    return;
+  }
+
+  // Compared against the parsed pathname rather than the raw URL, so a query string or a
+  // fragment cannot be used to dodge the exemption in either direction.
+  if (UNGUARDED_PATHS.has(new URL(context.req.url).pathname)) {
     await next();
     return;
   }
