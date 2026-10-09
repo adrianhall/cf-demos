@@ -117,8 +117,10 @@ const positionSchema = z
   })
   .describe(
     'Where to place the node on the canvas. Nodes are roughly 200 by 80 units, so leave at '
-      + 'least 260 horizontally and 160 vertically between them. Call auto_layout_diagram '
-      + 'afterwards rather than computing a tidy arrangement by hand.'
+      + 'least 260 horizontally and 160 vertically between them. More importantly, place it '
+      + 'adjacent to the nodes it will connect to: a long edge that passes behind an unrelated '
+      + 'node can look as though it starts there. After adding a node to an existing diagram, '
+      + 'call auto_layout_diagram to re-tier the result rather than trying to arrange it by hand.'
   );
 
 /**

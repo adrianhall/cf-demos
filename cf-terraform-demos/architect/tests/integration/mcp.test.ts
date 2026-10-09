@@ -407,6 +407,30 @@ describe('the MCP endpoint', () => {
     expect(layout?.description).toContain('editor');
   });
 
+  // Avoiding overlap alone does not make an architecture readable: a long edge can pass behind a
+  // third node and appear to originate there. Keep that visual rule in the model-visible schema,
+  // alongside the concrete remediation after a mutation, rather than relying on a caller to infer
+  // it from a node's raw x/y coordinates.
+  it('tells a calling model to preserve clear edge routing when placing a node', async () => {
+    const response = await send(await mcpRequestAs(ALICE, 'tools/list', {}));
+    const body = (await response.json()) as {
+      result: {
+        tools: {
+          inputSchema?: { properties?: Record<string, { description?: string }> };
+          name: string;
+        }[];
+      };
+    };
+
+    const addNode = body.result.tools.find((tool) => tool.name === 'add_node');
+    const position = addNode?.inputSchema?.properties?.position;
+
+    expect(position?.description).toContain('adjacent to the nodes it will connect to');
+    expect(position?.description).toContain('passes behind an unrelated node');
+    expect(position?.description).toContain('After adding a node to an existing diagram');
+    expect(position?.description).toContain('auto_layout_diagram');
+  });
+
   it('lets a non-browser MCP caller create, list, read, rename and delete its own diagram', async () => {
     const created = await callTool(ALICE, 'create_diagram', {
       description: 'Initial description',
