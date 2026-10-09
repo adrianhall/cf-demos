@@ -305,15 +305,45 @@ the change is still in D1 for the next read.
 When a push is applied, a dismissible "Updated by an agent" notice explains why the canvas changed.
 A diagram that rewrites itself with no explanation reads as a bug rather than as the feature it is.
 
-**What this does not yet solve.** The socket is still one-way, so a second person's edit reaches
-another open tab only on the next reload rather than live, and the browser still saves the whole
-graph over HTTP rather than sending operations. Both belong to the next layer of the collaboration
-work. The race underneath them is closed; what remains is the wire protocol and the client.
+## The channel carries operations, not graphs
+
+The live channel is two-way: a client may send an operation, and the session answers every one with
+an acceptance broadcast to everybody or a rejection to the originator alone.
+
+What travels is the **operation** rather than the resulting graph, and that choice is the whole
+reason a second person's edit is tolerable. Applying "add this node" leaves whatever the recipient
+is halfway through typing; replacing their graph discards it. With two people editing, that is the
+difference between collaborating and taking turns. It also lets the interface say what happened,
+which "the graph changed" cannot.
+
+The cost is that a recipient must apply every operation, in order, or diverge from what is stored —
+and that divergence is silent, which makes it the characteristic failure of this design. So each
+frame carries a sequence number, each one exactly one more than the last, and a client that sees a
+gap asks for a fresh snapshot instead of guessing. A brief flicker beats a canvas that quietly
+disagrees with the database.
+
+Three smaller decisions follow from the same concern:
+
+- **Attribution comes from the socket, never from the frame.** The protocol has no author field at
+  all, and a payload that invents one is refused rather than stripped — stripping would leave the
+  protocol looking as though it might one day honour it.
+- **Each frame carries an origin**, distinguishing a person from an agent. The identity cannot do
+  it: an agent authenticates as whoever configured it, so "alice@example.com changed this" is true
+  of both, and the one thing a user most needs to know about a change they did not make would be
+  unsayable.
+- **A rejection goes to the originator alone.** Two people deleting the same node is the ordinary
+  shape of collaboration rather than a bug, and telling everybody else would name an element they
+  may be editing quite happily. The connection stays open: a race must not cost anybody a session.
+
+**What this does not yet solve.** The browser still saves the whole graph over HTTP rather than
+sending operations, so its changes reach other editors as a snapshot — the blunter frame, which
+replaces their graph. Moving the editor's own writes onto the socket is the remaining step.
 
 ## Deliberate limitations
 
-- The live socket is one-way. An agent's change reaches an open editor; a second person's edit
-  arriving live, presence and cursors are a later layer, not hidden routes.
+- The browser still saves the whole graph over HTTP rather than sending operations, so another
+  editor receives its changes as a snapshot and loses an edit in progress. Presence and cursors are
+  a later layer, not hidden routes.
 - Conflicts resolve last-applied-wins — between simultaneous tabs, between collaborators, and
   between a user and their own agent. Every write is serialized through the diagram's session, so
   nothing is overwritten unseen, but two changes to the same element still leave one winner; see

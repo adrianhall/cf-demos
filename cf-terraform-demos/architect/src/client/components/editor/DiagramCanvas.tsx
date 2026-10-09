@@ -13,7 +13,7 @@ import {
 } from '@xyflow/react';
 import { CATEGORY_COLORS, NODE_TYPE_MAP } from '../../../catalog.ts';
 import { CF_EDGE_TYPE, CF_NODE_TYPE } from '../../../graph-element-types.ts';
-import type { SessionFrame } from '../../../live-sync-protocol.ts';
+import type { ChangeOrigin, SessionFrame } from '../../../live-sync-protocol.ts';
 import {
   diagramLiveUrl,
   getAccessibleDiagram,
@@ -175,7 +175,8 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     onConnect,
     onViewportChange,
     setDiagram,
-    applyRemoteGraph,
+    applyRemoteSnapshot,
+    applyRemoteOperation,
     addNode,
     removeSelected,
     setSelectedNode,
@@ -198,11 +199,15 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
   const [loadError, setLoadError] = useState<string | null>(null);
   const diagramLoaded = useDiagramStore((state) => state.diagramId !== null);
 
-  // Whether an agent's change has arrived and the visitor has not yet dismissed the notice. Local
-  // component state rather than store state: it describes this tab's notification area, nothing
-  // else reads it, and putting it in the store would make a piece of transient UI part of the
-  // document's model.
-  const [agentUpdated, setAgentUpdated] = useState(false);
+  // Who made the change this tab is currently announcing, or `null` when there is nothing to
+  // announce. Local component state rather than store state: it describes this tab's notification
+  // area, nothing else reads it, and putting it in the store would make a piece of transient UI
+  // part of the document's model.
+  //
+  // It holds the origin rather than a boolean because a person's change and an agent's need
+  // different wording, and the identity cannot tell them apart — an agent authenticates as
+  // whoever configured it, so "alice@example.com changed this" is true of both.
+  const [remoteChange, setRemoteChange] = useState<ChangeOrigin | null>(null);
 
   useEffect(() => {
     // The share viewer's diagram arrived with the props, resolved anonymously by `/api/shares`.
@@ -289,10 +294,10 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     return () => clearTimeout(timer);
   }, [readOnly, dirty, diagramId, markSaving, markSaved, markSaveError]);
 
-  // Live sync. A one-way channel: the editor listens and never writes to it, because its own
-  // edits already have a write path in the autosave above. The socket exists so a change made by
-  // the owner's agent through the MCP endpoint appears here immediately rather than on the next
-  // reload — which is the whole point of holding the connection in a Durable Object.
+  // Live sync. The channel is two-way now, but this sub-phase only wires the *inbound* half: a
+  // change another editor or an agent makes appears here immediately rather than on the next
+  // reload. This tab's own edits still go out through the autosave above; moving them onto the
+  // socket is the next step.
   //
   // Opened once per diagram and closed on unmount, so navigating between diagrams never leaves a
   // socket listening for a document that is no longer on screen. Not opened at all in read-only
@@ -304,6 +309,22 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     }
 
     const socket = new WebSocket(diagramLiveUrl(diagramId));
+
+    /**
+     * Asks the session to resend the whole graph.
+     *
+     * Called when this tab can no longer apply operations safely — it has missed a frame, or an
+     * operation did not apply cleanly, either of which means its canvas may already differ from
+     * what is stored. Silent divergence is the characteristic failure of operation-based sync, so
+     * the tab says so rather than carrying on.
+     *
+     * @returns Nothing.
+     */
+    const requestResync = (): void => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'resync' }));
+      }
+    };
 
     /**
      * Applies one frame from the live session.
@@ -327,24 +348,48 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
       }
 
       switch (frame.type) {
-        case 'graph_updated': {
+        case 'snapshot': {
           const parsed = parseGraphData(frame.graphData);
-          // The toast is shown only when the store actually took the update. A push that lost a
-          // race is discarded, and announcing a change that did not happen would be worse than
-          // saying nothing.
-          if (applyRemoteGraph(parsed.nodes, parsed.edges, frame.updatedAt)) {
-            setAgentUpdated(true);
+          const applied = applyRemoteSnapshot(
+            parsed.nodes,
+            parsed.edges,
+            frame.updatedAt,
+            frame.sequence
+          );
+          // Announced only when the store took it *and* it describes somebody's change. A
+          // snapshot with no origin is this tab's own connect or resync answer, which the visitor
+          // did not need telling about, and a stale one changed nothing.
+          if (applied && frame.origin !== null) {
+            setRemoteChange(frame.origin);
           }
           return;
         }
+        case 'operation_applied': {
+          const result = applyRemoteOperation(frame.operation, frame.updatedAt, frame.sequence);
+          if (result === 'gap') {
+            requestResync();
+            return;
+          }
+          // A duplicate is the echo of this tab's own operation and is not news to the person who
+          // made it.
+          if (result === 'applied') {
+            setRemoteChange(frame.origin);
+          }
+          return;
+        }
+        case 'operation_rejected':
+          // This tab does not send operations yet, so it cannot receive one of these — the
+          // session addresses a rejection to the originating connection alone. Handled rather
+          // than omitted because the protocol permits it and the next sub-phase will produce it.
+          return;
         case 'connected':
           // Acknowledgement only. The identity is echoed from the socket attachment the server
           // pinned, and the editor already knows who it is, so there is nothing to apply.
           return;
         case 'error':
-          // This channel is read-only, so the only way to receive one of these is to have sent
-          // something — which this component never does. Nothing is shown to the visitor,
-          // because nothing of theirs failed.
+          // Sent only in answer to a frame this client sent that the session could not read at
+          // all. Nothing of the visitor's has failed — their graph and their saves are untouched
+          // — so there is nothing useful to show them.
           return;
       }
     };
@@ -358,7 +403,7 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
       // is closed.
       socket.close();
     };
-  }, [readOnly, diagramId, applyRemoteGraph]);
+  }, [readOnly, diagramId, applyRemoteSnapshot, applyRemoteOperation]);
 
   // The last line of defence for unsaved work: a visitor who closes the tab within the debounce
   // window is asked first. The browser shows its own wording, so there is no message to provide.
@@ -674,13 +719,15 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
               the same reason. Dismissible rather than self-expiring: a notice that vanished on
               its own could be missed entirely by somebody who had looked away. Hidden in print
               mode along with every other piece of editor chrome. */}
-          {agentUpdated && !printMode && (
+          {remoteChange !== null && !printMode && (
             <output className="live-update-toast">
-              <span>Updated by an agent</span>
+              <span>
+                {remoteChange === 'agent' ? 'Updated by an agent' : 'Updated by another editor'}
+              </span>
               <button
                 type="button"
                 className="live-update-toast__dismiss"
-                onClick={() => setAgentUpdated(false)}
+                onClick={() => setRemoteChange(null)}
                 aria-label="Dismiss update notice"
               >
                 ×

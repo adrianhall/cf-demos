@@ -300,10 +300,28 @@ overnight stays connected at the edge while the object is evicted and stops cost
 Anything the session needs after that reconstruction lives in a socket attachment, because an
 instance field would be empty at exactly the moment the value is needed.
 
-The **socket** is still one-way: server to client. The browser's own edits keep using the debounced
-whole-graph autosave they always have — that save now goes through the session rather than straight
-to D1, but it is still an HTTP request. A frame sent by a client is answered with an explanation
-rather than acted on.
+**The channel carries operations in both directions.** A client may send one thing — an operation —
+and the session answers every one: an acceptance broadcast to everybody on the diagram, or a
+rejection sent to the originator alone. That is what lets a second person's edit arrive while you
+are looking at the diagram rather than on your next reload.
+
+A frame carries the _operation_ rather than the resulting graph, which buys two things a whole graph
+cannot. A recipient keeps its own pending edits — applying "add this node" leaves whatever the user
+is halfway through typing, where replacing the graph discards it. And the interface can say what
+happened: "Alice added a worker" is a sentence, "the graph changed" is not. The cost is that a
+recipient must apply every operation in order or diverge silently, so each frame carries a sequence
+number and a client that sees a gap asks for a fresh snapshot rather than guessing.
+
+Each frame also carries an `origin` distinguishing a person from an agent. The identity cannot: an
+agent authenticates as whoever configured it, so both arrive from the same address.
+
+Attribution comes from the socket, never from the frame. The wire protocol has no author field, and
+a payload that invents one is refused rather than quietly stripped.
+
+The browser's own edits still go out through the debounced whole-graph autosave — that save now goes
+through the session rather than straight to D1, and is announced to other editors as a _snapshot_
+rather than an operation, because a whole-graph replace cannot be expressed as one. Moving the
+connected case onto the socket is the remaining step.
 
 The namespace is declared in [`cloudflare.config.ts`](cloudflare.config.ts) as
 `exports.durableObject({ storage: 'sqlite' })` plus a matching binding, which is what replaces
@@ -473,9 +491,10 @@ Terraform defaults reserved for this port.
 
 ## Deliberate limitations
 
-- Live sync is one-way: an agent's change reaches an open editor, and the browser keeps saving the
-  whole graph over HTTP. A second person editing the same diagram, presence and cursors are a later
-  layer, not hidden routes.
+- The browser still saves the whole graph over HTTP rather than sending operations, so another
+  editor receives its changes as a snapshot — which replaces their graph and discards an edit they
+  had in progress. Operations already work in both directions; moving the editor's own writes onto
+  them is the remaining step. Presence and cursors are a later layer, not hidden routes.
 - Writes are last-**applied**-wins, not last-write-wins. Every graph write — the browser's autosave,
   the REST route behind it, and every MCP tool — is now serialized through the diagram's
   `DiagramSession`, so two writers can no longer each read the stored graph and overwrite one

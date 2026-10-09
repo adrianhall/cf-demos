@@ -242,6 +242,11 @@ async function withTimeout<T>(
  * depending on frame order — the `connected` acknowledgement routinely interleaves with whatever a
  * test is actually waiting for.
  *
+ * **Prefer {@link recordFrames} for anything a connection might already have sent.** This function
+ * only sees frames that arrive after it is called, so a test that connects, triggers a change and
+ * then waits has a race it will lose intermittently. Attaching the recorder at connect time removes
+ * that class of flake rather than making each test remember to attach early.
+ *
  * @param socket Socket to read from.
  * @param type Frame discriminator to wait for.
  * @returns The first matching frame.
@@ -261,6 +266,80 @@ export function nextFrameOfType(socket: WebSocket, type: string): Promise<Record
   });
 
   return withTimeout(received, `a "${type}" frame`, socket);
+}
+
+/**
+ * Everything one connection has received, and a way to wait for more.
+ */
+export interface FrameRecorder {
+  /**
+   * Every frame received so far, in arrival order.
+   */
+  readonly frames: Record<string, unknown>[];
+  /**
+   * Waits for the next frame of a type **beyond those already consumed**.
+   *
+   * Each call continues where the last left off, so a test can assert a sequence of frames in order
+   * without re-matching one it has already examined — which is what a plain "find the first frame
+   * of this type" would do on the second call.
+   *
+   * @param type Frame discriminator to wait for.
+   * @returns The next matching frame.
+   * @throws {Error} When none arrives within {@link FRAME_TIMEOUT_MS}.
+   */
+  next(type: string): Promise<Record<string, unknown>>;
+}
+
+/**
+ * Records every frame a socket receives, from the moment it is attached.
+ *
+ * Attached at connect time, which is the point: the session sends a snapshot the instant a
+ * connection is accepted, and anything a test does next may produce a frame before that test has
+ * had a chance to start listening. Buffering removes that race rather than asking every test to win
+ * it.
+ *
+ * @param socket Socket to record.
+ * @returns The recorder; see {@link FrameRecorder}.
+ */
+export function recordFrames(socket: WebSocket): FrameRecorder {
+  const frames: Record<string, unknown>[] = [];
+  // Resolvers for `next` calls that are waiting on a frame which has not arrived yet.
+  const waiting: { type: string; resolve: (frame: Record<string, unknown>) => void }[] = [];
+  // How far into `frames` each type has been consumed, so consecutive `next` calls advance
+  // through a sequence rather than repeatedly matching its first entry.
+  const consumed = new Map<string, number>();
+
+  socket.addEventListener('message', (event: MessageEvent) => {
+    const frame = JSON.parse(String(event.data)) as Record<string, unknown>;
+    frames.push(frame);
+
+    const index = waiting.findIndex((entry) => entry.type === frame.type);
+    if (index !== -1) {
+      const [entry] = waiting.splice(index, 1);
+      consumed.set(frame.type as string, frames.length);
+      entry?.resolve(frame);
+    }
+  });
+
+  return {
+    frames,
+    next(type) {
+      const from = consumed.get(type) ?? 0;
+      const buffered = frames.findIndex((frame, index) => index >= from && frame.type === type);
+      if (buffered !== -1) {
+        consumed.set(type, buffered + 1);
+        return Promise.resolve(frames[buffered] as Record<string, unknown>);
+      }
+
+      return withTimeout(
+        new Promise<Record<string, unknown>>((resolve) => {
+          waiting.push({ resolve, type });
+        }),
+        `a "${type}" frame`,
+        socket
+      );
+    }
+  };
 }
 
 /**

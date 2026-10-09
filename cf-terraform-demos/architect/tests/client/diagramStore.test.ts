@@ -474,7 +474,7 @@ describe('undo and redo', () => {
   });
 });
 
-describe('applying a remote graph', () => {
+describe('applying a remote snapshot', () => {
   const PUSHED_NODES = [makeNode('pushed')];
 
   beforeEach(() => {
@@ -494,7 +494,7 @@ describe('applying a remote graph', () => {
   it('replaces the graph and records the pushed timestamp', () => {
     const applied = useDiagramStore
       .getState()
-      .applyRemoteGraph(PUSHED_NODES, [], '2026-02-01T00:00:00.000Z');
+      .applyRemoteSnapshot(PUSHED_NODES, [], '2026-02-01T00:00:00.000Z', 1);
 
     const state = useDiagramStore.getState();
     expect(applied).toBe(true);
@@ -508,7 +508,7 @@ describe('applying a remote graph', () => {
     ['older', '2025-01-01T00:00:00.000Z'],
     ['identical', '2026-01-01T00:00:00.000Z']
   ])('discards an %s push without touching the graph', (_label, updatedAt) => {
-    const applied = useDiagramStore.getState().applyRemoteGraph(PUSHED_NODES, [], updatedAt);
+    const applied = useDiagramStore.getState().applyRemoteSnapshot(PUSHED_NODES, [], updatedAt, 1);
 
     const state = useDiagramStore.getState();
     expect(applied).toBe(false);
@@ -522,7 +522,9 @@ describe('applying a remote graph', () => {
     useDiagramStore.setState({ updatedAt: null });
 
     expect(
-      useDiagramStore.getState().applyRemoteGraph(PUSHED_NODES, [], '2020-01-01T00:00:00.000Z')
+      useDiagramStore
+        .getState()
+        .applyRemoteSnapshot(PUSHED_NODES, [], '2020-01-01T00:00:00.000Z', 1)
     ).toBe(true);
   });
 
@@ -531,7 +533,7 @@ describe('applying a remote graph', () => {
   it('leaves a pending local change pending', () => {
     useDiagramStore.setState({ dirty: true });
 
-    useDiagramStore.getState().applyRemoteGraph(PUSHED_NODES, [], '2026-02-01T00:00:00.000Z');
+    useDiagramStore.getState().applyRemoteSnapshot(PUSHED_NODES, [], '2026-02-01T00:00:00.000Z', 1);
 
     expect(useDiagramStore.getState().dirty).toBe(true);
   });
@@ -539,7 +541,7 @@ describe('applying a remote graph', () => {
   // Ctrl+Z is for undoing your own last action. Making it revert somebody else's change instead
   // would be the more surprising behaviour.
   it('records no undo entry, so Ctrl+Z still undoes the user’s own last action', () => {
-    useDiagramStore.getState().applyRemoteGraph(PUSHED_NODES, [], '2026-02-01T00:00:00.000Z');
+    useDiagramStore.getState().applyRemoteSnapshot(PUSHED_NODES, [], '2026-02-01T00:00:00.000Z', 1);
 
     expect(useDiagramStore.getState().undoStack).toEqual([]);
   });
@@ -547,7 +549,7 @@ describe('applying a remote graph', () => {
   it('leaves the viewport alone, because a push is not a navigation', () => {
     useDiagramStore.getState().onViewportChange({ x: 42, y: 7, zoom: 2 });
 
-    useDiagramStore.getState().applyRemoteGraph(PUSHED_NODES, [], '2026-02-01T00:00:00.000Z');
+    useDiagramStore.getState().applyRemoteSnapshot(PUSHED_NODES, [], '2026-02-01T00:00:00.000Z', 1);
 
     expect(useDiagramStore.getState().viewport).toEqual({ x: 42, y: 7, zoom: 2 });
   });
@@ -558,5 +560,167 @@ describe('applying a remote graph', () => {
     useDiagramStore.getState().setDiagram('d2', 'Shared', '', [], [], { x: 0, y: 0, zoom: 1 });
 
     expect(useDiagramStore.getState().updatedAt).toBeNull();
+  });
+
+  it('adopts the session’s stream position, so the next operation is not read as a gap', () => {
+    useDiagramStore.getState().applyRemoteSnapshot(PUSHED_NODES, [], '2026-02-01T00:00:00.000Z', 7);
+
+    expect(useDiagramStore.getState().liveSequence).toBe(7);
+  });
+
+  // The sequence says where the *session* has reached, which is true whether or not this tab
+  // wanted the graph. Refusing it alongside a stale graph would leave every operation after it
+  // looking like a gap, so the tab would resynchronise forever.
+  it('adopts the stream position even when it discards the graph as stale', () => {
+    useDiagramStore.getState().applyRemoteSnapshot(PUSHED_NODES, [], '2020-01-01T00:00:00.000Z', 9);
+
+    const state = useDiagramStore.getState();
+    expect(state.nodes.map((node) => node.id)).toEqual(['local']);
+    expect(state.liveSequence).toBe(9);
+  });
+});
+
+describe('applying a remote operation', () => {
+  beforeEach(() => {
+    useDiagramStore
+      .getState()
+      .setDiagram(
+        'd1',
+        'Live',
+        '',
+        [makeNode('api'), makeNode('db')],
+        [],
+        { x: 0, y: 0, zoom: 1 },
+        '2026-01-01T00:00:00.000Z'
+      );
+    useDiagramStore.setState({ liveSequence: 1 });
+  });
+
+  // The finer of the two inbound frames and the reason the protocol carries operations at all: it
+  // changes the element named and nothing else.
+  it.each([
+    [
+      'an added node',
+      {
+        input: { id: 'kv', label: 'Cache', position: { x: 0, y: 9 }, typeId: 'kv' },
+        kind: 'add_node'
+      } as const,
+      ['api', 'db', 'kv']
+    ],
+    ['a removed node', { kind: 'remove_node', nodeId: 'db' } as const, ['api']]
+  ])('applies %s from another editor', (_label, operation, expectedIds) => {
+    const result = useDiagramStore
+      .getState()
+      .applyRemoteOperation(operation, '2026-02-01T00:00:00.000Z', 2);
+
+    const state = useDiagramStore.getState();
+    expect(result).toBe('applied');
+    expect(state.nodes.map((node) => node.id)).toEqual(expectedIds);
+    expect(state.updatedAt).toBe('2026-02-01T00:00:00.000Z');
+    expect(state.liveSequence).toBe(2);
+  });
+
+  it('applies an update to one node, leaving every other node untouched', () => {
+    useDiagramStore
+      .getState()
+      .applyRemoteOperation(
+        { kind: 'update_node', nodeId: 'api', patch: { label: 'Gateway' } },
+        '2026-02-01T00:00:00.000Z',
+        2
+      );
+
+    const state = useDiagramStore.getState();
+    expect(state.nodes[0]?.data.label).toBe('Gateway');
+    expect(state.nodes[1]?.data.label).toBe('worker');
+  });
+
+  // The whole reason an operation is preferable to a snapshot: it leaves the rest of the canvas,
+  // including whatever this user is in the middle of, exactly as it was.
+  it('keeps a local edit the user has not saved yet', () => {
+    useDiagramStore.getState().addNode(makeNode('mine'));
+
+    useDiagramStore
+      .getState()
+      .applyRemoteOperation({ kind: 'remove_node', nodeId: 'db' }, '2026-02-01T00:00:00.000Z', 2);
+
+    const state = useDiagramStore.getState();
+    expect(state.nodes.map((node) => node.id)).toEqual(['api', 'mine']);
+    expect(state.dirty).toBe(true);
+  });
+
+  // The echo of this tab's own operation. Applying it again would duplicate a node, or fail
+  // against a target this tab has already removed.
+  it.each([
+    ['already applied', 1],
+    ['long since applied', 0]
+  ])('reports an operation %s as a duplicate and changes nothing', (_label, sequence) => {
+    const result = useDiagramStore
+      .getState()
+      .applyRemoteOperation(
+        { kind: 'remove_node', nodeId: 'db' },
+        '2026-02-01T00:00:00.000Z',
+        sequence
+      );
+
+    expect(result).toBe('duplicate');
+    expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['api', 'db']);
+  });
+
+  // The silent-divergence case. A missed frame may have removed the very element this operation
+  // names, so applying it would leave the canvas quietly disagreeing with what is stored.
+  it('reports a missed frame as a gap and changes nothing', () => {
+    const result = useDiagramStore
+      .getState()
+      .applyRemoteOperation({ kind: 'remove_node', nodeId: 'db' }, '2026-02-01T00:00:00.000Z', 4);
+
+    expect(result).toBe('gap');
+    expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['api', 'db']);
+  });
+
+  // An operation the server applied but this tab cannot means the two graphs have already
+  // diverged — which is the same condition a missed frame produces, and has the same remedy.
+  it('reports an operation that cannot be applied as a gap rather than throwing', () => {
+    const result = useDiagramStore
+      .getState()
+      .applyRemoteOperation(
+        { kind: 'remove_node', nodeId: 'never-existed' },
+        '2026-02-01T00:00:00.000Z',
+        2
+      );
+
+    expect(result).toBe('gap');
+    expect(useDiagramStore.getState().nodes).toHaveLength(2);
+  });
+
+  // Before the first snapshot there is no stream position to compare against, so the operation is
+  // applied rather than discarded: a tab that refused everything until a snapshot arrived would
+  // miss changes it could have shown.
+  it('applies an operation when no stream position is known yet', () => {
+    useDiagramStore.setState({ liveSequence: null });
+
+    const result = useDiagramStore
+      .getState()
+      .applyRemoteOperation({ kind: 'remove_node', nodeId: 'db' }, '2026-02-01T00:00:00.000Z', 5);
+
+    expect(result).toBe('applied');
+    expect(useDiagramStore.getState().liveSequence).toBe(5);
+  });
+
+  it('records no undo entry, so Ctrl+Z still undoes the user’s own last action', () => {
+    useDiagramStore
+      .getState()
+      .applyRemoteOperation({ kind: 'remove_node', nodeId: 'db' }, '2026-02-01T00:00:00.000Z', 2);
+
+    expect(useDiagramStore.getState().undoStack).toEqual([]);
+  });
+
+  it('leaves the viewport alone, because somebody else’s change is not a navigation', () => {
+    useDiagramStore.getState().onViewportChange({ x: 42, y: 7, zoom: 2 });
+
+    useDiagramStore
+      .getState()
+      .applyRemoteOperation({ kind: 'remove_node', nodeId: 'db' }, '2026-02-01T00:00:00.000Z', 2);
+
+    expect(useDiagramStore.getState().viewport).toEqual({ x: 42, y: 7, zoom: 2 });
   });
 });

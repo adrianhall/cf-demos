@@ -47,8 +47,9 @@ export class FakeWebSocket {
   /**
    * Payloads passed to {@link FakeWebSocket.send}, in order.
    *
-   * It should stay empty for the whole suite: the channel is one-way, and a canvas that started
-   * writing to it would be a second write path nobody designed.
+   * The canvas writes exactly one thing today — a resync request, when it detects it can no longer
+   * apply operations safely — so a test that expects silence is asserting something real rather
+   * than relying on a channel that cannot be written to.
    */
   readonly sent: string[] = [];
 
@@ -59,8 +60,14 @@ export class FakeWebSocket {
 
   /**
    * Current state, using the same numeric constants as the real API.
+   *
+   * Starts **open**, which is a deliberate simplification rather than an oversight. A real socket
+   * is `CONNECTING` until its handshake completes, but nothing in these tests exercises that window
+   * — every test delivers a frame, which a real socket could only do once open. Leaving it
+   * `CONNECTING` would instead make the canvas's own `readyState` guards silently skip, so a test
+   * asserting the canvas sent nothing would pass for the wrong reason.
    */
-  readyState: number = FakeWebSocket.CONNECTING;
+  readyState: number = FakeWebSocket.OPEN;
 
   private readonly listeners = new Map<string, Set<(event: unknown) => void>>();
 

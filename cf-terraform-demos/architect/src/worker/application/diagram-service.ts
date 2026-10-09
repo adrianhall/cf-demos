@@ -307,7 +307,8 @@ export class DiagramService {
     // Through the session rather than straight to the repository, which is the change this phase
     // makes. The autosave is no longer an independent writer that could overwrite an agent's
     // change it never saw: it takes its turn in the same queue as every other write.
-    return requireApplied(await this.sessions.replaceGraph(diagram.id, graphData)).updatedAt;
+    return requireApplied(await this.sessions.replaceGraph(diagram.id, graphData, actorEmail))
+      .updatedAt;
   }
 
   /**
@@ -352,7 +353,7 @@ export class DiagramService {
     const diagram = await this.requireOwned(actorEmail, id);
 
     const { graphData, updatedAt } = requireApplied(
-      await this.sessions.applyOperation(diagram.id, operation)
+      await this.sessions.applyOperation(diagram.id, operation, actorEmail)
     );
 
     return { ...diagram, graphData, updatedAt };

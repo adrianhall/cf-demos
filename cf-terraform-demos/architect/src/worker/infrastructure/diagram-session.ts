@@ -1,10 +1,11 @@
 import { DurableObject } from 'cloudflare:workers';
-import type { SessionFrame } from '../../live-sync-protocol.ts';
+import type { ChangeOrigin, SessionFrame } from '../../live-sync-protocol.ts';
 import type {
   GraphSnapshot,
   GraphWriteOutcome,
   RejectedGraphWrite
 } from '../application/ports/diagram-session.ts';
+import { parseClientFrame } from '../domain/client-frame.ts';
 import { applyGraphOperation, type GraphOperation } from '../domain/graph-operations.ts';
 import { canonicalizeGraphData, type GraphData } from '../domain/graph.ts';
 import { D1DiagramRepository } from './d1-diagram-repository.ts';
@@ -169,6 +170,20 @@ export class DiagramSession extends DurableObject<Env> {
   private sequence = 0;
 
   /**
+   * Whether every socket surviving in this instance knows the base graph for its sequence counter.
+   *
+   * `false` on construction, including reconstruction after hibernation. That second case is the
+   * reason this field exists: the counter is deliberately in memory and restarts at zero, while
+   * hibernatable sockets stay open at the edge holding the old counter. Before the reconstructed
+   * instance announces sequence 1, it must therefore broadcast a sequence-0 snapshot so those
+   * clients adopt the new base rather than misreading 1 as an old duplicate.
+   *
+   * It is set after the initial connect snapshot in an ordinary fresh instance, so the first edit
+   * does not send a redundant second copy.
+   */
+  private streamBased = false;
+
+  /**
    * The serialized persistence half of this session, built during hydration — it needs the diagram
    * id, which hydration is also what establishes.
    *
@@ -196,10 +211,13 @@ export class DiagramSession extends DurableObject<Env> {
    * where it is written once for every transport.
    *
    * The identity is pinned to the connection here, once, and read back from the attachment
-   * afterwards. No graph is sent on connect: the editor has just fetched the diagram over `GET
-   * /api/diagrams/:id`, and because every write persists before it is acknowledged, that read is
-   * already current. The next sub-phase replaces this with a snapshot frame, when the client starts
-   * applying operations and needs the exact graph they will be applied to.
+   * afterwards.
+   *
+   * A snapshot follows the acknowledgement, and it is not redundant with the `GET
+   * /api/diagrams/:id` the editor has just made. A change can land between that response and this
+   * socket opening, and from now on the client applies _operations_ — so it needs to know exactly
+   * which graph, and which point in the operation stream, those will be applied to. Being one frame
+   * late with a base graph is how an operation-based client diverges silently.
    *
    * @param request Upgrade request forwarded by the Worker, carrying the verified identity in
    *   {@link IDENTITY_HEADER}.
@@ -226,7 +244,45 @@ export class DiagramSession extends DurableObject<Env> {
     const attachment = server.deserializeAttachment() as SocketAttachment;
     send(server, { type: 'connected', viewer: attachment.viewer });
 
+    // Sent after the response is returned rather than awaited before it, because the client end
+    // of this socket does not exist until the caller has the `101`. `waitUntil` is what keeps the
+    // object alive for a hydration that outlives the request.
+    this.ctx.waitUntil(this.sendInitialSnapshot(server));
+
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /**
+   * Sends a joining connection the graph its operations will be applied to.
+   *
+   * Separate from {@link DiagramSession.fetch} because it may have to read D1, which must not delay
+   * the `101`: a client cannot receive anything until it holds its end of the socket.
+   *
+   * A diagram that has gone is answered with nothing rather than an error. The upgrade was
+   * authorized against a diagram that existed moments ago, so this is a delete that raced the
+   * connection — and the client is about to be told by every other route that the diagram is gone.
+   * A failure frame here would be the least clear way it could find out.
+   *
+   * @param socket Server end of the newly accepted connection.
+   * @returns A promise fulfilled once the snapshot has been offered.
+   */
+  private async sendInitialSnapshot(socket: WebSocket): Promise<void> {
+    const snapshot = await this.getSnapshot();
+    if (snapshot === null) {
+      return;
+    }
+
+    // `origin: null` and `actor: null`: this is an answer rather than a change, so the client has
+    // nothing to announce to its user.
+    send(socket, {
+      actor: null,
+      graphData: snapshot.graphData,
+      origin: null,
+      sequence: this.sequence,
+      type: 'snapshot',
+      updatedAt: snapshot.updatedAt
+    });
+    this.streamBased = true;
   }
 
   /**
@@ -245,59 +301,62 @@ export class DiagramSession extends DurableObject<Env> {
    * session's working graph along with answering the caller.
    *
    * @param operation The single operation to apply; see `../domain/graph-operations.ts`.
+   * @param actor Verified identity to attribute the change to. Supplied by the caller because this
+   *   entry point is reached by RPC rather than over a socket, so there is no attachment to read it
+   *   from — the application tier has already verified it.
    * @returns What was persisted, or the refusal every transport should answer with.
    */
-  async applyOperation(operation: GraphOperation): Promise<GraphWriteOutcome> {
-    const refusal = await this.hydrate();
-    if (refusal !== null) {
-      return refusal;
-    }
-
-    const applied = this.apply((graph) => applyGraphOperation(graph, operation));
-    if (applied.outcome === 'rejected') {
-      // Refused before anything was enqueued, so the stored diagram is exactly as it was and no
-      // sequence number was consumed. A stale target lands here.
-      return applied;
-    }
-
-    const outcome = await applied.persisted;
-    if (outcome.outcome === 'applied') {
-      this.broadcast({
-        graphData: outcome.graphData,
-        type: 'graph_updated',
-        updatedAt: outcome.updatedAt
-      });
-    }
-    return outcome;
+  async applyOperation(operation: GraphOperation, actor: string): Promise<GraphWriteOutcome> {
+    // Every RPC caller is an agent: a browser's own operations arrive over its socket and are
+    // handled by `webSocketMessage`. The origin is therefore fixed here rather than taken as an
+    // argument, so no caller can claim to be a person.
+    return this.runOperation(operation, { actor, operationId: null, origin: 'agent' });
   }
 
   /**
    * Replaces the whole graph, persists it, and updates the session's working copy.
    *
    * The editor's autosave, arriving over the REST fallback route. It takes the same serialized path
-   * as {@link DiagramSession.applyOperation} — which is the point of this phase — but broadcasts
-   * nothing: a tab's own save is its own change, and the current protocol gives a recipient no way
-   * to tell whose change it is receiving. The next sub-phase adds that attribution, and with it the
-   * echo.
+   * as an operation does — which is the point of the serialization work — and announces itself as a
+   * **snapshot** rather than an operation, because a whole-graph replace is not expressible as one.
+   * A recipient therefore replaces its graph here, where it would otherwise have applied a change,
+   * and that is precisely why the editor should prefer operations: this frame discards a
+   * recipient's in-progress edit and an operation does not.
    *
    * The graph arrives already canonical, validated by `../domain/graph.ts` at the transport
    * boundary, so there is nothing to re-derive here.
    *
    * @param graphData Canonical, already-validated graph JSON to store verbatim.
+   * @param actor Verified identity that saved it, used to attribute the snapshot.
    * @returns What was persisted, or a refusal — `404` when the diagram has gone, `500` when the
    *   write failed.
    */
-  async replaceGraph(graphData: string): Promise<GraphWriteOutcome> {
+  async replaceGraph(graphData: string, actor: string): Promise<GraphWriteOutcome> {
     const refusal = await this.hydrate();
     if (refusal !== null) {
       return refusal;
     }
 
+    this.rebaseSurvivingSockets();
+
     // Straight to `replace`, skipping the mutation step an operation needs: the graph is already
     // canonical, so there is nothing here that can be refused. It is the identical synchronous
-    // region and the identical queue position a granular operation gets — which is the point of
-    // this phase — just without a step that would have no work to do.
-    return this.replace(graphData).persisted;
+    // region and the identical queue position a granular operation gets, just without a step that
+    // would have no work to do.
+    const outcome = await this.replace(graphData).persisted;
+
+    if (outcome.outcome === 'applied') {
+      this.broadcast({
+        actor,
+        graphData: outcome.graphData,
+        // Always a person: an agent has granular operations and never replaces a whole graph.
+        origin: 'human',
+        sequence: outcome.sequence,
+        type: 'snapshot',
+        updatedAt: outcome.updatedAt
+      });
+    }
+    return outcome;
   }
 
   /**
@@ -325,25 +384,26 @@ export class DiagramSession extends DurableObject<Env> {
   }
 
   /**
-   * Answers a frame sent by a browser, which this channel does not yet accept.
+   * Applies a frame a browser sent — the inbound half of the live channel.
    *
-   * The socket is still a one-way push in this sub-phase: the write path has moved into this object
-   * but the wire protocol has not changed, so the editor keeps saving over REST and this method
-   * keeps saying plainly that it did nothing. A silent drop is indistinguishable from a delivery
-   * failure, and a client author debugging one would have no way to tell which they were looking
-   * at. The connection stays open, because a client sending here is confused rather than hostile —
-   * there is no field in the protocol it could use to assert anything, and this method reads
-   * neither the frame's contents nor any identity from it.
+   * **The author comes from the socket, never from the frame.** It is read back out of the
+   * attachment the upgrade pinned, which is what makes attribution unforgeable: the wire protocol
+   * has no author field at all, and `../domain/client-frame.ts` refuses a payload that invents one.
+   * A connection whose attachment is missing is closed rather than answered, because an
+   * unattributable socket should not exist.
    *
-   * The viewer is read from the socket attachment purely to prove the pinning survives: a
-   * connection whose attachment is missing is closed rather than answered, because an
-   * unattributable socket should not exist at all.
+   * Nothing here throws. An uncaught exception in a Durable Object discards its in-memory state and
+   * can reset the instance, which would disconnect every other editor on the diagram — so a
+   * malformed frame from one client must not be able to disturb anybody else. Every failure becomes
+   * a frame sent back to the sender alone, and the connection stays open: a client sending
+   * something unusable is confused rather than hostile.
    *
-   * @param socket Connection the frame arrived on.
-   * @param _message Raw frame payload, deliberately never parsed. Nothing a client can send is
-   *   actionable yet, so decoding it would only create a surface to get wrong.
+   * @param socket Connection the frame arrived on, and the only connection a refusal is sent to.
+   * @param message Raw frame payload, validated before any part of it is used.
+   * @returns A promise fulfilled once the frame has been applied and answered. Returned rather than
+   *   fired and forgotten so the runtime keeps the object alive until the write completes.
    */
-  webSocketMessage(socket: WebSocket, _message: string | ArrayBuffer): void {
+  async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const attachment = socket.deserializeAttachment() as SocketAttachment | null;
     if (attachment === null) {
       // Unreachable through `fetch`, which always attaches before accepting. Closing rather than
@@ -352,10 +412,52 @@ export class DiagramSession extends DurableObject<Env> {
       return;
     }
 
-    send(socket, {
-      detail: 'This connection is read-only. Save changes with PUT /api/diagrams/:id/graph.',
-      type: 'error'
-    });
+    let frame;
+    try {
+      frame = parseClientFrame(message);
+    } catch (error) {
+      // Not an operation this server recognises, so there is no operation id to return and
+      // nothing for the client to roll back — which is what distinguishes this from a rejection.
+      send(socket, { detail: toRejection(error).detail, type: 'error' });
+      return;
+    }
+
+    switch (frame.type) {
+      case 'operation': {
+        const outcome = await this.runOperation(frame.operation, {
+          actor: attachment.viewer,
+          operationId: frame.operationId,
+          origin: 'human'
+        });
+        if (outcome.outcome === 'rejected') {
+          // To the originator alone. Nobody else asked for this change, and telling them it
+          // failed would name an element they may be editing quite happily.
+          send(socket, {
+            detail: outcome.detail,
+            operationId: frame.operationId,
+            status: outcome.status,
+            type: 'operation_rejected'
+          });
+        }
+        return;
+      }
+      case 'resync': {
+        const snapshot = await this.getSnapshot();
+        if (snapshot !== null) {
+          // `origin: null` because this is an answer rather than a change — the client asked, so
+          // it has nothing to announce to its user.
+          send(socket, {
+            actor: null,
+            graphData: snapshot.graphData,
+            origin: null,
+            sequence: this.sequence,
+            type: 'snapshot',
+            updatedAt: snapshot.updatedAt
+          });
+        }
+        return;
+      }
+    }
   }
 
   /**
@@ -388,6 +490,98 @@ export class DiagramSession extends DurableObject<Env> {
    */
   webSocketError(_socket: WebSocket, _error: unknown): void {
     // Intentionally empty; see `webSocketClose`.
+  }
+
+  /**
+   * Applies one operation from any source, persists it, and announces it — the one write path.
+   *
+   * Both entry points reach it: an agent's RPC call and a browser's socket frame. Sharing it is
+   * what makes "the same change behaves the same way whoever made it" true by construction rather
+   * than by two implementations agreeing, and it is why attribution is a parameter rather than
+   * something each caller broadcasts for itself.
+   *
+   * The order of the three steps is the whole design:
+   *
+   * 1. **Mutate synchronously** through {@link DiagramSession.apply} — no `await` between reading the
+   *    working graph and replacing it, so a concurrent operation cannot be applied to the same
+   *    starting graph.
+   * 2. **Persist through the ordered queue**, and wait for it.
+   * 3. **Broadcast**, only once D1 has the change.
+   *
+   * A refusal is returned rather than thrown at every step, including a storage failure. Two people
+   * editing one diagram is the ordinary case here, and an uncaught exception would discard the
+   * session's working graph along with answering the caller.
+   *
+   * @param operation The single operation to apply.
+   * @param attribution Who made the change and, for a socket operation, the client's own id for it.
+   *   Never derived from the operation itself.
+   * @returns What was persisted, or the refusal to answer the originator with.
+   */
+  private async runOperation(
+    operation: GraphOperation,
+    attribution: { actor: string; origin: ChangeOrigin; operationId: string | null }
+  ): Promise<GraphWriteOutcome> {
+    const refusal = await this.hydrate();
+    if (refusal !== null) {
+      return refusal;
+    }
+
+    this.rebaseSurvivingSockets();
+
+    const applied = this.apply((graph) => applyGraphOperation(graph, operation));
+    if (applied.outcome === 'rejected') {
+      // Refused before anything was enqueued, so the stored diagram is exactly as it was and no
+      // sequence number was consumed. A stale target lands here.
+      return applied;
+    }
+
+    const outcome = await applied.persisted;
+    if (outcome.outcome === 'applied') {
+      // The operation rather than the resulting graph, so a recipient can apply it without losing
+      // the edit it has in progress. See `src/live-sync-protocol.ts`.
+      this.broadcast({
+        actor: attribution.actor,
+        operation,
+        operationId: attribution.operationId,
+        origin: attribution.origin,
+        sequence: outcome.sequence,
+        type: 'operation_applied',
+        updatedAt: outcome.updatedAt
+      });
+    }
+    return outcome;
+  }
+
+  /**
+   * Rebases sockets that survived this object's hibernation onto its restarted sequence counter.
+   *
+   * A hibernatable socket can outlive the object instance that accepted it. When an event wakes the
+   * object, the socket still has the old instance's operation sequence while this instance's
+   * in-memory counter has restarted at zero. Sending operation 1 straight away would look like an
+   * old duplicate to a client already at operation 10, so it would discard a real edit. A
+   * sequence-0 snapshot is the discontinuity marker: the client adopts both the graph and the new
+   * base, then applies operation 1 normally.
+   *
+   * The check and broadcast are synchronous and happen before the mutation, so no operation can be
+   * delivered between the rebase and the edit it prepares the sockets for.
+   *
+   * @returns Nothing. A fresh instance with no surviving sockets simply broadcasts to nobody and
+   *   marks itself based, which is harmless and saves repeating the empty fan-out.
+   */
+  private rebaseSurvivingSockets(): void {
+    if (this.streamBased) {
+      return;
+    }
+
+    this.broadcast({
+      actor: null,
+      graphData: this.graphData as string,
+      origin: null,
+      sequence: this.sequence,
+      type: 'snapshot',
+      updatedAt: this.updatedAt as string
+    });
+    this.streamBased = true;
   }
 
   /**

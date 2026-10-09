@@ -870,7 +870,7 @@ frame, so the editor behaves exactly as it does today.
 Every write to a diagram's graph, from any transport, passes through one serialized path; D1 ends in
 last-applied state; no graph has a second durable copy; and the editor is visibly unchanged.
 
-#### Phase 18b — The bidirectional protocol
+#### Phase 18b — The bidirectional protocol — **complete**
 
 ##### Goal
 

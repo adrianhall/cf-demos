@@ -145,15 +145,26 @@ export interface DiagramSessionPort {
    * broadcasts — persist before broadcast, so a connected editor can never render a change that a
    * reload would not show.
    *
+   * Every caller of this method is an agent, and the session records it as one: a person's edits
+   * arrive over their own socket instead. That distinction cannot be derived from the identity,
+   * because an agent authenticates as whoever configured it.
+   *
    * @param diagramId Id of the diagram to change.
    * @param operation The single operation to apply.
+   * @param actor Verified Cloudflare Access identity to attribute the change to, so a connected
+   *   editor can be told who made it. Taken from the authenticated caller, never from a tool
+   *   argument.
    * @returns What was persisted, or a refusal carrying the status every transport should answer
    *   with. A stale target is a refusal rather than a thrown error, because two people editing the
    *   same diagram is the ordinary case this whole phase exists to serve.
    * @throws {Error} When the session itself cannot be reached — a transport failure, as distinct
    *   from a refusal, which arrives as a value.
    */
-  applyOperation(diagramId: string, operation: GraphOperation): Promise<GraphWriteOutcome>;
+  applyOperation(
+    diagramId: string,
+    operation: GraphOperation,
+    actor: string
+  ): Promise<GraphWriteOutcome>;
 
   /**
    * Replaces a diagram's entire graph, persists it, and updates the session's working copy.
@@ -162,16 +173,19 @@ export interface DiagramSessionPort {
    * operations because the browser genuinely sends the complete graph today; what changes in this
    * phase is only that the write is serialized against every other writer instead of racing them.
    *
-   * Nothing is broadcast. A tab's own autosave is its own change, and the current protocol has no
-   * way for a recipient to tell whose change it is receiving — the next sub-phase adds that, and
-   * with it the echo.
+   * It is announced to connected editors as a **snapshot** rather than an operation, which is the
+   * honest description: a recipient has to replace its graph, losing any edit it had in progress.
+   * That cost is exactly why an editor should send operations where it can, and it is what the next
+   * sub-phase moves the connected case onto.
    *
    * @param diagramId Id of the diagram to change.
    * @param graphData Canonical, already-validated graph JSON to store verbatim.
+   * @param actor Verified Cloudflare Access identity that saved it, so the snapshot can be
+   *   attributed.
    * @returns What was persisted, or a refusal — `404` when the diagram has gone.
    * @throws {Error} When the session cannot be reached.
    */
-  replaceGraph(diagramId: string, graphData: string): Promise<GraphWriteOutcome>;
+  replaceGraph(diagramId: string, graphData: string, actor: string): Promise<GraphWriteOutcome>;
 }
 
 /**

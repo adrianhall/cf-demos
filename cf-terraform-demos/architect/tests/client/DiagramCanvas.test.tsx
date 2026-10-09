@@ -953,15 +953,55 @@ describe('live sync', () => {
   });
 
   /**
-   * Delivers a `graph_updated` frame on the canvas's socket.
+   * Delivers a whole-graph `snapshot` frame on the canvas's socket.
    *
-   * @param updatedAt Server timestamp the push carries.
-   * @param graphData Graph JSON the push carries.
+   * @param updatedAt Server timestamp the snapshot carries.
+   * @param graphData Graph JSON the snapshot carries.
+   * @param origin Who produced it, or `null` for a connect/resync answer that announces nothing.
    * @returns A promise fulfilled once React has processed the resulting state change.
    */
-  async function pushGraph(updatedAt: string, graphData: string = PUSHED_GRAPH): Promise<void> {
+  async function pushSnapshot(
+    updatedAt: string,
+    graphData: string = PUSHED_GRAPH,
+    origin: 'human' | 'agent' | null = 'agent'
+  ): Promise<void> {
     await act(async () => {
-      mostRecentSocket().simulateMessage({ graphData, type: 'graph_updated', updatedAt });
+      mostRecentSocket().simulateMessage({
+        actor: origin === null ? null : 'alice@example.com',
+        graphData,
+        origin,
+        sequence: 1,
+        type: 'snapshot',
+        updatedAt
+      });
+    });
+  }
+
+  /**
+   * Delivers an `operation_applied` frame on the canvas's socket.
+   *
+   * @param operation The change the frame announces.
+   * @param sequence Position in the session's operation stream.
+   * @param origin Whether a person or an agent made it.
+   * @param updatedAt Server timestamp the frame carries.
+   * @returns A promise fulfilled once React has processed the resulting state change.
+   */
+  async function pushOperation(
+    operation: Record<string, unknown>,
+    sequence: number,
+    origin: 'human' | 'agent' = 'agent',
+    updatedAt = '2026-02-01T00:00:00.000Z'
+  ): Promise<void> {
+    await act(async () => {
+      mostRecentSocket().simulateMessage({
+        actor: 'alice@example.com',
+        operation,
+        operationId: null,
+        origin,
+        sequence,
+        type: 'operation_applied',
+        updatedAt
+      });
     });
   }
 
@@ -974,13 +1014,15 @@ describe('live sync', () => {
     expect(mostRecentSocket().url).toBe('ws://localhost/api/diagrams/d1/live');
   });
 
-  // The channel is strictly server-to-client. A canvas that started writing to it would be a
-  // second write path alongside the autosave, which is exactly what this phase does not add.
-  it('never writes to the socket', async () => {
+  // This tab's own edits still go out through the autosave, so receiving a change must not make
+  // it start writing. The one thing it does send is a resync, and only when it has detected that
+  // it can no longer apply operations safely — covered below.
+  it('sends nothing in response to an ordinary change', async () => {
     respondWithDiagram();
     await renderLoaded();
 
-    await pushGraph('2026-02-01T00:00:00.000Z');
+    await pushSnapshot('2026-02-01T00:00:00.000Z');
+    await pushOperation({ kind: 'remove_node', nodeId: 'pushed' }, 2);
 
     expect(mostRecentSocket().sent).toEqual([]);
   });
@@ -1011,13 +1053,121 @@ describe('live sync', () => {
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
-  it('replaces the canvas when an agent’s change arrives', async () => {
+  it('replaces the canvas when a whole-graph snapshot arrives', async () => {
     respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
     await renderLoaded();
 
-    await pushGraph('2026-02-01T00:00:00.000Z');
+    await pushSnapshot('2026-02-01T00:00:00.000Z');
 
     expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['pushed']);
+  });
+
+  // The finer frame, and the one the channel normally carries: it changes the element named and
+  // leaves the rest of the canvas — including anything this visitor is in the middle of — alone.
+  it('applies an operation another editor performed', async () => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+    await pushSnapshot('2026-02-01T00:00:00.000Z');
+
+    await pushOperation(
+      {
+        input: { id: 'added', label: 'Cache', position: { x: 0, y: 9 }, typeId: 'kv' },
+        kind: 'add_node'
+      },
+      2,
+      'human'
+    );
+
+    expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['pushed', 'added']);
+  });
+
+  // A person's change and an agent's need different wording, and the identity cannot tell them
+  // apart — an agent authenticates as whoever configured it.
+  it.each([
+    ['agent', 'Updated by an agent'],
+    ['human', 'Updated by another editor']
+  ])('names a %s change in the notice', async (origin, expected) => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+
+    await pushSnapshot('2026-02-01T00:00:00.000Z', PUSHED_GRAPH, origin as 'human' | 'agent');
+
+    expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  // The snapshot a joining tab is sent on connect describes no change — it is the graph the tab
+  // already asked for — so announcing it would explain something that did not happen.
+  it('shows no notice for the snapshot it is sent on connect', async () => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+
+    await pushSnapshot('2026-02-01T00:00:00.000Z', PUSHED_GRAPH, null);
+
+    expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['pushed']);
+    expect(screen.queryByText('Updated by an agent')).not.toBeInTheDocument();
+    expect(screen.queryByText('Updated by another editor')).not.toBeInTheDocument();
+  });
+
+  // Operation-based sync diverges silently when a frame is missed: the operation after the gap
+  // may name an element that no longer means what it did. The tab says so rather than guessing.
+  it('asks for a fresh snapshot when it has missed a frame, and applies nothing', async () => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+    await pushSnapshot('2026-02-01T00:00:00.000Z');
+
+    await pushOperation({ kind: 'remove_node', nodeId: 'pushed' }, 9);
+
+    expect(mostRecentSocket().sent).toEqual([JSON.stringify({ type: 'resync' })]);
+    // The canvas is untouched: applying the operation is exactly what would have diverged.
+    expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['pushed']);
+  });
+
+  // An operation the server applied but this tab cannot means the two have already diverged,
+  // which has the same remedy as a missed frame.
+  it('asks for a fresh snapshot when an operation cannot be applied', async () => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+    await pushSnapshot('2026-02-01T00:00:00.000Z');
+
+    await pushOperation({ kind: 'remove_node', nodeId: 'never-existed' }, 2);
+
+    expect(mostRecentSocket().sent).toEqual([JSON.stringify({ type: 'resync' })]);
+  });
+
+  // The echo of this tab's own operation. Applying it twice would duplicate a node, and
+  // announcing it would tell the visitor about their own edit.
+  it('ignores an operation it has already applied, and announces nothing', async () => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+    // A connect snapshot, which announces nothing — so the only thing that could raise a notice
+    // below is the duplicate operation itself.
+    await pushSnapshot('2026-02-01T00:00:00.000Z', PUSHED_GRAPH, null);
+
+    await pushOperation({ kind: 'remove_node', nodeId: 'pushed' }, 1);
+
+    expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['pushed']);
+    expect(screen.queryByText('Updated by an agent')).not.toBeInTheDocument();
+    expect(mostRecentSocket().sent).toEqual([]);
+  });
+
+  // A rejection is addressed to the connection that sent the operation, and this tab does not
+  // send any yet — but the protocol permits it, so receiving one must not break the editor.
+  it('tolerates a rejection frame without disturbing the canvas', async () => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+    await pushSnapshot('2026-02-01T00:00:00.000Z');
+
+    await act(async () => {
+      mostRecentSocket().simulateMessage({
+        detail: 'Node "ghost" not found.',
+        operationId: 'not-ours',
+        status: 404,
+        type: 'operation_rejected'
+      });
+    });
+
+    expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['pushed']);
+    expect(screen.getByTestId('react-flow')).toBeInTheDocument();
   });
 
   // The canvas must not change under the visitor with no explanation; that reads as a bug rather
@@ -1026,7 +1176,7 @@ describe('live sync', () => {
     respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
     await renderLoaded();
 
-    await pushGraph('2026-02-01T00:00:00.000Z');
+    await pushSnapshot('2026-02-01T00:00:00.000Z');
     const notice = screen.getByText('Updated by an agent');
     // An `<output>`, which carries the `status` role natively, so the notice is announced without
     // stealing focus — the change is informational, and taking focus would interrupt whatever the
@@ -1059,7 +1209,7 @@ describe('live sync', () => {
     respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
     await renderLoaded();
 
-    await pushGraph(updatedAt);
+    await pushSnapshot(updatedAt);
 
     expect(useDiagramStore.getState().nodes).toEqual([]);
     expect(screen.queryByText('Updated by an agent')).not.toBeInTheDocument();
@@ -1073,7 +1223,7 @@ describe('live sync', () => {
       useDiagramStore.getState().markSaved('2026-03-01T00:00:00.000Z');
     });
 
-    await pushGraph('2026-02-01T00:00:00.000Z');
+    await pushSnapshot('2026-02-01T00:00:00.000Z');
 
     expect(useDiagramStore.getState().nodes).toEqual([]);
   });
@@ -1085,7 +1235,7 @@ describe('live sync', () => {
       useDiagramStore.setState({ dirty: true });
     });
 
-    await pushGraph('2026-02-01T00:00:00.000Z');
+    await pushSnapshot('2026-02-01T00:00:00.000Z');
 
     expect(useDiagramStore.getState().dirty).toBe(true);
   });
@@ -1112,7 +1262,7 @@ describe('live sync', () => {
   it('hides the notice in print mode along with every other piece of chrome', async () => {
     respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
     await renderLoaded();
-    await pushGraph('2026-02-01T00:00:00.000Z');
+    await pushSnapshot('2026-02-01T00:00:00.000Z');
 
     act(() => {
       useDiagramStore.getState().setPrintMode(true);

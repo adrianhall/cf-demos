@@ -14,6 +14,7 @@ import {
   type Viewport
 } from '@xyflow/react';
 import { CF_EDGE_TYPE } from '../../graph-element-types.ts';
+import { applyGraphOperation, type GraphOperation } from '../../worker/domain/graph-operations.ts';
 import type { DiagramRole } from '../api/diagrams.ts';
 import { chooseConnectionHandles, validateConnection } from '../components/editor/connect.ts';
 import type { CFEdgeData, CFNodeData } from '../components/editor/types.ts';
@@ -82,13 +83,29 @@ interface DiagramState {
    * or `null` when there is none — before the first load, and for the anonymous share viewer, which
    * has no live channel and is never sent one.
    *
-   * It exists for exactly one comparison: a live `graph_updated` push is applied only when its own
-   * timestamp is newer than this. Without it a push that lost a race — delivered after a later save
-   * had already been applied — would quietly revert the canvas to an older graph. It is a server
-   * value and is never computed here; {@link lastSavedAt} is the separate, local wall-clock reading
-   * the status bar shows and the two must not be confused.
+   * It exists for exactly one comparison: a live snapshot is applied only when its own timestamp is
+   * newer than this. Without it a snapshot that lost a race — delivered after a later save had
+   * already been applied — would quietly revert the canvas to an older graph. It is a server value
+   * and is never computed here; {@link lastSavedAt} is the separate, local wall-clock reading the
+   * status bar shows and the two must not be confused.
+   *
+   * An _operation_ is not gated on it, deliberately. An operation describes a change relative to
+   * the graph the session holds rather than a version of the whole document, and
+   * {@link liveSequence} is what orders those.
    */
   updatedAt: string | null;
+  /**
+   * Position in the live session's operation stream that this tab has applied up to, or `null` when
+   * there is no live channel — before the socket's first snapshot, and for the anonymous share
+   * viewer, which never opens one.
+   *
+   * Operation-based sync has one characteristic failure, and it is silent: apply an operation to
+   * the wrong base graph and the canvas diverges from what is stored, with nobody finding out until
+   * a reload. This is how that is detected. Each applied operation must carry exactly one more than
+   * this; anything else means a frame was missed, and the tab asks for a fresh snapshot rather than
+   * guessing.
+   */
+  liveSequence: number | null;
   /**
    * Nodes currently on the canvas.
    */
@@ -194,33 +211,67 @@ interface DiagramActions {
     role?: DiagramRole
   ) => void;
   /**
-   * Replaces the graph with one an agent changed on the server, if it is genuinely newer.
+   * Replaces the graph with a whole-graph snapshot from the live session, if it is genuinely newer.
    *
    * The newness check lives here rather than in the component so there is one rule rather than one
-   * per caller, and so it can be tested as state. A push carrying a timestamp no newer than
+   * per caller, and so it can be tested as state. A snapshot carrying a timestamp no newer than
    * {@link DiagramState.updatedAt} is discarded entirely: it describes a version this tab has
    * already moved past, and applying it would revert the canvas under the user.
    *
-   * The graph is replaced rather than merged, which is the same thing the initial load does and the
-   * same thing the autosave sends — this demo has no partial-patch protocol in either direction.
-   * `dirty` is deliberately left alone: the push is now the saved state, but any local change the
-   * user had pending is still pending, and clearing the flag would lose it.
+   * The graph is replaced rather than merged, which is what makes a snapshot the blunter of the two
+   * inbound frames — it discards whatever the user had in progress. That is why the session sends
+   * one only when it has to: on connect, after somebody's whole-graph save, and in answer to a
+   * resync.
+   *
+   * `dirty` is deliberately left alone: the snapshot is now the saved state, but any local change
+   * the user had pending is still pending, and clearing the flag would lose it.
    *
    * No undo entry is pushed. Ctrl+Z is for undoing _your own_ last action, and silently making it
    * revert somebody else's change instead would be the more surprising behaviour.
    *
-   * @param nodes Nodes from the pushed graph.
-   * @param edges Edges from the pushed graph.
-   * @param updatedAt Server timestamp the push carried.
-   * @returns `true` when the graph was replaced, and `false` when the push was discarded as stale.
-   *   The caller uses it to decide whether to show the "updated by an agent" toast, so a discarded
-   *   push explains nothing to the user — because nothing changed.
+   * @param nodes Nodes from the snapshot.
+   * @param edges Edges from the snapshot.
+   * @param updatedAt Server timestamp the snapshot carried.
+   * @param sequence Operation-stream position the snapshot corresponds to. Adopted even when the
+   *   graph is discarded as stale, because it describes where the _session_ is rather than which
+   *   graph is newer — refusing it would leave the tab permanently resynchronising.
+   * @returns `true` when the graph was replaced, and `false` when it was discarded as stale. The
+   *   caller uses it to decide whether to announce the change, so a discarded snapshot explains
+   *   nothing to the user — because nothing changed.
    */
-  applyRemoteGraph: (
+  applyRemoteSnapshot: (
     nodes: Node<CFNodeData>[],
     edges: Edge<CFEdgeData>[],
-    updatedAt: string
+    updatedAt: string,
+    sequence: number
   ) => boolean;
+  /**
+   * Applies one operation another editor or an agent performed.
+   *
+   * The finer of the two inbound frames, and the one the live channel should normally carry: it
+   * changes the element the operation names and leaves everything else — including whatever this
+   * user is halfway through — exactly as it was.
+   *
+   * The operation is applied through the **same** pure function the server applies it with
+   * (`src/worker/domain/graph-operations.ts`), rather than a client-side reimplementation. Two
+   * implementations of "add a node" would be two chances for the canvas to drift from what is
+   * stored, and the drift would be silent.
+   *
+   * `dirty` is left alone and no undo entry is pushed, for the same reasons
+   * {@link applyRemoteSnapshot} documents.
+   *
+   * @param operation The change to apply.
+   * @param updatedAt Server timestamp of the write that applied it.
+   * @param sequence Position of this operation in the session's stream.
+   * @returns `'applied'` when the change was made; `'duplicate'` when it had already been applied,
+   *   which is the echo of this tab's own operation arriving back; and `'gap'` when a frame was
+   *   missed, meaning the tab cannot apply this safely and must ask for a fresh snapshot.
+   */
+  applyRemoteOperation: (
+    operation: GraphOperation,
+    updatedAt: string,
+    sequence: number
+  ) => 'applied' | 'duplicate' | 'gap';
   /**
    * React Flow's node-change handler. Records undo history for a structural change only.
    */
@@ -460,6 +511,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   selectedEdgeId: null,
   selectedNodeId: null,
   title: 'Untitled Diagram',
+  liveSequence: null,
   undoStack: [],
   updatedAt: null,
   viewport: { x: 0, y: 0, zoom: 1 },
@@ -479,18 +531,59 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       viewport
     }),
 
-  applyRemoteGraph: (nodes, edges, updatedAt) => {
+  applyRemoteSnapshot: (nodes, edges, updatedAt, sequence) => {
     const current = get().updatedAt;
     // A string comparison rather than parsed dates: every value here is a `Date#toISOString`
     // result written by the server, and that format sorts chronologically as text. Parsing would
     // add a failure mode — an unparseable value becoming `NaN`, which loses every comparison —
     // for no gain.
     if (current !== null && updatedAt <= current) {
+      // The sequence is still adopted. It says where the session's operation stream has reached,
+      // which is true regardless of whether this tab wanted the graph; discarding it would leave
+      // every subsequent operation looking like a gap.
+      set({ liveSequence: sequence });
       return false;
     }
 
-    set({ edges, nodes, updatedAt });
+    set({ edges, liveSequence: sequence, nodes, updatedAt });
     return true;
+  },
+
+  applyRemoteOperation: (operation, updatedAt, sequence) => {
+    const { liveSequence, nodes, edges, viewport } = get();
+
+    if (liveSequence !== null) {
+      if (sequence <= liveSequence) {
+        // Already applied. This is the ordinary echo of an operation this tab originated, and
+        // applying it twice would duplicate a node or fail against a target already removed.
+        return 'duplicate';
+      }
+      if (sequence > liveSequence + 1) {
+        // A frame was missed. The intervening operations may have removed the very element this
+        // one names, so applying it would silently diverge from what is stored.
+        return 'gap';
+      }
+    }
+
+    let next;
+    try {
+      // The server's own function, not a copy of it. React Flow's nodes and edges already satisfy
+      // the `GraphData` shape it takes, which is what makes sharing it possible at all.
+      next = applyGraphOperation({ edges, nodes, viewport }, operation);
+    } catch {
+      // The server applied this successfully, so a failure here means the two graphs have already
+      // diverged — exactly the condition a resync exists for. Reported rather than thrown: a
+      // malformed frame must not take the editor down.
+      return 'gap';
+    }
+
+    set({
+      edges: next.edges as Edge<CFEdgeData>[],
+      liveSequence: sequence,
+      nodes: next.nodes as Node<CFNodeData>[],
+      updatedAt
+    });
+    return 'applied';
   },
 
   onNodesChange: (changes: NodeChange[]) => {

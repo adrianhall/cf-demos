@@ -71,11 +71,16 @@ export class DurableDiagramSessions implements DiagramSessionPort {
    *
    * @param diagramId Id of the diagram to change.
    * @param operation The single operation to apply.
+   * @param actor Verified identity to attribute the change to.
    * @returns What was persisted, or the refusal to answer with.
    * @throws {Error} When the session cannot be reached.
    */
-  async applyOperation(diagramId: string, operation: GraphOperation): Promise<GraphWriteOutcome> {
-    return this.namespace.getByName(diagramId).applyOperation(operation);
+  async applyOperation(
+    diagramId: string,
+    operation: GraphOperation,
+    actor: string
+  ): Promise<GraphWriteOutcome> {
+    return this.namespace.getByName(diagramId).applyOperation(operation, actor);
   }
 
   /**
@@ -83,10 +88,15 @@ export class DurableDiagramSessions implements DiagramSessionPort {
    *
    * @param diagramId Id of the diagram to change.
    * @param graphData Canonical, already-validated graph JSON.
+   * @param actor Verified identity that saved it.
    * @returns What was persisted, or the refusal to answer with.
    * @throws {Error} When the session cannot be reached.
    */
-  async replaceGraph(diagramId: string, graphData: string): Promise<GraphWriteOutcome> {
-    return this.namespace.getByName(diagramId).replaceGraph(graphData);
+  async replaceGraph(
+    diagramId: string,
+    graphData: string,
+    actor: string
+  ): Promise<GraphWriteOutcome> {
+    return this.namespace.getByName(diagramId).replaceGraph(graphData, actor);
   }
 }
