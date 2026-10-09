@@ -219,6 +219,9 @@ describe('renderGraphSvg', () => {
     );
   });
 
+  // The horizontal cases carry the handle pair the **Connect nodes** dialog records, because that
+  // is the only thing that makes an edge horizontal — see the `edge anchoring` block below. A
+  // handle-less edge is vertical however the boxes sit, which `left` and `up` cover.
   it('routes straight and bent edges horizontally and vertically', () => {
     const svg = parseSvg(
       renderGraphSvg(
@@ -233,8 +236,20 @@ describe('renderGraphSvg', () => {
             { data: { label: 'G' }, id: 'g', position: { x: 0, y: -160 } }
           ],
           [
-            { id: 'horizontal-straight', source: 'a', target: 'b' },
-            { id: 'horizontal-bent', source: 'b', target: 'c' },
+            {
+              id: 'horizontal-straight',
+              source: 'a',
+              sourceHandle: 'source-right',
+              target: 'b',
+              targetHandle: 'target-left'
+            },
+            {
+              id: 'horizontal-bent',
+              source: 'b',
+              sourceHandle: 'source-right',
+              target: 'c',
+              targetHandle: 'target-left'
+            },
             { id: 'vertical-straight', source: 'a', target: 'd' },
             { id: 'vertical-bent', source: 'd', target: 'e' },
             { id: 'left', source: 'a', target: 'f' },
@@ -251,7 +266,10 @@ describe('renderGraphSvg', () => {
     expect(paths[1]).toContain(' Q ');
     expect(paths[2]).toBe('M 100 54 L 100 160');
     expect(paths[3]).toContain(' Q ');
-    expect(paths[4]).toBe('M 0 27 L -60 27');
+    // Leftward and upward edges record no handles — the catalogue offers none on those faces — so
+    // both run vertically. The leftward one bends because the two boxes share no centre line.
+    expect(paths[4]).toContain(' Q ');
+    expect(paths[4]?.startsWith('M 100 54 ')).toBe(true);
     expect(paths[5]).toBe('M 100 0 L 100 -106');
   });
 
@@ -337,5 +355,139 @@ describe('renderGraphSvg', () => {
         'Event notification'
       ])
     );
+  });
+
+  // The editor does not route by raw geometry. `chooseConnectionHandles` picks a side and then
+  // `resolveHandle` checks the catalogue actually declares it, falling back to the node's first
+  // handle of the right kind when it does not. The catalogue only ever puts a source handle on a
+  // node's bottom or right and a target handle on its top or left, so an edge running up or to the
+  // left has no direct handle and falls back to the vertical pair. A renderer that derived the
+  // side from coordinates alone would disagree with the canvas for exactly those edges, and the
+  // exported file — the artefact that ends up in a document, where nobody can compare it against
+  // the canvas — would show an arrow leaving the wrong face of a node.
+  describe('edge anchoring', () => {
+    /**
+     * Collects the first and last point of every edge path in a rendered document.
+     *
+     * @param source Complete SVG source from {@link renderGraphSvg}.
+     * @returns One `{ from, to }` pair per edge, in document order.
+     */
+    function endpoints(source: string): { from: string; to: string }[] {
+      const svg = parseSvg(source);
+      const paths = svg.querySelectorAll(':scope > g:first-of-type > path');
+
+      return [...paths].map((path) => {
+        const data = path.getAttribute('d') ?? '';
+        const points = [...data.matchAll(/(-?[\d.]+) (-?[\d.]+)/gu)].map((m) => `${m[1]},${m[2]}`);
+
+        return { from: points[0] ?? '', to: points.at(-1) ?? '' };
+      });
+    }
+
+    // The exact layout `auto_layout_diagram` produced for the "Checkout service" diagram: one
+    // source fanning out to a node directly below it and to three placed down and to the right.
+    const fanOut = graph(
+      [
+        {
+          data: { label: 'API Gateway', typeId: 'worker-hono' },
+          id: 'gateway',
+          position: { x: 0, y: 160 }
+        },
+        {
+          data: { label: 'Auth Service', typeId: 'worker-hono' },
+          id: 'auth',
+          position: { x: 0, y: 320 }
+        },
+        {
+          data: { label: 'Data Service', typeId: 'worker-hono' },
+          id: 'data',
+          position: { x: 260, y: 320 }
+        },
+        { data: { label: 'Orders', typeId: 'd1' }, id: 'orders', position: { x: 780, y: 320 } }
+      ],
+      [
+        { data: { edgeType: 'service-binding' }, id: 'e1', source: 'gateway', target: 'auth' },
+        { data: { edgeType: 'service-binding' }, id: 'e2', source: 'gateway', target: 'data' },
+        { data: { edgeType: 'service-binding' }, id: 'e3', source: 'gateway', target: 'orders' }
+      ]
+    );
+
+    it('leaves the bottom and arrives at the top for every downward edge', () => {
+      const [toAuth, toData, toOrders] = endpoints(renderGraphSvg(fanOut, {}));
+
+      // The gateway's box spans y 160–214, so its bottom edge is y=214 for all three.
+      expect(toAuth?.from).toBe('100,214');
+      expect(toData?.from).toBe('100,214');
+      expect(toOrders?.from).toBe('100,214');
+
+      // Each target's box starts at y=320, so each edge arrives on the top face.
+      expect(toAuth?.to).toBe('100,320');
+      expect(toData?.to).toBe('360,320');
+      expect(toOrders?.to).toBe('880,320');
+    });
+
+    /**
+     * Renders one edge between a node at the origin and a node 400 to its right.
+     *
+     * @param edge Edge fields under test, merged over the source/target pair.
+     * @returns The single edge's first and last point.
+     */
+    function sideBySide(edge: Record<string, unknown>): { from: string; to: string } {
+      const [only] = endpoints(
+        renderGraphSvg(
+          graph(
+            [
+              {
+                data: { label: 'Gateway', typeId: 'worker-hono' },
+                id: 'gateway',
+                position: { x: 0, y: 0 }
+              },
+              { data: { label: 'Cache', typeId: 'kv' }, id: 'cache', position: { x: 400, y: 0 } }
+            ],
+            [
+              {
+                data: { edgeType: 'data-flow' },
+                id: 'e1',
+                source: 'gateway',
+                target: 'cache',
+                ...edge
+              }
+            ]
+          ),
+          {}
+        )
+      );
+
+      return only ?? { from: '', to: '' };
+    }
+
+    // The dialog is the only writer of handle ids, and this is the pair it records for a node
+    // placed to the right. React Flow draws that edge from the right face, so the export must too.
+    it('routes side to side when the edge recorded the right and left handles', () => {
+      const edge = sideBySide({ sourceHandle: 'source-right', targetHandle: 'target-left' });
+
+      expect(edge.from).toBe('200,27');
+      expect(edge.to).toBe('400,27');
+    });
+
+    // Same geometry, no recorded handles — a blueprint edge or an MCP-created one. React Flow
+    // falls back to each node's first handle of the right kind, which the catalogue orders
+    // top/bottom, so the edge runs vertically even though the nodes sit side by side.
+    it('routes bottom to top for a handle-less edge between nodes placed side by side', () => {
+      const edge = sideBySide({});
+
+      expect(edge.from).toBe('100,54');
+      expect(edge.to).toBe('500,0');
+    });
+
+    // Only the right/left pair means "draw this sideways". A half-recorded edge — one side named,
+    // the other absent — is not something the dialog can produce, and falling back keeps the
+    // export matching React Flow rather than anchoring to a face the other end does not share.
+    it('ignores a half-recorded handle pair', () => {
+      const edge = sideBySide({ sourceHandle: 'source-right' });
+
+      expect(edge.from).toBe('100,54');
+      expect(edge.to).toBe('500,0');
+    });
   });
 });

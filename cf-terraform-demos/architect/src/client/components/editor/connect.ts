@@ -1,6 +1,7 @@
 import type { Edge, Node } from '@xyflow/react';
 import type { HandleDef } from '../../../catalog.ts';
 import { NODE_TYPE_MAP } from '../../../catalog.ts';
+import { preferredHandles } from '../../../edge-anchoring.ts';
 import type { CFEdgeData, CFNodeData } from './types.ts';
 
 /**
@@ -64,13 +65,9 @@ export function chooseConnectionHandles(
   source: Node<CFNodeData>,
   target: Node<CFNodeData>
 ): ConnectionHandles {
-  const dx = target.position.x - source.position.x;
-  const dy = target.position.y - source.position.y;
-  const preferRight = Math.abs(dx) >= Math.abs(dy) && dx > 0;
-  const preferred = preferRight
-    ? { source: 'source-right', target: 'target-left' }
-    : { source: 'source-bottom', target: 'target-top' };
-
+  // The side rule itself is shared with the server-side SVG export rather than restated here;
+  // see `src/edge-anchoring.ts` for why the two have to agree.
+  const preferred = preferredHandles(source.position, target.position);
   const sourceHandles = NODE_TYPE_MAP.get(source.data.typeId)?.defaultHandles ?? [];
   const targetHandles = NODE_TYPE_MAP.get(target.data.typeId)?.defaultHandles ?? [];
 

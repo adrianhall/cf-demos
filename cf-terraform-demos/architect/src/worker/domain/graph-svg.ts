@@ -1,4 +1,5 @@
 import { CATEGORY_COLORS, EDGE_TYPE_MAP, NODE_TYPE_MAP } from '../../catalog.ts';
+import { HORIZONTAL_HANDLES } from '../../edge-anchoring.ts';
 import type { GraphData } from './graph.ts';
 
 /**
@@ -131,6 +132,29 @@ interface RenderableEdge extends Record<string, unknown> {
    * Edge data payload — the catalogue edge type and an optional midpoint label.
    */
   data?: { edgeType?: unknown; label?: unknown };
+  /**
+   * Handle the edge leaves from, when one was recorded. Only the **Connect nodes** dialog records
+   * one; a blueprint and every MCP mutation leave it absent.
+   */
+  sourceHandle?: unknown;
+  /**
+   * Handle the edge arrives at, on the same terms as {@link RenderableEdge.sourceHandle}.
+   */
+  targetHandle?: unknown;
+}
+
+/**
+ * The handle ids an edge recorded, normalized to `undefined` when it recorded none.
+ */
+interface StoredHandles {
+  /**
+   * Source handle id, or `undefined` when the edge did not record one.
+   */
+  source: string | undefined;
+  /**
+   * Target handle id, or `undefined` when the edge did not record one.
+   */
+  target: string | undefined;
 }
 
 /**
@@ -236,6 +260,19 @@ function coordinate(value: unknown): number {
  */
 function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
+}
+
+/**
+ * Reads an optional string field, keeping "absent" distinguishable from "empty".
+ *
+ * Edge routing needs that distinction: an edge that recorded no handle is routed the way React Flow
+ * routes it, which is not the same as an edge that recorded a handle this renderer does not know.
+ *
+ * @param value Candidate field value.
+ * @returns The string when the field holds a non-empty one, otherwise `undefined`.
+ */
+function optionalText(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
 /**
@@ -354,34 +391,44 @@ interface EdgeGeometry {
  * Chooses which sides of two boxes an edge should connect, and routes an orthogonal path between
  * them.
  *
- * React Flow picks sides from the handles the user actually dragged between; a stored graph does
- * not record that, so the side is derived from the boxes' relative positions instead. Whichever
- * axis separates the two centres more is the axis the edge travels along, which produces the
- * vertical top-to-bottom flow the blueprints are drawn in and a sideways route for anything placed
- * beside rather than below.
+ * The side comes from the edge's own stored handle ids, because that is what React Flow draws from.
+ * Only the editor's **Connect nodes** dialog records them
+ * (`../../client/components/editor/connect.ts`); a blueprint template and every MCP graph mutation
+ * omit them entirely, and React Flow then falls back to the node's _first_ declared handle of each
+ * kind — which the catalogue orders `target-top` before `target-left` and `source-bottom` before
+ * `source-right`, so an edge with no recorded handles runs bottom-to-top however the two boxes sit
+ * relative to each other.
+ *
+ * Deriving the side from the boxes' geometry instead, as this function first did, disagreed with
+ * the canvas for exactly those handle-less edges: an agent adding a node down and to the right got
+ * a path leaving the source's right face in the exported file and its bottom face on screen. The
+ * export is what ends up in a document, where nobody can hold it against the canvas, so the arrow
+ * leaving the wrong face is a correctness problem rather than a cosmetic one.
  *
  * @param source Box the edge leaves.
  * @param target Box the edge reaches.
+ * @param handles Handle ids recorded on the edge, each absent when the edge did not record one.
  * @returns The path and the label anchor.
  */
-function routeEdge(source: NodeBox, target: NodeBox): EdgeGeometry {
-  const sourceCentre = { x: source.x + NODE_WIDTH / 2, y: source.y + source.height / 2 };
-  const targetCentre = { x: target.x + NODE_WIDTH / 2, y: target.y + target.height / 2 };
-  const dx = targetCentre.x - sourceCentre.x;
-  const dy = targetCentre.y - sourceCentre.y;
+function routeEdge(source: NodeBox, target: NodeBox, handles: StoredHandles): EdgeGeometry {
+  // An edge is drawn sideways only when it names the right/left pair. The recorded ids are taken
+  // at face value because the dialog that writes them has already resolved them against the
+  // catalogue; anything else — above all an edge with no recorded handles — resolves to the
+  // vertical pair React Flow itself falls back to.
+  const horizontal =
+    handles.source === HORIZONTAL_HANDLES.source && handles.target === HORIZONTAL_HANDLES.target;
 
   let from: Anchor;
   let to: Anchor;
-  if (Math.abs(dx) > Math.abs(dy)) {
-    const leaving = dx > 0 ? source.x + NODE_WIDTH : source.x;
-    const arriving = dx > 0 ? target.x : target.x + NODE_WIDTH;
-    from = { axis: 'horizontal', x: leaving, y: sourceCentre.y };
-    to = { axis: 'horizontal', x: arriving, y: targetCentre.y };
+  if (horizontal) {
+    from = { axis: 'horizontal', x: source.x + NODE_WIDTH, y: source.y + source.height / 2 };
+    to = { axis: 'horizontal', x: target.x, y: target.y + target.height / 2 };
   } else {
-    const leaving = dy > 0 ? source.y + source.height : source.y;
-    const arriving = dy > 0 ? target.y : target.y + target.height;
-    from = { axis: 'vertical', x: sourceCentre.x, y: leaving };
-    to = { axis: 'vertical', x: targetCentre.x, y: arriving };
+    const downward = target.y >= source.y;
+    const leaving = downward ? source.y + source.height : source.y;
+    const arriving = downward ? target.y : target.y + target.height;
+    from = { axis: 'vertical', x: source.x + NODE_WIDTH / 2, y: leaving };
+    to = { axis: 'vertical', x: target.x + NODE_WIDTH / 2, y: arriving };
   }
 
   const midX = from.axis === 'horizontal' ? (from.x + to.x) / 2 : from.x;
@@ -627,7 +674,10 @@ export function renderGraphSvg(graph: GraphData, options: RenderGraphSvgOptions 
       marker = ` marker-end="url(#${markerId})"`;
     }
 
-    const geometry = routeEdge(source, target);
+    const geometry = routeEdge(source, target, {
+      source: optionalText(raw.sourceHandle),
+      target: optionalText(raw.targetHandle)
+    });
     strokes.push(
       `<path d="${geometry.path}" fill="none" stroke="${color}" stroke-width="1.5"${dash}`
         + `${marker}/>`
