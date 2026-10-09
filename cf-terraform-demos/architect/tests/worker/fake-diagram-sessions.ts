@@ -1,28 +1,44 @@
-import type { DiagramSessionPort } from '../../src/worker/application/ports/diagram-session.ts';
+import type {
+  DiagramSessionPort,
+  GraphWriteOutcome,
+  RejectedGraphWrite
+} from '../../src/worker/application/ports/diagram-session.ts';
+import {
+  applyGraphOperation,
+  type GraphOperation
+} from '../../src/worker/domain/graph-operations.ts';
+import { canonicalizeGraphData, type GraphData } from '../../src/worker/domain/graph.ts';
+import type { FakeDiagramRepository } from './fake-diagram-repository.ts';
 
 /**
  * @file An in-memory {@link DiagramSessionPort}, shared by every service and tool suite that
- *   exercises a graph mutation. It exists because the port does: the application tier depends on an
- *   interface rather than on a Durable Object namespace, so the whole persist-then-notify sequence
- *   can be asserted in plain Node with no Workers runtime. The real fan-out behaviour —
- *   hibernatable sockets, attachment-pinned identity, two connections receiving one push — has no
- *   meaningful fake and is covered against real `workerd` in `../integration/live-sync.test.ts`.
+ *   exercises a graph write. It exists because the port does: the application tier depends on an
+ *   interface rather than on a Durable Object namespace, so a whole use case can be asserted in
+ *   plain Node with no Workers runtime. **What this fake does and does not stand in for.** Since
+ *   the write path moved into the session, a fake that merely recorded calls would let the service
+ *   suites pass against a service that never persisted anything, so this one genuinely applies each
+ *   operation and writes it to the supplied repository. What it deliberately does **not** simulate
+ *   is the part that makes the real object correct — the input gate, the ordered write chain,
+ *   hibernation and the fan-out to real sockets. None of those has a meaningful fake: they are
+ *   properties of the runtime, not of this interface, and pretending otherwise would produce a
+ *   suite that proved serialization against an implementation that has none. They are covered
+ *   against real `workerd` in `../integration/live-sync.test.ts`.
  */
 
 /**
- * One recorded `notifyGraphUpdated` call.
+ * One recorded broadcast.
  */
 export interface RecordedNotification {
   /**
-   * Diagram whose session was notified.
+   * Diagram whose session fanned the change out.
    */
   diagramId: string;
   /**
-   * Canonical graph JSON the caller pushed.
+   * Canonical graph JSON that was pushed.
    */
   graphData: string;
   /**
-   * Timestamp the caller pushed.
+   * Timestamp that was pushed.
    */
   updatedAt: string;
 }
@@ -42,15 +58,18 @@ export interface RecordedConnection {
 }
 
 /**
- * In-memory {@link DiagramSessionPort} that records what it was asked to do.
+ * In-memory {@link DiagramSessionPort} that applies writes for real and records what it did.
  *
- * It takes no authorization decision and performs no validation of its own, deliberately: the point
- * of a suite using it is to prove the _service_ refused, or persisted before notifying, so a fake
- * that second-guessed either would make those assertions meaningless.
+ * It takes no authorization decision, deliberately: the point of a suite using it is to prove the
+ * _service_ refused, so a fake that second-guessed the rule would make those assertions
+ * meaningless.
  */
 export class FakeDiagramSessions implements DiagramSessionPort {
   /**
-   * Every push this fake received, in order.
+   * Every broadcast this fake performed, in order.
+   *
+   * A whole-graph replace records nothing, exactly as the real session broadcasts nothing for one:
+   * a tab's own autosave is not news to anybody in this sub-phase.
    */
   readonly notifications: RecordedNotification[] = [];
 
@@ -60,10 +79,22 @@ export class FakeDiagramSessions implements DiagramSessionPort {
   readonly connections: RecordedConnection[] = [];
 
   /**
-   * Set to make the next {@link FakeDiagramSessions.notifyGraphUpdated} reject, so a suite can prove
-   * a transport failure after a successful write reaches the caller rather than being swallowed.
+   * Set to make the next write fail its persist, so a suite can prove a storage failure reaches the
+   * caller as the status the port promises rather than being swallowed or reported as a success.
    */
-  notifyError: Error | null = null;
+  persistError: Error | null = null;
+
+  /**
+   * How many writes this fake has applied, mirroring the real session's session-scoped counter.
+   */
+  private sequence = 0;
+
+  /**
+   * @param diagrams Diagram store this session reads and writes, standing in for D1. The same store
+   *   the service under test uses, so a test can observe that a write the service requested
+   *   genuinely landed rather than only that it was asked for.
+   */
+  constructor(private readonly diagrams: FakeDiagramRepository) {}
 
   /**
    * Records a connection request and answers with a stand-in response.
@@ -86,18 +117,90 @@ export class FakeDiagramSessions implements DiagramSessionPort {
   }
 
   /**
-   * Records a push, or rejects when {@link FakeDiagramSessions.notifyError} is set.
+   * Applies one operation, persists it, and records the broadcast.
    *
-   * @param diagramId Diagram whose session was notified.
-   * @param graphData Canonical graph JSON pushed.
-   * @param updatedAt Timestamp pushed.
-   * @returns A promise fulfilled once the call is recorded.
-   * @throws {Error} The configured {@link FakeDiagramSessions.notifyError}, when one is set.
+   * @param diagramId Diagram to change.
+   * @param operation Operation to apply.
+   * @returns What was persisted, or the refusal the real session would return.
    */
-  async notifyGraphUpdated(diagramId: string, graphData: string, updatedAt: string): Promise<void> {
-    if (this.notifyError !== null) {
-      throw this.notifyError;
+  async applyOperation(diagramId: string, operation: GraphOperation): Promise<GraphWriteOutcome> {
+    const current = await this.diagrams.find(diagramId);
+    if (current === null) {
+      return notFoundOutcome();
     }
-    this.notifications.push({ diagramId, graphData, updatedAt });
+
+    let graphData: string;
+    try {
+      graphData = canonicalizeGraphData(
+        applyGraphOperation(JSON.parse(current.graphData) as GraphData, operation)
+      );
+    } catch (error) {
+      return rejectionFrom(error);
+    }
+
+    const written = await this.persist(diagramId, graphData);
+    if (written.outcome === 'applied') {
+      this.notifications.push({ diagramId, graphData, updatedAt: written.updatedAt });
+    }
+    return written;
   }
+
+  /**
+   * Replaces a whole graph and persists it, broadcasting nothing.
+   *
+   * @param diagramId Diagram to change.
+   * @param graphData Canonical graph JSON.
+   * @returns What was persisted, or the refusal the real session would return.
+   */
+  async replaceGraph(diagramId: string, graphData: string): Promise<GraphWriteOutcome> {
+    return this.persist(diagramId, graphData);
+  }
+
+  /**
+   * Writes a graph, honouring a configured failure.
+   *
+   * @param diagramId Diagram to write to.
+   * @param graphData Canonical graph JSON.
+   * @returns The applied write, or the refusal describing why nothing was stored.
+   */
+  private async persist(diagramId: string, graphData: string): Promise<GraphWriteOutcome> {
+    if (this.persistError !== null) {
+      // Converted to a refusal rather than thrown, exactly as the real session does: an uncaught
+      // throw there would discard the object's working graph as well as answering the caller.
+      return rejectionFrom(this.persistError);
+    }
+
+    const updatedAt = await this.diagrams.replaceGraph(diagramId, graphData);
+    if (updatedAt === null) {
+      return notFoundOutcome();
+    }
+
+    this.sequence += 1;
+    return { graphData, outcome: 'applied', sequence: this.sequence, updatedAt };
+  }
+}
+
+/**
+ * The refusal for a diagram that is not there.
+ *
+ * @returns A `404` refusal with the same detail every other not-found answer uses.
+ */
+function notFoundOutcome(): RejectedGraphWrite {
+  return { detail: 'Diagram not found.', outcome: 'rejected', status: 404 };
+}
+
+/**
+ * Converts a thrown value into a refusal, mirroring the real session's conversion.
+ *
+ * @param error Value thrown by a mutation, a canonicalisation or a write.
+ * @returns The refusal to report. An unrecognised error becomes a `500` with a fixed message, so a
+ *   storage error's own text cannot reach a caller.
+ */
+function rejectionFrom(error: unknown): RejectedGraphWrite {
+  const problem = (error as { problemDetails?: { status?: unknown; detail?: unknown } })
+    ?.problemDetails;
+
+  return typeof problem?.status === 'number' && typeof problem.detail === 'string'
+    ? { detail: problem.detail, outcome: 'rejected', status: problem.status }
+    : { detail: 'The change could not be saved.', outcome: 'rejected', status: 500 };
 }

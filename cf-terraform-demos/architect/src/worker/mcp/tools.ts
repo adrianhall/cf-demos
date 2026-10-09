@@ -1,22 +1,16 @@
 import { strToU8, zipSync } from 'fflate';
 import type { Logger } from '@adrianhall/cloudflare-toolkit/logging';
 import { generateScaffold } from '../../client/lib/scaffold.ts';
-import type { DiagramService, GraphMutation } from '../application/diagram-service.ts';
+import type { DiagramService } from '../application/diagram-service.ts';
 import type { ShareService } from '../application/share-service.ts';
 import type { Diagram } from '../domain/diagram.ts';
-import {
-  addEdge,
-  type AddEdgeInput,
-  addNode,
-  type AddNodeInput,
-  autoLayout,
-  type EdgePatch,
-  type NodePatch,
-  removeEdge,
-  removeNode,
-  updateEdge,
-  updateNode
+import type {
+  AddEdgeInput,
+  AddNodeInput,
+  EdgePatch,
+  NodePatch
 } from '../domain/graph-mutations.ts';
+import type { GraphOperation } from '../domain/graph-operations.ts';
 import { renderGraphSvg } from '../domain/graph-svg.ts';
 import type { GraphData } from '../domain/graph.ts';
 import type { CreatedShare, ShareStatus } from '../domain/share.ts';
@@ -264,37 +258,52 @@ export async function deleteDiagramTool(context: McpToolContext, diagramId: stri
 }
 
 /**
- * Applies one graph mutation to an owned diagram and pushes the result to every open editor.
+ * Applies one graph operation to an owned diagram and pushes the result to every open editor.
  *
- * Every graph-mutating tool below is one line over this function, which is the point: load, mutate,
- * re-canonicalise, save and notify happen in exactly one place (`DiagramService.mutateGraph`), so a
- * tool added later cannot accidentally skip the validation, or the ownership check, or the push. A
- * tool that needed its own version of this sequence would be a second chance to get the ordering
- * wrong.
+ * Every graph-mutating tool below is one line over this function, which is the point: the ownership
+ * check happens in exactly one place (`DiagramService.applyGraphOperation`) and everything after it
+ * — apply, re-canonicalise, persist, broadcast — happens in exactly one _other_ place, the live
+ * session. A tool added later therefore cannot skip the validation, the ownership check, the push,
+ * or the serialization that keeps an agent's change from overwriting a human's.
+ *
+ * Each tool below names its operation as a **value** rather than passing a closure, which the
+ * Durable Object RPC boundary requires: arguments are structured-cloned and a function is not
+ * cloneable. See `../domain/graph-operations.ts`.
  *
  * @param context Resolved tool context carrying the verified identity and the diagram service.
  * @param diagramId Untrusted diagram id supplied by the caller.
- * @param mutate The single pure mutation to apply.
- * @param kind Short label recorded on the structured log event, so an operator reading Workers Logs
- *   can see which granular operation an agent performed without a second event name per tool.
- * @returns The diagram as it now stands, graph included.
+ * @param operation The single operation to apply. Its own `kind` is recorded on the structured log
+ *   event, so an operator reading Workers Logs can see which granular operation an agent performed
+ *   without a second event name per tool.
+ * @returns The diagram as it now stands, graph included. Under a concurrent edit that graph may
+ *   already carry somebody else's change: it is what was persisted, not what this caller asked
+ *   for.
  * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown or owned
- *   by another identity, or when the mutation's target node or edge does not exist; and
- *   `badRequest()` (400) when it supplies an id already taken.
- * @throws {Error} When the repository cannot read or write the row, or the live session cannot be
- *   notified.
+ *   by another identity, or when the operation's target node or edge does not exist; `badRequest()`
+ *   (400) when it supplies an id already taken; and `internalServerError()` (500) when the write
+ *   failed.
+ * @throws {Error} When the repository cannot read the row, or the live session cannot be reached.
  */
 async function applyGraphMutation(
   context: McpToolContext,
   diagramId: string,
-  mutate: GraphMutation,
-  kind: string
+  operation: GraphOperation
 ): Promise<Diagram> {
-  const diagram = await context.diagrams.mutateGraph(context.actorEmail, diagramId, mutate);
+  const diagram = await context.diagrams.applyGraphOperation(
+    context.actorEmail,
+    diagramId,
+    operation
+  );
 
   // The same `diagram_updated` event the browser's own autosave emits, distinguished only by
-  // `via`. One event name for one thing that happened, whoever did it — see `../logging.ts`.
-  context.logger.info('diagram_updated', { diagramId: diagram.id, kind, via: VIA });
+  // `via`. One event name for one thing that happened, whoever did it — see `../logging.ts`. The
+  // kind comes from the operation itself rather than a separate argument, so a tool cannot log a
+  // change under a name that does not match what it asked for.
+  context.logger.info('diagram_updated', {
+    diagramId: diagram.id,
+    kind: operation.kind,
+    via: VIA
+  });
   return diagram;
 }
 
@@ -315,7 +324,7 @@ export async function addNodeTool(
   diagramId: string,
   input: AddNodeInput
 ): Promise<Diagram> {
-  return applyGraphMutation(context, diagramId, (graph) => addNode(graph, input), 'add_node');
+  return applyGraphMutation(context, diagramId, { input, kind: 'add_node' });
 }
 
 /**
@@ -336,12 +345,7 @@ export async function updateNodeTool(
   nodeId: string,
   patch: NodePatch
 ): Promise<Diagram> {
-  return applyGraphMutation(
-    context,
-    diagramId,
-    (graph) => updateNode(graph, nodeId, patch),
-    'update_node'
-  );
+  return applyGraphMutation(context, diagramId, { kind: 'update_node', nodeId, patch });
 }
 
 /**
@@ -363,12 +367,7 @@ export async function removeNodeTool(
   diagramId: string,
   nodeId: string
 ): Promise<Diagram> {
-  return applyGraphMutation(
-    context,
-    diagramId,
-    (graph) => removeNode(graph, nodeId),
-    'remove_node'
-  );
+  return applyGraphMutation(context, diagramId, { kind: 'remove_node', nodeId });
 }
 
 /**
@@ -388,7 +387,7 @@ export async function addEdgeTool(
   diagramId: string,
   input: AddEdgeInput
 ): Promise<Diagram> {
-  return applyGraphMutation(context, diagramId, (graph) => addEdge(graph, input), 'add_edge');
+  return applyGraphMutation(context, diagramId, { input, kind: 'add_edge' });
 }
 
 /**
@@ -409,12 +408,7 @@ export async function updateEdgeTool(
   edgeId: string,
   patch: EdgePatch
 ): Promise<Diagram> {
-  return applyGraphMutation(
-    context,
-    diagramId,
-    (graph) => updateEdge(graph, edgeId, patch),
-    'update_edge'
-  );
+  return applyGraphMutation(context, diagramId, { edgeId, kind: 'update_edge', patch });
 }
 
 /**
@@ -433,12 +427,7 @@ export async function removeEdgeTool(
   diagramId: string,
   edgeId: string
 ): Promise<Diagram> {
-  return applyGraphMutation(
-    context,
-    diagramId,
-    (graph) => removeEdge(graph, edgeId),
-    'remove_edge'
-  );
+  return applyGraphMutation(context, diagramId, { edgeId, kind: 'remove_edge' });
 }
 
 /**
@@ -460,7 +449,7 @@ export async function autoLayoutDiagramTool(
   context: McpToolContext,
   diagramId: string
 ): Promise<Diagram> {
-  return applyGraphMutation(context, diagramId, autoLayout, 'auto_layout');
+  return applyGraphMutation(context, diagramId, { kind: 'auto_layout' });
 }
 
 /**

@@ -379,7 +379,11 @@ describe('concurrent removal between the ownership read and the write', () => {
       'saveGraph',
       (svc: DiagramService, id: string) => svc.saveGraph(ALICE, id, { graphData: '{}' })
     ],
-    ['mutateGraph', (svc: DiagramService, id: string) => svc.mutateGraph(ALICE, id, (g) => g)],
+    [
+      'applyGraphOperation',
+      (svc: DiagramService, id: string) =>
+        svc.applyGraphOperation(ALICE, id, { kind: 'auto_layout' })
+    ],
     ['remove', (svc: DiagramService, id: string) => svc.remove(ALICE, id)]
   ])('reports %s as not found when the row disappeared mid-request', async (_name, run) => {
     const vanishing = new VanishingRepository();
@@ -390,7 +394,7 @@ describe('concurrent removal between the ownership read and the write', () => {
   });
 });
 
-describe('mutating a graph', () => {
+describe('applying a graph operation', () => {
   /**
    * Creates a diagram owned by Alice carrying one node.
    *
@@ -410,113 +414,92 @@ describe('mutating a graph', () => {
     return diagram;
   }
 
-  it('applies the mutation and returns the diagram carrying the new graph', async () => {
+  it('applies the operation and returns the diagram carrying the new graph', async () => {
     const diagram = await withOneNode(service);
 
-    const result = await service.mutateGraph(ALICE, diagram.id, (graph) => ({
-      ...graph,
-      nodes: [...graph.nodes, { id: 'added' }]
-    }));
+    const result = await service.applyGraphOperation(ALICE, diagram.id, {
+      input: { label: 'DB', position: { x: 0, y: 200 }, typeId: 'd1' },
+      kind: 'add_node'
+    });
 
     expect((JSON.parse(result.graphData) as { nodes: { id: string }[] }).nodes).toEqual([
       expect.objectContaining({ id: 'api' }),
-      { id: 'added' }
+      expect.objectContaining({ data: expect.objectContaining({ label: 'DB' }) })
     ]);
   });
 
   it('reports the new timestamp, so a caller sees its own change without a second read', async () => {
     const diagram = await withOneNode(service);
 
-    const result = await service.mutateGraph(ALICE, diagram.id, (graph) => graph);
+    const result = await service.applyGraphOperation(ALICE, diagram.id, { kind: 'auto_layout' });
 
     expect(result.updatedAt > diagram.updatedAt).toBe(true);
   });
 
-  // Step 3 of the sequence. A granular write must not be able to store a shape a whole-graph
-  // write would have rejected, which is why the result goes through the same canonicaliser.
-  it('re-canonicalises the result through the same validation every write uses', async () => {
-    const diagram = await withOneNode(service);
-
-    await expectRejectedProblemStatus(
-      service.mutateGraph(ALICE, diagram.id, (graph) => ({ ...graph, nodes: [{ id: '' }] })),
-      422
-    );
-  });
-
-  it('defaults a viewport the mutation dropped, exactly as a whole-graph save would', async () => {
-    const diagram = await withOneNode(service);
-
-    const result = await service.mutateGraph(ALICE, diagram.id, (graph) => ({
-      ...graph,
-      viewport: undefined as unknown as { x: number; y: number; zoom: number }
-    }));
-
-    expect(JSON.parse(result.graphData)).toMatchObject({ viewport: { x: 0, y: 0, zoom: 1 } });
-  });
-
-  it('pushes the persisted graph to the diagram’s live session', async () => {
-    const sessions = new FakeDiagramSessions();
+  // The whole point of the port change: the service hands the operation over and keeps nothing
+  // back. A service that still applied the mutation itself would make everything above it a
+  // second writer, which is exactly the race this phase removes.
+  it('writes through the session rather than to the repository itself', async () => {
+    const sessions = new FakeDiagramSessions(repository);
     const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
     const diagram = await withOneNode(svc);
 
-    const result = await svc.mutateGraph(ALICE, diagram.id, (graph) => graph);
+    const result = await svc.applyGraphOperation(ALICE, diagram.id, { kind: 'auto_layout' });
 
     expect(sessions.notifications).toEqual([
       { diagramId: diagram.id, graphData: result.graphData, updatedAt: result.updatedAt }
     ]);
+    // What the caller was told is what storage holds, which is the observable half of
+    // persist-before-broadcast. The ordering itself is asserted against the real object in
+    // `../integration/live-sync.test.ts`, where there is a real socket to observe it on.
+    expect((await repository.find(diagram.id))?.graphData).toBe(result.graphData);
   });
 
-  // Persist first, broadcast second. Pushing first would let a connected browser render a graph
-  // that a later reload would not show, because the write that would have made it real never
-  // happened.
-  it('persists before it notifies', async () => {
-    const sessions = new FakeDiagramSessions();
+  // A refusal must leave the stored diagram untouched, and it must arrive as the problem document
+  // every transport already answers with — the session reports it as a value precisely because a
+  // thrown status would not survive the RPC boundary, and this is where that is undone.
+  it.each([
+    ['a stale node', { kind: 'remove_node', nodeId: 'ghost' } as const, 404],
+    [
+      'a duplicate node id',
+      {
+        input: { id: 'api', label: 'x', position: { x: 0, y: 0 }, typeId: 'worker' },
+        kind: 'add_node'
+      } as const,
+      400
+    ],
+    ['a stale edge', { edgeId: 'ghost', kind: 'remove_edge' } as const, 404]
+  ])(
+    'refuses %s with %i, writing nothing and notifying nobody',
+    async (_label, operation, status) => {
+      const sessions = new FakeDiagramSessions(repository);
+      const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
+      const diagram = await withOneNode(svc);
+      const before = await repository.find(diagram.id);
+
+      await expectRejectedProblemStatus(
+        svc.applyGraphOperation(ALICE, diagram.id, operation),
+        status
+      );
+
+      expect((await repository.find(diagram.id))?.graphData).toBe(before?.graphData);
+      expect(sessions.notifications).toEqual([]);
+    }
+  );
+
+  // A storage failure must not be reported as success, and must not leak the underlying error's
+  // own text — which can name a table or a query — into a response.
+  it('reports a failed persist as a server fault, and pushes nothing', async () => {
+    const sessions = new FakeDiagramSessions(repository);
     const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
     const diagram = await withOneNode(svc);
-    let storedWhenNotified: string | undefined;
-    sessions.notifyGraphUpdated = async (id, graphData, updatedAt) => {
-      storedWhenNotified = (await repository.find(id))?.graphData;
-      sessions.notifications.push({ diagramId: id, graphData, updatedAt });
-    };
+    sessions.persistError = new Error('D1_ERROR: no such table: diagrams');
 
-    const result = await svc.mutateGraph(ALICE, diagram.id, (graph) => ({
-      ...graph,
-      nodes: [...graph.nodes, { id: 'added' }]
-    }));
-
-    expect(storedWhenNotified).toBe(result.graphData);
-  });
-
-  // A refusal must leave the stored diagram untouched: the mutation throws before anything is
-  // written, so there is nothing to roll back.
-  it('writes nothing and notifies nobody when the mutation refuses', async () => {
-    const sessions = new FakeDiagramSessions();
-    const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
-    const diagram = await withOneNode(svc);
-    const before = await repository.find(diagram.id);
-
-    await expect(
-      svc.mutateGraph(ALICE, diagram.id, () => {
-        throw new Error('no such node');
-      })
-    ).rejects.toThrow('no such node');
-
-    expect((await repository.find(diagram.id))?.graphData).toBe(before?.graphData);
-    expect(sessions.notifications).toEqual([]);
-  });
-
-  // The write already landed, so the caller is told its change may not have been pushed rather
-  // than being told nothing at all.
-  it('surfaces a failed push rather than swallowing it', async () => {
-    const sessions = new FakeDiagramSessions();
-    const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
-    const diagram = await withOneNode(svc);
-    sessions.notifyError = new Error('session unreachable');
-
-    await expect(svc.mutateGraph(ALICE, diagram.id, (graph) => graph)).rejects.toThrow(
-      'session unreachable'
+    await expectRejectedProblemStatus(
+      svc.applyGraphOperation(ALICE, diagram.id, { kind: 'auto_layout' }),
+      500
     );
-    expect(await repository.find(diagram.id)).not.toBeNull();
+    expect(sessions.notifications).toEqual([]);
   });
 
   it.each([
@@ -524,11 +507,11 @@ describe('mutating a graph', () => {
     ['an absent diagram', () => Promise.resolve(MISSING_ID)],
     ['a malformed id', () => Promise.resolve('not-a-uuid')]
   ])('refuses %s with the uniform 404 and never mutates', async (_label, resolveId) => {
-    const sessions = new FakeDiagramSessions();
+    const sessions = new FakeDiagramSessions(repository);
     const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
 
     await expectRejectedProblemStatus(
-      svc.mutateGraph(ALICE, await resolveId(), (graph) => graph),
+      svc.applyGraphOperation(ALICE, await resolveId(), { kind: 'auto_layout' }),
       404
     );
     expect(sessions.notifications).toEqual([]);
@@ -537,7 +520,7 @@ describe('mutating a graph', () => {
 
 describe('connecting a live session', () => {
   it('forwards the upgrade once ownership is established', async () => {
-    const sessions = new FakeDiagramSessions();
+    const sessions = new FakeDiagramSessions(repository);
     const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
     const diagram = await svc.create(ALICE, {});
 
@@ -558,7 +541,7 @@ describe('connecting a live session', () => {
   // The identity the session pins comes from the verified actor the service was given, never
   // from the request — so there is nothing on the wire that could influence it.
   it('pins the verified actor rather than anything on the request', async () => {
-    const sessions = new FakeDiagramSessions();
+    const sessions = new FakeDiagramSessions(repository);
     const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
     const diagram = await svc.create(ALICE, {});
 
@@ -578,7 +561,7 @@ describe('connecting a live session', () => {
     ['an absent diagram', () => Promise.resolve(MISSING_ID)],
     ['a malformed id', () => Promise.resolve('not-a-uuid')]
   ])('refuses %s before the session is ever reached', async (_label, resolveId) => {
-    const sessions = new FakeDiagramSessions();
+    const sessions = new FakeDiagramSessions(repository);
     const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
 
     await expectRejectedProblemStatus(

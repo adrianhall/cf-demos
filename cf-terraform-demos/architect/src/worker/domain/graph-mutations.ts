@@ -11,11 +11,13 @@ import type { GraphData } from './graph.ts';
  *   or infrastructure tiers. These functions deliberately do **not** re-canonicalise. A caller
  *   applies one mutation and then passes the result through `canonicalizeGraphData` (`./graph.ts`),
  *   so there is exactly one definition of what a storable graph looks like and these functions
- *   cannot drift from it. The application tier does both steps together in
- *   `DiagramService.mutateGraph`. The browser has no granular write path and does not import this
- *   module: the editor still autosaves the complete graph, exactly as it did before live sync
- *   existed. Only an agent needs to say "add one node", which is the whole reason this vocabulary
- *   exists on the server at all.
+ *   cannot drift from it. Both steps happen together inside the live session's synchronous mutation
+ *   region (`../infrastructure/diagram-session.ts`), reached through the operation vocabulary in
+ *   `./graph-operations.ts` — which names each of these functions as a value, because a closure
+ *   cannot cross the Durable Object RPC boundary every write now takes. The browser has no granular
+ *   write path and does not import this module: the editor still autosaves the complete graph,
+ *   exactly as it did before live sync existed. Only an agent needs to say "add one node", which is
+ *   the whole reason this vocabulary exists on the server at all.
  */
 
 /**

@@ -1,4 +1,5 @@
 import { notFound } from '@adrianhall/cloudflare-toolkit/errors';
+import { problemDetails } from '@adrianhall/cloudflare-toolkit/problem-details';
 import { BLUEPRINT_MAP } from '../../blueprints.ts';
 import type { AccessibleDiagram } from '../domain/collaborator.ts';
 import {
@@ -7,15 +8,15 @@ import {
   validateUpdateDiagramInput
 } from '../domain/diagram-validation.ts';
 import type { Diagram, PublicDiagram } from '../domain/diagram.ts';
-import {
-  canonicalizeGraphData,
-  EMPTY_GRAPH_DATA,
-  type GraphData,
-  validateGraphDataInput
-} from '../domain/graph.ts';
+import type { GraphOperation } from '../domain/graph-operations.ts';
+import { EMPTY_GRAPH_DATA, validateGraphDataInput } from '../domain/graph.ts';
 import type { CollaboratorService } from './collaborator-service.ts';
 import type { DiagramRepository } from './ports/diagram-repository.ts';
-import type { DiagramSessionPort } from './ports/diagram-session.ts';
+import type {
+  AppliedGraphWrite,
+  DiagramSessionPort,
+  GraphWriteOutcome
+} from './ports/diagram-session.ts';
 import type { ShareRepository } from './ports/share-repository.ts';
 
 /**
@@ -30,20 +31,27 @@ import type { ShareRepository } from './ports/share-repository.ts';
 type DiagramAccessRule = Pick<CollaboratorService, 'requireAccessible'>;
 
 /**
- * One pure graph mutation, as {@link DiagramService.mutateGraph} accepts it.
+ * Turns a session's write outcome back into either its result or the thrown problem document the
+ * rest of the application expects.
  *
- * Every function in `../domain/graph-mutations.ts` already has this shape once its arguments are
- * bound, which is the point: the use case orchestrates load, validate, save and notify, while the
- * domain owns what "adding a node" actually means. Taking a function rather than an operation
- * enumeration keeps the application tier from growing a second copy of that vocabulary that could
- * disagree with the first.
+ * The session reports a refusal as a **value** because a thrown error loses its status crossing an
+ * RPC boundary — see `./ports/diagram-session.ts`. This is the one place that conversion is undone,
+ * so every transport above it keeps the error contract it already had: an MCP tool call and an HTTP
+ * request refusing a stale node both answer `404`, with the same detail, exactly as they did when
+ * the mutation ran in this tier.
  *
- * @param graph The diagram's current graph, already parsed.
- * @returns The new graph. Implementations never mutate their argument.
- * @throws {ProblemDetailsError} When the mutation's target does not exist or its input conflicts
- *   with the graph — see each function in `../domain/graph-mutations.ts`.
+ * @param outcome What the session reported.
+ * @returns The applied write, when one happened.
+ * @throws {ProblemDetailsError} Carrying the status and detail the session chose: `404` for a stale
+ *   target or a diagram deleted mid-write, `400` for a duplicate element id, `422` for a graph that
+ *   fails canonical validation, `500` for a storage failure.
  */
-export type GraphMutation = (graph: GraphData) => GraphData;
+function requireApplied(outcome: GraphWriteOutcome): AppliedGraphWrite {
+  if (outcome.outcome === 'rejected') {
+    throw problemDetails({ detail: outcome.detail, status: outcome.status });
+  }
+  return outcome;
+}
 
 /**
  * Use cases for a user's own diagrams — the tier between the HTTP API and persistence.
@@ -86,10 +94,12 @@ export class DiagramService {
    *   delete use case rather than to the route: an MCP tool deleting a diagram in a later phase
    *   must leave exactly the same state behind as the HTTP endpoint does, and it will if there is
    *   only one place that performs the delete at all.
-   * @param sessions Live-session coordination port, used to open an authorized editor connection
-   *   and to push a graph an agent changed. An interface rather than a Durable Object namespace, so
-   *   this service — and every test of it — stays independent of the coordination product; see
-   *   `./ports/diagram-session.ts`.
+   * @param sessions Live-session coordination port — since this phase, the **one serialized path
+   *   every graph write takes**, as well as the way an authorized editor connection is opened. This
+   *   service no longer writes a graph to the repository at all, which is what closes the
+   *   lost-update race between the editor's autosave and an agent's tool call. An interface rather
+   *   than a Durable Object namespace, so this service — and every test of it — stays independent
+   *   of the coordination product; see `./ports/diagram-session.ts`.
    * @param access The widened owner-or-editor rule; see {@link DiagramAccessRule}. Injected rather
    *   than implemented here, so there is exactly one definition of "may reach this diagram" and
    *   this service cannot drift from the service that manages the grants it depends on.
@@ -175,8 +185,8 @@ export class DiagramService {
    * - The MCP read and export tools (`../mcp/tools.ts`). An agent acts with the authority of the
    *   identity that configured it, and whether that authority extends to diagrams that identity
    *   merely collaborates on is a decision about agent scope rather than a consequence of adding
-   *   collaborators. The live-operations phase takes it deliberately; until then the tools stay
-   *   where they were.
+   *   collaborators. It is taken explicitly in the authorization-parity sub-phase; until then the
+   *   tools stay where they were.
    *
    * Naming it, rather than leaving those callers on a `get` that quietly changed meaning, is the
    * point: the narrow rule is now something a call site asks for.
@@ -275,74 +285,75 @@ export class DiagramService {
    * The row is still written by id, and the stored `ownerEmail` is untouched: a collaborator's save
    * does not transfer ownership, and nothing here lets it.
    *
+   * Since this phase the write goes through the live session rather than to the repository, so the
+   * editor's autosave is serialized against every other writer instead of racing them. The route
+   * behind it is now explicitly a **resilience fallback**: it is how a tab whose socket is not
+   * connected still saves, and the next sub-phase moves the connected case onto the socket.
+   *
    * @param actorEmail Verified Cloudflare Access identity making the request.
    * @param id Unvalidated diagram id from the request path.
    * @param body Unvalidated JSON body from the request, carrying `graphData` as a JSON string.
    * @returns The new `updatedAt` timestamp, which the editor shows as its save state.
    * @throws {ProblemDetailsError} `badRequest()` (400) or `unprocessableContent()` (422) when the
-   *   body or the decoded graph is invalid, and `notFound()` (404) when the diagram is absent or
-   *   the actor may not reach it.
-   * @throws {Error} When a repository cannot read or write its rows.
+   *   body or the decoded graph is invalid, `notFound()` (404) when the diagram is absent, the
+   *   actor may not reach it, or it was deleted while the save was in flight, and
+   *   `internalServerError()` (500) when the write itself failed.
+   * @throws {Error} When a repository cannot read its rows, or the session cannot be reached.
    */
   async saveGraph(actorEmail: string, id: string, body: unknown): Promise<string> {
     const graphData = validateGraphDataInput(body);
     const { diagram } = await this.access.requireAccessible(actorEmail, id);
 
-    const updatedAt = await this.repository.replaceGraph(diagram.id, graphData);
-    if (updatedAt === null) {
-      throw notFound({ detail: 'Diagram not found.' });
-    }
-    return updatedAt;
+    // Through the session rather than straight to the repository, which is the change this phase
+    // makes. The autosave is no longer an independent writer that could overwrite an agent's
+    // change it never saw: it takes its turn in the same queue as every other write.
+    return requireApplied(await this.sessions.replaceGraph(diagram.id, graphData)).updatedAt;
   }
 
   /**
-   * Applies one granular mutation to a diagram's graph — the MCP tools' only write path.
+   * Applies one granular operation to a diagram's graph — the MCP tools' only write path.
    *
-   * The sequence is fixed and every step of it matters:
+   * Two steps, and the division between them is the point of this phase:
    *
-   * 1. **Resolve the owned diagram**, through the same `requireOwned` every other method uses, so an
-   *    agent is held to the identical non-enumerating `404` a browser gets.
-   * 2. **Apply one pure mutation** from `../domain/graph-mutations.ts`, which either returns a new
-   *    graph or throws because its target does not exist. Nothing has been written yet, so a
-   *    refusal leaves the stored diagram exactly as it was.
-   * 3. **Re-canonicalise** through the same `canonicalizeGraphData` the browser's autosave goes
-   *    through. The mutation functions are deliberately not responsible for this: one definition of
-   *    a storable graph, applied to every write, means a granular write cannot store a shape a
-   *    whole-graph write would have rejected.
-   * 4. **Persist**, then **notify**. In that order — see
-   *    {@link DiagramSessionPort.notifyGraphUpdated}.
+   * 1. **Resolve the owned diagram**, through the same `requireOwned` every other owner-only method
+   *    uses, so an agent is held to the identical non-enumerating `404` a browser gets. This is the
+   *    only decision this tier still takes about a graph write.
+   * 2. **Hand the operation to the session**, which applies it, re-canonicalises it, persists it
+   *    through its ordered queue, and pushes the result to every open editor — in that order, and
+   *    serialized against every other writer of the same diagram. None of that happens here any
+   *    more, and that is what closes the lost-update race: a use case that read the graph, changed
+   *    it and wrote it back could not see a concurrent writer doing the same.
    *
-   * The stored graph is parsed with `JSON.parse` rather than defensively re-validated first. It was
-   * canonical when it was written, by step 3 and by every other write path, so treating it as
-   * suspect here would be asserting that the application's own invariant does not hold.
+   * The operation travels as a **value** rather than a closure, which the Durable Object RPC
+   * boundary requires: arguments are structured-cloned, and a function is not cloneable. See
+   * `../domain/graph-operations.ts`.
    *
    * @param actorEmail Verified Cloudflare Access identity making the change.
    * @param id Unvalidated diagram id supplied by the caller.
-   * @param mutate The single mutation to apply; see {@link GraphMutation}.
+   * @param operation The single operation to apply.
    * @returns The diagram as it now stands, carrying the new graph and `updatedAt` so a calling
-   *   agent can see the result of its own change without a second read.
-   * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown or
-   *   owned by another identity, or when the mutation targets a node or edge that does not exist;
-   *   `badRequest()` (400) when it supplies an id already in use; and `unprocessableContent()`
-   *   (422) when the result somehow fails canonical validation.
-   * @throws {Error} When the repository cannot read or write the row, or the session cannot be
-   *   notified. A notify failure is deliberately not swallowed: the write has already succeeded, so
-   *   the caller is told its change landed but may not have been pushed, rather than being told
-   *   nothing.
+   *   agent can see the result of its own change without a second read. The graph is the one that
+   *   was **persisted**, which under a concurrent edit may already include somebody else's change —
+   *   reporting the caller's own intention instead would describe a graph nobody can read back.
+   * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown, owned
+   *   by another identity, or deleted while the write was in flight, and when the operation targets
+   *   a node or edge that does not exist; `badRequest()` (400) when it supplies an id already in
+   *   use; `unprocessableContent()` (422) when the result fails canonical validation; and
+   *   `internalServerError()` (500) when the write itself failed.
+   * @throws {Error} When the repository cannot read the row, or the session cannot be reached at
+   *   all — a transport failure, as distinct from a refusal, which arrives as a value and is
+   *   rethrown above as the problem document it describes.
    */
-  async mutateGraph(actorEmail: string, id: string, mutate: GraphMutation): Promise<Diagram> {
+  async applyGraphOperation(
+    actorEmail: string,
+    id: string,
+    operation: GraphOperation
+  ): Promise<Diagram> {
     const diagram = await this.requireOwned(actorEmail, id);
 
-    const graphData = canonicalizeGraphData(mutate(JSON.parse(diagram.graphData) as GraphData));
-
-    const updatedAt = await this.repository.replaceGraph(diagram.id, graphData);
-    if (updatedAt === null) {
-      // The row disappeared between the ownership read and the write — a concurrent delete by the
-      // same owner. Nothing is broadcast, because there is no longer a diagram to push.
-      throw notFound({ detail: 'Diagram not found.' });
-    }
-
-    await this.sessions.notifyGraphUpdated(diagram.id, graphData, updatedAt);
+    const { graphData, updatedAt } = requireApplied(
+      await this.sessions.applyOperation(diagram.id, operation)
+    );
 
     return { ...diagram, graphData, updatedAt };
   }
@@ -475,10 +486,10 @@ export class DiagramService {
    * `./share-service.ts` and `./collaborator-service.ts` reaching their own equivalents — the share
    * link and the collaborator list.
    *
-   * {@link DiagramService.mutateGraph} deliberately still uses it. An MCP tool acts with the
+   * {@link DiagramService.applyGraphOperation} deliberately still uses it. An MCP tool acts with the
    * authority of the identity that configured it, and widening agent writes to every diagram that
    * identity collaborates on is a decision about agent scope rather than a consequence of adding
-   * collaborators; the live-operations phase takes it explicitly.
+   * collaborators; the authorization-parity sub-phase takes it explicitly.
    *
    * @param actorEmail Verified Cloudflare Access identity making the request.
    * @param id Unvalidated diagram id from the request path.

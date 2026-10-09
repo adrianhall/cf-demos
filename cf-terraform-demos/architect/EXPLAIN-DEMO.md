@@ -259,81 +259,66 @@ unauthenticated upgrade would surface as an unexplained connection failure rathe
 authentication error. A non-upgrade request gets `426 Upgrade Required`, not `400` — the request is
 well-formed and the diagram exists; it is the protocol that is wrong.
 
-## Last-write-wins is the designed boundary
+## One serialized write path, and why the platform is the mechanism
 
-The live channel is **one-way**: server to client. The browser's own edits keep using the debounced
-whole-graph autosave. This layer adds a read channel, not a second write path.
+Three writers reach a diagram's graph: the browser, which replaces the whole graph on a 500 ms
+debounce; the REST route behind it; and the owner's own agent, applying one granular operation per
+tool call. Until the collaboration work they each wrote to D1 independently, and three writers each
+reading a row, changing it and writing it back is a lost update that no amount of care at any one
+call site prevents - the second writer never saw the first.
 
-That asymmetry is the whole concurrency design, and it is worth stating as a decision rather than
-leaving to be inferred. Two writers reach a diagram's graph: the browser, which replaces the whole
-graph on a 500 ms debounce, and the owner's own agent, which applies one granular mutation per tool
-call. They are not merged. The last write to commit wins outright, which is exactly the model the
-autosave has had since before MCP existed — there is no partial-patch protocol in either direction,
-so there is nothing for a merge to operate on.
+Every write now goes through one `DiagramSession`, the Durable Object for that diagram, and the
+correctness comes from the execution model rather than from an algorithm:
 
-Three facts make that acceptable **at this scope**, and naming the scope is the point:
+- **A synchronous mutation cannot be interleaved.** A Durable Object is single-threaded, there is
+  exactly one instance per diagram id, and the input gate holds incoming events while synchronous
+  JavaScript runs. The session reads its working graph, computes the replacement and installs it
+  with no `await` in between, so two concurrent operations are applied one after the other rather
+  than both against the same starting graph. The gate opens at the first `await`, which is intended:
+  a later edit is accepted while an earlier write is still in flight.
+- **Persists are strictly ordered**, through a small write queue. Without it a slow earlier write
+  lands after a faster later one and silently restores the older graph. That is not hypothetical -
+  the Phase 16 spike reproduced it, and `tests/worker/write-queue.test.ts` still runs the same
+  scenario with and without the queue, so the test fails against an unqueued implementation rather
+  than passing against anything.
 
-- **Both writers are the same person.** An agent acts with its owner's identity and no other; every
-  write is an owner-scoped `UPDATE ... WHERE id = ? AND owner_email = ?`. There is no
-  read-modify-write race across two identities, because there is only ever one identity involved.
-- **A lost race costs a repaint, not data.** A push that arrives mid-edit replaces the canvas; the
-  user's own pending autosave fires shortly after and overwrites it back. That is a brief visual
-  flicker, and `updated_at` always reflects whichever write actually landed last, so the diagram is
-  never in a state neither writer produced.
-- **The client refuses a stale push.** A `graph_updated` frame is applied only when its `updatedAt`
-  is newer than what the tab already holds, so a push that lost a race is discarded rather than
-  reverting a change the user can see.
+**There is no CRDT, no operational transform and no version vector here, deliberately.** The point
+of this part of the demo is that a Durable Object's execution model already provides what those
+would otherwise be reached for, when the coordination is per-entity and the writes carry whole
+state.
+
+Two honest qualifications, because overstating this is easy:
+
+- **The guarantee is about the final value.** Reading the working graph when a queued write's turn
+  arrives coalesces later writes toward current state, but it cannot retroactively change a write
+  already in flight - so an observer watching D1 mid-sequence can still see an intermediate graph.
+  The last value is the one that was applied last.
+- **Conflict resolution is still last-applied-wins.** Two changes to the same element leave one
+  winner, decided by the order the session applied them rather than by any client's clock. What has
+  changed is that nothing is lost _unseen_: a change to a different element now always survives.
+
+Writes are **persisted before they are broadcast**. The source design for this feature broadcast
+first, for latency; this port inverts that, because broadcasting first lets a connected editor
+render a change that a reload would not show. Persisting first can at worst lose a broadcast, and
+the change is still in D1 for the next read.
 
 When a push is applied, a dismissible "Updated by an agent" notice explains why the canvas changed.
 A diagram that rewrites itself with no explanation reads as a bug rather than as the feature it is.
 
-**What this deliberately does not solve**, and would need to before the scope widens: two people
-editing one diagram. Every assumption above fails there. The writers are no longer one identity, so
-a whole-graph replace silently discards somebody else's work rather than one's own; a flicker
-becomes data loss; and `updated_at` stops being enough to decide what should win, because the two
-writes were not alternatives but independent changes that both wanted to happen. Fixing that needs
-per-operation ordering, a serialized write path through the session, and presence so a person can
-see they are not alone — which is what the later collaboration phases add, by extending this same
-`DiagramSession` rather than building a second per-diagram object beside it.
-
-This boundary was chosen up front and is recorded here so it reads as the scope decision it is,
-rather than being discovered later and written up as a limitation.
-
-## Infrastructure ownership and lifecycle
-
-Terraform owns resources with durable lifecycle: D1, KV, Worker registration/bootstrap, custom
-hostname, DNS route and Access applications/policies. `cf` owns code upload and deploy-time
-bindings. Neither creates the other's resources.
-
-The `DIAGRAM_SESSIONS` Durable Object namespace is the one exception, and it follows the same rule
-rather than breaking it. A namespace is defined by the class its Worker exports, so it is created by
-the deploy that uploads that class and retired when the code stops exporting it — Terraform cannot
-own its full lifecycle, and splitting it would give one resource two owners. It is declared in
-`cloudflare.config.ts` as `exports.durableObject({ storage: 'sqlite' })` plus a matching binding.
-`cf` models retirement as a `state: 'deleted'` entry on the export rather than as Wrangler's
-append-only migration tags, so removing a class is an edit to a live declaration rather than a tag
-that must never be reused. Deleting the Worker removes the namespace, and nothing is lost with it
-because the sessions store nothing.
-
-```text
-pnpm deploy
-  Terraform apply → output ids → D1 migration → production build → cf deploy --prebuilt
-
-pnpm teardown
-  cf workers delete → Terraform destroy
-```
-
-Deleting the Worker first releases live D1/KV bindings before Terraform destroys them. Worker name
-and hostname flow from Terraform variables through scalar outputs; the naming contract prevents this
-port's lifecycle from reaching the separate source deployment.
+**What this does not yet solve.** The socket is still one-way, so a second person's edit reaches
+another open tab only on the next reload rather than live, and the browser still saves the whole
+graph over HTTP rather than sending operations. Both belong to the next layer of the collaboration
+work. The race underneath them is closed; what remains is the wire protocol and the client.
 
 ## Deliberate limitations
 
-- Live sync is one-way. An agent's change reaches an open editor; a second person editing the same
-  diagram, presence, cursors and per-operation merge are a later layer, not hidden routes.
-- Whole-graph autosave is last-write-wins across simultaneous tabs, and the same applies between a
-  user and their own agent — see "Last-write-wins is the designed boundary" above. Granular ordered
-  operations exist server-side for the MCP tools only; the browser still saves the whole graph.
+- The live socket is one-way. An agent's change reaches an open editor; a second person's edit
+  arriving live, presence and cursors are a later layer, not hidden routes.
+- Conflicts resolve last-applied-wins — between simultaneous tabs, between collaborators, and
+  between a user and their own agent. Every write is serialized through the diagram's session, so
+  nothing is overwritten unseen, but two changes to the same element still leave one winner; see
+  "One serialized write path" above. The browser still saves the whole graph over HTTP rather than
+  sending operations.
 - Server-side auto-layout is a deterministic grid, not ELK, because ELK cannot run in `workerd`. The
   `auto_layout_diagram` tool description says so plainly, so a calling model does not promise a user
   the editor-quality layout it will not get.

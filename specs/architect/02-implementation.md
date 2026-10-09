@@ -824,7 +824,7 @@ committed progress rather than a half-converted write path.
 
 Each sub-phase runs `pnpm check`, `pnpm test` and the coverage gate before its commit.
 
-#### Phase 18a — One serialized write path
+#### Phase 18a — One serialized write path — **complete**
 
 ##### Goal
 

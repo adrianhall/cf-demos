@@ -81,7 +81,7 @@ function createContext(actorEmail: string = ALICE): {
 } {
   const diagrams = new FakeDiagramRepository();
   const shares = new FakeShareRepository();
-  const sessions = new FakeDiagramSessions();
+  const sessions = new FakeDiagramSessions(diagrams);
   const entries: LogEntry[] = [];
   const diagramService = buildDiagramService(diagrams, shares, sessions).service;
 

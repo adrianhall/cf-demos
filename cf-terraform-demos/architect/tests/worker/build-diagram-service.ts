@@ -45,13 +45,15 @@ export interface BuiltDiagramService {
  *
  * @param diagrams Diagram store the service and the collaboration rule both read.
  * @param shares Share port, defaulting to an empty in-memory one for a suite that does not care.
- * @param sessions Live-session port, defaulting to a recording in-memory one.
+ * @param sessions Live-session port — the one serialized write path — defaulting to an in-memory
+ *   one over the same diagram store, so a write the service requests genuinely lands where the
+ *   suite can read it back.
  * @returns The service and the collaboration pieces built with it; see {@link BuiltDiagramService}.
  */
 export function buildDiagramService(
   diagrams: FakeDiagramRepository,
   shares: ShareRepository = new FakeShareRepository(),
-  sessions: DiagramSessionPort = new FakeDiagramSessions()
+  sessions: DiagramSessionPort = new FakeDiagramSessions(diagrams)
 ): BuiltDiagramService {
   const collaboratorRows = new FakeCollaboratorRepository(diagrams);
   const users = new FakeUserRepository(diagrams);

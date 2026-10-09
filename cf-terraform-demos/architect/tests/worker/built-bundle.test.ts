@@ -62,13 +62,18 @@ const MAX_ENTRY_BYTES = 1_000_000;
  *
  * Those additions are the point of the design rather than overhead to trim: the generator is shared
  * with the browser's own export button precisely so the two produce identical projects, zipping has
- * to happen somewhere, and SVG is the new server capability being protected. 1.23 MB therefore
- * leaves roughly the same proportional allowance the previous 1.1 MB ceiling left — enough for
- * Vite's stable chunking to move, while still tripping on a second accidental copy of either SDK.
- * This is Worker code; it does not change the client chunk budget above, which is why the two
- * contracts are separate.
+ * to happen somewhere, and SVG is the new server capability being protected.
+ *
+ * Serializing every graph write through the session then measured 1,233,222, up 24,348 from
+ * 1,208,874. That increase is mostly documentation and the operation vocabulary, and it buys the
+ * removal of the lost-update race: the Durable Object now imports the D1 repository, the graph
+ * mutations and the canonicaliser, which the Worker already carried, so nothing new of consequence
+ * is pulled in. 1.26 MB keeps roughly the allowance the previous ceiling left — enough for Vite's
+ * stable chunking to move, while still tripping on a second accidental copy of either SDK, which is
+ * what this number is for. This is Worker code; it does not change the client chunk budget above,
+ * which is why the two contracts are separate.
  */
-const MAX_WORKER_BUNDLE_BYTES = 1_230_000;
+const MAX_WORKER_BUNDLE_BYTES = 1_260_000;
 
 /**
  * Lists the built JavaScript chunks.

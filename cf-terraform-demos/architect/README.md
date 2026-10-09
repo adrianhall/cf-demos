@@ -265,24 +265,44 @@ catalogue rather than tool by tool.
 
 ## Live sessions and the `DIAGRAM_SESSIONS` Durable Object
 
-An agent's change has to reach an editor tab that is already open, which is a persistent-connection
-coordination problem rather than a data-access one — the one place in this demo where a Durable
-Object earns its keep. `DiagramSession`, one instance per diagram id, holds every WebSocket
-currently open on that diagram.
+`DiagramSession`, one instance per diagram id, does two things D1 cannot: it knows which browsers
+are connected to that diagram right now, and it is **the one place every write to that diagram's
+graph passes through**.
+
+The second is the more interesting. Before, three writers wrote to D1 independently — the editor's
+autosave, the REST route behind it, and an agent's MCP tool — and three writers each reading a row,
+changing it and writing it back is a lost update that no care at any one call site can prevent. Now
+every one of them calls the same object, and the platform supplies the correctness:
+
+- **A synchronous mutation cannot be interleaved.** A Durable Object is single-threaded and the
+  input gate holds new events while synchronous JavaScript runs, so the session reads its working
+  graph, computes the replacement and installs it with no `await` in between.
+- **Persists are strictly ordered**, through a small write queue. Without it a slow earlier write
+  lands after a faster later one and silently restores the older graph — which the Phase 16 spike
+  reproduced, and which a counter-example test still pins by running the same scenario with and
+  without the queue.
+
+**The execution model is the correctness mechanism.** There is no CRDT, no operational transform and
+no version vector here, deliberately; that is the lesson this part of the demo exists to teach.
 
 **It stores nothing.** D1 remains the single authoritative copy of every diagram; the object never
-calls `ctx.storage` at all, and a test asserts the storage is empty after a push. Two independently
-persisted copies of one diagram can silently disagree, and reconciling them would be a whole second
-problem this demo does not need. What the object contributes is the one thing D1 cannot: it knows
-which browsers are connected right now.
+calls `ctx.storage` at all, and a test asserts the storage is empty even after a write. Its working
+graph is a **cache** to serialize against, re-read from D1 whenever the object is reconstructed. Two
+independently persisted copies of one diagram can silently disagree, and reconciling them would be a
+whole second problem this demo does not need.
+
+**Persist before broadcast.** A change is written to D1 and only then pushed to open editors. The
+source design for this feature broadcast first, for latency; broadcasting first lets a connected
+editor render a change that a reload would not show, which is a worse failure than a slower update.
 
 Connections are accepted with `ctx.acceptWebSocket()` — the Hibernation API — so a tab left open
 overnight stays connected at the edge while the object is evicted and stops costing anything.
 Anything the session needs after that reconstruction lives in a socket attachment, because an
 instance field would be empty at exactly the moment the value is needed.
 
-The channel is **one-way**: server to client. The browser's own edits keep using the debounced
-whole-graph autosave they always have. A frame sent by a client is answered with an explanation
+The **socket** is still one-way: server to client. The browser's own edits keep using the debounced
+whole-graph autosave they always have — that save now goes through the session rather than straight
+to D1, but it is still an HTTP request. A frame sent by a client is answered with an explanation
 rather than acted on.
 
 The namespace is declared in [`cloudflare.config.ts`](cloudflare.config.ts) as
@@ -456,10 +476,12 @@ Terraform defaults reserved for this port.
 - Live sync is one-way: an agent's change reaches an open editor, and the browser keeps saving the
   whole graph over HTTP. A second person editing the same diagram, presence and cursors are a later
   layer, not hidden routes.
-- Whole-graph autosave is last-write-wins — across one owner's own browser sessions, and equally
-  between that owner and their own agent. That is a stated scope boundary rather than a defect; see
-  [`EXPLAIN-DEMO.md`](EXPLAIN-DEMO.md). Collaborative operation ordering belongs to the later
-  collaboration layer.
+- Writes are last-**applied**-wins, not last-write-wins. Every graph write — the browser's autosave,
+  the REST route behind it, and every MCP tool — is now serialized through the diagram's
+  `DiagramSession`, so two writers can no longer each read the stored graph and overwrite one
+  another unseen. What remains is the resolution rule itself: two changes to the same element leave
+  one winner, decided by the order the session applied them. That is a stated scope boundary rather
+  than a defect; see [`EXPLAIN-DEMO.md`](EXPLAIN-DEMO.md).
 - Anonymous shares are read-only live pointers, not snapshots, and there is one active link per
   diagram. Losing a raw URL requires rotation because the server stores only its digest.
 - Administration is intentionally one configured identity. There is no role table, invitation flow,

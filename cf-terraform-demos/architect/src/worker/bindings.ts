@@ -75,7 +75,7 @@ export interface AppBindings {
    * the class's methods when the binding names its defining Worker by _config reference_ — and this
    * Worker binds a class it defines itself, so it must name itself by the string in
    * `values.workerName`, which the inference cannot follow back to a module. Restating the type
-   * parameter here recovers the typed RPC surface (`notifyGraphUpdated`) that
+   * parameter here recovers the typed RPC surface (`applyOperation`, `replaceGraph`) that
    * `infrastructure/durable-diagram-sessions.ts` relies on, so a signature change in
    * `DiagramSession` still fails the build at its call site rather than at runtime.
    *

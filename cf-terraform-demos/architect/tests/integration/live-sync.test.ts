@@ -58,6 +58,11 @@ const ONE_NODE = {
  */
 const ONE_NODE_STORED = canonicalizeGraphData(ONE_NODE);
 
+/**
+ * A well-formed diagram id that no diagram has.
+ */
+const ABSENT_ID = '11111111-1111-4111-8111-111111111111';
+
 describe('live sync', () => {
   const openSockets = new Set<WebSocket>();
 
@@ -151,7 +156,7 @@ describe('live sync', () => {
     // one are indistinguishable, so a connection attempt cannot confirm a guessed id is real.
     it.each([
       ['a foreign diagram', async () => createDiagram(ALICE)],
-      ['an absent diagram', () => Promise.resolve('11111111-1111-4111-8111-111111111111')],
+      ['an absent diagram', () => Promise.resolve(ABSENT_ID)],
       ['a malformed id', () => Promise.resolve('not-a-uuid')]
     ])('refuses %s with 404 and no socket', async (_label, resolveId) => {
       const response = await send(
@@ -487,7 +492,7 @@ describe('live sync', () => {
         async (instance, state) => {
           (state.getWebSockets()[0] as WebSocket).close(1000, 'Tab closed.');
           const duringFanOut = state.getWebSockets().map((socket) => socket.readyState);
-          await instance.notifyGraphUpdated('{"nodes":[],"edges":[],"viewport":{}}', 'now');
+          await instance.applyOperation({ kind: 'auto_layout' });
           return duringFanOut;
         }
       );
@@ -501,7 +506,7 @@ describe('live sync', () => {
       // specified, so the test races both rather than assuming the list mirrors connect order.
       expect(await Promise.race(pushes)).toMatchObject({
         type: 'graph_updated',
-        updatedAt: 'now'
+        updatedAt: expect.any(String) as string
       });
       expect(await settleOneClosed(first.socket, second.socket)).toBeDefined();
     });
@@ -579,8 +584,9 @@ describe('live sync', () => {
     });
 
     // The session holds no durable graph at all: D1 is the one authoritative copy, so there is
-    // nothing in the object's own storage for the two to disagree about.
-    it('persists nothing of its own', async () => {
+    // nothing in the object's own storage for the two to disagree about. The working graph it now
+    // keeps is a cache, and this is what proves the distinction is real rather than claimed.
+    it('persists nothing of its own, even after serializing a write', async () => {
       const diagramId = await createDiagram();
       await saveGraph(diagramId, ONE_NODE);
       await connect(diagramId);
@@ -592,6 +598,395 @@ describe('live sync', () => {
       );
 
       expect(stored).toEqual([]);
+    });
+
+    // The working graph is a cache of D1, so an evicted session must re-read rather than start
+    // from nothing. Proved by actually evicting — constructing the class directly would prove only
+    // that a constructor runs, which is not the property. A session that lost its state and did
+    // not rehydrate would answer with an empty graph here, and then persist that emptiness on the
+    // next edit.
+    it('rehydrates its working graph from D1 after being evicted, rather than starting empty', async () => {
+      const diagramId = await createDiagram();
+      await saveGraph(diagramId, ONE_NODE);
+      // Warms the session's in-memory copy, so what is asserted below is a genuine reload rather
+      // than a first load that never had anything to lose.
+      await callTool(ALICE, 'update_node', { diagramId, label: 'Before eviction', nodeId: 'api' });
+
+      await evictAllDurableObjects({ webSockets: 'close' });
+      openSockets.clear();
+
+      const snapshot = await testEnv.DIAGRAM_SESSIONS.getByName(diagramId).getSnapshot();
+
+      expect(snapshot?.graphData).toBe(await storedGraph(diagramId));
+      expect(JSON.parse(String(snapshot?.graphData))).toMatchObject({
+        nodes: [
+          expect.objectContaining({ data: expect.objectContaining({ label: 'Before eviction' }) })
+        ]
+      });
+    });
+
+    // The failure mode the rehydration exists to prevent, stated as an outcome rather than as a
+    // mechanism: an edit made after an eviction must build on what is stored, not replace it.
+    it('applies an edit made after eviction on top of the stored graph', async () => {
+      const diagramId = await createDiagram();
+      await saveGraph(diagramId, {
+        ...ONE_NODE,
+        nodes: [
+          ONE_NODE.nodes[0] as Record<string, unknown>,
+          { data: { label: 'DB' }, id: 'db', position: { x: 0, y: 200 }, type: 'cf-node' }
+        ]
+      });
+      await callTool(ALICE, 'update_node', { diagramId, label: 'Gateway', nodeId: 'api' });
+
+      await evictAllDurableObjects({ webSockets: 'close' });
+      openSockets.clear();
+
+      await callTool(ALICE, 'update_node', { diagramId, label: 'Store', nodeId: 'db' });
+
+      // Both edits survive. A session that started from an empty graph could not have found `db`
+      // at all, and one that started from a stale copy would have discarded the rename.
+      expect(JSON.parse(String(await storedGraph(diagramId)))).toMatchObject({
+        nodes: [
+          expect.objectContaining({ data: expect.objectContaining({ label: 'Gateway' }) }),
+          expect.objectContaining({ data: expect.objectContaining({ label: 'Store' }) })
+        ]
+      });
+    });
+  });
+
+  // The phase's own subject: every write to a diagram's graph, from any transport, now takes one
+  // serialized path through its session. These assertions are about outcomes a caller can observe
+  // — what storage ends up holding and what a connected editor is told — rather than about which
+  // internal method was called.
+  describe('one serialized write path', () => {
+    /**
+     * Creates a diagram holding two nodes, so an operation has distinct targets to contend over.
+     *
+     * @returns The new diagram's id.
+     */
+    async function withTwoNodes(): Promise<string> {
+      const diagramId = await createDiagram();
+      await saveGraph(diagramId, {
+        edges: [],
+        nodes: [
+          { data: { label: 'API' }, id: 'api', position: { x: 0, y: 0 }, type: 'cf-node' },
+          { data: { label: 'DB' }, id: 'db', position: { x: 0, y: 200 }, type: 'cf-node' }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      });
+      return diagramId;
+    }
+
+    // The race this phase exists to close. Two conflicting changes to the same node, dispatched
+    // without awaiting between them, must leave exactly one winner — and D1 must hold what the
+    // winning caller was told, rather than a third value neither of them saw.
+    it('leaves one deterministic winner when two writes contend for the same node', async () => {
+      const diagramId = await withTwoNodes();
+
+      const [first, second] = await Promise.all([
+        callTool(ALICE, 'update_node', { diagramId, label: 'First', nodeId: 'api' }),
+        callTool(ALICE, 'update_node', { diagramId, label: 'Second', nodeId: 'api' })
+      ]);
+
+      // Neither was silently dropped: both were applied and both were answered.
+      const labels = [first, second].map(
+        (result) =>
+          (JSON.parse(toolText(result)) as { nodes: { data: { label: string } }[] }).nodes[0]?.data
+            .label
+      );
+      expect(labels).toContain('First');
+      expect(labels).toContain('Second');
+
+      // And storage agrees with the one that was applied last, rather than holding a graph that
+      // lost one of the two changes entirely.
+      const storedLabel = (
+        JSON.parse(String(await storedGraph(diagramId))) as {
+          nodes: { data: { label: string } }[];
+        }
+      ).nodes[0]?.data.label;
+      expect(['First', 'Second']).toContain(storedLabel);
+      // The later-applied write reported the graph that was persisted, which is the whole of
+      // last-applied-wins being observable rather than merely true.
+      expect(labels.at(-1)).toBe(storedLabel);
+    });
+
+    // Changes to different targets are not a conflict at all, and must both survive. An
+    // implementation that serialized by discarding rather than by ordering would pass the test
+    // above and fail this one.
+    it('keeps both changes when two concurrent writes touch different nodes', async () => {
+      const diagramId = await withTwoNodes();
+
+      await Promise.all([
+        callTool(ALICE, 'update_node', { diagramId, label: 'Gateway', nodeId: 'api' }),
+        callTool(ALICE, 'update_node', { diagramId, label: 'Store', nodeId: 'db' })
+      ]);
+
+      expect(JSON.parse(String(await storedGraph(diagramId)))).toMatchObject({
+        nodes: [
+          expect.objectContaining({ data: expect.objectContaining({ label: 'Gateway' }) }),
+          expect.objectContaining({ data: expect.objectContaining({ label: 'Store' }) })
+        ]
+      });
+    });
+
+    // Every operation kind, not just the one convenient to race. A write path that handled only
+    // some of the vocabulary would leave the rest racing exactly as they did before.
+    it.each([
+      ['add_node', { id: 'kv', label: 'Cache', position: { x: 0, y: 400 }, typeId: 'kv' }],
+      ['update_node', { label: 'Gateway', nodeId: 'api' }],
+      ['remove_node', { nodeId: 'db' }],
+      ['add_edge', { edgeType: 'data-flow', id: 'link', source: 'api', target: 'db' }],
+      ['auto_layout_diagram', {}]
+    ])('serializes a %s against a concurrent whole-graph save', async (tool, args) => {
+      const diagramId = await withTwoNodes();
+
+      // An agent's granular change and a browser's autosave arriving together: the two writers
+      // that used to race, now sharing one queue.
+      await Promise.all([
+        callTool(ALICE, tool, { diagramId, ...args }),
+        saveGraph(diagramId, {
+          edges: [],
+          nodes: [
+            { data: { label: 'API' }, id: 'api', position: { x: 99, y: 99 }, type: 'cf-node' },
+            { data: { label: 'DB' }, id: 'db', position: { x: 0, y: 200 }, type: 'cf-node' }
+          ],
+          viewport: { x: 0, y: 0, zoom: 1 }
+        })
+      ]);
+
+      // Whichever landed last, storage holds a complete graph one of them actually produced —
+      // never a half-applied one, and never the empty graph a lost hydration would leave.
+      const stored = JSON.parse(String(await storedGraph(diagramId))) as { nodes: unknown[] };
+      expect(stored.nodes.length).toBeGreaterThan(0);
+
+      // And the session's working copy agrees with storage, so the next edit builds on what is
+      // really there.
+      const snapshot = await testEnv.DIAGRAM_SESSIONS.getByName(diagramId).getSnapshot();
+      expect(snapshot?.graphData).toBe(await storedGraph(diagramId));
+    });
+
+    // The REST fallback is no longer an independent writer. Before this phase it wrote to D1
+    // itself, so a save and a tool call could each overwrite the other's work unseen.
+    it('converges an MCP change and a REST save on one graph', async () => {
+      const diagramId = await withTwoNodes();
+
+      await callTool(ALICE, 'add_node', {
+        diagramId,
+        id: 'kv',
+        label: 'Cache',
+        position: { x: 0, y: 400 },
+        typeId: 'kv'
+      });
+      await saveGraph(diagramId, {
+        edges: [],
+        nodes: [
+          { data: { label: 'API' }, id: 'api', position: { x: 0, y: 0 }, type: 'cf-node' },
+          { data: { label: 'DB' }, id: 'db', position: { x: 0, y: 200 }, type: 'cf-node' },
+          { data: { label: 'Cache' }, id: 'kv', position: { x: 0, y: 400 }, type: 'cf-node' },
+          { data: { label: 'Queue' }, id: 'q', position: { x: 0, y: 600 }, type: 'cf-node' }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      });
+
+      // The agent's node is still there after the browser's save, and the session, storage and a
+      // subsequent agent read all describe the same graph.
+      const afterSave = await callTool(ALICE, 'get_diagram', { diagramId });
+      const stored = String(await storedGraph(diagramId));
+      expect(JSON.parse(toolText(afterSave))).toMatchObject({ graphData: stored });
+      expect((JSON.parse(stored) as { nodes: unknown[] }).nodes).toHaveLength(4);
+    });
+
+    // Persist before broadcast, observed from inside the object where the ordering actually
+    // happens. The server-side socket's `send` is intercepted and, at the moment the frame is
+    // handed over, D1 is read. An implementation that broadcast first — which is what the source
+    // design for this feature proposed — would be caught here: the read would find the graph the
+    // frame claims has not been stored yet.
+    it('has already persisted the change by the time it hands a frame to a socket', async () => {
+      const diagramId = await withTwoNodes();
+      await connect(diagramId);
+
+      const { frame, storedAtSend } = await runInDurableObject(
+        testEnv.DIAGRAM_SESSIONS.getByName(diagramId),
+        async (instance, state) => {
+          const server = state.getWebSockets()[0] as WebSocket;
+          const realSend = server.send.bind(server);
+          let sent: string | undefined;
+          let readAtSend: Promise<string | null> | undefined;
+
+          server.send = (data: string | ArrayBuffer | ArrayBufferView): void => {
+            const text = String(data);
+            if (text.includes('graph_updated')) {
+              sent = text;
+              // Started at the instant the frame is handed over, before this turn yields.
+              readAtSend = testEnv.DB.prepare('SELECT graph_data FROM diagrams WHERE id = ?')
+                .bind(diagramId)
+                .first<{ graph_data: string }>()
+                .then((row) => row?.graph_data ?? null);
+            }
+            realSend(data);
+          };
+
+          await instance.applyOperation({
+            kind: 'update_node',
+            nodeId: 'api',
+            patch: { label: 'Gateway' }
+          });
+
+          return { frame: sent, storedAtSend: await readAtSend };
+        }
+      );
+
+      expect(frame).toBeDefined();
+      expect(storedAtSend).toBe((JSON.parse(String(frame)) as { graphData: string }).graphData);
+    });
+
+    // The same rule in its visible form: a change that did not reach storage is never announced.
+    // Deleting the row is the one way to make a write fail through the real stack.
+    it('announces nothing when the write cannot land', async () => {
+      const diagramId = await withTwoNodes();
+      const { socket } = await connect(diagramId);
+
+      const deleted = await send(
+        await requestAs(`/api/diagrams/${diagramId}`, { method: 'DELETE' })
+      );
+      await deleted.text();
+
+      const result = await callTool(ALICE, 'update_node', {
+        diagramId,
+        label: 'Gateway',
+        nodeId: 'api'
+      });
+
+      expect(result).toMatchObject({ result: { isError: true } });
+      await expectNoFrameOfType(socket, 'graph_updated');
+    });
+
+    // The harder half of the same rule: the session is already **hot**, holding a working graph
+    // for a diagram that has since been deleted. It will apply the operation to its cache quite
+    // happily — the target is still there, as far as it knows — and only the persist discovers the
+    // row has gone. An implementation that broadcast on its own in-memory success rather than on
+    // what storage reported would announce a change to a diagram that no longer exists.
+    it('announces nothing when the row vanishes under a session that is already hydrated', async () => {
+      const diagramId = await withTwoNodes();
+      const { socket } = await connect(diagramId);
+      // Warms the working graph, so the operation below is applied in memory before the persist
+      // finds nothing to write to. The listener is attached before the call that produces the
+      // frame, because one attached afterwards would have missed it.
+      const warmed = nextFrameOfType(socket, 'graph_updated');
+      await callTool(ALICE, 'update_node', { diagramId, label: 'Gateway', nodeId: 'api' });
+      await warmed;
+
+      const deleted = await send(
+        await requestAs(`/api/diagrams/${diagramId}`, { method: 'DELETE' })
+      );
+      await deleted.text();
+
+      const refused = await runInDurableObject(
+        testEnv.DIAGRAM_SESSIONS.getByName(diagramId),
+        async (instance) =>
+          instance.applyOperation({ kind: 'update_node', nodeId: 'db', patch: { label: 'Store' } })
+      );
+
+      expect(refused).toMatchObject({ outcome: 'rejected', status: 404 });
+      await expectNoFrameOfType(socket, 'graph_updated');
+      expect(await storedGraph(diagramId)).toBeNull();
+    });
+
+    // A refused operation must not disturb the session either: the next write still works, and the
+    // graph it builds on is the one storage holds. The Phase 16 spike found that a rejected
+    // promise left on the write chain poisons every write after it, which would show up exactly
+    // here — as a second change that silently never persists.
+    it('keeps accepting writes after one is refused', async () => {
+      const diagramId = await withTwoNodes();
+
+      const refused = await callTool(ALICE, 'remove_node', { diagramId, nodeId: 'ghost' });
+      expect(refused).toMatchObject({ result: { isError: true } });
+
+      await callTool(ALICE, 'update_node', { diagramId, label: 'Gateway', nodeId: 'api' });
+
+      expect(JSON.parse(String(await storedGraph(diagramId)))).toMatchObject({
+        nodes: [
+          expect.objectContaining({ data: expect.objectContaining({ label: 'Gateway' }) }),
+          expect.objectContaining({ data: expect.objectContaining({ label: 'DB' }) })
+        ]
+      });
+    });
+
+    // A collaborator's save goes through the same session as the owner's agent, which is what
+    // makes Phase 17's grant mean "edit this document with me" rather than "edit a copy".
+    it('serializes an owner’s agent and a collaborator’s save through one session', async () => {
+      const diagramId = await withTwoNodes();
+      const granted = await send(
+        await requestAs(`/api/diagrams/${diagramId}/collaborators`, {
+          body: JSON.stringify({ email: MALLORY }),
+          method: 'POST'
+        })
+      );
+      await granted.text();
+      expect(granted.status).toBe(201);
+
+      await callTool(ALICE, 'add_node', {
+        diagramId,
+        id: 'kv',
+        label: 'Cache',
+        position: { x: 0, y: 400 },
+        typeId: 'kv'
+      });
+      await saveGraph(
+        diagramId,
+        {
+          edges: [],
+          nodes: [
+            { data: { label: 'API' }, id: 'api', position: { x: 0, y: 0 }, type: 'cf-node' },
+            { data: { label: 'DB' }, id: 'db', position: { x: 0, y: 200 }, type: 'cf-node' },
+            { data: { label: 'Cache' }, id: 'kv', position: { x: 0, y: 400 }, type: 'cf-node' }
+          ],
+          viewport: { x: 0, y: 0, zoom: 1 }
+        },
+        MALLORY
+      );
+
+      const snapshot = await testEnv.DIAGRAM_SESSIONS.getByName(diagramId).getSnapshot();
+      expect(snapshot?.graphData).toBe(await storedGraph(diagramId));
+      expect((JSON.parse(String(snapshot?.graphData)) as { nodes: unknown[] }).nodes).toHaveLength(
+        3
+      );
+    });
+
+    // Addressing a session by a raw id rather than by its diagram's name leaves it with no way to
+    // know which row to write, so it refuses rather than guessing. Unreachable through the
+    // adapter, which only ever uses `getByName`; asserted so the guard cannot rot into dead code.
+    //
+    // It refuses rather than throwing, and the difference is load-bearing: an uncaught exception
+    // in a Durable Object resets the instance, so a single misaddressed call would drop every
+    // editor connected to that object. Both the status and the fact that the object survives are
+    // asserted, because only the second one would notice a regression to a throw.
+    it('refuses to write when it was not addressed by a diagram id, and stays usable', async () => {
+      const stub = testEnv.DIAGRAM_SESSIONS.get(testEnv.DIAGRAM_SESSIONS.newUniqueId());
+
+      expect(await stub.applyOperation({ kind: 'auto_layout' })).toMatchObject({
+        outcome: 'rejected',
+        status: 404
+      });
+      expect(await stub.getSnapshot()).toBeNull();
+    });
+
+    // A session for a diagram that does not exist has nothing to hydrate from, and says so rather
+    // than inventing an empty graph it would then persist over nothing.
+    it('reports no snapshot for a diagram that does not exist', async () => {
+      const absent = await testEnv.DIAGRAM_SESSIONS.getByName(ABSENT_ID).getSnapshot();
+
+      expect(absent).toBeNull();
+    });
+
+    // The same answer for a whole-graph save. The route in front of it refuses a vanished diagram
+    // first, so this is reached only by a save that raced a delete — which is precisely the case
+    // worth being sure about, since it is the one nobody can arrange on purpose.
+    it('refuses a whole-graph save for a diagram that does not exist', async () => {
+      expect(await testEnv.DIAGRAM_SESSIONS.getByName(ABSENT_ID).replaceGraph('{}')).toMatchObject({
+        outcome: 'rejected',
+        status: 404
+      });
     });
   });
 });
