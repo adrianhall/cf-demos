@@ -589,13 +589,13 @@ understand.
    confirm after a deploy, and the fact that no additional API-token permission is required.
    `DEMO.md` gains the side-by-side presenter section — editor and terminal on one screen, an agent
    adding nodes, the canvas updating live, then `via: "mcp"` beside `via: "api"` in Workers Logs —
-   plus the share-link and scaffold beats. `EXPLAIN-DEMO.md` gains "A second transport, not a
-   second application" and "Why a Durable Object here specifically", the latter stating why this
-   case clears a bar the repository's default posture otherwise sets against one.
+   plus the share-link and scaffold beats. `EXPLAIN-DEMO.md` gains "A second transport, not a second
+   application" and "Why a Durable Object here specifically", the latter stating why this case
+   clears a bar the repository's default posture otherwise sets against one.
 4. The last-write-wins boundary is recorded in `EXPLAIN-DEMO.md` as a designed scope boundary, with
    the three facts that make it acceptable (one identity, a repaint rather than data loss, and the
-   client's staleness check) and an explicit statement of what fails the moment a second human
-   edits — which is what Phases 16–20 exist to fix by extending `DiagramSession`.
+   client's staleness check) and an explicit statement of what fails the moment a second human edits
+   — which is what Phases 16–20 exist to fix by extending `DiagramSession`.
 5. `cf-terraform-demos/architect/MCP-VALIDATION.md` is the re-runnable operator runbook for the
    Managed OAuth round trip, covering the dashboard settings to confirm, connecting a real client,
    completing the browser login, calling one tool from every catalogue category, the `via` field in
@@ -605,19 +605,18 @@ understand.
 
 #### Tests
 
-- **Protocol conformance**: `tools/list` asserted against an independently written catalogue
-  (rather than against the server's own output), a described object schema and non-trivial
-  description on every tool, an over-the-wire `tools/call` round trip of all sixteen tools, the
-  protocol's own `isError` channel distinguished from an HTTP status, an unknown tool, and the
-  exact-route match including the sibling path that inherits neither the route nor the same-origin
-  carve-out.
+- **Protocol conformance**: `tools/list` asserted against an independently written catalogue (rather
+  than against the server's own output), a described object schema and non-trivial description on
+  every tool, an over-the-wire `tools/call` round trip of all sixteen tools, the protocol's own
+  `isError` channel distinguished from an HTTP status, an unknown tool, and the exact-route match
+  including the sibling path that inherits neither the route nor the same-origin carve-out.
 - **Authentication failures at `/mcp`**: no credential; a correctly signed token minted for a
-  different Access application in the same team (the check that matters, because the team shares
-  one JWKS); an expired token; the refusal arriving as an RFC 9457 problem document rather than a
+  different Access application in the same team (the check that matters, because the team shares one
+  JWKS); an expired token; the refusal arriving as an RFC 9457 problem document rather than a
   JSON-RPC error; and never a login redirect.
 - **Absence of secret logging**: `tests/worker/mcp-logging.test.ts` drives the whole catalogue in
   one pass and asserts no raw share token, no graph content and no email address reaches either the
-  structured logger or the console — plus the positive half, that every mutation *is* logged by
+  structured logger or the console — plus the positive half, that every mutation _is_ logged by
   diagram id with `via: 'mcp'`, without which the negative assertions could be satisfied by logging
   nothing.
 - **Hibernation**: reconstruction after `evictAllDurableObjects({ webSockets: 'close' })`, storage
@@ -632,8 +631,8 @@ understand.
 
 `pnpm fix`, `pnpm check`, `pnpm test` and `pnpm test:coverage` all pass, at 100% on every metric.
 The one manual step remains the deployed Managed OAuth round trip, which cannot be emulated locally
-because it is an Access-edge feature; `MCP-VALIDATION.md` is the runbook and is not a substitute
-for running it once against a real deployment.
+because it is an Access-edge feature; `MCP-VALIDATION.md` is the runbook and is not a substitute for
+running it once against a real deployment.
 
 ### Phase 15a — Server-side SVG export
 
@@ -646,11 +645,11 @@ mutations and every transport that renders a graph can produce the same architec
 
 This is **deliberate new scope**, numbered 15a so it follows the MCP surface it extends without
 colliding with the reserved 16–20 collaboration and 21–26 AI ranges. It consciously diverges from
-`09B-ARCHITECT-MCP.md`'s Non-Goals. That document excluded “Raster (PNG/SVG) export” because the only
-known image path rasterised the live React Flow canvas with `html-to-image`, and a Worker has no DOM.
-That reasoning still excludes PNG and a pixel-faithful canvas capture. It does not exclude writing
-vector markup directly from `GraphData`: no rasterisation or renderer is involved, so the premise
-that made the original exclusion correct simply does not apply.
+`09B-ARCHITECT-MCP.md`'s Non-Goals. That document excluded “Raster (PNG/SVG) export” because the
+only known image path rasterised the live React Flow canvas with `html-to-image`, and a Worker has
+no DOM. That reasoning still excludes PNG and a pixel-faithful canvas capture. It does not exclude
+writing vector markup directly from `GraphData`: no rasterisation or renderer is involved, so the
+premise that made the original exclusion correct simply does not apply.
 
 #### Deliverables
 
@@ -662,11 +661,11 @@ that made the original exclusion correct simply does not apply.
    user-controlled instance label and the catalogue product name, so the architecture stays legible
    without relying on an icon.
 3. Do not embed the vendored official product glyphs. They are possible to inline, but a dynamic
-   catalogue lookup would pull the entire roughly 140 KB icon set into the Worker bundle; an exported
-   file also distributes Cloudflare brand marks outside the product UI. A category-coloured swatch
-   plus the exact searchable product label carries the same architectural information with less
-   output, no path/licensing ambiguity and better screen-reader text. Record that trade-off in the
-   transform rather than leaving a missing icon unexplained.
+   catalogue lookup would pull the entire roughly 140 KB icon set into the Worker bundle; an
+   exported file also distributes Cloudflare brand marks outside the product UI. A category-coloured
+   swatch plus the exact searchable product label carries the same architectural information with
+   less output, no path/licensing ambiguity and better screen-reader text. Record that trade-off in
+   the transform rather than leaving a missing icon unexplained.
 4. XML-escape every user-controlled string before it enters text or an attribute: node label and
    description, edge label and diagram title. A label containing markup, ampersands and both quote
    forms must remain literal parsed text, never create an element.
@@ -675,8 +674,8 @@ that made the original exclusion correct simply does not apply.
    verbatim. Keep the existing owner-scoped service call and uniform non-enumerating `404`.
 6. Rewrite the public `/guides/mcp` image examples as real working flows: export SVG, save it, and
    reference it from Markdown. Retain only the narrower accurate note that PNG remains browser-only.
-   Update `README.md`, `EXPLAIN-DEMO.md`, `DEMO.md` and `MCP-VALIDATION.md` so none retains the stale
-   “no image capability” claim.
+   Update `README.md`, `EXPLAIN-DEMO.md`, `DEMO.md` and `MCP-VALIDATION.md` so none retains the
+   stale “no image capability” claim.
 
 #### Tests
 
@@ -689,10 +688,10 @@ that made the original exclusion correct simply does not apply.
   dangling-edge cases, plus horizontal/vertical straight and bent routes.
 - Cover SVG through the plain tool function and over the real MCP handler, including text-block
   transport, schema enumeration, title/content and the same non-owner `404` as JSON/scaffold.
-- Render a real multi-node blueprint in a real browser and compare it with the editor: the same nodes
-  occupy recognisably the same arrangement, every connection reaches the right endpoints, labels
-  are legible, and the computed viewBox clips nothing. Embed that file from Markdown and confirm the
-  preview displays it.
+- Render a real multi-node blueprint in a real browser and compare it with the editor: the same
+  nodes occupy recognisably the same arrangement, every connection reaches the right endpoints,
+  labels are legible, and the computed viewBox clips nothing. Embed that file from Markdown and
+  confirm the preview displays it.
 - Measure the production Worker bundle against the existing 1,230,000-byte ceiling. Record the
   before/after bytes; if the transform exceeds the remaining measured allowance, raise the ceiling
   only with the same evidence and explanation Phase 14 required.
@@ -700,15 +699,15 @@ that made the original exclusion correct simply does not apply.
 #### Exit criteria
 
 `export_diagram(format: "svg")` returns valid, owner-scoped, standalone vector markup that an agent
-can save and embed from Markdown; a real blueprint has been inspected in a browser beside the editor;
-PNG remains accurately documented as browser-only; the Worker bundle contract still holds; and
-`pnpm fix`, `pnpm check`, `pnpm test` and `pnpm test:coverage` pass at 100% statements, branches,
-functions and lines.
+can save and embed from Markdown; a real blueprint has been inspected in a browser beside the
+editor; PNG remains accurately documented as browser-only; the Worker bundle contract still holds;
+and `pnpm fix`, `pnpm check`, `pnpm test` and `pnpm test:coverage` pass at 100% statements,
+branches, functions and lines.
 
 #### Three defects found while closing the gaps
 
-Each was a latent fault rather than a coverage inconvenience, which is the argument for closing
-gaps with behavioural tests instead of exemptions.
+Each was a latent fault rather than a coverage inconvenience, which is the argument for closing gaps
+with behavioural tests instead of exemptions.
 
 1. **`formatRelativeDate` threw on an unparseable timestamp.** The fall-through after its unit loop
    was commented "unreachable", and was reachable: a `NaN` delta compares false against every rung
@@ -718,10 +717,10 @@ gaps with behavioural tests instead of exemptions.
 2. **A test asserted the wrong thing under the right name.** `DetailsPanel`'s "treats an edge with
    no data at all as a data flow" passed `undefined` to a helper with a default parameter, so it
    exercised the ordinary case. The edge is now constructed without a `data` key.
-3. **The keyboard and drop paths duplicated a catalogue guard.** `DiagramCanvas` had two
-   independent "is this a product we know?" checks, one of them unreachable because the palette
-   only renders the catalogue. They are now one `addCatalogueNode` helper, so the decision is taken
-   once and both paths produce identically-shaped nodes by construction.
+3. **The keyboard and drop paths duplicated a catalogue guard.** `DiagramCanvas` had two independent
+   "is this a product we know?" checks, one of them unreachable because the palette only renders the
+   catalogue. They are now one `addCatalogueNode` helper, so the decision is taken once and both
+   paths produce identically-shaped nodes by construction.
 
 Three small refactors made guards testable without weakening them: `recordToolContext` /
 `requireToolContext` name the two halves of the per-request identity rule in `routes/mcp.ts`,
@@ -730,20 +729,19 @@ Three small refactors made guards testable without weakening them: `recordToolCo
 
 ## 12. Phases 16–20 — Collaboration
 
-These phases implement `09C-COLLABORATIVE-EDITING.md`, extending the existing
-`DiagramSession` rather than creating another per-diagram object. The source document was written
-for a Wrangler deployment and a flatter Worker layout. Its Wrangler migration/configuration
-instructions are void here; [`05-collaboration-spike.md`](./05-collaboration-spike.md) records the
-current `cf` + Terraform and four-tier equivalents, and is the authority wherever it differs from
-the source text.
+These phases implement `09C-COLLABORATIVE-EDITING.md`, extending the existing `DiagramSession`
+rather than creating another per-diagram object. The source document was written for a Wrangler
+deployment and a flatter Worker layout. Its Wrangler migration/configuration instructions are void
+here; [`05-collaboration-spike.md`](./05-collaboration-spike.md) records the current `cf` +
+Terraform and four-tier equivalents, and is the authority wherever it differs from the source text.
 
 ### Phase 16 — Collaboration/DO spike — **complete**
 
 #### Goal
 
-Re-confirm the Durable Object lifecycle, input-gate, write-ordering, and multi-client test
-behaviour that collaboration depends on before production code changes the existing one-way live
-session into a bidirectional coordinator.
+Re-confirm the Durable Object lifecycle, input-gate, write-ordering, and multi-client test behaviour
+that collaboration depends on before production code changes the existing one-way live session into
+a bidirectional coordinator.
 
 #### Deliverables
 
@@ -759,9 +757,9 @@ session into a bidirectional coordinator.
 
 #### Tests
 
-- Throwaway integration probes run against the configured `@cloudflare/vitest-plugin` real
-  `workerd` project with two concurrent calls to one object, asserting two non-interleaved
-  synchronous mutations and one deterministic final same-node winner.
+- Throwaway integration probes run against the configured `@cloudflare/vitest-plugin` real `workerd`
+  project with two concurrent calls to one object, asserting two non-interleaved synchronous
+  mutations and one deterministic final same-node winner.
 - An adversarial slow-first/fast-second persist proves a deliberately unchained implementation
   final-clobbers the newer graph while the ordered chain converges correctly. The probe separately
   distinguishes fresh-at-link-start reads from enqueue-time capture; it must not overclaim that an
@@ -785,16 +783,16 @@ anonymous read-only share-link model or adding a new identity/invitation system.
 
 #### Deliverables
 
-1. Add `migrations/0003_create_diagram_collaborators.sql`. Run it locally with `pnpm
-   migrate:local` and remotely with `pnpm migrate:remote`, both of which use the repository-root
+1. Add `migrations/0003_create_diagram_collaborators.sql`. Run it locally with `pnpm migrate:local`
+   and remotely with `pnpm migrate:remote`, both of which use the repository-root
    `scripts/d1-migrate.ts` helper and `cf`; do not add a Wrangler script or Terraform schema
    resource.
 2. Map the source's combined collaborator repository into Architect's tiers: collaborator domain
    values and validation in `domain/`, application ports and use cases in `application/`, and D1
    implementation in `infrastructure/`. Compose the service in `src/worker/index.ts`; routes do not
    construct adapters.
-3. Add accessible-diagram application queries returning `owner` or `editor` role while retaining
-   the existing owner-only rule for rename, delete, anonymous share management, and collaborator
+3. Add accessible-diagram application queries returning `owner` or `editor` role while retaining the
+   existing owner-only rule for rename, delete, anonymous share management, and collaborator
    management. Use the accessible rule for graph read, the REST graph fallback, and live-upgrade
    authorization.
 4. Add owner/collaborator API routes, a dashboard “Shared with me” section, and an editor
@@ -803,12 +801,11 @@ anonymous read-only share-link model or adding a new identity/invitation system.
 
 #### Tests
 
-- A non-owner/non-collaborator receives the same non-enumerating `404` posture as an absent
-  diagram.
-- A collaborator can read, live-connect, and edit, but cannot rename, delete, manage share links,
-  or manage another collaborator.
-- An owner cannot add themselves; adding a never-signed-in email gives the documented safe
-  response; adding an existing collaborator is idempotent; and a collaborator can leave.
+- A non-owner/non-collaborator receives the same non-enumerating `404` posture as an absent diagram.
+- A collaborator can read, live-connect, and edit, but cannot rename, delete, manage share links, or
+  manage another collaborator.
+- An owner cannot add themselves; adding a never-signed-in email gives the documented safe response;
+  adding an existing collaborator is idempotent; and a collaborator can leave.
 
 #### Exit criteria
 
@@ -817,48 +814,129 @@ all collaborator access is enforced through application services rather than an 
 
 ### Phase 18 — Bidirectional live operations
 
-#### Goal
+Delivered as three sub-phases, each its own commit and each independently shippable. The split is
+not cosmetic: a single step would have to read the whole source design, the spike, the session, the
+protocol, two services, two routes and the client before writing anything, and then change the
+server, the wire protocol and the browser together. Two attempts at that shape stalled without
+producing a file. Splitting it also keeps each step's blast radius legible — 18a changes how writes
+are serialized with no visible change in the browser, so a later step stalling leaves working,
+committed progress rather than a half-converted write path.
 
-Make the existing `DiagramSession` the one serialized graph-write path for browser, REST fallback,
-and MCP mutations while D1 remains the diagram's only durable graph copy.
+Each sub-phase runs `pnpm check`, `pnpm test` and the coverage gate before its commit.
 
-#### Deliverables
+#### Phase 18a — One serialized write path
 
-1. Replace the one-way `notifyGraphUpdated` model with disposable in-memory graph/owner metadata,
-   sequence and a recoverable per-object write-chain tail. Hydrate once after cold start with
-   `blockConcurrencyWhile()`; do not add a Durable Object graph schema or `ctx.storage` graph copy.
-2. Replace the `DiagramSessionPort` notification method with typed RPC operations such as
-   `applyOperation`, `applyWholeGraphReplace`, and `getSnapshot`; retain `connect` as a forwarded
-   upgrade request. The infrastructure adapter remains the only layer that knows `getByName`.
-3. Grow `src/live-sync-protocol.ts` into a shared discriminated client/server protocol with snapshot,
-   operation-applied and operation-rejected frames. Keep verified identity attachment pinning and
-   named inbound-header scrubbing.
-4. Apply a graph mutation synchronously with no `await` between reading and replacing the working
-   graph, then await its ordered D1 persist **before** broadcasting the accepted operation or
-   settling the handler. This repository's persist-before-broadcast rule prevents a connected client
-   rendering a change that a reload would not show after a failed D1 write. A failed persist must
-   report safely and leave a caught chain tail that later operations can still join; expected
-   stale-target and validation errors become safe rejections rather than uncaught object failures.
-5. Move the REST whole-graph save fallback and every MCP graph mutation/auto-layout through that
-   same session port. Remove the obsolete direct-D1-then-`notifyGraphUpdated` path.
-6. Send browser edits as debounced operations while connected, reconcile the echoed client operation
-   id, and use REST whole-graph save only until a live socket is connected or reconnects.
+##### Goal
 
-#### Tests
+Make the existing `DiagramSession` the one serialized graph-write path for the browser's REST
+fallback and for MCP mutations, while D1 remains the diagram's only durable graph copy. No wire
+protocol change and no client change: the session keeps broadcasting the existing `graph_updated`
+frame, so the editor behaves exactly as it does today.
 
-- Every granular mutation kind exercises the shared serialization path; two concurrent same-target
-  operations have one last-applied winner, different targets both survive, and a stale target gets
-  `operation_rejected` without closing its socket.
+##### Deliverables
+
+1. A graph-operation vocabulary in `domain/`, beside the existing pure mutations, so an operation is
+   a value the session can apply rather than a function a caller passes in.
+2. Replace the one-way notification model with disposable in-memory graph and owner metadata, a
+   sequence counter, and a recoverable per-object write-chain tail. Hydrate once after a cold start
+   with `blockConcurrencyWhile()`. Do not add a Durable Object graph schema or a `ctx.storage` graph
+   copy.
+3. Replace the port's notification method with typed RPC operations — apply one operation, apply a
+   whole-graph replace, and read a snapshot — retaining the forwarded upgrade request. The
+   infrastructure adapter stays the only layer that knows how a session is addressed.
+4. Apply a mutation synchronously, with no `await` between reading and replacing the working graph,
+   then await its ordered D1 persist **before** broadcasting or settling the handler. This
+   repository's persist-before-broadcast rule stops a connected client rendering a change a reload
+   would not show. A failed persist must report safely and leave a caught chain tail later
+   operations can still join; expected stale-target and validation errors become safe rejections
+   rather than uncaught failures that would discard the in-memory cache.
+5. Route the REST whole-graph save fallback and every MCP graph mutation and auto-layout through
+   that same port, removing the obsolete direct-to-D1 path.
+
+##### Tests
+
+- Every granular mutation kind goes through the shared serialization path. Two concurrent
+  same-target operations leave one last-applied winner; different targets both survive.
 - The slow-first/fast-second counter-example fails against an unchained test double and passes
-  against the chain. A three-operation probe separately proves why each queued link reads current
-  graph state when it begins, without claiming a write already in flight is retroactively replaced.
-- An MCP mutation and a connected human mutation converge in browser frames and D1; the REST
-  fallback has the same property; a post-eviction session rehydrates D1 rather than an empty graph.
+  against the chain, so the test has real discriminating power over the failure the spike
+  reproduced.
+- Nothing is broadcast that did not persist, asserted directly, because this is where the source
+  design and this repository's rule diverge.
+- An MCP mutation and a REST save converge in D1; a post-eviction session rehydrates from D1 rather
+  than starting from an empty graph, proved by evicting rather than by constructing the class.
 
-#### Exit criteria
+##### Exit criteria
+
+Every write to a diagram's graph, from any transport, passes through one serialized path; D1 ends in
+last-applied state; no graph has a second durable copy; and the editor is visibly unchanged.
+
+#### Phase 18b — The bidirectional protocol
+
+##### Goal
+
+Turn the push-only channel into a two-way one, so a second editor's operations arrive live rather
+than on the next reload.
+
+##### Deliverables
+
+1. Grow `src/live-sync-protocol.ts` into a shared discriminated client/server protocol: an inbound
+   operation frame, and outbound snapshot, operation-applied and operation-rejected frames. Keep the
+   exhaustiveness check that fails the build until the client handles a new frame.
+2. Carry an `origin` distinguishing a human's edit from the owner's own agent — the MCP client
+   authenticates as the same identity, so without it the UI cannot tell them apart — and a
+   client-supplied operation id so an originator can match the echo to its own optimistic edit.
+3. Send a stale-target rejection to the originating connection only, never as an unhandled error and
+   never by closing the socket.
+4. Retire the `graph_updated` frame once the client applies operations instead.
+5. Keep verified-identity attachment pinning and named inbound-header scrubbing exactly as they are.
+
+##### Tests
+
+- Two simulated editors on one diagram each see the other's add, update and remove operations
+  applied live. This is the phase's headline behaviour, so it reads as one named test.
+- A stale-target operation is rejected to its originator alone, with both sockets still open and
+  both still able to edit afterwards.
+- An MCP tool call and a connected human editor mutating the same diagram converge in the human's
+  frames and in D1.
+
+##### Exit criteria
 
 Two simulated editors and an MCP tool against one diagram converge through one `DiagramSession`
-write path, D1 ends in last-applied state, and no graph has a second durable copy.
+write path, and a rejected operation disturbs neither connection.
+
+#### Phase 18c — Client dispatch and authorization parity
+
+##### Goal
+
+Let the browser drive the live path, and settle MCP's authorization against the collaborator model
+Phase 17 introduced.
+
+##### Deliverables
+
+1. Send browser edits as debounced operations while connected, reusing the existing autosave
+   interval rather than sending per keystroke; apply operations from other identities; reconcile the
+   echo of the client's own operation id; and fall back to the REST whole-graph save only while the
+   socket is not connected.
+2. Settle MCP authorization so the same action has the same rule on both transports, which is what
+   the repository's "ownership holds identically across HTTP and MCP" property already asserts.
+   Phase 17 deferred this decision rather than making it. A collaborator may read and edit a shared
+   diagram's graph over REST, so the read and graph-mutation tools must accept a collaborator too;
+   rename, delete and the sharing and collaborator tools stay owner-only; and the diagram-listing
+   tool keeps its documented contract unchanged. Update the affected tool descriptions so a calling
+   model knows the scope.
+
+##### Tests
+
+- A collaborator can read and mutate a shared diagram through both REST and MCP; a stranger is
+  refused identically on both, with the same non-enumerating `404`.
+- Owner-only actions are refused for a collaborator on both transports.
+- The client falls back to the REST save while disconnected and stops once the socket is live.
+- A two-tab, two-identity browser review confirms live convergence, which jsdom cannot prove.
+
+##### Exit criteria
+
+Two real browser tabs signed in as two identities edit one diagram and converge live, and no action
+is permitted over MCP that the same identity could not perform over REST.
 
 ### Phase 19 — Presence and cursors
 
@@ -898,8 +976,8 @@ Close the collaboration feature as a documented, fully verified extension of the
 
 1. Close coverage gaps across all three Vitest projects and retain at least 80% statements,
    branches, functions and lines for authored source.
-2. Update `README.md`, `DEMO.md`, and `EXPLAIN-DEMO.md` for collaborator routes, the presenter
-   flow, node/edge last-applied-wins, the deliberate no-CRDT boundary, D1-only durability, and the
+2. Update `README.md`, `DEMO.md`, and `EXPLAIN-DEMO.md` for collaborator routes, the presenter flow,
+   node/edge last-applied-wins, the deliberate no-CRDT boundary, D1-only durability, and the
    relationship to MCP live sync.
 3. Perform a two-identity browser smoke review covering grant/revoke or leave, simultaneous
    node/edge edits, presence/cursors, stale rejection and an MCP operation while both editors are
