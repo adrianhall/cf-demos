@@ -771,6 +771,50 @@ describe('the MCP endpoint', () => {
     // authenticated and reaches the Worker but is served by nothing — which this pins, because a
     // future route accidentally added under the prefix would otherwise inherit the carve-out
     // silently.
+    // A real MCP client does not only POST. After its first successful call it opens a standalone
+    // `GET` stream for server-initiated messages, and on shutdown it may `DELETE` its session. A
+    // stateless server has neither, and the transport's contract for saying so is `405 Method Not
+    // Allowed` — which the client reads as "no stream here" and stops asking. A `404` instead reads
+    // as a broken endpoint, so the client reports a transport error and reconnects in a loop. That
+    // loop shipped: every POST-only test passed while a real OpenCode session flapped against the
+    // deployment. These assertions pin the response the *client* needs, not the one the router
+    // happened to give.
+    it.each(['GET', 'DELETE'])(
+      'answers a client’s %s with 405 rather than 404, so it does not reconnect in a loop',
+      async (method) => {
+        const response = await send(
+          new Request(`${ORIGIN}/mcp`, {
+            headers: {
+              accept: 'text/event-stream',
+              host: HOST,
+              [JWT_HEADER]: await signDevJwt(ALICE, { audience: AUD })
+            },
+            method
+          })
+        );
+        await response.text();
+
+        expect(response.status).toBe(405);
+      }
+    );
+
+    // The same request without a credential must still be refused by Access first. Widening the
+    // methods the route accepts must not widen who can reach the handler.
+    it.each(['GET', 'DELETE'])(
+      'still refuses an unauthenticated %s before the handler',
+      async (method) => {
+        const response = await send(
+          new Request(`${ORIGIN}/mcp`, {
+            headers: { accept: 'text/event-stream', host: HOST },
+            method
+          })
+        );
+        await response.text();
+
+        expect(response.status).toBe(401);
+      }
+    );
+
     it('serves no path but the configured route, and extends its carve-out to none either', async () => {
       const token = await signDevJwt(ALICE, { audience: AUD });
 

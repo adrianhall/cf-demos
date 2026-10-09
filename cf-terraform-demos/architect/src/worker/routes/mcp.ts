@@ -113,10 +113,19 @@ function handlerFor(hostname: string): { fetch: (request: Request) => Promise<Re
  * answers `404` for any other pathname, so a mismatch here would surface as every tool call failing
  * for a reason the Worker's own logs would not explain.
  *
- * `POST` only, and that is the protocol rather than a restriction: the streamable HTTP transport
- * this endpoint serves carries every message as a POST, and the session `GET`/`DELETE` operations
- * belong to a stateful server this one deliberately is not. A `GET` therefore falls through to the
- * application's own `404`.
+ * Every method is handed to the MCP handler, not just `POST`. A stateless server only ever does
+ * work on a POST, but a real client also opens a standalone `GET` stream for server-initiated
+ * messages and may `DELETE` its session on shutdown — and the transport's contract for "this server
+ * has neither" is `405 Method Not Allowed`, which the handler returns itself. The client reads a
+ * `405` as "no stream here" and stops asking. This router originally mounted `POST` alone, so those
+ * requests fell through to the application's own `404` instead, which a client reads as a broken
+ * endpoint: it reported a transport error and reconnected in a loop, while every POST-only test
+ * passed. Letting the handler answer the methods it owns is what keeps the response the client
+ * needs in the one place that knows the protocol.
+ *
+ * Widening the methods does not widen who can reach the handler. The Access middleware in
+ * `../index.ts` runs before routing for every method, so an unauthenticated `GET` is refused there
+ * exactly as an unauthenticated `POST` is.
  *
  * @returns A Hono router serving the MCP endpoint.
  */
@@ -135,7 +144,7 @@ export function createMcpRouter(): Hono<AppBindings> {
    * @throws {Error} When `PUBLIC_HOSTNAME` is not bound, which would otherwise surface as every
    *   deployed tool call being refused by the handler's own `Host` check.
    */
-  router.post('/', async (context) => {
+  router.all('/', async (context) => {
     const hostname = context.env.PUBLIC_HOSTNAME;
     if (!hostname) {
       throw new Error(
