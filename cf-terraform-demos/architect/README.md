@@ -229,9 +229,11 @@ The Worker currently exposes:
 ## The remote MCP endpoint
 
 `POST /mcp` serves a stateless remote Model Context Protocol server, so an agent harness can work on
-a diagram with the same authority its owner has in the browser and no more. It offers sixteen tools:
-reading and listing, creating/renaming/deleting, node and edge mutation with a server-side grid
-auto-layout, the sharing lifecycle, and `json`/`scaffold` export.
+a diagram with the same authority its authenticated identity has in the browser and no more. It
+offers sixteen tools: reading and listing, creating/renaming/deleting, node and edge mutation with a
+server-side grid auto-layout, the sharing lifecycle, and `json`/`scaffold` export. A collaborator
+may read, export and edit a shared graph over MCP just as they may over HTTP; listing remains
+owner-only, while rename, delete, share and collaborator management stay owner-only.
 
 Three things about it are worth knowing before reading the code.
 
@@ -300,10 +302,12 @@ overnight stays connected at the edge while the object is evicted and stops cost
 Anything the session needs after that reconstruction lives in a socket attachment, because an
 instance field would be empty at exactly the moment the value is needed.
 
-**The channel carries operations in both directions.** A client may send one thing — an operation —
-and the session answers every one: an acceptance broadcast to everybody on the diagram, or a
-rejection sent to the originator alone. That is what lets a second person's edit arrive while you
-are looking at the diagram rather than on your next reload.
+**The channel carries durable operations and disposable awareness.** Operations travel in both
+directions: an acceptance is broadcast to everybody on the diagram, while a stale-target rejection
+goes only to its originator. That is what lets a second person's edit arrive while you are looking
+at the diagram rather than on your next reload. Presence snapshots, join/leave events, cursor
+movement and advisory selections are a separate, best-effort class: they never hydrate or write the
+graph, never increment its sequence, and never enter D1.
 
 A frame carries the _operation_ rather than the resulting graph, which buys two things a whole graph
 cannot. A recipient keeps its own pending edits — applying "add this node" leaves whatever the user

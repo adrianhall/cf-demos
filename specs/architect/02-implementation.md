@@ -966,7 +966,7 @@ state or durable data.
 Two authenticated browser profiles viewing one shared diagram see each other’s presence, cursor and
 selection while the graph remains D1's only durable copy.
 
-### Phase 20 — Collaboration verification
+### Phase 20 — Collaboration verification — **complete**
 
 #### Goal
 

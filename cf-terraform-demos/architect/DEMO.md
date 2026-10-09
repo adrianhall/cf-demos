@@ -15,7 +15,10 @@ A 20–25 minute walkthrough. See [`README.md`](README.md) for setup/lifecycle a
    [`MCP-VALIDATION.md`](MCP-VALIDATION.md) beforehand if this deployment is new.
 5. Arrange the editor and a terminal side by side on one screen for section 4. Its entire effect
    depends on both being visible at once.
-6. Confirm teardown is planned: `pnpm teardown` deletes the Worker before destroying bindings.
+6. Arrange a second authenticated browser profile for section 5. Have the owner grant that identity
+   editor access through **Manage collaborators** before the audience arrives; each identity must
+   have signed in once before it can be granted.
+7. Confirm teardown is planned: `pnpm teardown` deletes the Worker before destroying bindings.
 
 ## Opening sentence
 
@@ -112,7 +115,26 @@ so ask it for somebody else's diagram and it gets the same non-enumerating `404`
 > locally with a development JWT. Everything except the OAuth exchange is identical; say so rather
 > than letting the audience think the login was skipped.
 
-## 5. Export and appearance (3 minutes)
+## 5. Two people, one live diagram (4 minutes)
+
+1. With the owner’s editor open, open the same diagram in the second authenticated profile. Point
+   out the coloured avatar stack, remote cursor and advisory selected-element marker. They come from
+   socket attachments and disappear on leave; they are never graph data or D1 rows.
+2. Drag a node in each profile at roughly the same time, then edit the same node label in both. The
+   session applies a total order, so the final value is last-**applied**-wins. It is deliberately
+   not a CRDT, operational transform, field lock or merge UI; stable ids plus one serialized writer
+   are the scope boundary.
+3. Delete a node in one profile and immediately try to rename it in the other. The stale edit is
+   rejected only to its originator, which requests a snapshot and stays connected; the other editor
+   sees neither an error nor a graph that cannot be reloaded.
+4. In the owner profile open **Manage collaborators** and remove the second identity, or use
+   **Leave** in the collaborator profile. Its avatar/cursor leave immediately and its next graph
+   operation is refused by the Worker before it can reach the session.
+5. Re-grant the identity for the remaining steps. In the terminal ask the MCP agent to add a node
+   while both tabs are open. Both update live with the agent notice: MCP is not a bypass or a second
+   graph copy, but a third caller serialized through the exact same `DiagramSession` and D1 write.
+
+## 6. Export and appearance (3 minutes)
 
 1. Export PNG and SVG: both frame graph bounds rather than the current pan/zoom.
 2. Export the project ZIP and show its `cf`-based typed configuration. This is the one deliberate
@@ -122,7 +144,7 @@ so ask it for somebody else's diagram and it gets the same non-enumerating `404`
 4. Cycle system → light → dark. Explain that native `light-dark()` must survive production CSS
    minification or the in-app override silently stops working.
 
-## 6. Administration and defence in depth (3 minutes)
+## 7. Administration and defence in depth (3 minutes)
 
 1. As an ordinary identity, show there is no Admin link and direct `/app/admin` access is refused.
 2. As `ADMIN_EMAIL`, open Admin. The user directory is an observation surface, not an authorization
@@ -148,6 +170,10 @@ KV, hostname and Access resources.
 ## Expected results
 
 - Public routes work without identity; authenticated paths are intercepted and revalidated.
+- Owners can grant named signed-in people editor access; collaborators can live-edit a known shared
+  diagram, while diagram administration remains owner-only. Presence/cursor/selection is transient,
+  and every durable graph edit — browser, REST fallback or MCP — is D1-persisted through the one
+  diagram session before broadcast.
 - Users can create, keyboard-connect, edit, autosave, reopen, duplicate and delete only their own
   diagrams.
 - Anonymous links reveal one current diagram read-only, store no raw token and fail uniformly after
