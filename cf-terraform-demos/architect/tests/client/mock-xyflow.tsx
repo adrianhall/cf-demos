@@ -363,6 +363,18 @@ export function ReactFlowProvider({ children }: { children?: ReactNode }) {
 }
 
 /**
+ * Stand-in viewport portal. The real portal places awareness markers in React Flow's transformed
+ * viewport; component tests need only render the markers so their protocol-driven contents can be
+ * asserted without a layout engine.
+ *
+ * @param props Children to render.
+ * @returns The unchanged children.
+ */
+export function ViewportPortal({ children }: { children?: ReactNode }) {
+  return createElement(Fragment, null, children);
+}
+
+/**
  * Minimal `<Background>` stand-in, rendering no visible pattern.
  *
  * @returns A placeholder element.

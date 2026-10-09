@@ -353,11 +353,27 @@ a snapshot rather than trying to infer which optimistic fields to undo.
 The whole-graph REST save remains a resilience fallback while the socket is not connected. The two
 paths are mutually exclusive at each debounce, so reconnecting cannot create a second writer.
 
+## Presence is a projection, not document state
+
+The same live session carries a second, intentionally weaker class of frame: presence snapshots and
+join/leave events, plus throttled cursor and selection updates. The session derives participants
+from `ctx.getWebSockets()` and the verified identity/colour serialized on each socket attachment.
+That makes a reconstructed Durable Object able to rebuild awareness after hibernation without a
+presence map in D1 or Durable Object storage.
+
+The browser sends cursor coordinates at most 15 times per second, and the session relays them only
+to other tabs. These frames never hydrate the graph, enter the ordered write queue, increment the
+sequence or touch D1: a missed cursor is replaced by the next movement, while a missed operation
+requires a snapshot. The toolbar avatar stack and React Flow viewport overlay render this transient
+projection outside the Zustand graph, which prevents a whole-graph REST fallback from accidentally
+persisting it. Selection markers are advisory — an outline or connection midpoint says what someone
+is currently looking at; it does not lock that element or change conflict resolution.
+
 ## Deliberate limitations
 
-- Presence and cursors are a later layer. Edits converge live in both directions, but another person
-  is visible only through the change notice rather than an avatar, cursor or selected-element
-  highlight.
+- Presence represents currently connected identities, not an audit trail, typing indicator, cursor
+  history or lock. A disconnected socket immediately removes its participant and markers; a
+  hibernated session can reconstruct only what live sockets still carry.
 - Conflicts resolve last-applied-wins — between simultaneous tabs, between collaborators, and
   between a user and their own agent. Every write is serialized through the diagram's session, so
   nothing is overwritten unseen, but two changes to the same element still leave one winner; see

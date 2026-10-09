@@ -995,6 +995,19 @@ button {
   z-index: 5;
 }
 
+.remote-edge-selection {
+  border: 1px solid var(--cf-surface);
+  border-radius: 0.25rem;
+  color: #ffffff;
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 0.125rem 0.25rem;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  z-index: 6;
+}
+
 /* Print mode -------------------------------------------------------------- */
 
 .diagram-editor--print .react-flow__background {

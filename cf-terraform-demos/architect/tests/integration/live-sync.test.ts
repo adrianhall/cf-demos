@@ -268,7 +268,9 @@ describe('live sync', () => {
           state.getWebSockets().map((socket) => socket.deserializeAttachment() as unknown)
       );
 
-      expect(attachments).toEqual([{ viewer: ALICE }]);
+      expect(attachments).toEqual([
+        { color: expect.stringMatching(/^#/) as string, viewer: ALICE }
+      ]);
     });
   });
 
@@ -512,6 +514,71 @@ describe('live sync', () => {
     ): void {
       socket.send(JSON.stringify({ operation, operationId, type: 'operation' }));
     }
+
+    // Presence is derived from live socket attachments, never from D1 or browser-supplied identity.
+    // These assertions exercise the full Worker → DO upgrade boundary, including the departure
+    // callback that hibernatable sockets invoke after a browser tab goes away.
+    it('announces joins, snapshots current participants, and announces the final departure', async () => {
+      const diagramId = await withCollaborator();
+      const owner = await connect(diagramId, ALICE);
+      expect(await owner.received.next('presence_snapshot')).toEqual({
+        participants: [],
+        type: 'presence_snapshot'
+      });
+
+      const guest = await connect(diagramId, MALLORY);
+      expect(await owner.received.next('presence_joined')).toMatchObject({
+        color: expect.stringMatching(/^#/) as string,
+        email: MALLORY,
+        type: 'presence_joined'
+      });
+      expect(await guest.received.next('presence_snapshot')).toMatchObject({
+        participants: [expect.objectContaining({ email: ALICE })],
+        type: 'presence_snapshot'
+      });
+
+      // Another tab for the same identity does not make a duplicate collaborator appear or leave.
+      const secondGuest = await connect(diagramId, MALLORY);
+      expect(await secondGuest.received.next('presence_snapshot')).toMatchObject({
+        participants: [expect.objectContaining({ email: ALICE })]
+      });
+      await expectNoFrameOfType(owner.socket, 'presence_joined');
+      guest.socket.close();
+      await expectNoFrameOfType(owner.socket, 'presence_left');
+
+      secondGuest.socket.close();
+      expect(await owner.received.next('presence_left')).toEqual({
+        email: MALLORY,
+        type: 'presence_left'
+      });
+    });
+
+    it('relays cursor and selection only to the other editor without writing D1', async () => {
+      const diagramId = await withCollaborator();
+      const owner = await connect(diagramId, ALICE);
+      const guest = await connect(diagramId, MALLORY);
+      const before = await storedGraph(diagramId);
+
+      guest.socket.send(JSON.stringify({ type: 'cursor_moved', x: 120, y: 240 }));
+      expect(await owner.received.next('cursor_moved')).toMatchObject({
+        color: expect.stringMatching(/^#/) as string,
+        email: MALLORY,
+        type: 'cursor_moved',
+        x: 120,
+        y: 240
+      });
+      await expectNoFrameOfType(guest.socket, 'cursor_moved');
+
+      guest.socket.send(JSON.stringify({ edgeId: null, nodeId: 'api', type: 'selection_changed' }));
+      expect(await owner.received.next('selection_changed')).toMatchObject({
+        edgeId: null,
+        email: MALLORY,
+        nodeId: 'api',
+        type: 'selection_changed'
+      });
+      await expectNoFrameOfType(guest.socket, 'selection_changed');
+      expect(await storedGraph(diagramId)).toBe(before);
+    });
 
     // **The headline behaviour of this sub-phase.** Two people, two sockets, one diagram: each
     // one's add, update and remove reaches the other live, carrying the change itself rather than
@@ -954,6 +1021,36 @@ describe('live sync', () => {
           expect.objectContaining({ data: expect.objectContaining({ label: 'After eviction' }) })
         ]
       });
+    });
+
+    it('rebuilds presence from surviving socket attachments after hibernation', async () => {
+      const diagramId = await createDiagram();
+      await saveGraph(diagramId, ONE_NODE);
+      const granted = await send(
+        await requestAs(`/api/diagrams/${diagramId}/collaborators`, {
+          body: JSON.stringify({ email: MALLORY }),
+          method: 'POST'
+        })
+      );
+      await granted.text();
+      expect(granted.status).toBe(201);
+      const owner = await connect(diagramId, ALICE);
+      const guest = await connect(diagramId, MALLORY);
+      await owner.received.next('presence_joined');
+      await guest.received.next('presence_snapshot');
+
+      // The identity and colour are in the socket attachments, not an in-memory map. Default
+      // eviction retains the sockets and reconstructs the object that will handle this cursor.
+      await evictAllDurableObjects();
+      guest.socket.send(JSON.stringify({ type: 'cursor_moved', x: 44, y: 55 }));
+
+      expect(await owner.received.next('cursor_moved')).toMatchObject({
+        email: MALLORY,
+        type: 'cursor_moved',
+        x: 44,
+        y: 55
+      });
+      expect(await storedGraph(diagramId)).toContain('API');
     });
 
     // The session holds no durable graph at all: D1 is the one authoritative copy, so there is

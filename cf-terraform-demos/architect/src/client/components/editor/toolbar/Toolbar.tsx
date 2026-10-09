@@ -17,6 +17,7 @@ import {
   ZoomOut
 } from 'react-feather';
 import { useReactFlow } from '@xyflow/react';
+import type { PresenceParticipant } from '../../../../live-sync-protocol.ts';
 import { useDismissableMenu } from '../../../hooks/useDismissableMenu.ts';
 import { useIdentity } from '../../../hooks/useIdentity.ts';
 import { computeAutoLayout, type LayoutDirection } from '../../../lib/auto-layout.ts';
@@ -25,6 +26,7 @@ import { DarkModeToggle } from '../../DarkModeToggle.tsx';
 import { CollaboratorsModal } from './CollaboratorsModal.tsx';
 import { ConnectNodesModal } from './ConnectNodesModal.tsx';
 import { ExportButton } from './ExportButton.tsx';
+import { PresenceStack } from './PresenceStack.tsx';
 import { PrintButton } from './PrintButton.tsx';
 import { ShareModal } from './ShareModal.tsx';
 
@@ -45,6 +47,10 @@ const LAYOUT_FIT_DELAY_MS = 50;
  * Props for {@link Toolbar}.
  */
 export interface ToolbarProps {
+  /**
+   * Other identities currently present in this diagram's live session.
+   */
+  participants?: PresenceParticipant[];
   /**
    * Whether the canvas is read-only. Every editing control is omitted rather than disabled: a row
    * of permanently dead buttons is a worse answer to "you cannot edit this" than their absence, and
@@ -68,7 +74,7 @@ export interface ToolbarProps {
  * @param props Read-only flag; see {@link ToolbarProps}.
  * @returns The toolbar.
  */
-export function Toolbar({ readOnly = false }: ToolbarProps) {
+export function Toolbar({ participants = [], readOnly = false }: ToolbarProps) {
   const { fitView, zoomIn, zoomOut } = useReactFlow();
   const {
     diagramId,
@@ -197,6 +203,8 @@ export function Toolbar({ readOnly = false }: ToolbarProps) {
           </>
         )}
       </div>
+
+      {!readOnly && <PresenceStack participants={participants} />}
 
       {!readOnly && (
         <div className="toolbar__group toolbar__group--editor-controls">

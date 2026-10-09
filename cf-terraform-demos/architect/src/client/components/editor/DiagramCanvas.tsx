@@ -17,6 +17,7 @@ import type {
   ChangeOrigin,
   ClientFrame,
   OperationAppliedFrame,
+  PresenceParticipant,
   SessionFrame
 } from '../../../live-sync-protocol.ts';
 import { applyGraphOperation } from '../../../worker/domain/graph-operations.ts';
@@ -33,6 +34,11 @@ import { edgeTypes } from './edges/edgeTypes.ts';
 import { nodeTypes } from './nodes/nodeTypes.ts';
 import { DetailsPanel } from './panels/DetailsPanel.tsx';
 import { ServicePalette } from './panels/ServicePalette.tsx';
+import {
+  RemoteCursorsOverlay,
+  type RemoteCursor,
+  type RemoteSelection
+} from './RemoteCursorsOverlay.tsx';
 import { StatusBar } from './toolbar/StatusBar.tsx';
 import { Toolbar } from './toolbar/Toolbar.tsx';
 import type { CFEdgeData, CFNodeData } from './types.ts';
@@ -44,6 +50,14 @@ import type { CFEdgeData, CFNodeData } from './types.ts';
  * a node across the canvas is one save rather than fifty.
  */
 const AUTOSAVE_DEBOUNCE_MS = 500;
+
+/**
+ * Maximum cursor frames this tab sends per second.
+ *
+ * Cursor frames are intentionally lossy and never queued; limiting them avoids making a fast
+ * pointer movement compete with the durable operation path on a small connection.
+ */
+const CURSOR_THROTTLE_MS = 1_000 / 15;
 
 /**
  * How long after the last keystroke the title is saved, in milliseconds.
@@ -265,6 +279,9 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
   // different wording, and the identity cannot tell them apart — an agent authenticates as
   // whoever configured it, so "alice@example.com changed this" is true of both.
   const [remoteChange, setRemoteChange] = useState<ChangeOrigin | null>(null);
+  const [participants, setParticipants] = useState<PresenceParticipant[]>([]);
+  const [remoteCursors, setRemoteCursors] = useState<RemoteCursor[]>([]);
+  const [remoteSelections, setRemoteSelections] = useState<RemoteSelection[]>([]);
 
   /**
    * The live connection this tab may write through, or `null` before it is open and after it
@@ -301,6 +318,11 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
    */
   const pendingOperationsRef = useRef(new Map<string, OperationAppliedFrame['operation']>());
 
+  /**
+   * Time of the last cursor frame sent from this tab. A ref avoids rendering on every pointer move.
+   */
+  const lastCursorSentAtRef = useRef(0);
+
   useEffect(() => {
     // The share viewer's diagram arrived with the props, resolved anonymously by `/api/shares`.
     // Calling `getDiagram` here would be a request an anonymous visitor is not authorized to
@@ -334,6 +356,9 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
           return;
         }
         const parsed = parseGraphData(diagram.graphData);
+        setParticipants([]);
+        setRemoteCursors([]);
+        setRemoteSelections([]);
         dispatchedGraphRef.current = { edges: parsed.edges, nodes: parsed.nodes };
         confirmedGraphRef.current = { edges: parsed.edges, nodes: parsed.nodes };
         pendingOperationsRef.current.clear();
@@ -623,6 +648,47 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
           }
           return;
         }
+        case 'presence_snapshot':
+          setParticipants(frame.participants);
+          return;
+        case 'presence_joined':
+          setParticipants((current) =>
+            current.some((participant) => participant.email === frame.email)
+              ? current
+              : [...current, { color: frame.color, email: frame.email }]
+          );
+          return;
+        case 'presence_left':
+          setParticipants((current) =>
+            current.filter((participant) => participant.email !== frame.email)
+          );
+          setRemoteCursors((current) => current.filter((cursor) => cursor.email !== frame.email));
+          setRemoteSelections((current) =>
+            current.filter((selection) => selection.email !== frame.email)
+          );
+          return;
+        case 'cursor_moved':
+          setRemoteCursors((current) => {
+            const cursor: RemoteCursor = {
+              color: frame.color,
+              email: frame.email,
+              x: frame.x,
+              y: frame.y
+            };
+            return [...current.filter((entry) => entry.email !== frame.email), cursor];
+          });
+          return;
+        case 'selection_changed':
+          setRemoteSelections((current) => {
+            const selection: RemoteSelection = {
+              color: frame.color,
+              edgeId: frame.edgeId,
+              email: frame.email,
+              nodeId: frame.nodeId
+            };
+            return [...current.filter((entry) => entry.email !== frame.email), selection];
+          });
+          return;
         case 'operation_rejected':
           // The server did not apply one optimistic edit. A snapshot is the only honest rollback:
           // replaying assumptions about why it failed would be another opportunity to diverge.
@@ -871,20 +937,62 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     [addCatalogueNode]
   );
 
+  /**
+   * Sends an ephemeral awareness frame only while this tab's live socket is usable.
+   *
+   * @param frame Cursor or selection frame; graph operations use the durable debounce path instead.
+   * @returns Nothing.
+   */
+  const sendAwareness = useCallback(
+    (frame: Extract<ClientFrame, { type: 'cursor_moved' | 'selection_changed' }>): void => {
+      const socket = liveSocketRef.current;
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(frame));
+      }
+    },
+    []
+  );
+
   const onNodeClick = useCallback(
-    (_event: unknown, node: { id: string }) => setSelectedNode(node.id),
-    [setSelectedNode]
+    (_event: unknown, node: { id: string }) => {
+      setSelectedNode(node.id);
+      sendAwareness({ edgeId: null, nodeId: node.id, type: 'selection_changed' });
+    },
+    [sendAwareness, setSelectedNode]
   );
 
   const onEdgeClick = useCallback(
-    (_event: unknown, edge: { id: string }) => setSelectedEdge(edge.id),
-    [setSelectedEdge]
+    (_event: unknown, edge: { id: string }) => {
+      setSelectedEdge(edge.id);
+      sendAwareness({ edgeId: edge.id, nodeId: null, type: 'selection_changed' });
+    },
+    [sendAwareness, setSelectedEdge]
   );
 
   const onPaneClick = useCallback(() => {
     setSelectedNode(null);
     setSelectedEdge(null);
-  }, [setSelectedNode, setSelectedEdge]);
+    sendAwareness({ edgeId: null, nodeId: null, type: 'selection_changed' });
+  }, [sendAwareness, setSelectedNode, setSelectedEdge]);
+
+  /**
+   * Relays the local cursor at most fifteen times per second.
+   *
+   * @param event Canvas pointer move event.
+   * @returns Nothing.
+   */
+  const onPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const now = performance.now();
+      if (now - lastCursorSentAtRef.current < CURSOR_THROTTLE_MS) {
+        return;
+      }
+      lastCursorSentAtRef.current = now;
+      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      sendAwareness({ type: 'cursor_moved', x: position.x, y: position.y });
+    },
+    [screenToFlowPosition, sendAwareness]
+  );
 
   /**
    * The canvas's keyboard shortcuts: delete the selection, undo, and redo.
@@ -965,12 +1073,15 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
       {/* Print mode strips the editor down to the diagram itself: the toolbar, the panels, the
           status bar, the background grid, the minimap and the canvas controls are all chrome,
           and none of them belongs on paper. */}
-      {!printMode && <Toolbar readOnly={readOnly} />}
+      {!printMode && <Toolbar participants={participants} readOnly={readOnly} />}
       <div className="diagram-editor__body">
         {!readOnly && !printMode && paletteOpen && (
           <ServicePalette onAddNode={onAddNodeFromPalette} />
         )}
-        <div className="diagram-editor__canvas">
+        <div
+          className="diagram-editor__canvas"
+          onPointerMove={readOnly ? undefined : onPointerMove}
+        >
           {/* Why the canvas just changed. Without this the diagram rewrites itself under the
               visitor with no explanation, which reads as a bug rather than as the feature it is.
               An `<output>`, which carries the `status` role natively, so the notice is announced
@@ -1062,6 +1173,14 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
             {/* `showInteractive` hides React Flow's own lock control, which would otherwise be a
                 tab stop offering to unlock a canvas this visitor may not edit. */}
             {!printMode && <Controls showInteractive={!readOnly} />}
+            {!printMode && (
+              <RemoteCursorsOverlay
+                cursors={remoteCursors}
+                edges={edges}
+                nodes={nodes}
+                selections={remoteSelections}
+              />
+            )}
           </ReactFlow>
         </div>
         {/* The details panel edits the selection, so it is absent rather than disabled — a

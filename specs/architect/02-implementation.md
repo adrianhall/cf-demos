@@ -938,7 +938,7 @@ Phase 17 introduced.
 Two real browser tabs signed in as two identities edit one diagram and converge live, and no action
 is permitted over MCP that the same identity could not perform over REST.
 
-### Phase 19 — Presence and cursors
+### Phase 19 — Presence and cursors — **complete**
 
 #### Goal
 

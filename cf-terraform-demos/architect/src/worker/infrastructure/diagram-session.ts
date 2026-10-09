@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import type { ChangeOrigin, SessionFrame } from '../../live-sync-protocol.ts';
+import type { ChangeOrigin, PresenceParticipant, SessionFrame } from '../../live-sync-protocol.ts';
 import type {
   GraphSnapshot,
   GraphWriteOutcome,
@@ -10,6 +10,7 @@ import { applyGraphOperation, type GraphOperation } from '../domain/graph-operat
 import { canonicalizeGraphData, type GraphData } from '../domain/graph.ts';
 import { D1DiagramRepository } from './d1-diagram-repository.ts';
 import { SerializedGraphWriter, toRejection } from './graph-writer.ts';
+import { presenceColorFor } from './presence-color.ts';
 import { IDENTITY_HEADER } from './session-protocol.ts';
 
 /**
@@ -29,6 +30,13 @@ interface SocketAttachment {
    * client could put one in.
    */
   viewer: string;
+  /**
+   * Deterministic display colour derived from the verified identity when the socket was accepted.
+   *
+   * It travels in the attachment so a reconstructed object can rebuild presence from the runtime's
+   * surviving socket list without storing a second, durable presence record.
+   */
+  color: string;
 }
 
 /**
@@ -45,6 +53,27 @@ function send(socket: WebSocket, frame: SessionFrame): void {
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(frame));
   }
+}
+
+/**
+ * Reads the persisted attachment from a live socket.
+ *
+ * @param socket Hibernatable socket owned by this session.
+ * @returns Its verified identity and display colour, or `null` for a malformed attachment.
+ */
+function attachmentFor(socket: WebSocket): SocketAttachment | null {
+  const attachment = socket.deserializeAttachment();
+  if (
+    typeof attachment !== 'object'
+    || attachment === null
+    || !('viewer' in attachment)
+    || !('color' in attachment)
+    || typeof attachment.viewer !== 'string'
+    || typeof attachment.color !== 'string'
+  ) {
+    return null;
+  }
+  return attachment as SocketAttachment;
 }
 
 /**
@@ -235,14 +264,36 @@ export class DiagramSession extends DurableObject<Env> {
 
     const [client, server] = Object.values(new WebSocketPair());
 
-    server.serializeAttachment({ viewer } satisfies SocketAttachment);
+    server.serializeAttachment({
+      color: presenceColorFor(viewer),
+      viewer
+    } satisfies SocketAttachment);
     // Hibernatable: the runtime, not this object, holds the connection while the diagram is idle.
     this.ctx.acceptWebSocket(server);
 
     // Echoed from the attachment rather than from the local variable, so what the client is told
     // is literally the value a later frame would be attributed to. See `ConnectedFrame`.
-    const attachment = server.deserializeAttachment() as SocketAttachment;
+    const attachment = attachmentFor(server);
+    if (attachment === null) {
+      server.close(1011, 'Connection is missing its identity.');
+      return new Response('Could not establish connection identity.', { status: 500 });
+    }
     send(server, { type: 'connected', viewer: attachment.viewer });
+
+    // Presence is a projection of open sockets, not state this object owns. The joining socket gets
+    // an accurate snapshot while everybody already here hears a join only when this is the first
+    // tab for that identity; a second tab is not a second collaborator.
+    const wasAlreadyPresent = this.hasOtherOpenSocketForViewer(server, attachment.viewer);
+    if (!wasAlreadyPresent) {
+      this.broadcast(
+        { color: attachment.color, email: attachment.viewer, type: 'presence_joined' },
+        server
+      );
+    }
+    send(server, {
+      participants: this.otherParticipants(server, attachment.viewer),
+      type: 'presence_snapshot'
+    });
 
     // Sent after the response is returned rather than awaited before it, because the client end
     // of this socket does not exist until the caller has the `101`. `waitUntil` is what keeps the
@@ -404,7 +455,7 @@ export class DiagramSession extends DurableObject<Env> {
    *   fired and forgotten so the runtime keeps the object alive until the write completes.
    */
   async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    const attachment = socket.deserializeAttachment() as SocketAttachment | null;
+    const attachment = attachmentFor(socket);
     if (attachment === null) {
       // Unreachable through `fetch`, which always attaches before accepting. Closing rather than
       // continuing is the safe response to a connection with no provable identity.
@@ -457,39 +508,74 @@ export class DiagramSession extends DurableObject<Env> {
         }
         return;
       }
+      case 'cursor_moved':
+        // Best effort only. It deliberately bypasses graph hydration, mutation and persistence: a
+        // cursor that vanishes during hibernation is correct; a cursor that writes D1 is not.
+        this.broadcast(
+          {
+            color: attachment.color,
+            email: attachment.viewer,
+            type: 'cursor_moved',
+            x: frame.x,
+            y: frame.y
+          },
+          socket
+        );
+        return;
+      case 'selection_changed':
+        this.broadcast(
+          {
+            color: attachment.color,
+            edgeId: frame.edgeId,
+            email: attachment.viewer,
+            nodeId: frame.nodeId,
+            type: 'selection_changed'
+          },
+          socket
+        );
+        return;
     }
   }
 
   /**
-   * Releases a closed connection.
+   * Announces an identity's departure when this was their final open tab.
    *
-   * There is nothing to clean up, and that is a property of the design rather than an oversight:
-   * the runtime owns the socket list and each socket owns its own identity, so a departed viewer
-   * leaves no entry in this object for anything to forget. The working graph is not per-connection
-   * state and outlives any one viewer. The handler is declared anyway because its absence would be
-   * ambiguous — a reader could not tell whether cleanup was unnecessary or simply missing.
+   * The runtime owns the authoritative live-socket list. Recomputing from that list avoids an
+   * in-memory presence map that hibernation would erase, while deduplicating multiple tabs for the
+   * same identity in exactly the same way connection joins do.
    *
-   * @param _socket Connection that closed; unused, because the session tracks no per-socket state
-   *   of its own.
-   * @param _code Close code reported by the runtime.
-   * @param _reason Close reason reported by the runtime.
+   * @param socket Socket that closed or failed.
+   * @returns Nothing.
    */
-  webSocketClose(_socket: WebSocket, _code: number, _reason: string): void {
-    // Intentionally empty; see this method's documentation.
+  private announceDeparture(socket: WebSocket): void {
+    const attachment = attachmentFor(socket);
+    if (attachment === null || this.hasOtherOpenSocketForViewer(socket, attachment.viewer)) {
+      return;
+    }
+    this.broadcast({ email: attachment.viewer, type: 'presence_left' }, socket);
   }
 
   /**
-   * Releases a failed connection, identically to a clean close.
+   * Releases a closed connection and, when necessary, announces that its identity left.
    *
-   * From this object's point of view a viewer whose connection errored and one who closed their tab
-   * are both simply gone, and treating them differently would be a distinction with no
-   * consequence.
-   *
-   * @param _socket Connection that failed.
-   * @param _error Error the runtime reported.
+   * @param socket Connection that closed.
+   * @param _code Close code reported by the runtime.
+   * @param _reason Close reason reported by the runtime.
+   * @returns Nothing.
    */
-  webSocketError(_socket: WebSocket, _error: unknown): void {
-    // Intentionally empty; see `webSocketClose`.
+  webSocketClose(socket: WebSocket, _code: number, _reason: string): void {
+    this.announceDeparture(socket);
+  }
+
+  /**
+   * Releases a failed connection identically to a clean close.
+   *
+   * @param socket Connection that failed.
+   * @param _error Error the runtime reported.
+   * @returns Nothing.
+   */
+  webSocketError(socket: WebSocket, _error: unknown): void {
+    this.announceDeparture(socket);
   }
 
   /**
@@ -721,7 +807,46 @@ export class DiagramSession extends DurableObject<Env> {
   }
 
   /**
-   * Sends one frame to every connected editor.
+   * Reports whether an identity has another open tab on this diagram.
+   *
+   * @param except Socket to omit, normally the one joining or leaving.
+   * @param viewer Verified identity to look for.
+   * @returns Whether another open socket carries that identity's attachment.
+   */
+  private hasOtherOpenSocketForViewer(except: WebSocket, viewer: string): boolean {
+    return this.ctx.getWebSockets().some((socket) => {
+      const attachment = attachmentFor(socket);
+      return (
+        socket !== except && socket.readyState === WebSocket.OPEN && attachment?.viewer === viewer
+      );
+    });
+  }
+
+  /**
+   * Builds the deduplicated participant projection for a joining connection.
+   *
+   * @param except Joining socket, which must not list itself.
+   * @param viewer Joining identity, whose other tabs must also be hidden from its own snapshot.
+   * @returns Current other participants, one per verified identity.
+   */
+  private otherParticipants(except: WebSocket, viewer: string): PresenceParticipant[] {
+    const participants = new Map<string, PresenceParticipant>();
+    for (const socket of this.ctx.getWebSockets()) {
+      const attachment = attachmentFor(socket);
+      if (
+        socket !== except
+        && socket.readyState === WebSocket.OPEN
+        && attachment !== null
+        && attachment.viewer !== viewer
+      ) {
+        participants.set(attachment.viewer, { color: attachment.color, email: attachment.viewer });
+      }
+    }
+    return [...participants.values()];
+  }
+
+  /**
+   * Sends one frame to every connected editor except an optional socket.
    *
    * The socket list comes from `ctx.getWebSockets()` rather than from an instance field, because an
    * instance field would be empty after the session hibernated and was reconstructed — which is
@@ -729,10 +854,13 @@ export class DiagramSession extends DurableObject<Env> {
    * list when it needs it.
    *
    * @param frame Frame to send to every open connection on this diagram.
+   * @param except Connection that originated an ephemeral frame and should not receive its echo.
    */
-  private broadcast(frame: SessionFrame): void {
+  private broadcast(frame: SessionFrame, except?: WebSocket): void {
     for (const socket of this.ctx.getWebSockets()) {
-      send(socket, frame);
+      if (socket !== except) {
+        send(socket, frame);
+      }
     }
   }
 }

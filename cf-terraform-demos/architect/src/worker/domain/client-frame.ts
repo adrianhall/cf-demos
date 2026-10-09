@@ -156,6 +156,22 @@ function optionalPosition(
 }
 
 /**
+ * Reads one selection identifier, where `null` deliberately means the sender cleared it.
+ *
+ * @param source Object to read from.
+ * @param field Selection field name.
+ * @returns The selected id or `null`.
+ * @throws {ProblemDetailsError} `badRequest()` (400) when the field is missing or malformed.
+ */
+function requireNullableString(source: Record<string, unknown>, field: string): string | null {
+  const value = source[field];
+  if (value === null || typeof value === 'string') {
+    return value;
+  }
+  throw badRequest({ detail: `${field} must be a string or null.` });
+}
+
+/**
  * Validates the operation payload of an inbound frame.
  *
  * Each branch builds a fresh object field by field rather than passing the parsed value through.
@@ -307,6 +323,21 @@ export function parseClientFrame(raw: string | ArrayBuffer): ClientFrame {
       } satisfies OperationFrame;
     case 'resync':
       return { type: 'resync' };
+    case 'cursor_moved':
+      if (!Number.isFinite(parsed.x) || !Number.isFinite(parsed.y)) {
+        throw badRequest({ detail: 'x and y must be finite numbers.' });
+      }
+      return { type: 'cursor_moved', x: parsed.x as number, y: parsed.y as number };
+    case 'selection_changed': {
+      const edgeId = requireNullableString(parsed, 'edgeId');
+      const nodeId = requireNullableString(parsed, 'nodeId');
+      if (nodeId !== null && edgeId !== null) {
+        throw badRequest({
+          detail: 'A selection may name a node, an edge, or neither, but not both.'
+        });
+      }
+      return { edgeId, nodeId, type: 'selection_changed' };
+    }
     default:
       throw badRequest({ detail: `Unknown frame type "${String(parsed.type)}".` });
   }

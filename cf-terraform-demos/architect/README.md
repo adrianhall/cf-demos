@@ -497,9 +497,11 @@ Terraform defaults reserved for this port.
 
 ## Deliberate limitations
 
-- Presence and cursors are not implemented yet. Edits already converge live in both directions, but
-  another person is visible only through the change notice rather than an avatar, cursor or
-  selected-element highlight.
+- Presence, cursors and selections are deliberately live-only awareness. The toolbar's avatar stack,
+  coloured cursor and advisory selection marker are rebuilt from connected socket attachments after
+  hibernation; they are never written to D1 or Durable Object storage. A dropped cursor frame is
+  harmless and replaced by the next move — unlike a graph operation, which remains
+  persisted-before-broadcast and sequence-checked.
 - Writes are last-**applied**-wins, not last-write-wins. Every graph write — the browser's autosave,
   the REST route behind it, and every MCP tool — is now serialized through the diagram's
   `DiagramSession`, so two writers can no longer each read the stored graph and overwrite one

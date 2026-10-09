@@ -268,6 +268,79 @@ describe('framing the diagram on load', () => {
   });
 });
 
+describe('live awareness', () => {
+  it('renders joined participants, remote cursor and selected node without dirtying the graph', async () => {
+    respondWithDiagram({
+      graphData: JSON.stringify({
+        edges: [],
+        nodes: [
+          {
+            data: { label: 'API', typeId: 'worker' },
+            id: 'test-node',
+            position: { x: 0, y: 0 },
+            type: 'cf-node'
+          }
+        ],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      })
+    });
+    render(<DiagramCanvas diagramId="d1" />);
+    await waitFor(() => expect(useDiagramStore.getState().diagramId).toBe('d1'));
+
+    await act(async () => {
+      mostRecentSocket().simulateMessage({
+        participants: [{ color: '#127fda', email: 'mallory@example.com' }],
+        type: 'presence_snapshot'
+      });
+      mostRecentSocket().simulateMessage({
+        color: '#127fda',
+        email: 'mallory@example.com',
+        type: 'cursor_moved',
+        x: 12,
+        y: 34
+      });
+      mostRecentSocket().simulateMessage({
+        color: '#127fda',
+        edgeId: null,
+        email: 'mallory@example.com',
+        nodeId: 'test-node',
+        type: 'selection_changed'
+      });
+    });
+
+    expect(screen.getByLabelText('Currently viewing this diagram')).toHaveTextContent('M');
+    expect(screen.getByLabelText('mallory@example.com')).toBeInTheDocument();
+    expect(document.querySelector('.remote-cursor')).toHaveTextContent('mallory');
+    expect(document.querySelector('.remote-selection-highlight')).toBeInTheDocument();
+    expect(useDiagramStore.getState().dirty).toBe(false);
+  });
+
+  it('removes departed awareness without changing the graph', async () => {
+    respondWithDiagram();
+    render(<DiagramCanvas diagramId="d1" />);
+    await waitFor(() => expect(useDiagramStore.getState().diagramId).toBe('d1'));
+
+    await act(async () => {
+      mostRecentSocket().simulateMessage({
+        participants: [{ color: '#127fda', email: 'mallory@example.com' }],
+        type: 'presence_snapshot'
+      });
+      mostRecentSocket().simulateMessage({
+        color: '#127fda',
+        email: 'mallory@example.com',
+        type: 'cursor_moved',
+        x: 12,
+        y: 34
+      });
+      mostRecentSocket().simulateMessage({ email: 'mallory@example.com', type: 'presence_left' });
+    });
+
+    expect(screen.queryByLabelText('Currently viewing this diagram')).not.toBeInTheDocument();
+    expect(document.querySelector('.remote-cursor')).not.toBeInTheDocument();
+    expect(useDiagramStore.getState().dirty).toBe(false);
+  });
+});
+
 describe('autosaving', () => {
   it('sends debounced operations while connected and stops using the REST save', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });

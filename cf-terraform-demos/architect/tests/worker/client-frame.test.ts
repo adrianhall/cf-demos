@@ -26,6 +26,38 @@ describe('parseClientFrame', () => {
     expect(parseClientFrame(JSON.stringify({ type: 'resync' }))).toEqual({ type: 'resync' });
   });
 
+  it('accepts finite cursor coordinates without an asserted identity', () => {
+    expect(parseClientFrame(JSON.stringify({ type: 'cursor_moved', x: 12.5, y: -8 }))).toEqual({
+      type: 'cursor_moved',
+      x: 12.5,
+      y: -8
+    });
+  });
+
+  it.each([
+    ['a selected node', { edgeId: null, nodeId: 'api', type: 'selection_changed' }],
+    ['a selected edge', { edgeId: 'link', nodeId: null, type: 'selection_changed' }],
+    ['a cleared selection', { edgeId: null, nodeId: null, type: 'selection_changed' }]
+  ])('accepts %s awareness selection', (_label, value) => {
+    expect(parseClientFrame(JSON.stringify(value))).toEqual(value);
+  });
+
+  it.each([
+    ['a cursor with a missing coordinate', { type: 'cursor_moved', x: 1 }],
+    [
+      'a cursor with an infinite coordinate serialized as null',
+      { type: 'cursor_moved', x: null, y: 1 }
+    ],
+    [
+      'a selection naming node and edge',
+      { edgeId: 'link', nodeId: 'api', type: 'selection_changed' }
+    ],
+    ['a selection with a missing node field', { edgeId: null, type: 'selection_changed' }],
+    ['a selection with a numeric edge id', { edgeId: 4, nodeId: null, type: 'selection_changed' }]
+  ])('refuses %s', (_label, value) => {
+    expectProblemStatus(() => parseClientFrame(JSON.stringify(value)), 400);
+  });
+
   it.each([
     [
       'add_node',
