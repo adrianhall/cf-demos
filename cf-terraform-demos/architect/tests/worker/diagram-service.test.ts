@@ -4,6 +4,7 @@ import { DiagramService } from '../../src/worker/application/diagram-service.ts'
 import type { Diagram, UpdateDiagramInput } from '../../src/worker/domain/diagram.ts';
 import { DEFAULT_DIAGRAM_TITLE } from '../../src/worker/domain/diagram.ts';
 import { EMPTY_GRAPH_DATA } from '../../src/worker/domain/graph.ts';
+import { buildDiagramService } from './build-diagram-service.ts';
 import { FakeDiagramRepository } from './fake-diagram-repository.ts';
 import { FakeDiagramSessions } from './fake-diagram-sessions.ts';
 import { FakeShareRepository } from './fake-share-repository.ts';
@@ -32,7 +33,7 @@ let service: DiagramService;
 
 beforeEach(() => {
   repository = new FakeDiagramRepository();
-  service = new DiagramService(repository, new FakeShareRepository(), new FakeDiagramSessions());
+  service = buildDiagramService(repository).service;
 });
 
 describe('creating a diagram', () => {
@@ -382,11 +383,7 @@ describe('concurrent removal between the ownership read and the write', () => {
     ['remove', (svc: DiagramService, id: string) => svc.remove(ALICE, id)]
   ])('reports %s as not found when the row disappeared mid-request', async (_name, run) => {
     const vanishing = new VanishingRepository();
-    const vanishingService = new DiagramService(
-      vanishing,
-      new FakeShareRepository(),
-      new FakeDiagramSessions()
-    );
+    const vanishingService = buildDiagramService(vanishing).service;
     const diagram = await vanishingService.create(ALICE, {});
 
     await expectRejectedProblemStatus(run(vanishingService, diagram.id), 404);
@@ -459,7 +456,7 @@ describe('mutating a graph', () => {
 
   it('pushes the persisted graph to the diagram’s live session', async () => {
     const sessions = new FakeDiagramSessions();
-    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
     const diagram = await withOneNode(svc);
 
     const result = await svc.mutateGraph(ALICE, diagram.id, (graph) => graph);
@@ -474,7 +471,7 @@ describe('mutating a graph', () => {
   // happened.
   it('persists before it notifies', async () => {
     const sessions = new FakeDiagramSessions();
-    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
     const diagram = await withOneNode(svc);
     let storedWhenNotified: string | undefined;
     sessions.notifyGraphUpdated = async (id, graphData, updatedAt) => {
@@ -494,7 +491,7 @@ describe('mutating a graph', () => {
   // written, so there is nothing to roll back.
   it('writes nothing and notifies nobody when the mutation refuses', async () => {
     const sessions = new FakeDiagramSessions();
-    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
     const diagram = await withOneNode(svc);
     const before = await repository.find(diagram.id);
 
@@ -512,7 +509,7 @@ describe('mutating a graph', () => {
   // than being told nothing at all.
   it('surfaces a failed push rather than swallowing it', async () => {
     const sessions = new FakeDiagramSessions();
-    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
     const diagram = await withOneNode(svc);
     sessions.notifyError = new Error('session unreachable');
 
@@ -528,7 +525,7 @@ describe('mutating a graph', () => {
     ['a malformed id', () => Promise.resolve('not-a-uuid')]
   ])('refuses %s with the uniform 404 and never mutates', async (_label, resolveId) => {
     const sessions = new FakeDiagramSessions();
-    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
 
     await expectRejectedProblemStatus(
       svc.mutateGraph(ALICE, await resolveId(), (graph) => graph),
@@ -541,7 +538,7 @@ describe('mutating a graph', () => {
 describe('connecting a live session', () => {
   it('forwards the upgrade once ownership is established', async () => {
     const sessions = new FakeDiagramSessions();
-    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
     const diagram = await svc.create(ALICE, {});
 
     // What this asserts is that the service resolved the right diagram and reached the port at
@@ -562,7 +559,7 @@ describe('connecting a live session', () => {
   // from the request — so there is nothing on the wire that could influence it.
   it('pins the verified actor rather than anything on the request', async () => {
     const sessions = new FakeDiagramSessions();
-    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
     const diagram = await svc.create(ALICE, {});
 
     await svc.connectLiveSession(
@@ -582,7 +579,7 @@ describe('connecting a live session', () => {
     ['a malformed id', () => Promise.resolve('not-a-uuid')]
   ])('refuses %s before the session is ever reached', async (_label, resolveId) => {
     const sessions = new FakeDiagramSessions();
-    const svc = new DiagramService(repository, new FakeShareRepository(), sessions);
+    const svc = buildDiagramService(repository, new FakeShareRepository(), sessions).service;
 
     await expectRejectedProblemStatus(
       svc.connectLiveSession(

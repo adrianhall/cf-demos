@@ -1,5 +1,6 @@
 import type { CloudflareToolkitVariables } from '@adrianhall/cloudflare-toolkit/hono';
 import type { AdminService } from './application/admin-service.ts';
+import type { CollaboratorService } from './application/collaborator-service.ts';
 import type { DiagramService } from './application/diagram-service.ts';
 import type { ShareService } from './application/share-service.ts';
 import type { UserService } from './application/user-service.ts';
@@ -33,6 +34,16 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * is a business decision rather than a routing one.
    */
   SHARE_SERVICE: ShareService;
+  /**
+   * Authenticated edit-collaboration use cases, backed by the D1 adapters the composition root
+   * injected.
+   *
+   * It owns both halves of the collaboration rule: the widened "owner or editor" access decision
+   * that three diagram routes are held to, and the owner-or-self rule governing who may change the
+   * grant list. {@link DiagramService} is given the first of those rather than implementing it, so
+   * the two services cannot disagree about who may reach a diagram.
+   */
+  COLLABORATOR_SERVICE: CollaboratorService;
   /**
    * User-directory use cases, backed by the D1 adapter the composition root injected.
    */

@@ -33,10 +33,16 @@ const SHARE_NOT_FOUND = 'Share link not found or revoked.';
 export class ShareService {
   /**
    * @param repository Authorization-neutral persistence port for shares.
-   * @param diagrams Diagram use cases, used solely for its ownership rule. Depending on the service
-   *   rather than on the diagram repository is what keeps that rule written once: a second
-   *   `ownerEmail !== actor` comparison here would be a second thing to keep in step, and the one
-   *   most likely to be forgotten when the rule grows a collaborator clause in a later phase.
+   * @param diagrams Diagram use cases, used solely for its **owner-only** rule — `getOwned`, not
+   *   the widened `get`. Depending on the service rather than on the diagram repository is what
+   *   keeps that rule written once: a second `ownerEmail !== actor` comparison here would be a
+   *   second thing to keep in step.
+   *
+   *   The choice of `getOwned` is the security decision, not an incidental one. Collaborators can
+   *   now reach a diagram, and a collaborator able to mint a public read-only link to somebody
+   *   else's diagram would be handing out access the owner never granted and cannot see from their
+   *   own share status. Sharing stays an owner's capability; see `./diagram-service.ts`'s
+   *   `getOwned`.
    */
   constructor(
     private readonly repository: ShareRepository,
@@ -57,7 +63,7 @@ export class ShareService {
    * @throws {Error} When the repository cannot read the rows.
    */
   async getStatus(actorEmail: string, diagramId: string): Promise<ShareStatus> {
-    const diagram = await this.diagrams.get(actorEmail, diagramId);
+    const diagram = await this.diagrams.getOwned(actorEmail, diagramId);
     const active = await this.repository.findActive(diagram.id);
 
     return active === null
@@ -83,7 +89,7 @@ export class ShareService {
    * @throws {Error} When the repository cannot read or write the rows.
    */
   async rotate(actorEmail: string, diagramId: string): Promise<CreatedShare> {
-    const diagram = await this.diagrams.get(actorEmail, diagramId);
+    const diagram = await this.diagrams.getOwned(actorEmail, diagramId);
     const now = new Date().toISOString();
 
     await this.repository.revokeActive(diagram.id, now);
@@ -109,7 +115,7 @@ export class ShareService {
    * @throws {Error} When the repository cannot read or write the rows.
    */
   async revoke(actorEmail: string, diagramId: string): Promise<void> {
-    const diagram = await this.diagrams.get(actorEmail, diagramId);
+    const diagram = await this.diagrams.getOwned(actorEmail, diagramId);
 
     if (!(await this.repository.revokeActive(diagram.id, new Date().toISOString()))) {
       throw notFound({ detail: 'No active share link for this diagram.' });

@@ -49,6 +49,15 @@ export class FakeUserRepository implements UserRepository {
   }
 
   /**
+   * @param email Verified identity email to look for.
+   * @returns Whether the directory holds a row for that email. Compared exactly, like the adapter,
+   *   so a suite cannot pass by relying on a case-insensitive match the real query would not make.
+   */
+  async exists(email: string): Promise<boolean> {
+    return this.rows.has(email);
+  }
+
+  /**
    * @param page Validated pagination window.
    * @returns The requested rows, most recently active first, and the directory's total size.
    */

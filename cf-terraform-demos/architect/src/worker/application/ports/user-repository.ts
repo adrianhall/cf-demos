@@ -11,9 +11,10 @@ import type { DirectoryPage, DirectoryRows } from '../../domain/user.ts';
  * layer in a later phase) calls the same use cases. Ownership and administrator decisions therefore
  * live in the application tier, and this port only stores and retrieves.
  *
- * {@link UserRepository.listWithDiagramCounts} is the one read, and it takes no actor: "who may see
- * the directory?" is an administrator decision, and it is taken once in `../admin-service.ts`
- * rather than restated here where a second transport could reach storage without it.
+ * Neither read here takes an actor. "Who may see the directory?" is an administrator decision taken
+ * once in `../admin-service.ts`, and "who may add a collaborator?" is an ownership decision taken
+ * once in `../collaborator-service.ts`; restating either here would put it somewhere a second
+ * transport could reach storage without it.
  */
 export interface UserRepository {
   /**
@@ -30,6 +31,32 @@ export interface UserRepository {
    * @throws {Error} When the underlying store rejects the write.
    */
   recordSeen(email: string, seenAt: string): Promise<void>;
+
+  /**
+   * Reports whether an identity has ever authenticated against this deployment.
+   *
+   * The one read of the directory that is **not** administrative, and the one place this demo uses
+   * the directory for anything beyond the administrative view. It backs a single rule: a diagram's
+   * owner may only grant edit access to somebody who has signed in through this Access application
+   * at least once — see `../collaborator-service.ts`.
+   *
+   * That rule is what keeps this demo free of an invitation system. The alternative, accepting any
+   * email, would mean writing a grant for an identity that may never exist, and then needing a mail
+   * product to tell them about it. Requiring a prior sign-in hands the problem back to the two
+   * people involved, exactly as the anonymous share link already does.
+   *
+   * Note what this does **not** become. The directory is still not an authorization source: the
+   * answer here widens nothing on its own, it only decides whether a grant the owner is already
+   * authorized to make may name this particular address. Whether that grant then permits anything
+   * is decided by the grant row, not by this table.
+   *
+   * @param email Verified Cloudflare Access identity email to look for. Compared exactly, because
+   *   every other identity comparison in this application is exact and two spellings must not
+   *   silently resolve to one identity.
+   * @returns `true` when the directory holds a row for that email, and `false` otherwise.
+   * @throws {Error} When the underlying store rejects the read.
+   */
+  exists(email: string): Promise<boolean>;
 
   /**
    * Reads one page of the directory, most recently active identity first, each row annotated with

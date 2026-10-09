@@ -1,12 +1,11 @@
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
-import { DiagramService } from '../../src/worker/application/diagram-service.ts';
 import { ShareService } from '../../src/worker/application/share-service.ts';
 import type { AppBindings } from '../../src/worker/bindings.ts';
 import { createDiagramsRouter } from '../../src/worker/routes/diagrams.ts';
 import { createSharesRouter } from '../../src/worker/routes/shares.ts';
+import { buildDiagramService } from './build-diagram-service.ts';
 import { FakeDiagramRepository } from './fake-diagram-repository.ts';
-import { FakeDiagramSessions } from './fake-diagram-sessions.ts';
 import { FakeShareRepository } from './fake-share-repository.ts';
 
 /**
@@ -54,7 +53,7 @@ function createApp(): {
 } {
   const diagrams = new FakeDiagramRepository();
   const shares = new FakeShareRepository();
-  const diagramService = new DiagramService(diagrams, shares, new FakeDiagramSessions());
+  const diagramService = buildDiagramService(diagrams, shares).service;
   const shareService = new ShareService(shares, diagramService);
   const entries: LoggedEntry[] = [];
 

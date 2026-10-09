@@ -180,10 +180,13 @@ Dependencies point in one direction:
 React UI → Hono routes → application services → domain/ports → infrastructure adapters
 ```
 
-[`src/worker/index.ts`](src/worker/index.ts) is the composition root. It constructs the D1 diagram
-and user adapters and their services once per request, then injects them into middleware and routes;
-nothing under `routes/` imports from `infrastructure/`, so a handler could not construct a
-repository even if it tried. Future share services follow the same seam.
+[`src/worker/index.ts`](src/worker/index.ts) is the composition root. It constructs the D1 diagram,
+user and collaborator adapters and their services once per request, then injects them into
+middleware and routes; nothing under `routes/` imports from `infrastructure/`, so a handler could
+not construct a repository even if it tried. Collaboration preserves that four-tier seam rather than
+copying the source design's combined repository: email and self-add validation live in `domain/`,
+the authorization-neutral port and use cases live in `application/`, SQL lives in `infrastructure/`,
+and the route only shapes HTTP.
 
 Three modules are shared between the client and the Worker rather than owned by either:
 [`src/catalog.ts`](src/catalog.ts), [`src/blueprints.ts`](src/blueprints.ts) and
@@ -199,18 +202,28 @@ The Worker currently exposes:
   and `ADMIN_EMAIL`;
 - `GET/POST /api/diagrams` — list the caller's own diagrams, or create one blank or from a named
   blueprint;
-- `GET/PATCH/DELETE /api/diagrams/:id` — read, rename, or delete one owned diagram;
-- `PUT /api/diagrams/:id/graph` — validate and replace an owned diagram's graph;
+- `GET /api/diagrams/:id` — read a diagram the caller owns or collaborates on, with their `owner` or
+  `editor` role;
+- `PATCH/DELETE /api/diagrams/:id` — rename or delete one owned diagram;
+- `PUT /api/diagrams/:id/graph` — validate and replace the graph of a diagram the caller owns or
+  collaborates on;
 - `POST /api/diagrams/:id/duplicate` — copy an owned diagram;
+- `GET /api/diagrams/shared-with-me` — list diagrams somebody else owns and has granted the caller
+  edit access to, separately from the unchanged owner-only collection route;
+- `GET/POST /api/diagrams/:id/collaborators` — list the identities with edit access, or grant an
+  already-signed-in identity access (owner-only for the grant);
+- `DELETE /api/diagrams/:id/collaborators/:email` — remove a grant as the owner, or leave as the
+  named collaborator;
 - `GET/POST/DELETE /api/diagrams/:id/share` — read an owned diagram's share status, mint or rotate
-  its read-only link, or revoke it;
+  its **anonymous read-only** link, or revoke it — deliberately separate from authenticated edit
+  collaboration;
 - `GET /api/shares/:token` — public, anonymous resolution of a share link to a deliberately limited
   projection;
 - `GET /api/admin/users` — administrator-only, paginated user directory with live diagram counts;
 - `GET /api/admin/diagrams/:id` — administrator-only, owner-blind moderation preview;
 - `DELETE /api/admin/diagrams/:id` — administrator-only moderation delete with share cleanup;
-- `GET /api/diagrams/:id/live` — owner-only WebSocket upgrade onto a diagram's live session; a
-  non-upgrade request receives `426 Upgrade Required`;
+- `GET /api/diagrams/:id/live` — owner-or-collaborator WebSocket upgrade onto a diagram's live
+  session; a non-upgrade request receives `426 Upgrade Required`;
 - `POST /mcp` — the remote MCP endpoint, described below.
 
 ## The remote MCP endpoint
@@ -471,8 +484,9 @@ a 602.34 kB initial JS entry and a separate 1,431.11 kB ELK chunk loaded only by
 
 ## Storage choices
 
-- **D1 is authoritative** for diagrams, the user directory and the share lifecycle. Read replication
-  is disabled because an editor save must be visible to the next read.
+- **D1 is authoritative** for diagrams, the user directory, authenticated collaborator grants and
+  the anonymous share lifecycle. Read replication is disabled because an editor save or access grant
+  must be visible to the next read.
 - **Workers KV is disposable**: it answers the one question an anonymous share request asks, digest
   → diagram id, with no identity and no relational query involved. Every read falls back to D1 on a
   miss, which also covers the short window before a new key has propagated between locations, so
@@ -481,9 +495,13 @@ a 602.34 kB initial JS entry and a separate 1,431.11 kB ELK chunk loaded only by
   storage at all.
 
 The migrations preserve three deliberate schema decisions: no foreign keys, no `users.is_admin`
-column, and no column anywhere a raw share token could be written. The single administrator is
-operator configuration (`ADMIN_EMAIL`), checked against a verified Access identity on every
-administrative request, not mutable database state.
+column, and no column anywhere a raw share token could be written. Collaborator integrity therefore
+lives in the application tier: the target email must already exist in `users`, the owner cannot add
+themselves, and an owner or the named collaborator can delete a grant. That trade-off buys one
+consistent refusal across HTTP and later transports, including the actionable "sign in once first"
+message a foreign-key violation could not provide. The single administrator is operator
+configuration (`ADMIN_EMAIL`), checked against a verified Access identity on every administrative
+request, not mutable database state.
 
 A diagram's `graph_data` is stored and returned as an opaque JSON string. The Worker validates its
 shape on write — an array of nodes and of edges, each an object with a non-empty string `id`, plus a

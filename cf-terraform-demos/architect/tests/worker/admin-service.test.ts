@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { AdminService } from '../../src/worker/application/admin-service.ts';
 import { DiagramService } from '../../src/worker/application/diagram-service.ts';
 import { ShareService } from '../../src/worker/application/share-service.ts';
+import { buildDiagramService } from './build-diagram-service.ts';
 import { FakeDiagramRepository } from './fake-diagram-repository.ts';
-import { FakeDiagramSessions } from './fake-diagram-sessions.ts';
 import { FakeShareRepository } from './fake-share-repository.ts';
 import { FakeUserRepository } from './fake-user-repository.ts';
 import { expectRejectedProblemStatus } from './problem-details.ts';
@@ -42,7 +42,7 @@ beforeEach(() => {
   diagrams = new FakeDiagramRepository();
   shares = new FakeShareRepository();
   users = new FakeUserRepository(diagrams);
-  diagramService = new DiagramService(diagrams, shares, new FakeDiagramSessions());
+  diagramService = buildDiagramService(diagrams, shares).service;
   shareService = new ShareService(shares, diagramService);
   service = new AdminService(users, diagramService);
 });

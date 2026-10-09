@@ -40,6 +40,59 @@ export interface DiagramSummary {
 }
 
 /**
+ * What the signed-in identity may do with a diagram, as the server reports it.
+ *
+ * The browser never derives this. `GET /api/diagrams/:id` returns it alongside the diagram, and the
+ * editor uses it to decide whether to render owner-only controls — renaming, deleting, the share
+ * link, managing collaborators. That is presentational only: every one of those endpoints
+ * re-derives the rule from the verified Access identity, so a client that ignored this field and
+ * rendered the controls anyway would simply collect `404`s.
+ */
+export type DiagramRole = 'owner' | 'editor';
+
+/**
+ * A diagram together with the caller's role on it.
+ */
+export interface AccessibleDiagram {
+  /**
+   * The diagram itself.
+   */
+  diagram: DiagramSummary;
+  /**
+   * Whether the caller owns this diagram or was granted edit access to it.
+   */
+  role: DiagramRole;
+}
+
+/**
+ * One collaborator grant, as the API returns it.
+ */
+export interface Collaborator {
+  /**
+   * Diagram the grant applies to.
+   */
+  diagramId: string;
+  /**
+   * Verified Cloudflare Access identity granted edit access.
+   */
+  collaboratorEmail: string;
+  /**
+   * Human-readable directory name, or `null` when the identity provider supplied none. Always
+   * `null` in this demo today, and retained so a deployment that later records names need not
+   * change the response shape.
+   */
+  displayName: string | null;
+  /**
+   * The owner's email at the moment the grant was made.
+   */
+  addedBy: string;
+  /**
+   * ISO-8601 timestamp the grant was recorded.
+   */
+  addedAt: string;
+}
+
+/**
  * Fields accepted when creating a diagram.
  */
 export interface CreateDiagramRequest {
@@ -182,15 +235,131 @@ export async function listDiagrams(): Promise<DiagramSummary[]> {
 }
 
 /**
+ * Lists the diagrams somebody else owns and has granted the caller edit access to.
+ *
+ * A separate call from {@link listDiagrams} because it is a separate endpoint, and that is a
+ * server-side decision this module simply follows: the owner-scoped list's shape is relied on by
+ * the MCP tool surface, so collaboration was added beside it rather than inside it. The two results
+ * never overlap, since an owner cannot be a collaborator on their own diagram.
+ *
+ * @returns The diagrams shared with the caller, newest activity first, each carrying `ownerEmail`
+ *   so a card can say who shared it. Empty when none have been.
+ * @throws {Error} When the request fails, including a `401` when the Access session has expired.
+ */
+export async function listSharedWithMe(): Promise<DiagramSummary[]> {
+  return requestField<DiagramSummary[]>('/api/diagrams/shared-with-me', 'diagrams');
+}
+
+/**
  * Reads one diagram by id.
  *
  * @param id Diagram id.
  * @returns The requested diagram.
- * @throws {Error} When the diagram does not exist or is not the caller's — the server reports both
- *   identically, so this client cannot distinguish them either.
+ * @throws {Error} When the diagram does not exist, or the caller neither owns it nor collaborates
+ *   on it — the server reports all of those identically, so this client cannot distinguish them
+ *   either.
  */
 export async function getDiagram(id: string): Promise<DiagramSummary> {
   return requestField<DiagramSummary>(`/api/diagrams/${encodeURIComponent(id)}`, 'diagram');
+}
+
+/**
+ * Reads one diagram by id, together with the caller's role on it.
+ *
+ * The editor's own load. It uses this rather than {@link getDiagram} because it needs to know
+ * whether to offer the owner-only controls, and asking a second endpoint for that would be a second
+ * answer that could disagree with the first — including in the window where somebody's access is
+ * revoked between the two requests.
+ *
+ * The role defaults to `'owner'` when the response omits it. That is the safe direction for a
+ * presentational field: the controls it gates are all re-checked server-side, so the worst case is
+ * a visible control that answers `404`, whereas defaulting to `'editor'` would hide an owner's own
+ * controls because of a malformed response.
+ *
+ * @param id Diagram id.
+ * @returns The diagram and the caller's role on it.
+ * @throws {Error} When the diagram does not exist or the caller may not reach it, or when the
+ *   response does not carry a diagram.
+ */
+export async function getAccessibleDiagram(id: string): Promise<AccessibleDiagram> {
+  const body = await request(`/api/diagrams/${encodeURIComponent(id)}`);
+
+  if (!('diagram' in body)) {
+    throw new Error(UNEXPECTED_RESPONSE);
+  }
+  return {
+    diagram: body.diagram as DiagramSummary,
+    role: body.role === 'editor' ? 'editor' : 'owner'
+  };
+}
+
+/**
+ * Lists who has been granted edit access to a diagram.
+ *
+ * Readable by the owner or by any of the diagram's collaborators, unlike the share-status call in
+ * `./shares.ts`, which is owner-only.
+ *
+ * @param diagramId Diagram id.
+ * @returns That diagram's collaborators, oldest grant first. Empty when it has none.
+ * @throws {Error} When the request fails, including when the caller neither owns the diagram nor
+ *   collaborates on it.
+ */
+export async function listCollaborators(diagramId: string): Promise<Collaborator[]> {
+  return requestField<Collaborator[]>(
+    `/api/diagrams/${encodeURIComponent(diagramId)}/collaborators`,
+    'collaborators'
+  );
+}
+
+/**
+ * Grants a previously signed-in identity edit access to a diagram.
+ *
+ * Owner-only, and a different thing from `createShare` in `./shares.ts`: that mints an anonymous
+ * read-only link for whoever holds it, while this names one verified identity and lets them edit.
+ *
+ * Idempotent. Adding somebody who is already a collaborator succeeds and returns the existing
+ * grant, so a caller never has to special-case it.
+ *
+ * @param diagramId Diagram id.
+ * @param email Address of the identity to add. It must already have signed in to this deployment;
+ *   the server refuses one that has not, with a message saying so.
+ * @returns The grant, whether it was created now or already existed.
+ * @throws {Error} When the request fails — carrying the server's own message for the two cases a
+ *   person can act on: the address has never signed in, or it is the owner's own.
+ */
+export async function addCollaborator(diagramId: string, email: string): Promise<Collaborator> {
+  return requestField<Collaborator>(
+    `/api/diagrams/${encodeURIComponent(diagramId)}/collaborators`,
+    'collaborator',
+    { body: JSON.stringify({ email }), method: 'POST' }
+  );
+}
+
+/**
+ * Revokes one identity's edit access to a diagram.
+ *
+ * Serves both the owner's "remove" and a collaborator's own "leave": the server decides which
+ * applies from the verified identity, so this one call covers both and the client does not have to
+ * know the rule.
+ *
+ * Does not go through {@link request}: the endpoint answers `204` with no body, which
+ * `response.json()` would reject.
+ *
+ * @param diagramId Diagram id.
+ * @param email Address whose access is being removed.
+ * @returns A promise fulfilled once the grant no longer exists.
+ * @throws {Error} When the request fails, including when the caller is a collaborator naming
+ *   somebody other than themselves, or when no such grant exists.
+ */
+export async function removeCollaborator(diagramId: string, email: string): Promise<void> {
+  const response = await fetch(
+    `/api/diagrams/${encodeURIComponent(diagramId)}/collaborators/${encodeURIComponent(email)}`,
+    { headers: { 'Content-Type': 'application/json' }, method: 'DELETE' }
+  );
+
+  if (!response.ok) {
+    throw requestError(await jsonObject(response));
+  }
 }
 
 /**

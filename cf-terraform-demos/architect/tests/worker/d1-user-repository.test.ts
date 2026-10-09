@@ -31,6 +31,7 @@ describe('parameter binding', () => {
     const repository = new D1UserRepository(fake.database);
 
     await repository.recordSeen(injection, SEEN_AT);
+    await repository.exists(injection);
 
     expect(fake.statements).not.toHaveLength(0);
     for (const statement of fake.statements) {
@@ -187,5 +188,43 @@ describe('listWithDiagramCounts', () => {
     });
 
     expect(page.users[0]?.displayName).toBe('Alice Example');
+  });
+});
+
+describe('checking whether an identity has signed in', () => {
+  it('reports a directory row as present', async () => {
+    const fake = createFakeD1({ firstRows: [{ present: 1 }] });
+
+    await expect(new D1UserRepository(fake.database).exists(ALICE)).resolves.toBe(true);
+  });
+
+  it('reports an unknown address as absent', async () => {
+    const fake = createFakeD1();
+
+    await expect(new D1UserRepository(fake.database).exists(ALICE)).resolves.toBe(false);
+  });
+
+  // The question is existence, so the statement reads a literal rather than the row's columns,
+  // and seeks the primary key rather than scanning. It backs the collaborator rule, which runs
+  // on every grant.
+  it('asks only whether a row exists, by primary key', async () => {
+    const fake = createFakeD1();
+
+    await new D1UserRepository(fake.database).exists(ALICE);
+
+    const sql = fake.statements[0]?.sql ?? '';
+    expect(sql).toContain('SELECT 1');
+    expect(sql).toContain('WHERE email = ?');
+    expect(fake.statements[0]?.parameters).toEqual([ALICE]);
+  });
+
+  // Exact, like every other identity comparison here. A case-insensitive lookup would let a grant
+  // name an identity that is not the one that signed in.
+  it('does not fold case in the statement', async () => {
+    const fake = createFakeD1();
+
+    await new D1UserRepository(fake.database).exists(ALICE);
+
+    expect((fake.statements[0]?.sql ?? '').toUpperCase()).not.toContain('LOWER(');
   });
 });

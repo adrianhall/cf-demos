@@ -6,11 +6,13 @@ import {
 } from '@adrianhall/cloudflare-toolkit/hono';
 import { createMeRouter, currentIdentityEmail } from '@demos/worker-common';
 import { AdminService } from './application/admin-service.ts';
+import { CollaboratorService } from './application/collaborator-service.ts';
 import { DiagramService } from './application/diagram-service.ts';
 import { ShareService } from './application/share-service.ts';
 import { UserService } from './application/user-service.ts';
 import type { AppBindings } from './bindings.ts';
 import { isAdministrator } from './domain/user.ts';
+import { D1CollaboratorRepository } from './infrastructure/d1-collaborator-repository.ts';
 import { D1DiagramRepository } from './infrastructure/d1-diagram-repository.ts';
 import { D1KvShareRepository } from './infrastructure/d1-kv-share-repository.ts';
 import { D1UserRepository } from './infrastructure/d1-user-repository.ts';
@@ -79,12 +81,25 @@ app.use(cloudflareLogger());
 app.use(async (context, next) => {
   const shareRepository = new D1KvShareRepository(context.env.DB, context.env.SHARES);
   const userRepository = new D1UserRepository(context.env.DB);
+  const diagramRepository = new D1DiagramRepository(context.env.DB);
+
+  // Built before the diagram service, because the diagram service is given its access rule. The
+  // dependency points this way rather than the other so there is exactly one definition of "may
+  // this identity reach this diagram": the collaborator service states it, and every diagram use
+  // case that widens past ownership calls it rather than restating the comparison.
+  const collaboratorService = new CollaboratorService(
+    new D1CollaboratorRepository(context.env.DB),
+    diagramRepository,
+    userRepository
+  );
   const diagramService = new DiagramService(
-    new D1DiagramRepository(context.env.DB),
+    diagramRepository,
     shareRepository,
-    new DurableDiagramSessions(context.env.DIAGRAM_SESSIONS)
+    new DurableDiagramSessions(context.env.DIAGRAM_SESSIONS),
+    collaboratorService
   );
 
+  context.set('COLLABORATOR_SERVICE', collaboratorService);
   context.set('DIAGRAM_SERVICE', diagramService);
   context.set('SHARE_SERVICE', new ShareService(shareRepository, diagramService));
   context.set('USER_SERVICE', new UserService(userRepository));

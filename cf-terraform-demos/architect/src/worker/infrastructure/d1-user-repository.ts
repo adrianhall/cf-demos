@@ -73,6 +73,32 @@ export class D1UserRepository implements UserRepository {
   }
 
   /**
+   * Reports whether a directory row exists for one email.
+   *
+   * Selects a literal rather than the row, because the question is existence: the caller
+   * (`../application/collaborator-service.ts`) needs a yes or no, and reading four columns to
+   * discard three of them would be work done for nothing. The lookup is on `users.email`, the
+   * table's primary key, so it is an index seek rather than a scan.
+   *
+   * The comparison is exact, matching every other identity comparison in this application. An owner
+   * who types a collaborator's address with different capitalisation is told that person has not
+   * signed in — the same answer any other unrecognised address gets — rather than having two
+   * spellings silently resolved to one identity.
+   *
+   * @param email Verified Cloudflare Access identity email to look for.
+   * @returns `true` when the directory holds a row for that email.
+   * @throws {Error} When D1 rejects the statement.
+   */
+  async exists(email: string): Promise<boolean> {
+    const row = await this.database
+      .prepare('SELECT 1 AS present FROM users WHERE email = ? LIMIT 1')
+      .bind(email)
+      .first<{ present: number }>();
+
+    return row !== null;
+  }
+
+  /**
    * Reads one page of the directory, most recently active first, each row carrying its owner's
    * current diagram count.
    *

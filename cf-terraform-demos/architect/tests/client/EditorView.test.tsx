@@ -5,8 +5,18 @@ vi.mock('@xyflow/react', () => import('./mock-xyflow.tsx'));
 
 const { mockGetDiagram } = vi.hoisted(() => ({ mockGetDiagram: vi.fn() }));
 vi.mock('../../src/client/api/diagrams.ts', () => ({
+  addCollaborator: vi.fn(),
   diagramLiveUrl: (id: string) => `ws://localhost/api/diagrams/${encodeURIComponent(id)}/live`,
-  getDiagram: mockGetDiagram,
+  // The editor loads through `getAccessibleDiagram`, which returns the diagram *and* the caller's
+  // role. The double keeps `mockGetDiagram` as the diagram source so these tests continue to say
+  // what they are about — which diagram the shell asked for — and supplies the owner role every
+  // assertion here assumes. The role's own effects are covered in `./Toolbar.test.tsx`.
+  getAccessibleDiagram: async (id: string) => ({
+    diagram: (await mockGetDiagram(id)) as unknown,
+    role: 'owner' as const
+  }),
+  listCollaborators: vi.fn(async () => []),
+  removeCollaborator: vi.fn(),
   saveDiagramGraph: vi.fn(),
   updateDiagram: vi.fn()
 }));

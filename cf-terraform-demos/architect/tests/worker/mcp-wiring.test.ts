@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { DiagramService } from '../../src/worker/application/diagram-service.ts';
 import { ShareService } from '../../src/worker/application/share-service.ts';
 import type { AppBindings } from '../../src/worker/bindings.ts';
 import { createMcpServerForRequest, singleTemplateVariable } from '../../src/worker/mcp/server.ts';
@@ -10,8 +9,8 @@ import {
   recordToolContext,
   requireToolContext
 } from '../../src/worker/routes/mcp.ts';
+import { buildDiagramService } from './build-diagram-service.ts';
 import { FakeDiagramRepository } from './fake-diagram-repository.ts';
-import { FakeDiagramSessions } from './fake-diagram-sessions.ts';
 import { FakeShareRepository } from './fake-share-repository.ts';
 
 /**
@@ -41,11 +40,7 @@ const ORIGIN = 'https://diagrams.test';
  */
 function createToolContext(actorEmail: string = ALICE): McpToolContext {
   const shares = new FakeShareRepository();
-  const diagrams = new DiagramService(
-    new FakeDiagramRepository(),
-    shares,
-    new FakeDiagramSessions()
-  );
+  const diagrams = buildDiagramService(new FakeDiagramRepository(), shares).service;
 
   return {
     actorEmail,

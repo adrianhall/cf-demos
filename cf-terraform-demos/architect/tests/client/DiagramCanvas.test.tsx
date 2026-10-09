@@ -10,10 +10,20 @@ const { mockGetDiagram, mockSaveDiagramGraph, mockUpdateDiagram } = vi.hoisted((
   mockUpdateDiagram: vi.fn()
 }));
 vi.mock('../../src/client/api/diagrams.ts', () => ({
+  addCollaborator: vi.fn(),
   // The real URL builder rather than a stub: it is pure, it is the thing a test asserting on the
   // socket's address cares about, and mocking it would make that assertion a tautology.
   diagramLiveUrl: (id: string) => `ws://localhost/api/diagrams/${encodeURIComponent(id)}/live`,
-  getDiagram: mockGetDiagram,
+  // The canvas loads through `getAccessibleDiagram`, which answers with the diagram and the
+  // caller's role together. `mockGetDiagram` stays the diagram source so every assertion in this
+  // file keeps reading as a statement about the diagram, with the owner role supplied around it;
+  // what the role itself changes is the toolbar's business, and is covered in `./Toolbar.test.tsx`.
+  getAccessibleDiagram: async (id: string) => ({
+    diagram: (await mockGetDiagram(id)) as unknown,
+    role: 'owner' as const
+  }),
+  listCollaborators: vi.fn(async () => []),
+  removeCollaborator: vi.fn(),
   saveDiagramGraph: mockSaveDiagramGraph,
   updateDiagram: mockUpdateDiagram
 }));

@@ -3,16 +3,24 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 
 vi.mock('@xyflow/react', () => import('./mock-xyflow.tsx'));
 
-const { mockGetDiagram, mockListDiagrams } = vi.hoisted(() => ({
+const { mockGetDiagram, mockListDiagrams, mockListSharedWithMe } = vi.hoisted(() => ({
   mockGetDiagram: vi.fn(),
-  mockListDiagrams: vi.fn()
+  mockListDiagrams: vi.fn(),
+  mockListSharedWithMe: vi.fn()
 }));
 vi.mock('../../src/client/api/diagrams.ts', () => ({
+  addCollaborator: vi.fn(),
   deleteDiagram: vi.fn(),
   diagramLiveUrl: (id: string) => `ws://localhost/api/diagrams/${encodeURIComponent(id)}/live`,
   duplicateDiagram: vi.fn(),
-  getDiagram: mockGetDiagram,
+  getAccessibleDiagram: async (id: string) => ({
+    diagram: (await mockGetDiagram(id)) as unknown,
+    role: 'owner' as const
+  }),
+  listCollaborators: vi.fn(async () => []),
   listDiagrams: mockListDiagrams,
+  listSharedWithMe: mockListSharedWithMe,
+  removeCollaborator: vi.fn(),
   saveDiagramGraph: vi.fn(),
   updateDiagram: vi.fn()
 }));
@@ -44,6 +52,7 @@ function visit(pathname: string): void {
 
 beforeEach(() => {
   mockListDiagrams.mockReset().mockResolvedValue([]);
+  mockListSharedWithMe.mockReset().mockResolvedValue([]);
   // The editor canvas this shell routes into opens a live-sync socket on mount, and jsdom has no
   // WebSocket at all.
   installFakeWebSocket();

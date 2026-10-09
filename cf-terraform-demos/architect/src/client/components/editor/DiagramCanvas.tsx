@@ -14,7 +14,12 @@ import {
 import { CATEGORY_COLORS, NODE_TYPE_MAP } from '../../../catalog.ts';
 import { CF_EDGE_TYPE, CF_NODE_TYPE } from '../../../graph-element-types.ts';
 import type { SessionFrame } from '../../../live-sync-protocol.ts';
-import { diagramLiveUrl, getDiagram, saveDiagramGraph, updateDiagram } from '../../api/diagrams.ts';
+import {
+  diagramLiveUrl,
+  getAccessibleDiagram,
+  saveDiagramGraph,
+  updateDiagram
+} from '../../api/diagrams.ts';
 import type { SharedDiagram } from '../../api/shares.ts';
 import { useDiagramStore } from '../../stores/diagramStore.ts';
 import { edgeTypes } from './edges/edgeTypes.ts';
@@ -220,8 +225,12 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
 
     let cancelled = false;
 
-    getDiagram(diagramId)
-      .then((diagram) => {
+    // `getAccessibleDiagram` rather than `getDiagram`: the editor needs the caller's role as well
+    // as the diagram, to decide whether to offer the owner-only toolbar controls. One request
+    // returns both, so the two answers cannot disagree — which a second request could, if
+    // somebody's access changed between them.
+    getAccessibleDiagram(diagramId)
+      .then(({ diagram, role }) => {
         // The guard matters because the store outlives this component: committing a diagram that
         // arrived after the visitor navigated away would leave the next editor showing it.
         if (cancelled) {
@@ -235,7 +244,8 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
           parsed.nodes,
           parsed.edges,
           parsed.viewport,
-          diagram.updatedAt
+          diagram.updatedAt,
+          role
         );
       })
       .catch((error: unknown) => {

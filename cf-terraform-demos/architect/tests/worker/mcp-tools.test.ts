@@ -1,6 +1,5 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { describe, expect, it, vi } from 'vitest';
-import { DiagramService } from '../../src/worker/application/diagram-service.ts';
 import { ShareService } from '../../src/worker/application/share-service.ts';
 import type { Diagram } from '../../src/worker/domain/diagram.ts';
 import {
@@ -22,6 +21,7 @@ import {
   updateEdgeTool,
   updateNodeTool
 } from '../../src/worker/mcp/tools.ts';
+import { buildDiagramService } from './build-diagram-service.ts';
 import { FakeDiagramRepository } from './fake-diagram-repository.ts';
 import { FakeDiagramSessions } from './fake-diagram-sessions.ts';
 import { FakeShareRepository } from './fake-share-repository.ts';
@@ -83,7 +83,7 @@ function createContext(actorEmail: string = ALICE): {
   const shares = new FakeShareRepository();
   const sessions = new FakeDiagramSessions();
   const entries: LogEntry[] = [];
-  const diagramService = new DiagramService(diagrams, shares, sessions);
+  const diagramService = buildDiagramService(diagrams, shares, sessions).service;
 
   const context: McpToolContext = {
     actorEmail,

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import * as mockXyflow from './mock-xyflow.tsx';
 
@@ -22,6 +22,17 @@ vi.mock('../../src/client/api/shares.ts', () => ({
   revokeShare: mockRevokeShare
 }));
 
+const { mockAddCollaborator, mockListCollaborators, mockRemoveCollaborator } = vi.hoisted(() => ({
+  mockAddCollaborator: vi.fn(),
+  mockListCollaborators: vi.fn(),
+  mockRemoveCollaborator: vi.fn()
+}));
+vi.mock('../../src/client/api/diagrams.ts', () => ({
+  addCollaborator: mockAddCollaborator,
+  listCollaborators: mockListCollaborators,
+  removeCollaborator: mockRemoveCollaborator
+}));
+
 const { useDiagramStore } = await import('../../src/client/stores/diagramStore.ts');
 const { Toolbar } = await import('../../src/client/components/editor/toolbar/Toolbar.tsx');
 
@@ -37,6 +48,12 @@ beforeEach(() => {
     'matchMedia',
     vi.fn(() => ({ addEventListener: vi.fn(), matches: false, removeEventListener: vi.fn() }))
   );
+  // The toolbar resolves the viewer's identity for the collaborators dialog, which needs to know
+  // which row in its list is the visitor's own.
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(JSON.stringify({ email: 'alice@example.com', isAdmin: false })))
+  );
   useDiagramStore.setState({
     diagramId: 'd1',
     edges: [],
@@ -45,9 +62,16 @@ beforeEach(() => {
     paletteOpen: true,
     propertiesOpen: false,
     redoStack: [],
+    // Explicit in every case rather than left to the store's default, so a test about a
+    // collaborator's toolbar cannot pass because a previous test happened to leave the right
+    // value behind.
+    role: 'owner',
     title: 'My Diagram',
     undoStack: []
   });
+  mockListCollaborators.mockReset().mockResolvedValue([]);
+  mockAddCollaborator.mockReset();
+  mockRemoveCollaborator.mockReset();
   mockXyflow.mockFitView.mockClear();
   mockXyflow.mockZoomIn.mockClear();
   mockXyflow.mockZoomOut.mockClear();
@@ -427,5 +451,170 @@ describe('the read-only posture', () => {
     render(<Toolbar readOnly />);
 
     expect(screen.getByRole('button', { name })).toBeInTheDocument();
+  });
+});
+
+describe('the collaborator posture', () => {
+  /**
+   * Puts the store into the posture of somebody editing a diagram they do not own.
+   *
+   * @returns Nothing.
+   */
+  function asCollaborator(): void {
+    useDiagramStore.setState({ role: 'editor' });
+  }
+
+  // The three owner-only affordances. Each is refused server-side, so the toolbar withholds
+  // rather than disables, matching the read-only posture's reasoning: a permanently dead control
+  // is a worse answer than its absence, and it is still a tab stop leading nowhere.
+  it.each(['Share diagram', 'Manage collaborators'])('omits %s for a collaborator', (name) => {
+    asCollaborator();
+    render(<Toolbar />);
+
+    expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+  });
+
+  // Renaming is owner-only, so an editable field whose every save answered `404` would be a worse
+  // way to say so than showing the title as what it is.
+  it('shows the title as text rather than an editable field', () => {
+    asCollaborator();
+    render(<Toolbar />);
+
+    expect(screen.queryByLabelText('Diagram title')).not.toBeInTheDocument();
+    expect(screen.getByText('My Diagram')).toBeInTheDocument();
+  });
+
+  // The read-only view of the same dialog. It is the only route to leaving a diagram, so it has
+  // to live somewhere a collaborator can reach.
+  it('keeps a way to see who else is editing', () => {
+    asCollaborator();
+    render(<Toolbar />);
+
+    expect(screen.getByRole('button', { name: 'View collaborators' })).toBeInTheDocument();
+  });
+
+  it('opens that dialog without the owner\u2019s add form', async () => {
+    asCollaborator();
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'View collaborators' }));
+
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    expect(screen.queryByLabelText('Add by email')).not.toBeInTheDocument();
+  });
+
+  // Every editing control stays: a grant exists precisely to let somebody change the graph, and
+  // withholding the tools for doing so would make it meaningless.
+  it.each(['Toggle service palette', 'Connect nodes', 'Undo', 'Zoom in', 'Auto layout'])(
+    'keeps %s, because a collaborator may edit the graph',
+    (name) => {
+      asCollaborator();
+      render(<Toolbar />);
+
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
+  );
+});
+
+describe('managing collaborators as the owner', () => {
+  it('offers the control as something distinct from sharing a link', () => {
+    render(<Toolbar />);
+
+    expect(screen.getByRole('button', { name: 'Manage collaborators' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Share diagram' })).toBeInTheDocument();
+  });
+
+  it('opens the collaborators dialog, not the share one', async () => {
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Manage collaborators' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Collaborators' })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('heading', { name: 'Share Diagram' })).not.toBeInTheDocument();
+  });
+
+  it('reads the current list when the dialog opens', async () => {
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Manage collaborators' }));
+
+    await waitFor(() => expect(mockListCollaborators).toHaveBeenCalledWith('d1'));
+  });
+
+  it('closes the dialog again without leaving the editor', async () => {
+    render(<Toolbar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Manage collaborators' }));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    // Still on the toolbar: dismissing the dialog is not leaving the diagram.
+    expect(screen.getByRole('button', { name: 'Manage collaborators' })).toBeInTheDocument();
+  });
+
+  it('asks the server nothing until the dialog is opened', () => {
+    render(<Toolbar />);
+
+    expect(mockListCollaborators).not.toHaveBeenCalled();
+  });
+
+  // Nothing to ask about before a diagram has loaded.
+  it('disables the control until a diagram is loaded', () => {
+    useDiagramStore.setState({ diagramId: null });
+    render(<Toolbar />);
+
+    expect(screen.getByRole('button', { name: 'Manage collaborators' })).toBeDisabled();
+  });
+
+  it('is omitted entirely in the read-only posture', () => {
+    render(<Toolbar readOnly />);
+
+    expect(screen.queryByRole('button', { name: 'Manage collaborators' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'View collaborators' })).not.toBeInTheDocument();
+  });
+});
+
+describe('leaving a diagram from the collaborators dialog', () => {
+  const originalLocation = Object.getOwnPropertyDescriptor(window, 'location');
+
+  afterEach(() => {
+    if (originalLocation) {
+      Object.defineProperty(window, 'location', originalLocation);
+    }
+  });
+
+  // A visitor who has just removed their own access can no longer read this diagram, so the
+  // editor is showing something the server would now refuse to send. Returning to the dashboard
+  // is the honest next screen; staying would leave a canvas whose next autosave answers `404`.
+  it('returns to the dashboard once the viewer has left', async () => {
+    useDiagramStore.setState({ role: 'editor' });
+    mockListCollaborators.mockResolvedValue([
+      {
+        addedAt: '2026-02-01T00:00:00.000Z',
+        addedBy: 'owner@example.com',
+        collaboratorEmail: 'alice@example.com',
+        displayName: null,
+        diagramId: 'd1'
+      }
+    ]);
+    mockRemoveCollaborator.mockResolvedValue(undefined);
+    // jsdom's `location` is read-only, so it is replaced wholesale rather than mutated.
+    const location = { ...window.location, href: '/app/diagram/d1' };
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: location,
+      writable: true
+    });
+
+    render(<Toolbar />);
+    fireEvent.click(screen.getByRole('button', { name: 'View collaborators' }));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Leave this diagram' }));
+
+    await waitFor(() => expect(window.location.href).toBe('/app'));
   });
 });

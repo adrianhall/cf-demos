@@ -12,14 +12,17 @@ import {
   RotateCw,
   Share2,
   Sidebar,
+  Users,
   ZoomIn,
   ZoomOut
 } from 'react-feather';
 import { useReactFlow } from '@xyflow/react';
 import { useDismissableMenu } from '../../../hooks/useDismissableMenu.ts';
+import { useIdentity } from '../../../hooks/useIdentity.ts';
 import { computeAutoLayout, type LayoutDirection } from '../../../lib/auto-layout.ts';
 import { useDiagramStore } from '../../../stores/diagramStore.ts';
 import { DarkModeToggle } from '../../DarkModeToggle.tsx';
+import { CollaboratorsModal } from './CollaboratorsModal.tsx';
 import { ConnectNodesModal } from './ConnectNodesModal.tsx';
 import { ExportButton } from './ExportButton.tsx';
 import { PrintButton } from './PrintButton.tsx';
@@ -69,6 +72,7 @@ export function Toolbar({ readOnly = false }: ToolbarProps) {
   const { fitView, zoomIn, zoomOut } = useReactFlow();
   const {
     diagramId,
+    role,
     undo,
     redo,
     undoStack,
@@ -89,7 +93,25 @@ export function Toolbar({ readOnly = false }: ToolbarProps) {
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [collaboratorsOpen, setCollaboratorsOpen] = useState(false);
   const layoutGroupRef = useRef<HTMLDivElement>(null);
+
+  // Resolved here rather than passed down, because the collaborators dialog needs to know which
+  // row in its list is the visitor's own in order to offer Leave rather than Remove. The share
+  // viewer never reaches this: `readOnly` withholds the control that opens the dialog.
+  const { email: viewerEmail } = useIdentity();
+
+  /**
+   * Whether the visitor owns this diagram, rather than collaborating on it.
+   *
+   * Gates the three owner-only toolbar affordances — renaming, the anonymous share link, and
+   * managing collaborators. Presentational only: each of those endpoints re-derives the rule from
+   * the verified Access identity, so a collaborator who recreated the controls by hand would simply
+   * collect `404`s. Withholding rather than disabling matches the `readOnly` posture's own
+   * reasoning: a permanently dead control is a worse answer than its absence, and it is still a tab
+   * stop that leads nowhere.
+   */
+  const isOwner = role === 'owner';
 
   useDismissableMenu(
     layoutMenuOpen,
@@ -153,7 +175,11 @@ export function Toolbar({ readOnly = false }: ToolbarProps) {
         >
           <ArrowLeft size={18} aria-hidden="true" />
         </a>
-        {readOnly ? (
+        {/* A collaborator sees the title as text, like the share viewer does, because renaming
+            is owner-only server-side: an editable field whose every save answered `404` would be
+            a worse way to say so than showing the title as what it is. The two postures reach
+            the same element for different reasons, which is why the condition names both. */}
+        {readOnly || !isOwner ? (
           <span className="toolbar__title-readonly">{title}</span>
         ) : (
           <>
@@ -173,7 +199,7 @@ export function Toolbar({ readOnly = false }: ToolbarProps) {
       </div>
 
       {!readOnly && (
-        <div className="toolbar__group">
+        <div className="toolbar__group toolbar__group--editor-controls">
           {/* `aria-pressed` rather than a label that changes between "Show" and "Hide": the state
               belongs in the control's state, not in its name, so a screen reader announces the
               same button whichever way it is currently set. */}
@@ -335,22 +361,55 @@ export function Toolbar({ readOnly = false }: ToolbarProps) {
         </div>
       )}
 
-      {/* Export, print and the appearance control are available in both postures: a visitor
+      {/* Export, print and the appearance control are available in every posture: a visitor
           reading a diagram they cannot edit has the same reason to want a PNG of it, a printed
-          copy, or dark mode as its owner, and none of the three writes anything. Sharing is the
-          exception — an anonymous viewer arrived through somebody else's link, and offering them
-          a control to mint one of their own would be an offer the server refuses. */}
+          copy, or dark mode as its owner, and none of the three writes anything.
+
+          The two sharing controls are owner-only, and they are two controls rather than one with
+          a menu because they do genuinely different things — one mints an anonymous read-only
+          link for whoever holds it, the other gives a named, signed-in person write access. A
+          single "Share" control covering both would invite the reading that a collaborator is a
+          link with a name attached, which is the one misunderstanding worth designing against.
+          A collaborator sees neither: both are refused server-side, and an anonymous viewer
+          arrived through somebody else's link in the first place. */}
       <div className="toolbar__group toolbar__group--end">
-        {!readOnly && (
+        {!readOnly && isOwner && (
+          <>
+            <button
+              type="button"
+              onClick={() => setCollaboratorsOpen(true)}
+              disabled={diagramId === null}
+              className="toolbar__button"
+              title="Manage collaborators"
+              aria-label="Manage collaborators"
+            >
+              <Users size={18} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShareOpen(true)}
+              disabled={diagramId === null}
+              className="toolbar__button"
+              title="Share diagram"
+              aria-label="Share diagram"
+            >
+              <Share2 size={18} aria-hidden="true" />
+            </button>
+          </>
+        )}
+        {/* A collaborator gets the collaborator dialog without the share one. They cannot add or
+            remove anybody, but they can see who else is editing — and it is the only route to
+            leaving a diagram, which has to live somewhere they can reach. */}
+        {!readOnly && !isOwner && (
           <button
             type="button"
-            onClick={() => setShareOpen(true)}
+            onClick={() => setCollaboratorsOpen(true)}
             disabled={diagramId === null}
             className="toolbar__button"
-            title="Share diagram"
-            aria-label="Share diagram"
+            title="View collaborators"
+            aria-label="View collaborators"
           >
-            <Share2 size={18} aria-hidden="true" />
+            <Users size={18} aria-hidden="true" />
           </button>
         )}
         <ExportButton />
@@ -359,10 +418,26 @@ export function Toolbar({ readOnly = false }: ToolbarProps) {
       </div>
 
       {!readOnly && <ConnectNodesModal open={connectOpen} onClose={() => setConnectOpen(false)} />}
-      {/* Mounted only once a diagram is loaded. The modal reads its share status on open, and
-          there is no diagram to ask about before then. */}
-      {!readOnly && diagramId !== null && (
+      {/* Both modals are mounted only once a diagram is loaded. Each reads from the server when
+          it opens, and there is no diagram to ask about before then. */}
+      {!readOnly && isOwner && diagramId !== null && (
         <ShareModal diagramId={diagramId} open={shareOpen} onClose={() => setShareOpen(false)} />
+      )}
+      {!readOnly && diagramId !== null && (
+        <CollaboratorsModal
+          diagramId={diagramId}
+          viewerRole={role}
+          viewerEmail={viewerEmail}
+          open={collaboratorsOpen}
+          onClose={() => setCollaboratorsOpen(false)}
+          // A visitor who has just removed their own access can no longer read this diagram, so
+          // the editor it is open in is now showing something the server would refuse to send
+          // again. Returning to the dashboard is the honest next screen; staying would leave a
+          // canvas whose next autosave answers `404`.
+          onLeft={() => {
+            window.location.href = '/app';
+          }}
+        />
       )}
     </div>
   );

@@ -168,6 +168,14 @@ export async function listDiagramsTool(
  * read and a tool call must resolve to the identical owner-scoped lookup. Two spellings of it would
  * be two chances for one to drift open.
  *
+ * Owner-scoped rather than owner-or-collaborator, deliberately, even though a browser reading the
+ * same diagram is now held to the wider rule. An agent acts with the full authority of the identity
+ * that configured it, so extending it to every diagram that identity merely collaborates on would
+ * quietly widen what somebody else's agent can read inside _your_ diagram. That is a decision about
+ * agent scope rather than a consequence of adding collaborators, and the live-operations phase
+ * takes it explicitly; until then the tools stay where they were. See
+ * `../application/diagram-service.ts`'s `getOwned`.
+ *
  * @param context Resolved tool context carrying the verified identity and the diagram service.
  * @param diagramId Untrusted diagram id supplied by the caller.
  * @returns The diagram, graph included.
@@ -180,7 +188,7 @@ export async function getDiagramTool(
   context: McpToolContext,
   diagramId: string
 ): Promise<{ diagram: Diagram }> {
-  const diagram = await context.diagrams.get(context.actorEmail, diagramId);
+  const diagram = await context.diagrams.getOwned(context.actorEmail, diagramId);
 
   context.logger.info('diagram_opened', { diagramId: diagram.id, via: VIA });
   return { diagram };
@@ -666,7 +674,7 @@ export async function exportDiagramTool(
   diagramId: string,
   format: ExportFormat
 ): Promise<ExportedDiagram> {
-  const diagram = await context.diagrams.get(context.actorEmail, diagramId);
+  const diagram = await context.diagrams.getOwned(context.actorEmail, diagramId);
 
   if (format === 'json') {
     // Verbatim, not re-serialised. The stored text is already canonical, so re-encoding it would

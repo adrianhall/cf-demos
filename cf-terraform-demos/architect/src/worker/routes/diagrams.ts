@@ -29,7 +29,14 @@ const VIA: LogVia = 'api';
 const MAX_DIAGRAM_BODY_BYTES = 512 * 1_024;
 
 /**
- * Owner-scoped diagram API, mounted at `/api/diagrams`.
+ * The diagram API, mounted at `/api/diagrams`.
+ *
+ * Most of it is owner-scoped. Three endpoints are deliberately not, and they are the ones
+ * collaboration consists of: reading a diagram, replacing its graph, and opening its live session
+ * all admit an identity the owner has granted edit access to. Everything that decides what the
+ * diagram _is_ or who may reach it — rename, delete, duplicate, the share link, and the
+ * collaborator list itself — stays owner-only. The services own that distinction; no handler here
+ * takes an authorization decision of its own.
  *
  * The handlers are deliberately thin enough to read as a description of the API surface. Each one
  * does exactly three things: take the verified identity, hand the request's untrusted values to
@@ -41,9 +48,17 @@ const MAX_DIAGRAM_BODY_BYTES = 512 * 1_024;
  * The identity always comes from `currentIdentityEmail`, which reads the validated Access JWT.
  * Nothing here accepts an owner from a path parameter, a query string, a header or a body.
  *
- * Every refusal is a `404`, never a `403`: a diagram that exists but belongs to someone else is
+ * Every refusal is a `404`, never a `403`: a diagram that exists but the caller may not reach is
  * reported identically to one that does not exist, so a caller can never confirm that a guessed id
- * is real. The service owns that rule; this router simply never adds a status of its own.
+ * is real. That holds for a collaborator attempting an owner-only action too — they can already see
+ * the diagram, so the status discloses nothing either way, and giving every refusal one shape is
+ * what stops a `403` appearing somewhere it would be a signal. The services own that rule; this
+ * router simply never adds a status of its own.
+ *
+ * The two refusals that are **not** uniform are both cases where the caller already knows
+ * everything the message could disclose: adding your own address as a collaborator, and naming an
+ * identity that has never signed in. Each says what is actually wrong, because a `404` there would
+ * send somebody looking for a diagram that is open in front of them.
  *
  * @returns A Hono router serving the owner-scoped diagram endpoints.
  */
@@ -66,6 +81,33 @@ export function createDiagramsRouter(): Hono<AppBindings> {
   router.get('/', async (context) =>
     context.json({
       diagrams: await context.var.DIAGRAM_SERVICE.list(currentIdentityEmail(context))
+    })
+  );
+
+  /**
+   * Lists the diagrams somebody else owns and has granted the caller edit access to.
+   *
+   * A separate endpoint rather than a `?scope=` parameter on the route above, deliberately. That
+   * route's contract — "the signed-in identity's own diagrams" — is what the MCP `list_diagrams`
+   * tool documents and relies on, so changing its shape would be a breaking change to the agent
+   * surface for no benefit to the dashboard, which wants both lists on screen at once anyway.
+   *
+   * Registered **before** `/:id`, and it has to be: Hono matches in registration order, so a
+   * literal path registered after a single-segment parameter would be captured by it and answered
+   * as a diagram id — producing the `404` a malformed id gets, from a route that exists.
+   *
+   * @param context Hono request context carrying the verified identity and the collaborator
+   *   service.
+   * @returns A `200` response carrying the shared diagrams, each with its owner's email so the
+   *   dashboard can say who shared it, and its full graph so a card renders a real thumbnail.
+   * @throws {NullError} When mounted without the Access middleware in front of it.
+   * @throws {Error} When the repository cannot read the rows.
+   */
+  router.get('/shared-with-me', async (context) =>
+    context.json({
+      diagrams: await context.var.COLLABORATOR_SERVICE.listSharedWithMe(
+        currentIdentityEmail(context)
+      )
     })
   );
 
@@ -94,24 +136,34 @@ export function createDiagramsRouter(): Hono<AppBindings> {
   });
 
   /**
-   * Reads one of the signed-in identity's own diagrams.
+   * Reads one diagram the signed-in identity owns or collaborates on.
+   *
+   * One of the three endpoints held to the widened rule. The response carries the caller's `role`
+   * alongside the diagram, which is what lets the editor decide whether to offer the owner-only
+   * controls — renaming, deleting, the share link, managing collaborators. That is presentational
+   * only: every one of those routes re-derives the rule server-side, so a client that ignored the
+   * field and rendered the controls anyway would simply receive `404`s.
    *
    * @param context Hono request context carrying the verified identity, the untrusted `id` path
    *   parameter and the diagram service.
-   * @returns A `200` response carrying the diagram.
-   * @throws {ProblemDetailsError} `404` when the id is malformed, unknown, or belongs to another
-   *   identity — all three reported identically.
+   * @returns A `200` response carrying the diagram and the caller's role on it.
+   * @throws {ProblemDetailsError} `404` when the id is malformed, unknown, or the caller neither
+   *   owns the diagram nor collaborates on it — all three reported identically.
    * @throws {NullError} When mounted without the Access middleware in front of it.
-   * @throws {Error} When the repository cannot read the row.
+   * @throws {Error} When a repository cannot read its rows.
    */
   router.get('/:id', async (context) => {
     const id = context.req.param('id');
-    const diagram = await context.var.DIAGRAM_SERVICE.get(currentIdentityEmail(context), id);
+    const { diagram, role } = await context.var.DIAGRAM_SERVICE.getAccessible(
+      currentIdentityEmail(context),
+      id
+    );
 
-    // An id and the operation are enough to correlate a request. The graph, title and verified
-    // identity are user content and do not belong in an operational log.
-    context.var.LOGGER.info('diagram_opened', { diagramId: diagram.id, via: VIA });
-    return context.json({ diagram });
+    // An id, the operation and the role are enough to correlate a request and tell an owner's own
+    // read apart from a collaborator's. The graph, title and verified identity are user content
+    // and do not belong in an operational log.
+    context.var.LOGGER.info('diagram_opened', { diagramId: diagram.id, role, via: VIA });
+    return context.json({ diagram, role });
   });
 
   /**
@@ -340,6 +392,102 @@ export function createDiagramsRouter(): Hono<AppBindings> {
     await context.var.SHARE_SERVICE.revoke(currentIdentityEmail(context), id);
 
     context.var.LOGGER.info('diagram_share_revoked', { diagramId: id, via: VIA });
+    return new Response(null, { status: 204 });
+  });
+
+  /**
+   * Lists who has been granted edit access to the diagram.
+   *
+   * Readable by the owner **or** any of its collaborators, unlike the share routes above, which are
+   * owner-only. Somebody editing a diagram alongside other people has a legitimate reason to know
+   * who those people are; a shared document whose other editors are hidden reads as a private one
+   * that changes by itself.
+   *
+   * @param context Hono request context carrying the verified identity, the untrusted `id` path
+   *   parameter and the collaborator service.
+   * @returns A `200` response carrying the diagram's collaborators, oldest grant first.
+   * @throws {ProblemDetailsError} `404` when the diagram is malformed, unknown, or the caller
+   *   neither owns it nor collaborates on it.
+   * @throws {NullError} When mounted without the Access middleware in front of it.
+   * @throws {Error} When the repository cannot read the rows.
+   */
+  router.get('/:id/collaborators', async (context) =>
+    context.json({
+      collaborators: await context.var.COLLABORATOR_SERVICE.list(
+        currentIdentityEmail(context),
+        context.req.param('id')
+      )
+    })
+  );
+
+  /**
+   * Grants a previously signed-in identity edit access to the diagram.
+   *
+   * Owner-only, and distinct from `POST /:id/share` in both authority and effect: that mints an
+   * anonymous read-only link for whoever holds it, while this names one verified identity and lets
+   * them edit. The two are separate routes because they are separate concepts, and the client keeps
+   * them visibly separate for the same reason.
+   *
+   * @param context Hono request context carrying the verified identity, the untrusted `id` path
+   *   parameter, the bounded JSON body and the collaborator service.
+   * @returns A `201` response carrying the grant. `201` even when the grant already existed: the
+   *   operation is idempotent, the client asked for a state that is now true, and reporting a
+   *   conflict would make it special-case an outcome it already has.
+   * @throws {ProblemDetailsError} `400` when the body is not an object or names the owner's own
+   *   address, `422` when the email is malformed, and `404` when the diagram is malformed, unknown
+   *   or not the caller's — **or** when the named identity has never signed in, which carries its
+   *   own actionable message rather than the uniform refusal.
+   * @throws {NullError} When mounted without the Access middleware in front of it.
+   * @throws {Error} When the repository cannot read or write the rows.
+   */
+  router.post('/:id/collaborators', async (context) => {
+    const collaborator = await context.var.COLLABORATOR_SERVICE.add(
+      currentIdentityEmail(context),
+      context.req.param('id'),
+      await readJsonBody(context.req.raw)
+    );
+
+    // The diagram id and the affected address, and nothing else. The email is the subject of the
+    // event rather than incidental content, so an operator can answer "who was given access to
+    // this diagram" — but no graph content reaches an operational log, here or anywhere.
+    context.var.LOGGER.info('collaborator_added', {
+      collaboratorEmail: collaborator.collaboratorEmail,
+      diagramId: collaborator.diagramId,
+      via: VIA
+    });
+    return context.json({ collaborator }, 201);
+  });
+
+  /**
+   * Revokes one identity's edit access to the diagram.
+   *
+   * Two callers may reach this and no others: the owner removing anybody, and a collaborator
+   * removing themselves — the "Leave diagram" path. The service decides which, before any row is
+   * touched; this handler adds no rule of its own.
+   *
+   * The email is taken from the path rather than a body because it identifies the resource being
+   * deleted, and `DELETE` with a body is poorly supported by intermediaries. Hono has already
+   * percent-decoded the parameter, so the service receives the address as it was written.
+   *
+   * @param context Hono request context carrying the verified identity, the untrusted `id` and
+   *   `email` path parameters and the collaborator service.
+   * @returns A `204` response with no body, because there is nothing left to describe.
+   * @throws {ProblemDetailsError} `422` when the email is malformed, and `404` when the diagram is
+   *   malformed, unknown or unreachable by the caller, when a collaborator named somebody other
+   *   than themselves, or when no such grant exists.
+   * @throws {NullError} When mounted without the Access middleware in front of it.
+   * @throws {Error} When the repository cannot read or write the rows.
+   */
+  router.delete('/:id/collaborators/:email', async (context) => {
+    const id = context.req.param('id');
+    const email = context.req.param('email');
+    await context.var.COLLABORATOR_SERVICE.remove(currentIdentityEmail(context), id, email);
+
+    context.var.LOGGER.info('collaborator_removed', {
+      collaboratorEmail: email,
+      diagramId: id,
+      via: VIA
+    });
     return new Response(null, { status: 204 });
   });
 

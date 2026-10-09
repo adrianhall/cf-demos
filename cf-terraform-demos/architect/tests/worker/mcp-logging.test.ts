@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DiagramService } from '../../src/worker/application/diagram-service.ts';
 import { ShareService } from '../../src/worker/application/share-service.ts';
 import {
   addEdgeTool,
@@ -20,8 +19,8 @@ import {
   updateEdgeTool,
   updateNodeTool
 } from '../../src/worker/mcp/tools.ts';
+import { buildDiagramService } from './build-diagram-service.ts';
 import { FakeDiagramRepository } from './fake-diagram-repository.ts';
-import { FakeDiagramSessions } from './fake-diagram-sessions.ts';
 import { FakeShareRepository } from './fake-share-repository.ts';
 
 /**
@@ -128,11 +127,7 @@ async function exerciseEveryTool(): Promise<{
 }> {
   const entries: LogEntry[] = [];
   const shareRepository = new FakeShareRepository();
-  const diagramService = new DiagramService(
-    new FakeDiagramRepository(),
-    shareRepository,
-    new FakeDiagramSessions()
-  );
+  const diagramService = buildDiagramService(new FakeDiagramRepository(), shareRepository).service;
   const context: McpToolContext = {
     actorEmail: ALICE,
     diagrams: diagramService,

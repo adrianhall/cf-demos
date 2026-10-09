@@ -1081,6 +1081,24 @@ button {
   margin-left: auto;
 }
 
+/* The editor controls exceed a phone viewport as one unbroken row. Let this group wrap within the
+   toolbar at narrow widths rather than widening the whole editor and leaving zoom/layout controls
+   off-screen. The end group already wraps onto its own row through `.toolbar`'s flex-wrap; this
+   names the one child that must also wrap internally. */
+@media (max-width: 640px) {
+  .toolbar__group--editor-controls {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+
+  /* Separators distinguish clusters on one row, and become stray vertical marks at the beginning
+     or end of a wrapped line. Hiding them on a phone keeps every control visible without the wrap
+     looking like five broken groups. */
+  .toolbar__group--editor-controls .toolbar__separator {
+    display: none;
+  }
+}
+
 /* Combined with .toolbar__button for consistent icon-button sizing/border (Bug 6); the orange
    `color` tints the icon's `currentColor` stroke, echoing the original text logo's brand color. */
 .toolbar__logo {

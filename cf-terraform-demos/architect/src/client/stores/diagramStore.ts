@@ -14,6 +14,7 @@ import {
   type Viewport
 } from '@xyflow/react';
 import { CF_EDGE_TYPE } from '../../graph-element-types.ts';
+import type { DiagramRole } from '../api/diagrams.ts';
 import { chooseConnectionHandles, validateConnection } from '../components/editor/connect.ts';
 import type { CFEdgeData, CFNodeData } from '../components/editor/types.ts';
 import {
@@ -54,6 +55,20 @@ interface DiagramState {
    * off a separate flag that could disagree with it.
    */
   diagramId: string | null;
+  /**
+   * What the signed-in identity may do with the loaded diagram.
+   *
+   * Server-supplied, never derived here: `GET /api/diagrams/:id` returns it alongside the diagram.
+   * The toolbar reads it to decide whether to offer the owner-only controls — renaming, the share
+   * link, and managing who else may edit. That is presentational only; every one of those endpoints
+   * re-derives the rule from the verified Access identity, so hiding a control is a courtesy rather
+   * than the enforcement.
+   *
+   * `'owner'` before a diagram has loaded, which is the safe default for a presentational flag: a
+   * control that should have been hidden merely answers `404` when used, whereas defaulting the
+   * other way would hide an owner's own controls for as long as the load took.
+   */
+  role: DiagramRole;
   /**
    * Editable title, shown in the toolbar and saved on its own debounce.
    */
@@ -160,6 +175,10 @@ interface DiagramActions {
    * @param updatedAt Server-recorded timestamp of the version being loaded, or `null` when the
    *   caller has none — the anonymous share viewer, which receives no timestamp and opens no live
    *   channel to compare one against.
+   * @param role What the signed-in identity may do with this diagram, as the server reported it.
+   *   Defaults to `'owner'`, which is what the anonymous share viewer loads with: that posture is
+   *   read-only through the `readOnly` prop already, and it renders no toolbar control this flag
+   *   gates, so the value is never consulted there.
    * @returns Nothing. Dirty state and history are cleared, because what has just been loaded is
    *   exactly what the server holds and the previous diagram's history belongs to another
    *   document.
@@ -171,7 +190,8 @@ interface DiagramActions {
     nodes: Node<CFNodeData>[],
     edges: Edge<CFEdgeData>[],
     viewport: Viewport,
-    updatedAt?: string | null
+    updatedAt?: string | null,
+    role?: DiagramRole
   ) => void;
   /**
    * Replaces the graph with one an agent changed on the server, if it is genuinely newer.
@@ -434,6 +454,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   printMode: false,
   propertiesOpen: false,
   redoStack: [],
+  role: 'owner',
   saveError: null,
   saving: false,
   selectedEdgeId: null,
@@ -443,7 +464,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
   updatedAt: null,
   viewport: { x: 0, y: 0, zoom: 1 },
 
-  setDiagram: (id, title, description, nodes, edges, viewport, updatedAt = null) =>
+  setDiagram: (id, title, description, nodes, edges, viewport, updatedAt = null, role = 'owner') =>
     set({
       description,
       diagramId: id,
@@ -451,6 +472,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       edges,
       nodes,
       redoStack: [],
+      role,
       title,
       undoStack: [],
       updatedAt,

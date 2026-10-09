@@ -1,5 +1,6 @@
 import { notFound } from '@adrianhall/cloudflare-toolkit/errors';
 import { BLUEPRINT_MAP } from '../../blueprints.ts';
+import type { AccessibleDiagram } from '../domain/collaborator.ts';
 import {
   validateCreateDiagramInput,
   validateDiagramId,
@@ -12,9 +13,21 @@ import {
   type GraphData,
   validateGraphDataInput
 } from '../domain/graph.ts';
+import type { CollaboratorService } from './collaborator-service.ts';
 import type { DiagramRepository } from './ports/diagram-repository.ts';
 import type { DiagramSessionPort } from './ports/diagram-session.ts';
 import type { ShareRepository } from './ports/share-repository.ts';
+
+/**
+ * The widened access rule this service borrows, and no more of the collaboration surface.
+ *
+ * Narrowed with `Pick` rather than taking the whole {@link CollaboratorService}, so granting or
+ * revoking edit access can never be reached from a diagram use case. The rule itself is written
+ * once, in `./collaborator-service.ts`; this service calls it rather than restating it, which is
+ * what keeps "a collaborator may read this" from acquiring a second spelling that could drift from
+ * the first.
+ */
+type DiagramAccessRule = Pick<CollaboratorService, 'requireAccessible'>;
 
 /**
  * One pure graph mutation, as {@link DiagramService.mutateGraph} accepts it.
@@ -43,12 +56,27 @@ export type GraphMutation = (graph: GraphData) => GraphData;
  *   untrusted arguments and get identical rules, as an in-process call rather than an internal HTTP
  *   round trip.
  * - **Authorization.** Every method takes the verified actor and answers `404` for a diagram that
- *   either does not exist or belongs to somebody else. The two cases are deliberately
+ *   either does not exist or is one the actor may not reach. The two cases are deliberately
  *   indistinguishable: a `403` for the second would confirm that a guessed id is real, which turns
  *   the API into an enumeration oracle for other people's diagram ids.
  *
- * The service depends only on {@link DiagramRepository}, never on D1, so the ownership rule is
- * written once, above storage, instead of being repeated in every query.
+ * ## Two access rules, deliberately
+ *
+ * Now that collaborators exist, "may this actor reach this diagram?" has two answers depending on
+ * what they are trying to do, and this service keeps both rather than widening one:
+ *
+ * - {@link DiagramService.requireOwned} — the narrow rule, unchanged. The actor must own the diagram.
+ *   Rename, delete, duplicate, share-link management and collaborator management all keep it,
+ *   because each decides what the diagram _is_ or who may reach it, rather than what it contains.
+ * - {@link DiagramAccessRule} — the widened rule, borrowed from `./collaborator-service.ts` rather
+ *   than restated here. Owner or editor. Exactly three surfaces use it: reading a diagram, saving
+ *   its graph, and opening its live session — which is what collaborating on a document means.
+ *
+ * Which rule a method is held to is visible on its first line, and keeping two named rules rather
+ * than one with a flag is what makes that readable.
+ *
+ * The service depends only on ports and that one borrowed rule, never on D1, so both rules live
+ * above storage instead of being repeated in every query.
  */
 export class DiagramService {
   /**
@@ -62,11 +90,15 @@ export class DiagramService {
    *   and to push a graph an agent changed. An interface rather than a Durable Object namespace, so
    *   this service — and every test of it — stays independent of the coordination product; see
    *   `./ports/diagram-session.ts`.
+   * @param access The widened owner-or-editor rule; see {@link DiagramAccessRule}. Injected rather
+   *   than implemented here, so there is exactly one definition of "may reach this diagram" and
+   *   this service cannot drift from the service that manages the grants it depends on.
    */
   constructor(
     private readonly repository: DiagramRepository,
     private readonly shares: ShareRepository,
-    private readonly sessions: DiagramSessionPort
+    private readonly sessions: DiagramSessionPort,
+    private readonly access: DiagramAccessRule
   ) {}
 
   /**
@@ -113,17 +145,70 @@ export class DiagramService {
   }
 
   /**
-   * Reads one of the actor's own diagrams.
+   * Reads a diagram the actor owns or collaborates on.
+   *
+   * One of the three methods held to the widened rule rather than the narrow one. Reading is the
+   * minimum a collaborator must be able to do — a grant that did not permit it would permit nothing
+   * — so this is where the two rules first diverge.
    *
    * @param actorEmail Verified Cloudflare Access identity making the request.
    * @param id Unvalidated diagram id from the request path.
    * @returns The diagram.
    * @throws {ProblemDetailsError} `notFound()` (404) when the id is malformed, no diagram has it,
-   *   or the diagram belongs to another identity — all three reported identically.
-   * @throws {Error} When the repository cannot read the row.
+   *   or the actor neither owns it nor holds a grant on it — all three reported identically.
+   * @throws {Error} When a repository cannot read its rows.
    */
   async get(actorEmail: string, id: string): Promise<Diagram> {
+    return (await this.access.requireAccessible(actorEmail, id)).diagram;
+  }
+
+  /**
+   * Reads a diagram the actor **owns**, refusing a collaborator with the same uniform `404`.
+   *
+   * The narrow-rule sibling of {@link DiagramService.get}, and it exists because widening `get`
+   * silently widened everything built on it. Two callers need the narrow rule and would otherwise
+   * have inherited the wide one without anybody deciding to:
+   *
+   * - `./share-service.ts`, whose status, rotation and revocation are owner-only. A collaborator who
+   *   could mint a public read-only link to somebody else's diagram would be handing out access the
+   *   owner never granted and cannot see.
+   * - The MCP read and export tools (`../mcp/tools.ts`). An agent acts with the authority of the
+   *   identity that configured it, and whether that authority extends to diagrams that identity
+   *   merely collaborates on is a decision about agent scope rather than a consequence of adding
+   *   collaborators. The live-operations phase takes it deliberately; until then the tools stay
+   *   where they were.
+   *
+   * Naming it, rather than leaving those callers on a `get` that quietly changed meaning, is the
+   * point: the narrow rule is now something a call site asks for.
+   *
+   * @param actorEmail Verified Cloudflare Access identity making the request.
+   * @param id Unvalidated diagram id from the request path.
+   * @returns The diagram, which the actor owns.
+   * @throws {ProblemDetailsError} `notFound()` (404) when the id is malformed, no diagram has it,
+   *   or the actor is anything other than its owner — including a collaborator on it.
+   * @throws {Error} When the repository cannot read the row.
+   */
+  async getOwned(actorEmail: string, id: string): Promise<Diagram> {
     return this.requireOwned(actorEmail, id);
+  }
+
+  /**
+   * Reads a diagram the actor owns or collaborates on, with the role they hold on it.
+   *
+   * The same read as {@link DiagramService.get}, keeping the role the rule already determined. It
+   * exists for one caller: the editor's own load, where the client needs to know whether to offer
+   * owner-only controls. Deriving that from a second request would be a second answer that could
+   * disagree with this one.
+   *
+   * @param actorEmail Verified Cloudflare Access identity making the request.
+   * @param id Unvalidated diagram id from the request path.
+   * @returns The diagram and the actor's role on it.
+   * @throws {ProblemDetailsError} `notFound()` (404) under exactly the conditions
+   *   {@link DiagramService.get} refuses.
+   * @throws {Error} When a repository cannot read its rows.
+   */
+  async getAccessible(actorEmail: string, id: string): Promise<AccessibleDiagram> {
+    return this.access.requireAccessible(actorEmail, id);
   }
 
   /**
@@ -180,7 +265,15 @@ export class DiagramService {
   }
 
   /**
-   * Replaces one of the actor's own diagrams' graph — the editor's autosave path.
+   * Replaces the graph of a diagram the actor owns or collaborates on — the editor's autosave.
+   *
+   * The second of the three widened methods, and the one that makes a grant mean "edit" rather than
+   * "view". Note what stays narrow alongside it: a collaborator may replace this diagram's contents
+   * but cannot rename or delete it, which is the whole of the distinction between editing a
+   * document and administering it.
+   *
+   * The row is still written by id, and the stored `ownerEmail` is untouched: a collaborator's save
+   * does not transfer ownership, and nothing here lets it.
    *
    * @param actorEmail Verified Cloudflare Access identity making the request.
    * @param id Unvalidated diagram id from the request path.
@@ -188,12 +281,12 @@ export class DiagramService {
    * @returns The new `updatedAt` timestamp, which the editor shows as its save state.
    * @throws {ProblemDetailsError} `badRequest()` (400) or `unprocessableContent()` (422) when the
    *   body or the decoded graph is invalid, and `notFound()` (404) when the diagram is absent or
-   *   foreign.
-   * @throws {Error} When the repository cannot read or write the row.
+   *   the actor may not reach it.
+   * @throws {Error} When a repository cannot read or write its rows.
    */
   async saveGraph(actorEmail: string, id: string, body: unknown): Promise<string> {
     const graphData = validateGraphDataInput(body);
-    const diagram = await this.requireOwned(actorEmail, id);
+    const { diagram } = await this.access.requireAccessible(actorEmail, id);
 
     const updatedAt = await this.repository.replaceGraph(diagram.id, graphData);
     if (updatedAt === null) {
@@ -255,12 +348,13 @@ export class DiagramService {
   }
 
   /**
-   * Opens an authorized live connection to one of the actor's own diagrams.
+   * Opens an authorized live connection to a diagram the actor owns or collaborates on.
    *
-   * Ownership is checked here, before the upgrade is forwarded, and that is the whole of this
-   * method's authorization work — the session itself never re-derives it. Putting the check in the
-   * use case rather than in the route is what makes it the same check `get`, `saveGraph` and every
-   * MCP tool perform: a connection is a way of reading a diagram, so it answers the identical
+   * The third widened method. Authorization happens here, before the upgrade is forwarded, and that
+   * is the whole of it — the session itself never re-derives the decision, because it has no route
+   * of its own and can only be reached through a Worker that already took it. Putting the check in
+   * the use case rather than in the route is what makes it the same check `get` and `saveGraph`
+   * perform: a connection is a way of reading and editing a diagram, so it answers the identical
    * non-enumerating `404`.
    *
    * @param actorEmail Verified Cloudflare Access identity opening the connection.
@@ -269,13 +363,13 @@ export class DiagramService {
    *   the protocol switch against it. Whatever identity headers it carries are discarded by the
    *   adapter before the session sees it.
    * @returns The `101 Switching Protocols` response, to be returned to the browser unchanged.
-   * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown or
-   *   owned by another identity.
-   * @throws {Error} When the repository cannot read the row or the session cannot accept the
+   * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown, or the
+   *   actor neither owns it nor holds a grant on it.
+   * @throws {Error} When a repository cannot read its rows or the session cannot accept the
    *   connection.
    */
   async connectLiveSession(actorEmail: string, id: string, request: Request): Promise<Response> {
-    const diagram = await this.requireOwned(actorEmail, id);
+    const { diagram } = await this.access.requireAccessible(actorEmail, id);
 
     return this.sessions.connect(diagram.id, request, actorEmail);
   }
@@ -376,9 +470,15 @@ export class DiagramService {
   /**
    * Resolves a diagram the actor owns, or refuses with the uniform `404`.
    *
-   * This is the only place the ownership comparison is written. Every public method above routes
-   * through it, so there is no use case that can read or write across the ownership boundary and no
-   * second spelling of the rule to keep in step.
+   * The narrow rule, and the only place the ownership comparison itself is written. Every method
+   * above that must stay owner-only routes through it: rename, delete, duplicate, and — through
+   * `./share-service.ts` and `./collaborator-service.ts` reaching their own equivalents — the share
+   * link and the collaborator list.
+   *
+   * {@link DiagramService.mutateGraph} deliberately still uses it. An MCP tool acts with the
+   * authority of the identity that configured it, and widening agent writes to every diagram that
+   * identity collaborates on is a decision about agent scope rather than a consequence of adding
+   * collaborators; the live-operations phase takes it explicitly.
    *
    * @param actorEmail Verified Cloudflare Access identity making the request.
    * @param id Unvalidated diagram id from the request path.
