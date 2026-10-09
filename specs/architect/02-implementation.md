@@ -730,16 +730,195 @@ Three small refactors made guards testable without weakening them: `recordToolCo
 
 ## 12. Phases 16–20 — Collaboration
 
-These phases implement `09C-COLLABORATIVE-EDITING.md`, extending `DiagramSession` rather than
-creating another per-diagram object.
+These phases implement `09C-COLLABORATIVE-EDITING.md`, extending the existing
+`DiagramSession` rather than creating another per-diagram object. The source document was written
+for a Wrangler deployment and a flatter Worker layout. Its Wrangler migration/configuration
+instructions are void here; [`05-collaboration-spike.md`](./05-collaboration-spike.md) records the
+current `cf` + Terraform and four-tier equivalents, and is the authority wherever it differs from
+the source text.
 
-- **Phase 16:** spike current Hibernation WebSocket/RPC/test behaviour and write the report.
-- **Phase 17:** add collaborator migration, ports/adapters/services, owner-only API and UI.
-- **Phase 18:** turn the session into the serialized operation path; persist D1 before broadcast;
-  keep REST whole-graph save only as resilience fallback.
-- **Phase 19:** add ephemeral presence, cursor, selection and remote-cursor UI.
-- **Phase 20:** verify operation ordering, stale-target rejection, reconnect snapshots, owner vs
-  collaborator policy, hibernation reconstruction and no durable second graph copy.
+### Phase 16 — Collaboration/DO spike — **complete**
+
+#### Goal
+
+Re-confirm the Durable Object lifecycle, input-gate, write-ordering, and multi-client test
+behaviour that collaboration depends on before production code changes the existing one-way live
+session into a bidirectional coordinator.
+
+#### Deliverables
+
+1. [`05-collaboration-spike.md`](./05-collaboration-spike.md), backed by current Cloudflare
+   documentation and throwaway real-`workerd` probes, covering disposable class fields (including
+   uncaught-exception loss), the exact synchronous/`await` input-gate boundary, same-node races,
+   ordered persists, multi-client support, and response-body cleanup.
+2. A concrete four-tier and `cf`/Terraform delta list for Phases 17–20, including the root D1
+   migration helper, the next migration filename, and the change from the one-way
+   `notifyGraphUpdated` seam to typed bidirectional session operations.
+3. No production behaviour change and no retained probe code. The report, not a test-only second
+   `DiagramSession`, is the durable result of this phase.
+
+#### Tests
+
+- Throwaway integration probes run against the configured `@cloudflare/vitest-plugin` real
+  `workerd` project with two concurrent calls to one object, asserting two non-interleaved
+  synchronous mutations and one deterministic final same-node winner.
+- An adversarial slow-first/fast-second persist proves a deliberately unchained implementation
+  final-clobbers the newer graph while the ordered chain converges correctly. The probe separately
+  distinguishes fresh-at-link-start reads from enqueue-time capture; it must not overclaim that an
+  already-started slow write cannot temporarily contain an older graph.
+- Multiple simultaneous sockets work under the existing serialized-file, finite-timeout and
+  `evictAllDurableObjects({ webSockets: 'close' })` setup. The probe records that every response
+  body must be consumed before eviction.
+
+#### Exit criteria
+
+The current documentation and the actual toolchain support the collaboration design, the known
+write-chain/error-boundary correction is recorded rather than carried as folklore, every throwaway
+probe has been deleted, and `pnpm fix`, `pnpm check`, `pnpm test`, and `pnpm test:coverage` pass.
+
+### Phase 17 — Collaborator model
+
+#### Goal
+
+Let an owner grant a previously signed-in identity edit access to one diagram without changing the
+anonymous read-only share-link model or adding a new identity/invitation system.
+
+#### Deliverables
+
+1. Add `migrations/0003_create_diagram_collaborators.sql`. Run it locally with `pnpm
+   migrate:local` and remotely with `pnpm migrate:remote`, both of which use the repository-root
+   `scripts/d1-migrate.ts` helper and `cf`; do not add a Wrangler script or Terraform schema
+   resource.
+2. Map the source's combined collaborator repository into Architect's tiers: collaborator domain
+   values and validation in `domain/`, application ports and use cases in `application/`, and D1
+   implementation in `infrastructure/`. Compose the service in `src/worker/index.ts`; routes do not
+   construct adapters.
+3. Add accessible-diagram application queries returning `owner` or `editor` role while retaining
+   the existing owner-only rule for rename, delete, anonymous share management, and collaborator
+   management. Use the accessible rule for graph read, the REST graph fallback, and live-upgrade
+   authorization.
+4. Add owner/collaborator API routes, a dashboard “Shared with me” section, and an editor
+   collaborators modal whose add/remove/leave paths distinguish authenticated editing from an
+   anonymous read-only link.
+
+#### Tests
+
+- A non-owner/non-collaborator receives the same non-enumerating `404` posture as an absent
+  diagram.
+- A collaborator can read, live-connect, and edit, but cannot rename, delete, manage share links,
+  or manage another collaborator.
+- An owner cannot add themselves; adding a never-signed-in email gives the documented safe
+  response; adding an existing collaborator is idempotent; and a collaborator can leave.
+
+#### Exit criteria
+
+An owner can add a second known identity, that identity sees the diagram under “Shared with me,” and
+all collaborator access is enforced through application services rather than an API-only rule.
+
+### Phase 18 — Bidirectional live operations
+
+#### Goal
+
+Make the existing `DiagramSession` the one serialized graph-write path for browser, REST fallback,
+and MCP mutations while D1 remains the diagram's only durable graph copy.
+
+#### Deliverables
+
+1. Replace the one-way `notifyGraphUpdated` model with disposable in-memory graph/owner metadata,
+   sequence and a recoverable per-object write-chain tail. Hydrate once after cold start with
+   `blockConcurrencyWhile()`; do not add a Durable Object graph schema or `ctx.storage` graph copy.
+2. Replace the `DiagramSessionPort` notification method with typed RPC operations such as
+   `applyOperation`, `applyWholeGraphReplace`, and `getSnapshot`; retain `connect` as a forwarded
+   upgrade request. The infrastructure adapter remains the only layer that knows `getByName`.
+3. Grow `src/live-sync-protocol.ts` into a shared discriminated client/server protocol with snapshot,
+   operation-applied and operation-rejected frames. Keep verified identity attachment pinning and
+   named inbound-header scrubbing.
+4. Apply a graph mutation synchronously with no `await` between reading and replacing the working
+   graph, then await its ordered D1 persist **before** broadcasting the accepted operation or
+   settling the handler. This repository's persist-before-broadcast rule prevents a connected client
+   rendering a change that a reload would not show after a failed D1 write. A failed persist must
+   report safely and leave a caught chain tail that later operations can still join; expected
+   stale-target and validation errors become safe rejections rather than uncaught object failures.
+5. Move the REST whole-graph save fallback and every MCP graph mutation/auto-layout through that
+   same session port. Remove the obsolete direct-D1-then-`notifyGraphUpdated` path.
+6. Send browser edits as debounced operations while connected, reconcile the echoed client operation
+   id, and use REST whole-graph save only until a live socket is connected or reconnects.
+
+#### Tests
+
+- Every granular mutation kind exercises the shared serialization path; two concurrent same-target
+  operations have one last-applied winner, different targets both survive, and a stale target gets
+  `operation_rejected` without closing its socket.
+- The slow-first/fast-second counter-example fails against an unchained test double and passes
+  against the chain. A three-operation probe separately proves why each queued link reads current
+  graph state when it begins, without claiming a write already in flight is retroactively replaced.
+- An MCP mutation and a connected human mutation converge in browser frames and D1; the REST
+  fallback has the same property; a post-eviction session rehydrates D1 rather than an empty graph.
+
+#### Exit criteria
+
+Two simulated editors and an MCP tool against one diagram converge through one `DiagramSession`
+write path, D1 ends in last-applied state, and no graph has a second durable copy.
+
+### Phase 19 — Presence and cursors
+
+#### Goal
+
+Add lightweight, live-only awareness of connected collaborators without turning presence into graph
+state or durable data.
+
+#### Deliverables
+
+1. Add stable-per-session collaborator colours, connection snapshots/join/leave, and relayed
+   throttled cursor and selection frames to the bidirectional session protocol.
+2. Build the editor avatar stack, remote cursor overlay, and advisory selected node/edge highlight
+   using the shared frames and existing UI primitives.
+3. Reconstruct needed identity from socket attachments after hibernation. Presence/cursor/selection
+   data never enters D1 or Durable Object storage and may rebuild from connected clients.
+
+#### Tests
+
+- A new socket receives an accurate presence snapshot; a disconnected socket produces
+  `presence_left` for the remaining clients.
+- Cursor/selection delivery is scoped to the diagram and adds no D1 graph write. Hibernation and
+  reconnect rebuild the observable state without trusting a client-supplied identity.
+
+#### Exit criteria
+
+Two authenticated browser profiles viewing one shared diagram see each other’s presence, cursor and
+selection while the graph remains D1's only durable copy.
+
+### Phase 20 — Collaboration verification
+
+#### Goal
+
+Close the collaboration feature as a documented, fully verified extension of the existing demo.
+
+#### Deliverables
+
+1. Close coverage gaps across all three Vitest projects and retain at least 80% statements,
+   branches, functions and lines for authored source.
+2. Update `README.md`, `DEMO.md`, and `EXPLAIN-DEMO.md` for collaborator routes, the presenter
+   flow, node/edge last-applied-wins, the deliberate no-CRDT boundary, D1-only durability, and the
+   relationship to MCP live sync.
+3. Perform a two-identity browser smoke review covering grant/revoke or leave, simultaneous
+   node/edge edits, presence/cursors, stale rejection and an MCP operation while both editors are
+   open.
+
+#### Tests
+
+- Verify operation ordering and the unchained clobber counter-example, stale-target rejection,
+  reconnect snapshots, owner/editor policy, hibernation reconstruction, error-chain recovery, and
+  absence of a Durable Object graph store.
+- Retain fresh ids per durable session, serialized integration files, finite test/hook timeouts,
+  `evictAllDurableObjects({ webSockets: 'close' })`, and body draining for every response before
+  teardown.
+
+#### Exit criteria
+
+`pnpm fix`, `pnpm check`, `pnpm test`, and `pnpm test:coverage` pass; the coverage gate remains at
+least 80% on every metric; manual two-identity review passes; and this `cf` + Terraform demo has no
+Wrangler command, config file, generation step, or Terraform plan requirement.
 
 ## 13. Phases 21–26 — AI assistance
 
