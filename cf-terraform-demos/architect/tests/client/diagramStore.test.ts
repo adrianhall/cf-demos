@@ -580,6 +580,40 @@ describe('applying a remote snapshot', () => {
   });
 });
 
+describe('acknowledging an optimistic operation', () => {
+  beforeEach(() => {
+    useDiagramStore
+      .getState()
+      .setDiagram('d1', 'Live', '', [makeNode('api')], [], { x: 0, y: 0, zoom: 1 });
+    useDiagramStore.setState({ liveSequence: 3 });
+  });
+
+  it('advances the stream and records the server timestamp without applying anything twice', () => {
+    const result = useDiagramStore
+      .getState()
+      .acknowledgeRemoteOperation('2026-02-01T00:00:00.000Z', 4);
+
+    const state = useDiagramStore.getState();
+    expect(result).toBe('acknowledged');
+    expect(state.liveSequence).toBe(4);
+    expect(state.updatedAt).toBe('2026-02-01T00:00:00.000Z');
+    expect(state.nodes.map((node) => node.id)).toEqual(['api']);
+  });
+
+  it('reports an already-recorded echo as a duplicate', () => {
+    expect(
+      useDiagramStore.getState().acknowledgeRemoteOperation('2026-02-01T00:00:00.000Z', 3)
+    ).toBe('duplicate');
+  });
+
+  it('reports a missed intervening frame as a gap', () => {
+    expect(
+      useDiagramStore.getState().acknowledgeRemoteOperation('2026-02-01T00:00:00.000Z', 6)
+    ).toBe('gap');
+    expect(useDiagramStore.getState().liveSequence).toBe(3);
+  });
+});
+
 describe('applying a remote operation', () => {
   beforeEach(() => {
     useDiagramStore

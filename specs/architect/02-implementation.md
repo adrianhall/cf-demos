@@ -904,7 +904,7 @@ than on the next reload.
 Two simulated editors and an MCP tool against one diagram converge through one `DiagramSession`
 write path, and a rejected operation disturbs neither connection.
 
-#### Phase 18c — Client dispatch and authorization parity
+#### Phase 18c — Client dispatch and authorization parity — **complete**
 
 ##### Goal
 

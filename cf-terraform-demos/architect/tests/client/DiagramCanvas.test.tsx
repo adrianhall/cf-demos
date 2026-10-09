@@ -269,11 +269,184 @@ describe('framing the diagram on load', () => {
 });
 
 describe('autosaving', () => {
-  it('saves the whole graph shortly after a change', async () => {
+  it('sends debounced operations while connected and stops using the REST save', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     respondWithDiagram();
     render(<DiagramCanvas diagramId="d1" />);
     await vi.waitFor(() => expect(useDiagramStore.getState().diagramId).toBe('d1'));
+
+    useDiagramStore.getState().addNode({
+      data: { label: 'Workers', typeId: 'worker' },
+      id: 'n1',
+      position: { x: 16, y: 32 },
+      type: 'cf-node'
+    });
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(mockSaveDiagramGraph).not.toHaveBeenCalled();
+    const sent = JSON.parse(mostRecentSocket().sent[0] as string) as {
+      operation: { input: { id: string; position: { x: number; y: number } }; kind: string };
+      operationId: string;
+      type: string;
+    };
+    expect(sent).toMatchObject({
+      operation: { input: { id: 'n1', position: { x: 16, y: 32 } }, kind: 'add_node' },
+      operationId: expect.any(String) as string,
+      type: 'operation'
+    });
+    // Optimistic until the server echoes acceptance.
+    expect(useDiagramStore.getState().dirty).toBe(true);
+
+    await act(async () => {
+      mostRecentSocket().simulateMessage({
+        actor: 'alice@example.com',
+        operation: sent.operation,
+        operationId: sent.operationId,
+        origin: 'human',
+        sequence: 1,
+        type: 'operation_applied',
+        updatedAt: '2026-02-01T00:00:00.000Z'
+      });
+    });
+
+    expect(useDiagramStore.getState().dirty).toBe(false);
+    expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['n1']);
+  });
+
+  // A remote operation can be ordered before a local operation that this tab already drew and sent.
+  // The canvas must follow the server's order while preserving both optimistic edits.
+  it('reconciles a remote operation that interleaves with a pending local edit', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    respondWithDiagram();
+    render(<DiagramCanvas diagramId="d1" />);
+    await vi.waitFor(() => expect(useDiagramStore.getState().diagramId).toBe('d1'));
+
+    useDiagramStore.getState().addNode({
+      data: { label: 'Mine', typeId: 'worker' },
+      id: 'mine',
+      position: { x: 0, y: 0 },
+      type: 'cf-node'
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    const local = JSON.parse(mostRecentSocket().sent[0] as string) as {
+      operation: Record<string, unknown>;
+      operationId: string;
+    };
+
+    // Somebody else's operation reached the session first.
+    await act(async () => {
+      mostRecentSocket().simulateMessage({
+        actor: 'other@example.com',
+        operation: {
+          input: { id: 'theirs', label: 'Theirs', position: { x: 10, y: 10 }, typeId: 'd1' },
+          kind: 'add_node'
+        },
+        operationId: null,
+        origin: 'human',
+        sequence: 1,
+        type: 'operation_applied',
+        updatedAt: '2026-02-01T00:00:00.000Z'
+      });
+    });
+    expect(mostRecentSocket().sent).toHaveLength(1);
+    expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['theirs', 'mine']);
+
+    // Then the local operation's echo. It is not applied twice, and both remain in server order.
+    await act(async () => {
+      mostRecentSocket().simulateMessage({
+        actor: 'alice@example.com',
+        operation: local.operation,
+        operationId: local.operationId,
+        origin: 'human',
+        sequence: 2,
+        type: 'operation_applied',
+        updatedAt: '2026-02-01T00:00:01.000Z'
+      });
+    });
+
+    expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['theirs', 'mine']);
+    expect(useDiagramStore.getState().dirty).toBe(false);
+  });
+
+  // A rejected optimistic operation must be rolled back to what the session actually holds. The
+  // client asks for a snapshot rather than guessing which part of its optimistic graph to undo.
+  it('requests a snapshot and rolls back an operation the session rejected', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    respondWithDiagram();
+    render(<DiagramCanvas diagramId="d1" />);
+    await vi.waitFor(() => expect(useDiagramStore.getState().diagramId).toBe('d1'));
+
+    useDiagramStore.getState().addNode({
+      data: { label: 'Rejected', typeId: 'worker' },
+      id: 'rejected',
+      position: { x: 0, y: 0 },
+      type: 'cf-node'
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    const local = JSON.parse(mostRecentSocket().sent[0] as string) as { operationId: string };
+
+    await act(async () => {
+      mostRecentSocket().simulateMessage({
+        detail: 'A node with id "rejected" already exists.',
+        operationId: local.operationId,
+        status: 400,
+        type: 'operation_rejected'
+      });
+    });
+    expect(mostRecentSocket().sent.at(-1)).toBe(JSON.stringify({ type: 'resync' }));
+
+    await act(async () => {
+      mostRecentSocket().simulateMessage({
+        actor: null,
+        graphData: EMPTY_GRAPH,
+        origin: null,
+        sequence: 0,
+        type: 'snapshot',
+        updatedAt: '2026-02-01T00:00:00.000Z'
+      });
+    });
+
+    expect(useDiagramStore.getState().nodes).toEqual([]);
+    expect(useDiagramStore.getState().saveError).toContain('already exists');
+  });
+
+  // One batch for a burst, not one frame per keystroke or pointer move. The existing debounce is
+  // reused; only the payload changed from a whole graph to the operations that describe it.
+  it('coalesces a burst into operations when connected', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    respondWithDiagram();
+    render(<DiagramCanvas diagramId="d1" />);
+    await vi.waitFor(() => expect(useDiagramStore.getState().diagramId).toBe('d1'));
+
+    for (let index = 0; index < 3; index += 1) {
+      useDiagramStore.getState().addNode({
+        data: { label: `Node ${index}`, typeId: 'worker' },
+        id: `n${index}`,
+        position: { x: index * 16, y: 0 },
+        type: 'cf-node'
+      });
+      await vi.advanceTimersByTimeAsync(100);
+    }
+    expect(mostRecentSocket().sent).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(mostRecentSocket().sent).toHaveLength(3);
+    expect(
+      mostRecentSocket().sent.map(
+        (payload) =>
+          (JSON.parse(payload) as { operation: { input: { id: string } } }).operation.input.id
+      )
+    ).toEqual(['n0', 'n1', 'n2']);
+    expect(mockSaveDiagramGraph).not.toHaveBeenCalled();
+  });
+
+  it('falls back to saving the whole graph shortly after a change while disconnected', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    respondWithDiagram();
+    render(<DiagramCanvas diagramId="d1" />);
+    await vi.waitFor(() => expect(useDiagramStore.getState().diagramId).toBe('d1'));
+    mostRecentSocket().readyState = FakeWebSocket.CLOSED;
 
     useDiagramStore.getState().addNode({
       data: { label: 'Workers', typeId: 'worker' },
@@ -295,6 +468,7 @@ describe('autosaving', () => {
     respondWithDiagram();
     render(<DiagramCanvas diagramId="d1" />);
     await vi.waitFor(() => expect(useDiagramStore.getState().diagramId).toBe('d1'));
+    mostRecentSocket().readyState = FakeWebSocket.CLOSED;
 
     for (let index = 0; index < 3; index += 1) {
       useDiagramStore.getState().addNode({
@@ -323,6 +497,7 @@ describe('autosaving', () => {
     mockSaveDiagramGraph.mockRejectedValue(rejection);
     render(<DiagramCanvas diagramId="d1" />);
     await vi.waitFor(() => expect(useDiagramStore.getState().diagramId).toBe('d1'));
+    mostRecentSocket().readyState = FakeWebSocket.CLOSED;
 
     useDiagramStore.getState().addNode({
       data: { label: 'Workers', typeId: 'worker' },
@@ -1014,9 +1189,8 @@ describe('live sync', () => {
     expect(mostRecentSocket().url).toBe('ws://localhost/api/diagrams/d1/live');
   });
 
-  // This tab's own edits still go out through the autosave, so receiving a change must not make
-  // it start writing. The one thing it does send is a resync, and only when it has detected that
-  // it can no longer apply operations safely — covered below.
+  // Receiving somebody else's change must not create an outbound write of its own. The socket sends
+  // only changes this tab originated and a resync when it can no longer apply operations safely.
   it('sends nothing in response to an ordinary change', async () => {
     respondWithDiagram();
     await renderLoaded();

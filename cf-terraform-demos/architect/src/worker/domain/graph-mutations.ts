@@ -104,6 +104,12 @@ export interface AddNodeInput {
    * Canvas position for the new node, in flow coordinates.
    */
   position: { x: number; y: number };
+  /**
+   * Optional visual overrides stored in the node's data payload, for example the editor's accent
+   * colour. Kept as JSON fields rather than a UI-specific type because the domain stores them
+   * verbatim and does not interpret their meaning.
+   */
+  style?: Record<string, unknown>;
 }
 
 /**
@@ -124,6 +130,10 @@ export interface NodePatch {
    * New canvas position.
    */
   position?: { x: number; y: number };
+  /**
+   * New visual overrides. An omitted field leaves the existing value alone.
+   */
+  style?: Record<string, unknown>;
 }
 
 /**
@@ -160,6 +170,15 @@ export interface AddEdgeInput {
    * Optional communication protocol hint, for example `'http'` or `'binding'`.
    */
   protocol?: string;
+  /**
+   * Optional React Flow handle on the source node. The editor chooses handles from geometry, and
+   * preserving them is what makes an operation render the same connection every recipient saw.
+   */
+  sourceHandle?: string | null;
+  /**
+   * Optional React Flow handle on the target node, symmetric to {@link sourceHandle}.
+   */
+  targetHandle?: string | null;
 }
 
 /**
@@ -224,7 +243,12 @@ export function addNode(graph: GraphData, input: AddNodeInput): GraphData {
   }
 
   const node: GraphNode = {
-    data: { description: input.description ?? '', label: input.label, typeId: input.typeId },
+    data: {
+      description: input.description ?? '',
+      label: input.label,
+      ...(input.style === undefined ? {} : { style: input.style }),
+      typeId: input.typeId
+    },
     id: input.id ?? crypto.randomUUID(),
     position: input.position,
     // Stamped from the shared constant rather than a re-typed literal. A node stored with any
@@ -259,7 +283,8 @@ export function updateNode(graph: GraphData, nodeId: string, patch: NodePatch): 
     data: {
       ...existing.data,
       ...(patch.label === undefined ? {} : { label: patch.label }),
-      ...(patch.description === undefined ? {} : { description: patch.description })
+      ...(patch.description === undefined ? {} : { description: patch.description }),
+      ...(patch.style === undefined ? {} : { style: patch.style })
     },
     position: patch.position ?? existing.position
   };
@@ -329,7 +354,9 @@ export function addEdge(graph: GraphData, input: AddEdgeInput): GraphData {
     },
     id: input.id ?? crypto.randomUUID(),
     source: input.source,
+    ...(input.sourceHandle === undefined ? {} : { sourceHandle: input.sourceHandle }),
     target: input.target,
+    ...(input.targetHandle === undefined ? {} : { targetHandle: input.targetHandle }),
     type: CF_EDGE_TYPE
   };
 

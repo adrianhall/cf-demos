@@ -81,6 +81,48 @@ function optionalString(source: Record<string, unknown>, field: string): string 
 }
 
 /**
+ * Reads an optional plain-object field.
+ *
+ * @param source Object to read from.
+ * @param field Field name, used verbatim in the error.
+ * @returns A shallow copy of the field, or `undefined` when absent. Copying keeps the validated
+ *   operation independent of the parsed payload a caller could still hold.
+ * @throws {ProblemDetailsError} `badRequest()` (400) when present but not an object.
+ */
+function optionalObject(
+  source: Record<string, unknown>,
+  field: string
+): Record<string, unknown> | undefined {
+  const value = source[field];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isPlainObject(value)) {
+    throw badRequest({ detail: `${field} must be an object.` });
+  }
+  return { ...value };
+}
+
+/**
+ * Reads an optional string-or-null field.
+ *
+ * @param source Object to read from.
+ * @param field Field name, used verbatim in the error.
+ * @returns The string or `null`, or `undefined` when absent.
+ * @throws {ProblemDetailsError} `badRequest()` (400) when present but neither a string nor `null`.
+ */
+function optionalNullableString(
+  source: Record<string, unknown>,
+  field: string
+): string | null | undefined {
+  const value = source[field];
+  if (value === undefined || value === null || typeof value === 'string') {
+    return value;
+  }
+  throw badRequest({ detail: `${field} must be a string or null.` });
+}
+
+/**
  * Reads a required `{ x, y }` position.
  *
  * @param source Object to read from.
@@ -145,6 +187,7 @@ function validateOperation(value: unknown): GraphOperation {
   switch (kind) {
     case 'add_node': {
       const input = isPlainObject(value.input) ? value.input : {};
+      const style = optionalObject(input, 'style');
       return {
         input: {
           ...(optionalString(input, 'id') === undefined ? {} : { id: input.id as string }),
@@ -153,6 +196,7 @@ function validateOperation(value: unknown): GraphOperation {
             : { description: input.description as string }),
           label: requireString(input, 'label'),
           position: requirePosition(input, 'position'),
+          ...(style === undefined ? {} : { style }),
           typeId: requireString(input, 'typeId')
         },
         kind: 'add_node'
@@ -161,6 +205,7 @@ function validateOperation(value: unknown): GraphOperation {
     case 'update_node': {
       const patch = isPlainObject(value.patch) ? value.patch : {};
       const position = optionalPosition(patch, 'position');
+      const style = optionalObject(patch, 'style');
       return {
         kind: 'update_node',
         nodeId: requireString(value, 'nodeId'),
@@ -169,7 +214,8 @@ function validateOperation(value: unknown): GraphOperation {
           ...(optionalString(patch, 'description') === undefined
             ? {}
             : { description: patch.description as string }),
-          ...(position === undefined ? {} : { position })
+          ...(position === undefined ? {} : { position }),
+          ...(style === undefined ? {} : { style })
         }
       };
     }
@@ -177,6 +223,8 @@ function validateOperation(value: unknown): GraphOperation {
       return { kind: 'remove_node', nodeId: requireString(value, 'nodeId') };
     case 'add_edge': {
       const input = isPlainObject(value.input) ? value.input : {};
+      const sourceHandle = optionalNullableString(input, 'sourceHandle');
+      const targetHandle = optionalNullableString(input, 'targetHandle');
       return {
         input: {
           ...(optionalString(input, 'id') === undefined ? {} : { id: input.id as string }),
@@ -189,7 +237,9 @@ function validateOperation(value: unknown): GraphOperation {
             : { protocol: input.protocol as string }),
           edgeType: requireString(input, 'edgeType'),
           source: requireString(input, 'source'),
-          target: requireString(input, 'target')
+          ...(sourceHandle === undefined ? {} : { sourceHandle }),
+          target: requireString(input, 'target'),
+          ...(targetHandle === undefined ? {} : { targetHandle })
         },
         kind: 'add_edge'
       };

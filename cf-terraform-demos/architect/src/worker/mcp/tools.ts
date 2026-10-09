@@ -156,33 +156,31 @@ export async function listDiagramsTool(
 }
 
 /**
- * Reads one diagram the caller owns, including its full graph.
+ * Reads one diagram the caller owns or collaborates on, including its full graph.
  *
  * Shared with the `architect://diagrams/{id}` resource reader in `./server.ts`, because a resource
- * read and a tool call must resolve to the identical owner-scoped lookup. Two spellings of it would
- * be two chances for one to drift open.
+ * read and a tool call must resolve to the identical accessible-diagram lookup. Two spellings of it
+ * would be two chances for one to drift open.
  *
- * Owner-scoped rather than owner-or-collaborator, deliberately, even though a browser reading the
- * same diagram is now held to the wider rule. An agent acts with the full authority of the identity
- * that configured it, so extending it to every diagram that identity merely collaborates on would
- * quietly widen what somebody else's agent can read inside _your_ diagram. That is a decision about
- * agent scope rather than a consequence of adding collaborators, and the live-operations phase
- * takes it explicitly; until then the tools stay where they were. See
- * `../application/diagram-service.ts`'s `getOwned`.
+ * This is the explicit agent-scope decision Phase 17 deferred: **the same action gets the same rule
+ * on both transports**. A collaborator's browser may read and edit the graph, so an agent acting
+ * with that identity may too. Rename, delete, sharing and collaborator management remain owner-only
+ * because those actions administer what the diagram is or who may reach it rather than editing its
+ * contents.
  *
  * @param context Resolved tool context carrying the verified identity and the diagram service.
  * @param diagramId Untrusted diagram id supplied by the caller.
  * @returns The diagram, graph included.
  * @throws {ProblemDetailsError} `notFound()` (404) when the id is malformed, when no diagram has
- *   it, or when the diagram belongs to another identity — all three reported identically, so a
- *   caller cannot use the tool to confirm that a guessed id is real.
+ *   it, or when the caller neither owns nor collaborates on it — all three reported identically, so
+ *   a caller cannot use the tool to confirm that a guessed id is real.
  * @throws {Error} When the repository cannot read the row.
  */
 export async function getDiagramTool(
   context: McpToolContext,
   diagramId: string
 ): Promise<{ diagram: Diagram }> {
-  const diagram = await context.diagrams.getOwned(context.actorEmail, diagramId);
+  const diagram = await context.diagrams.get(context.actorEmail, diagramId);
 
   context.logger.info('diagram_opened', { diagramId: diagram.id, via: VIA });
   return { diagram };
@@ -653,9 +651,12 @@ interface ScaffoldSourceEdge extends Record<string, unknown> {
  * @returns The exported bytes and the MIME type describing them. A diagram with neither a Worker
  *   nor a bindable service produces an empty archive, because `generateScaffold` declines to invent
  *   a project out of external actors; the caller is told so by the tool description rather than by
- *   an error, since an empty canvas is not a failure.
- * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown or owned
- *   by another identity.
+ *   an error, since an empty canvas is not a failure. Export is a read of the graph and is
+ *   available to a collaborator in the browser, so it uses the same owner-or-editor rule here.
+ *   Keeping it owner-only would make MCP weaker than HTTP for the identical action, which is
+ *   exactly the drift this phase removes.
+ * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown, or the
+ *   caller neither owns nor collaborates on it.
  * @throws {Error} When the repository cannot read the row.
  */
 export async function exportDiagramTool(
@@ -663,7 +664,7 @@ export async function exportDiagramTool(
   diagramId: string,
   format: ExportFormat
 ): Promise<ExportedDiagram> {
-  const diagram = await context.diagrams.getOwned(context.actorEmail, diagramId);
+  const diagram = await context.diagrams.get(context.actorEmail, diagramId);
 
   if (format === 'json') {
     // Verbatim, not re-serialised. The stored text is already canonical, so re-encoding it would

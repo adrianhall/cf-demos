@@ -120,6 +120,35 @@ export class FakeWebSocket {
   }
 
   /**
+   * Simulates the connection becoming open.
+   *
+   * @returns Nothing.
+   */
+  simulateOpen(): void {
+    this.readyState = FakeWebSocket.OPEN;
+    this.dispatch('open', {});
+  }
+
+  /**
+   * Simulates the connection becoming unavailable without the canvas initiating it.
+   *
+   * @returns Nothing.
+   */
+  simulateServerClose(): void {
+    this.readyState = FakeWebSocket.CLOSED;
+    this.dispatch('close', {});
+  }
+
+  /**
+   * Simulates a connection error.
+   *
+   * @returns Nothing.
+   */
+  simulateError(): void {
+    this.dispatch('error', {});
+  }
+
+  /**
    * Delivers one frame to the canvas.
    *
    * @param frame Value to deliver; serialized as JSON unless already a string, so a test can also

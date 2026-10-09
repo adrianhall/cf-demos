@@ -273,6 +273,22 @@ interface DiagramActions {
     sequence: number
   ) => 'applied' | 'duplicate' | 'gap';
   /**
+   * Records the accepted echo of an operation this tab already applied optimistically.
+   *
+   * The operation itself is deliberately absent: applying it again would duplicate an added node or
+   * refuse a removal whose target this tab already removed. What the echo contributes is the
+   * server's sequence and timestamp — confirmation that the optimistic canvas is now durable.
+   *
+   * @param updatedAt Server timestamp of the accepted write.
+   * @param sequence Position of the operation in the session stream.
+   * @returns `'acknowledged'` when it was the next operation, `'duplicate'` when already recorded,
+   *   and `'gap'` when an intervening frame was missed and a snapshot is required.
+   */
+  acknowledgeRemoteOperation: (
+    updatedAt: string,
+    sequence: number
+  ) => 'acknowledged' | 'duplicate' | 'gap';
+  /**
    * React Flow's node-change handler. Records undo history for a structural change only.
    */
   onNodesChange: OnNodesChange;
@@ -522,6 +538,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
       diagramId: id,
       dirty: false,
       edges,
+      liveSequence: null,
       nodes,
       redoStack: [],
       role,
@@ -547,6 +564,24 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
     set({ edges, liveSequence: sequence, nodes, updatedAt });
     return true;
+  },
+
+  acknowledgeRemoteOperation: (updatedAt, sequence) => {
+    const { liveSequence } = get();
+    if (liveSequence !== null) {
+      if (sequence <= liveSequence) {
+        return 'duplicate';
+      }
+      if (sequence > liveSequence + 1) {
+        return 'gap';
+      }
+    }
+
+    // Dirty is cleared by the canvas only once *all* operations it dispatched in one debounce
+    // have been echoed. Clearing it for the first echo would report "saved" while later operations
+    // from the same user action were still in flight.
+    set({ liveSequence: sequence, updatedAt });
+    return 'acknowledged';
   },
 
   applyRemoteOperation: (operation, updatedAt, sequence) => {

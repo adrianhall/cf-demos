@@ -326,6 +326,52 @@ async function seedDiagram(email: string, title: string, graphData?: string): Pr
   return id;
 }
 
+/**
+ * Dispatches an authenticated same-origin HTTP request as one identity.
+ *
+ * @param email Verified identity to sign the development token for.
+ * @param path API path.
+ * @param init Request options.
+ * @returns The Worker's response.
+ */
+async function httpAs(email: string, path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  headers.set(JWT_HEADER, await signDevJwt(email, { audience: AUD }));
+  headers.set('Sec-Fetch-Site', 'same-origin');
+  if (init.body !== undefined) {
+    headers.set('content-type', 'application/json');
+  }
+  return send(new Request(`${ORIGIN}${path}`, { ...init, headers }));
+}
+
+/**
+ * Grants one identity edit access to a diagram over the real HTTP surface.
+ *
+ * The collaborator must have signed in once first, which is a business rule rather than fixture
+ * plumbing. Both responses are consumed so Durable Object teardown cannot wait on an open body.
+ *
+ * @param diagramId Diagram to share.
+ * @param owner Owner making the grant.
+ * @param collaborator Identity receiving it.
+ * @throws {Error} When sign-in or grant setup fails.
+ */
+async function grantEdit(diagramId: string, owner: string, collaborator: string): Promise<void> {
+  const signedIn = await httpAs(collaborator, '/api/me');
+  await signedIn.text();
+  if (!signedIn.ok) {
+    throw new Error(`Collaborator sign-in failed with ${signedIn.status}.`);
+  }
+
+  const granted = await httpAs(owner, `/api/diagrams/${diagramId}/collaborators`, {
+    body: JSON.stringify({ email: collaborator }),
+    method: 'POST'
+  });
+  const body = await granted.text();
+  if (granted.status !== 201) {
+    throw new Error(`Grant failed with ${granted.status}: ${body}`);
+  }
+}
+
 describe('the MCP endpoint', () => {
   beforeAll(async () => {
     await applyD1Migrations(testEnv.DB, testEnv.TEST_MIGRATIONS);
@@ -491,6 +537,94 @@ describe('the MCP endpoint', () => {
       result: { content: [{ text: 'Diagram not found.' }], isError: true }
     });
     expect(absent.body).toEqual(foreign.body);
+  });
+
+  // The same action gets the same rule on both transports. A collaborator's browser may read and
+  // edit the graph, so their agent may too; neither may rename or delete the owner's diagram.
+  it('gives a collaborator the same graph read and edit rights over HTTP and MCP', async () => {
+    const diagramId = await seedDiagram(ALICE, 'Shared with agent');
+    await grantEdit(diagramId, ALICE, MALLORY);
+
+    const httpRead = await httpAs(MALLORY, `/api/diagrams/${diagramId}`);
+    const httpBody = (await httpRead.json()) as { diagram: { id: string } };
+    expect(httpRead.status).toBe(200);
+    expect(httpBody.diagram.id).toBe(diagramId);
+
+    const mcpRead = await callTool(MALLORY, 'get_diagram', { diagramId });
+    expect(JSON.parse(toolText(mcpRead.body))).toMatchObject({ id: diagramId });
+
+    // Listing deliberately keeps its documented contract: the caller's own diagrams only. A
+    // collaborator reaches a shared id when it is known, but it does not become part of their
+    // owned-diagram catalogue.
+    const listed = await callTool(MALLORY, 'list_diagrams');
+    expect(JSON.parse(toolText(listed.body))).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: diagramId })])
+    );
+
+    const mcpEdit = await callTool(MALLORY, 'add_node', {
+      diagramId,
+      id: 'collaborator-node',
+      label: 'Shared worker',
+      position: { x: 10, y: 20 },
+      typeId: 'worker'
+    });
+    expect(JSON.parse(toolText(mcpEdit.body))).toMatchObject({
+      nodes: [expect.objectContaining({ id: 'collaborator-node' })]
+    });
+
+    // The same collaborator can write the resulting graph through the REST fallback too.
+    const graphData = toolText(mcpEdit.body);
+    const httpEdit = await httpAs(MALLORY, `/api/diagrams/${diagramId}/graph`, {
+      body: JSON.stringify({ graphData }),
+      method: 'PUT'
+    });
+    await httpEdit.text();
+    expect(httpEdit.status).toBe(200);
+
+    const exported = await callTool(MALLORY, 'export_diagram', { diagramId, format: 'json' });
+    expect(JSON.parse(toolText(exported.body))).toMatchObject({
+      nodes: [expect.objectContaining({ id: 'collaborator-node' })]
+    });
+  });
+
+  it('keeps administrative actions owner-only for a collaborator over both transports', async () => {
+    const diagramId = await seedDiagram(ALICE, 'Owner administered');
+    await grantEdit(diagramId, ALICE, MALLORY);
+
+    // HTTP metadata changes stay owner-only.
+    const httpRename = await httpAs(MALLORY, `/api/diagrams/${diagramId}`, {
+      body: JSON.stringify({ title: 'Taken over' }),
+      method: 'PATCH'
+    });
+    await httpRename.text();
+    expect(httpRename.status).toBe(404);
+
+    for (const [tool, args] of [
+      ['rename_diagram', { diagramId, title: 'Taken over' }],
+      ['delete_diagram', { diagramId }],
+      ['create_share_link', { diagramId }],
+      ['get_share_status', { diagramId }]
+    ] as const) {
+      const refusal = await callTool(MALLORY, tool, args);
+      expect(refusal.body).toMatchObject({
+        result: { content: [{ text: 'Diagram not found.' }], isError: true }
+      });
+    }
+  });
+
+  it('refuses a stranger identically over HTTP and MCP after collaborator access is enabled', async () => {
+    const diagramId = await seedDiagram(ALICE, 'Still private');
+    await grantEdit(diagramId, ALICE, 'editor@example.com');
+
+    const http = await httpAs(MALLORY, `/api/diagrams/${diagramId}`);
+    const httpProblem = (await http.json()) as { detail: string };
+    const mcp = await callTool(MALLORY, 'get_diagram', { diagramId });
+
+    expect(http.status).toBe(404);
+    expect(httpProblem.detail).toBe('Diagram not found.');
+    expect(mcp.body).toMatchObject({
+      result: { content: [{ text: 'Diagram not found.' }], isError: true }
+    });
   });
 
   it('exposes an owned diagram through the read-only resource and rejects a foreign resource', async () => {

@@ -335,20 +335,33 @@ Three smaller decisions follow from the same concern:
   shape of collaboration rather than a bug, and telling everybody else would name an element they
   may be editing quite happily. The connection stays open: a race must not cost anybody a session.
 
-**What this does not yet solve.** The browser still saves the whole graph over HTTP rather than
-sending operations, so its changes reach other editors as a snapshot — the blunter frame, which
-replaces their graph. Moving the editor's own writes onto the socket is the remaining step.
+## The browser dispatches operations on its existing debounce
+
+The browser's controls still know nothing about transport. Every edit goes through the Zustand store
+as it did before collaboration, and after the existing 500 ms of quiet one pure diff compares the
+last graph dispatched with the optimistic canvas. The resulting ordered operations cover drag, add,
+connect, properties, delete, undo/redo and auto-layout through one seam, instead of every control
+growing its own socket call. The user therefore gets one batch after a burst rather than a frame per
+keystroke or pointer move.
+
+Each operation has a client id. The originator applies its edit optimistically, matches the server's
+echo to that id, and advances the stream without applying the edit twice. Remote operations are
+applied to the confirmed graph first, then pending and unsent local operations are replayed over it
+in order; that is what preserves both sides when the network interleaves them. A rejection requests
+a snapshot rather than trying to infer which optimistic fields to undo.
+
+The whole-graph REST save remains a resilience fallback while the socket is not connected. The two
+paths are mutually exclusive at each debounce, so reconnecting cannot create a second writer.
 
 ## Deliberate limitations
 
-- The browser still saves the whole graph over HTTP rather than sending operations, so another
-  editor receives its changes as a snapshot and loses an edit in progress. Presence and cursors are
-  a later layer, not hidden routes.
+- Presence and cursors are a later layer. Edits converge live in both directions, but another person
+  is visible only through the change notice rather than an avatar, cursor or selected-element
+  highlight.
 - Conflicts resolve last-applied-wins — between simultaneous tabs, between collaborators, and
   between a user and their own agent. Every write is serialized through the diagram's session, so
   nothing is overwritten unseen, but two changes to the same element still leave one winner; see
-  "One serialized write path" above. The browser still saves the whole graph over HTTP rather than
-  sending operations.
+  "One serialized write path" above.
 - Server-side auto-layout is a deterministic grid, not ELK, because ELK cannot run in `workerd`. The
   `auto_layout_diagram` tool description says so plainly, so a calling model does not promise a user
   the editor-quality layout it will not get.

@@ -79,6 +79,19 @@ const OWNER_SCOPED =
   + 'someone else is reported exactly like one that does not exist.';
 
 /**
+ * The sentence appended to a graph read or edit, which follows the same authorization rule as the
+ * browser.
+ *
+ * Separate from {@link OWNER_SCOPED} rather than parameterised, so a tool description states its
+ * authority in plain language when a model sees it in isolation. A collaborator may read, export
+ * and edit the graph; administration — rename, delete, share and collaborator management — stays
+ * owner-only.
+ */
+const EDITOR_SCOPED =
+  'Acts on a diagram the authenticated caller owns or collaborates on. A diagram id the caller '
+  + 'cannot access is reported exactly like one that does not exist.';
+
+/**
  * Appended to every tool that changes a diagram's graph.
  *
  * Says two things a model otherwise has to infer from behaviour: that the change is live, so it
@@ -200,7 +213,7 @@ export function createMcpServer(context: McpToolContext): McpServer {
       title: 'Get diagram',
       description:
         'Read one diagram\u2019s metadata and its full graph (nodes, edges and viewport, as a '
-        + `JSON string in graphData). ${OWNER_SCOPED}`,
+        + `JSON string in graphData). ${EDITOR_SCOPED}`,
       inputSchema: z.object({ diagramId: diagramIdSchema })
     },
     async ({ diagramId }) => {
@@ -223,7 +236,7 @@ export function createMcpServer(context: McpToolContext): McpServer {
     new ResourceTemplate('architect://diagrams/{id}', { list: undefined }),
     {
       title: 'Diagram',
-      description: `A diagram\u2019s metadata and graph as JSON. ${OWNER_SCOPED}`,
+      description: `A diagram\u2019s metadata and graph as JSON. ${EDITOR_SCOPED}`,
       mimeType: 'application/json'
     },
     async (uri, variables) => {
@@ -321,7 +334,7 @@ export function createMcpServer(context: McpToolContext): McpServer {
       description:
         'Add one Cloudflare service or external actor to a diagram\u2019s canvas. Supply your own '
         + 'id to reference the new node from a follow-up add_edge call without reading the graph '
-        + `back first. ${OWNER_SCOPED} ${LIVE_PUSH}`,
+        + `back first. ${EDITOR_SCOPED} ${LIVE_PUSH}`,
       inputSchema: z.object({
         diagramId: diagramIdSchema,
         id: z
@@ -359,7 +372,7 @@ export function createMcpServer(context: McpToolContext): McpServer {
       description:
         'Change an existing node\u2019s label, annotation and/or position. Every field is '
         + 'optional and an omitted one is left exactly as it was, so renaming a node does not '
-        + `require resending its position. ${OWNER_SCOPED} ${LIVE_PUSH}`,
+        + `require resending its position. ${EDITOR_SCOPED} ${LIVE_PUSH}`,
       inputSchema: z.object({
         diagramId: diagramIdSchema,
         nodeId: nodeIdSchema,
@@ -382,7 +395,7 @@ export function createMcpServer(context: McpToolContext): McpServer {
       description:
         'Remove a node and every edge connected to it. The cascade is deliberate: an edge '
         + 'pointing at a node that no longer exists would not render and would silently corrupt '
-        + `the diagram. ${OWNER_SCOPED} ${LIVE_PUSH}`,
+        + `the diagram. ${EDITOR_SCOPED} ${LIVE_PUSH}`,
       inputSchema: z.object({ diagramId: diagramIdSchema, nodeId: nodeIdSchema })
     },
     async ({ diagramId, nodeId }) => {
@@ -399,7 +412,7 @@ export function createMcpServer(context: McpToolContext): McpServer {
       description:
         'Connect two nodes that are already on the canvas. Both endpoints must exist; an id that '
         + 'names no node is an error and nothing is added. Add the nodes first, then the edges '
-        + `between them. ${OWNER_SCOPED} ${LIVE_PUSH}`,
+        + `between them. ${EDITOR_SCOPED} ${LIVE_PUSH}`,
       inputSchema: z.object({
         diagramId: diagramIdSchema,
         id: z.string().optional().describe('Id for the new edge. Omit to have a UUID minted.'),
@@ -434,7 +447,7 @@ export function createMcpServer(context: McpToolContext): McpServer {
       description:
         'Change an existing edge\u2019s type, label, annotation and/or protocol. The endpoints '
         + 'cannot be changed: remove the edge and add the one you want instead, so the change is '
-        + `explicit rather than a connection quietly becoming a different one. ${OWNER_SCOPED} `
+        + `explicit rather than a connection quietly becoming a different one. ${EDITOR_SCOPED} `
         + LIVE_PUSH,
       inputSchema: z.object({
         diagramId: diagramIdSchema,
@@ -464,7 +477,7 @@ export function createMcpServer(context: McpToolContext): McpServer {
       title: 'Remove edge',
       description:
         'Remove one connection, leaving both of the nodes it joined on the canvas. '
-        + `${OWNER_SCOPED} ${LIVE_PUSH}`,
+        + `${EDITOR_SCOPED} ${LIVE_PUSH}`,
       inputSchema: z.object({ diagramId: diagramIdSchema, edgeId: edgeIdSchema })
     },
     async ({ diagramId, edgeId }) => {
@@ -485,7 +498,7 @@ export function createMcpServer(context: McpToolContext): McpServer {
         + 'proper layered layout engine in the browser that cannot run on the server \u2014 so '
         + 'tell the user the result is a tidy-up rather than a polished layout, and suggest the '
         + 'editor\u2019s own button if they want the better one. Edges and the current view are '
-        + `left alone. ${OWNER_SCOPED} ${LIVE_PUSH}`,
+        + `left alone. ${EDITOR_SCOPED} ${LIVE_PUSH}`,
       inputSchema: z.object({ diagramId: diagramIdSchema })
     },
     async ({ diagramId }) => {
@@ -565,7 +578,7 @@ export function createMcpServer(context: McpToolContext): McpServer {
         + 'save as an .svg file and reference from markdown. Scaffold is a base64 ZIP you save to '
         + 'a file yourself; there is no download URL. PNG remains browser-only because converting '
         + 'the live canvas to pixels needs a renderer, so direct a user who specifically needs PNG '
-        + `to the editor\u2019s Export button. ${OWNER_SCOPED}`,
+        + `to the editor\u2019s Export button. ${EDITOR_SCOPED}`,
       inputSchema: z.object({
         diagramId: diagramIdSchema,
         format: z

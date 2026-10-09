@@ -179,14 +179,12 @@ export class DiagramService {
    * silently widened everything built on it. Two callers need the narrow rule and would otherwise
    * have inherited the wide one without anybody deciding to:
    *
-   * - `./share-service.ts`, whose status, rotation and revocation are owner-only. A collaborator who
-   *   could mint a public read-only link to somebody else's diagram would be handing out access the
-   *   owner never granted and cannot see.
-   * - The MCP read and export tools (`../mcp/tools.ts`). An agent acts with the authority of the
-   *   identity that configured it, and whether that authority extends to diagrams that identity
-   *   merely collaborates on is a decision about agent scope rather than a consequence of adding
-   *   collaborators. It is taken explicitly in the authorization-parity sub-phase; until then the
-   *   tools stay where they were.
+   * `./share-service.ts` is the principal caller: its status, rotation and revocation are
+   * owner-only. A collaborator who could mint a public read-only link to somebody else's diagram
+   * would be handing out access the owner never granted and cannot see. MCP graph reads and exports
+   * deliberately use the wider {@link DiagramService.get} now, matching the collaborator's browser
+   * authority; administrative MCP tools continue to reach narrow methods such as metadata update
+   * and removal.
    *
    * Naming it, rather than leaving those callers on a `get` that quietly changed meaning, is the
    * point: the narrow rule is now something a call site asks for.
@@ -288,7 +286,7 @@ export class DiagramService {
    * Since this phase the write goes through the live session rather than to the repository, so the
    * editor's autosave is serialized against every other writer instead of racing them. The route
    * behind it is now explicitly a **resilience fallback**: it is how a tab whose socket is not
-   * connected still saves, and the next sub-phase moves the connected case onto the socket.
+   * connected still saves. A connected editor sends granular operations over its socket instead.
    *
    * @param actorEmail Verified Cloudflare Access identity making the request.
    * @param id Unvalidated diagram id from the request path.
@@ -316,9 +314,9 @@ export class DiagramService {
    *
    * Two steps, and the division between them is the point of this phase:
    *
-   * 1. **Resolve the owned diagram**, through the same `requireOwned` every other owner-only method
-   *    uses, so an agent is held to the identical non-enumerating `404` a browser gets. This is the
-   *    only decision this tier still takes about a graph write.
+   * 1. **Resolve an accessible diagram**, through the same owner-or-editor rule the REST graph save
+   *    uses, so the same action has the same authority whichever transport asked for it. A stranger
+   *    still receives the identical non-enumerating `404`; an editor grant means edit over both.
    * 2. **Hand the operation to the session**, which applies it, re-canonicalises it, persists it
    *    through its ordered queue, and pushes the result to every open editor — in that order, and
    *    serialized against every other writer of the same diagram. None of that happens here any
@@ -336,11 +334,11 @@ export class DiagramService {
    *   agent can see the result of its own change without a second read. The graph is the one that
    *   was **persisted**, which under a concurrent edit may already include somebody else's change —
    *   reporting the caller's own intention instead would describe a graph nobody can read back.
-   * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown, owned
-   *   by another identity, or deleted while the write was in flight, and when the operation targets
-   *   a node or edge that does not exist; `badRequest()` (400) when it supplies an id already in
-   *   use; `unprocessableContent()` (422) when the result fails canonical validation; and
-   *   `internalServerError()` (500) when the write itself failed.
+   * @throws {ProblemDetailsError} `notFound()` (404) when the diagram is malformed, unknown,
+   *   inaccessible to the actor, or deleted while the write was in flight, and when the operation
+   *   targets a node or edge that does not exist; `badRequest()` (400) when it supplies an id
+   *   already in use; `unprocessableContent()` (422) when the result fails canonical validation;
+   *   and `internalServerError()` (500) when the write itself failed.
    * @throws {Error} When the repository cannot read the row, or the session cannot be reached at
    *   all — a transport failure, as distinct from a refusal, which arrives as a value and is
    *   rethrown above as the problem document it describes.
@@ -350,7 +348,10 @@ export class DiagramService {
     id: string,
     operation: GraphOperation
   ): Promise<Diagram> {
-    const diagram = await this.requireOwned(actorEmail, id);
+    // The same widened rule as the REST whole-graph save. Editing the graph is the same action
+    // whichever transport described it, so an agent acting for a collaborator may do exactly what
+    // that collaborator's browser may do — and no more.
+    const { diagram } = await this.access.requireAccessible(actorEmail, id);
 
     const { graphData, updatedAt } = requireApplied(
       await this.sessions.applyOperation(diagram.id, operation, actorEmail)

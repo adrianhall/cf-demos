@@ -318,10 +318,16 @@ agent authenticates as whoever configured it, so both arrive from the same addre
 Attribution comes from the socket, never from the frame. The wire protocol has no author field, and
 a payload that invents one is refused rather than quietly stripped.
 
-The browser's own edits still go out through the debounced whole-graph autosave — that save now goes
-through the session rather than straight to D1, and is announced to other editors as a _snapshot_
-rather than an operation, because a whole-graph replace cannot be expressed as one. Moving the
-connected case onto the socket is the remaining step.
+The browser sends its own edits over the same socket, on the existing 500 ms autosave debounce
+rather than per keystroke or pointer move. It derives ordered operations by comparing the last graph
+the session confirmed with the optimistic canvas, so every editor action — drag, add, connect,
+properties, delete, undo/redo and auto-layout — uses one dispatch seam instead of learning about
+transport individually. The originator matches each acceptance echo by its own operation id and does
+not apply its optimistic edit twice.
+
+The whole-graph REST save remains a resilience fallback while the socket is not connected, and is
+never active alongside the live path. A rejected optimistic operation requests a snapshot rather
+than guessing how to roll itself back.
 
 The namespace is declared in [`cloudflare.config.ts`](cloudflare.config.ts) as
 `exports.durableObject({ storage: 'sqlite' })` plus a matching binding, which is what replaces
@@ -491,10 +497,9 @@ Terraform defaults reserved for this port.
 
 ## Deliberate limitations
 
-- The browser still saves the whole graph over HTTP rather than sending operations, so another
-  editor receives its changes as a snapshot — which replaces their graph and discards an edit they
-  had in progress. Operations already work in both directions; moving the editor's own writes onto
-  them is the remaining step. Presence and cursors are a later layer, not hidden routes.
+- Presence and cursors are not implemented yet. Edits already converge live in both directions, but
+  another person is visible only through the change notice rather than an avatar, cursor or
+  selected-element highlight.
 - Writes are last-**applied**-wins, not last-write-wins. Every graph write — the browser's autosave,
   the REST route behind it, and every MCP tool — is now serialized through the diagram's
   `DiagramSession`, so two writers can no longer each read the stored graph and overwrite one

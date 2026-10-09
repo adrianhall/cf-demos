@@ -13,7 +13,13 @@ import {
 } from '@xyflow/react';
 import { CATEGORY_COLORS, NODE_TYPE_MAP } from '../../../catalog.ts';
 import { CF_EDGE_TYPE, CF_NODE_TYPE } from '../../../graph-element-types.ts';
-import type { ChangeOrigin, SessionFrame } from '../../../live-sync-protocol.ts';
+import type {
+  ChangeOrigin,
+  ClientFrame,
+  OperationAppliedFrame,
+  SessionFrame
+} from '../../../live-sync-protocol.ts';
+import { applyGraphOperation } from '../../../worker/domain/graph-operations.ts';
 import {
   diagramLiveUrl,
   getAccessibleDiagram,
@@ -21,6 +27,7 @@ import {
   updateDiagram
 } from '../../api/diagrams.ts';
 import type { SharedDiagram } from '../../api/shares.ts';
+import { diffGraphOperations, type ClientGraph } from '../../lib/graph-operation-diff.ts';
 import { useDiagramStore } from '../../stores/diagramStore.ts';
 import { edgeTypes } from './edges/edgeTypes.ts';
 import { nodeTypes } from './nodes/nodeTypes.ts';
@@ -115,6 +122,56 @@ function parseGraphData(graphData: string): ParsedGraphData {
 }
 
 /**
+ * Applies one shared graph operation to a client graph.
+ *
+ * The server's own pure function is used rather than reimplemented; this helper only restores the
+ * richer React Flow types it cannot know about. It is the building block for optimistic replay:
+ * remote operations are applied to the confirmed graph, then pending local operations are replayed
+ * over it in dispatch order.
+ *
+ * @param graph Graph to change.
+ * @param operation Operation to apply.
+ * @param viewport Current viewport, which operations never change but the shared graph shape needs.
+ * @returns A new client graph.
+ * @throws {ProblemDetailsError} When the operation cannot be applied to this graph, which means the
+ *   client has diverged and must request a snapshot.
+ */
+function applyClientOperation(
+  graph: ClientGraph,
+  operation: OperationAppliedFrame['operation'],
+  viewport: ParsedGraphData['viewport']
+): ClientGraph {
+  const next = applyGraphOperation({ edges: graph.edges, nodes: graph.nodes, viewport }, operation);
+  return {
+    edges: next.edges as Edge<CFEdgeData>[],
+    nodes: next.nodes as Node<CFNodeData>[]
+  };
+}
+
+/**
+ * Replays pending optimistic operations over a confirmed graph.
+ *
+ * @param confirmed Graph the session has confirmed.
+ * @param pending This tab's operations still waiting for echoes, in dispatch order.
+ * @param viewport Current viewport, carried through unchanged.
+ * @returns The optimistic graph the canvas should show.
+ * @throws {ProblemDetailsError} When a pending operation no longer applies after a remote change —
+ *   for example another editor removed its target first. The rejection/resync path resolves that
+ *   conflict rather than presenting a graph the server will never store.
+ */
+function replayPendingOperations(
+  confirmed: ClientGraph,
+  pending: Iterable<OperationAppliedFrame['operation']>,
+  viewport: ParsedGraphData['viewport']
+): ClientGraph {
+  let optimistic = confirmed;
+  for (const operation of pending) {
+    optimistic = applyClientOperation(optimistic, operation, viewport);
+  }
+  return optimistic;
+}
+
+/**
  * Props for {@link DiagramCanvas}.
  */
 export interface DiagramCanvasProps {
@@ -176,7 +233,7 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     onViewportChange,
     setDiagram,
     applyRemoteSnapshot,
-    applyRemoteOperation,
+    acknowledgeRemoteOperation,
     addNode,
     removeSelected,
     setSelectedNode,
@@ -208,6 +265,41 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
   // different wording, and the identity cannot tell them apart — an agent authenticates as
   // whoever configured it, so "alice@example.com changed this" is true of both.
   const [remoteChange, setRemoteChange] = useState<ChangeOrigin | null>(null);
+
+  /**
+   * The live connection this tab may write through, or `null` before it is open and after it
+   * closes. A ref rather than state because rendering does not depend on the object itself; the
+   * autosave timer reads it imperatively at the moment it fires.
+   */
+  const liveSocketRef = useRef<WebSocket | null>(null);
+
+  /**
+   * Last graph this tab dispatched or adopted from a session snapshot.
+   *
+   * The debounce diffs this against the optimistic canvas to derive operations. Updated
+   * optimistically as each operation is sent, so another local edit made before its echo is
+   * described relative to the graph the session will have once those earlier operations land.
+   */
+  const dispatchedGraphRef = useRef<ClientGraph | null>(null);
+
+  /**
+   * Last graph the session has confirmed, before this tab's still-pending optimistic operations.
+   *
+   * Separate from {@link dispatchedGraphRef} because another editor's operation can be ordered
+   * before an operation this tab has sent but not yet had echoed. The confirmed graph follows the
+   * server's order; the optimistic graph shown to the user is rebuilt as confirmed plus pending, so
+   * a network interleaving cannot silently reverse two conflicting edits.
+   */
+  const confirmedGraphRef = useRef<ClientGraph | null>(null);
+
+  /**
+   * Operations still waiting for their acceptance echo, in dispatch order.
+   *
+   * A map rather than a set because reconciling a remote operation means replaying these over the
+   * newly confirmed graph. JavaScript maps preserve insertion order, which is the same order this
+   * tab sent them in.
+   */
+  const pendingOperationsRef = useRef(new Map<string, OperationAppliedFrame['operation']>());
 
   useEffect(() => {
     // The share viewer's diagram arrived with the props, resolved anonymously by `/api/shares`.
@@ -242,6 +334,9 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
           return;
         }
         const parsed = parseGraphData(diagram.graphData);
+        dispatchedGraphRef.current = { edges: parsed.edges, nodes: parsed.nodes };
+        confirmedGraphRef.current = { edges: parsed.edges, nodes: parsed.nodes };
+        pendingOperationsRef.current.clear();
         setDiagram(
           diagramId,
           diagram.title,
@@ -264,8 +359,9 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     };
   }, [diagramId, setDiagram, readOnly, initialDiagram]);
 
-  // Autosave. The whole graph every time: there is no partial-patch protocol, so a save is a
-  // complete statement of the canvas rather than a difference against whatever the server holds.
+  // Save after the same 500 ms of quiet the editor has always used. While the live socket is open,
+  // the debounce describes the optimistic canvas as ordered operations; otherwise it falls back to
+  // the whole-graph REST save. There is never a window where both write paths are active.
   useEffect(() => {
     if (readOnly || !dirty) {
       return undefined;
@@ -274,16 +370,53 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     const timer = setTimeout(() => {
       void (async () => {
         markSaving();
+        // Read at this moment rather than captured when the effect ran, so a change made during the
+        // debounce is included rather than silently dropped.
+        const state = useDiagramStore.getState();
+        const socket = liveSocketRef.current;
+        const before = dispatchedGraphRef.current;
+
+        if (socket?.readyState === WebSocket.OPEN && before !== null) {
+          try {
+            const operations = diffGraphOperations(before, state);
+
+            for (const operation of operations) {
+              const operationId = crypto.randomUUID();
+              pendingOperationsRef.current.set(operationId, operation);
+              const frame: ClientFrame = { operation, operationId, type: 'operation' };
+              socket.send(JSON.stringify(frame));
+            }
+            // The exact optimistic graph rather than one reconstructed by replaying the operations.
+            // Domain normalisation may add defaults (for example an empty description), and using
+            // that reconstructed form would make the next debounce "discover" a change the user
+            // never made and send a compensating operation.
+            dispatchedGraphRef.current = { edges: state.edges, nodes: state.nodes };
+
+            if (operations.length === 0) {
+              // Only non-document React Flow state changed, such as selection. There is nothing to
+              // persist and therefore no echo to clear the save indicator.
+              markSaved(state.updatedAt ?? new Date().toISOString());
+            }
+          } catch (error) {
+            // Diffing or sending failed before the session could answer. Requesting a snapshot
+            // restores one known base; until it arrives the dirty graph remains available for the
+            // REST fallback if the socket closes.
+            markSaveError(error instanceof Error ? error.message : 'Failed to save.');
+            socket.send(JSON.stringify({ type: 'resync' } satisfies ClientFrame));
+          }
+          return;
+        }
+
         try {
-          // Read at this moment rather than captured when the effect ran, so a change made during
-          // the debounce is included rather than silently dropped.
-          const state = useDiagramStore.getState();
-          const updatedAt = await saveDiagramGraph(
-            diagramId,
-            JSON.stringify({ edges: state.edges, nodes: state.nodes, viewport: state.viewport })
-          );
-          // The server's own timestamp, recorded so a live push describing an older version than
-          // this save is discarded instead of reverting what was just written.
+          const graphData = JSON.stringify({
+            edges: state.edges,
+            nodes: state.nodes,
+            viewport: state.viewport
+          });
+          const updatedAt = await saveDiagramGraph(diagramId, graphData);
+          dispatchedGraphRef.current = { edges: state.edges, nodes: state.nodes };
+          // The server's own timestamp, recorded so a live snapshot describing an older version
+          // than this save is discarded instead of reverting what was just written.
           markSaved(updatedAt);
         } catch (error) {
           markSaveError(error instanceof Error ? error.message : 'Failed to save.');
@@ -294,10 +427,9 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     return () => clearTimeout(timer);
   }, [readOnly, dirty, diagramId, markSaving, markSaved, markSaveError]);
 
-  // Live sync. The channel is two-way now, but this sub-phase only wires the *inbound* half: a
-  // change another editor or an agent makes appears here immediately rather than on the next
-  // reload. This tab's own edits still go out through the autosave above; moving them onto the
-  // socket is the next step.
+  // Live sync. Both directions use the same socket: another editor's or agent's operation appears
+  // here immediately, and the save debounce above sends this tab's own operations back. The REST
+  // whole-graph save remains only as a resilience fallback while the socket is unavailable.
   //
   // Opened once per diagram and closed on unmount, so navigating between diagrams never leaves a
   // socket listening for a document that is no longer on screen. Not opened at all in read-only
@@ -309,6 +441,38 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     }
 
     const socket = new WebSocket(diagramLiveUrl(diagramId));
+    const pendingOperations = pendingOperationsRef.current;
+
+    /**
+     * Makes the live path available to the save debounce.
+     *
+     * @returns Nothing.
+     */
+    const onOpen = (): void => {
+      liveSocketRef.current = socket;
+    };
+
+    /**
+     * Removes a socket that can no longer carry writes, activating the REST fallback on the next
+     * debounce. Guarded by identity so an old socket closing after navigation cannot clear a newer
+     * diagram's connection.
+     *
+     * @returns Nothing.
+     */
+    const onUnavailable = (): void => {
+      if (liveSocketRef.current === socket) {
+        liveSocketRef.current = null;
+      }
+    };
+
+    socket.addEventListener('open', onOpen);
+    socket.addEventListener('close', onUnavailable);
+    socket.addEventListener('error', onUnavailable);
+    // The test double begins open because it only models post-handshake behaviour. A real browser
+    // begins CONNECTING and reaches this assignment through `onOpen` instead.
+    if (socket.readyState === WebSocket.OPEN) {
+      liveSocketRef.current = socket;
+    }
 
     /**
      * Asks the session to resend the whole graph.
@@ -350,9 +514,39 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
       switch (frame.type) {
         case 'snapshot': {
           const parsed = parseGraphData(frame.graphData);
+          const confirmed = { edges: parsed.edges, nodes: parsed.nodes };
+          const current = useDiagramStore.getState();
+          const previousDispatch = dispatchedGraphRef.current;
+          const unsent =
+            previousDispatch === null ? [] : diffGraphOperations(previousDispatch, current);
+          confirmedGraphRef.current = confirmed;
+
+          // A whole-graph save from another editor may interleave with both operations already in
+          // flight and a newer local edit the debounce has not sent yet. The snapshot is the new
+          // confirmed base; replay pending first, then unsent, preserving the server's order and
+          // everything the user can still see. A resync after a rejection has already removed the
+          // rejected operation from the pending map, so the same rule rolls it back.
+          let dispatched = confirmed;
+          let optimistic = confirmed;
+          try {
+            dispatched = replayPendingOperations(
+              confirmed,
+              pendingOperationsRef.current.values(),
+              current.viewport
+            );
+            optimistic = replayPendingOperations(dispatched, unsent, current.viewport);
+          } catch {
+            // An optimistic edit no longer applies to the snapshot — another editor removed its
+            // target. Nothing can make that edit real now, so adopt the server graph and stop
+            // replaying it rather than presenting a state the server will refuse.
+            pendingOperationsRef.current.clear();
+            dispatched = confirmed;
+            optimistic = confirmed;
+          }
+          dispatchedGraphRef.current = dispatched;
           const applied = applyRemoteSnapshot(
-            parsed.nodes,
-            parsed.edges,
+            optimistic.nodes,
+            optimistic.edges,
             frame.updatedAt,
             frame.sequence
           );
@@ -365,22 +559,76 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
           return;
         }
         case 'operation_applied': {
-          const result = applyRemoteOperation(frame.operation, frame.updatedAt, frame.sequence);
-          if (result === 'gap') {
+          const ownOperation =
+            frame.operationId === null
+              ? undefined
+              : pendingOperationsRef.current.get(frame.operationId);
+
+          try {
+            const current = useDiagramStore.getState();
+            const previousDispatch = dispatchedGraphRef.current;
+            let confirmed = confirmedGraphRef.current;
+            if (confirmed === null || previousDispatch === null) {
+              requestResync();
+              return;
+            }
+
+            // Edits made after the last debounce are on the canvas but not in the pending map yet.
+            // Preserve them separately: pending operations have already been sent and must be
+            // replayed before these unsent ones.
+            const unsent = diffGraphOperations(previousDispatch, current);
+            const result = acknowledgeRemoteOperation(frame.updatedAt, frame.sequence);
+            if (result === 'gap') {
+              requestResync();
+              return;
+            }
+            if (result === 'duplicate') {
+              return;
+            }
+
+            confirmed = applyClientOperation(confirmed, frame.operation, current.viewport);
+            confirmedGraphRef.current = confirmed;
+            if (ownOperation !== undefined && frame.operationId !== null) {
+              pendingOperationsRef.current.delete(frame.operationId);
+            } else {
+              setRemoteChange(frame.origin);
+            }
+
+            // Rebuild the optimistic canvas in the **server's** order: confirmed operation first,
+            // then this tab's remaining pending changes, then its newer unsent changes. This keeps
+            // a remote operation that interleaved with local editing from silently reversing the
+            // two or dropping what the user just typed.
+            const dispatched = replayPendingOperations(
+              confirmed,
+              pendingOperationsRef.current.values(),
+              current.viewport
+            );
+            const optimistic = replayPendingOperations(dispatched, unsent, current.viewport);
+            dispatchedGraphRef.current = dispatched;
+            useDiagramStore.setState({ edges: optimistic.edges, nodes: optimistic.nodes });
+
+            if (ownOperation !== undefined && pendingOperationsRef.current.size === 0) {
+              // `dirty` may still be true because React has not yet committed the state update the
+              // debounce dispatched from. Clearing it is correct only when the *current* graph is
+              // still the optimistic graph now confirmed; a newer edit produces a non-empty diff
+              // and keeps the flag set for the next debounce.
+              const currentAfterReconcile = useDiagramStore.getState();
+              const newlyUnsent = diffGraphOperations(dispatched, currentAfterReconcile);
+              if (newlyUnsent.length === 0) {
+                markSaved(frame.updatedAt);
+              }
+            }
+          } catch {
             requestResync();
-            return;
-          }
-          // A duplicate is the echo of this tab's own operation and is not news to the person who
-          // made it.
-          if (result === 'applied') {
-            setRemoteChange(frame.origin);
           }
           return;
         }
         case 'operation_rejected':
-          // This tab does not send operations yet, so it cannot receive one of these — the
-          // session addresses a rejection to the originating connection alone. Handled rather
-          // than omitted because the protocol permits it and the next sub-phase will produce it.
+          // The server did not apply one optimistic edit. A snapshot is the only honest rollback:
+          // replaying assumptions about why it failed would be another opportunity to diverge.
+          pendingOperationsRef.current.delete(frame.operationId);
+          requestResync();
+          markSaveError(frame.detail);
           return;
         case 'connected':
           // Acknowledgement only. The identity is echoed from the socket attachment the server
@@ -397,13 +645,25 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     socket.addEventListener('message', onMessage);
 
     return () => {
+      socket.removeEventListener('open', onOpen);
+      socket.removeEventListener('close', onUnavailable);
+      socket.removeEventListener('error', onUnavailable);
       socket.removeEventListener('message', onMessage);
+      onUnavailable();
+      pendingOperations.clear();
       // Closed unconditionally, including while still connecting: a socket abandoned mid-handshake
       // would otherwise finish opening after the component has gone and stay open until the tab
       // is closed.
       socket.close();
     };
-  }, [readOnly, diagramId, applyRemoteSnapshot, applyRemoteOperation]);
+  }, [
+    readOnly,
+    diagramId,
+    applyRemoteSnapshot,
+    acknowledgeRemoteOperation,
+    markSaved,
+    markSaveError
+  ]);
 
   // The last line of defence for unsaved work: a visitor who closes the tab within the debounce
   // window is asked first. The browser shows its own wording, so there is no message to provide.
