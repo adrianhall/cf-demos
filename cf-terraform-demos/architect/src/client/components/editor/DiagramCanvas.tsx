@@ -3,7 +3,6 @@ import { valueOrDefault } from '@adrianhall/cloudflare-toolkit';
 import {
   Background,
   BackgroundVariant,
-  Controls,
   MiniMap,
   ReactFlow,
   useNodesInitialized,
@@ -1340,9 +1339,9 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
                 }}
               />
             )}
-            {/* `showInteractive` hides React Flow's own lock control, which would otherwise be a
-                tab stop offering to unlock a canvas this visitor may not edit. */}
-            {!printMode && <Controls showInteractive={!readOnly} />}
+            {/* Zoom, fit and lock controls live in the editor toolbar, where the rest of the
+                editor actions are named consistently and remain available on narrow layouts. The
+                canvas deliberately has no second copy in its lower corner. */}
             {!printMode && (
               <RemoteCursorsOverlay
                 cursors={remoteCursors}

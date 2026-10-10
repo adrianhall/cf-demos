@@ -1017,7 +1017,9 @@ describe('print mode', () => {
     });
 
     expect(screen.getByLabelText('Diagram title')).toBeInTheDocument();
-    expect(screen.getByTestId('rf-controls')).toBeInTheDocument();
+    // React Flow's lower-corner controls are intentionally absent; zoom and fit are provided by
+    // the editor toolbar instead.
+    expect(screen.queryByTestId('rf-controls')).not.toBeInTheDocument();
     expect(document.documentElement.style.colorScheme).toBe('');
   });
 
