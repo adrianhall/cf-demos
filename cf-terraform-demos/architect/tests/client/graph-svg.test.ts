@@ -349,9 +349,9 @@ describe('renderGraphSvg', () => {
         'R2 (Raw)',
         'Queues (Backlog)',
         'Transform Consumer',
-        'Pipelines',
-        'R2 Data Catalog',
-        'R2 SQL',
+        'Basin Pipelines',
+        'Basin Catalog',
+        'Basin SQL',
         'Event notification'
       ])
     );

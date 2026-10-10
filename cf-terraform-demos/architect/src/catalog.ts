@@ -216,15 +216,27 @@ export const CATEGORY_LABELS: Record<NodeCategory, string> = {
 };
 
 /**
- * Complete list of all 42 Cloudflare product node types available on the canvas, reconciled against
+ * Complete list of all 51 Cloudflare product node types available on the canvas, reconciled against
  * the current published product set and Cloudflare's own official icon set, which grew it from an
  * earlier 32.
  *
+ * Product names track the `src/content/directory/*.yaml` collection in the
+ * `cloudflare/cloudflare-docs` repository, which is the registry the documentation site itself uses
+ * to resolve product names and links. That is the authority to re-check when refreshing this list,
+ * rather than reading page titles. A product with no published glyph in that repository's
+ * `src/icons/` is deliberately _not_ added, because a node with no icon reads as a broken node; see
+ * follow-on 4 in `specs/architect/04-follow-ons.md` for the ones currently waiting on artwork.
+ *
+ * A renamed product keeps its original `typeId`. The id is what saved diagrams store in their
+ * `graph_data` JSON, so changing it would strand every existing diagram on an unresolvable type,
+ * whereas the label, description, icon and documentation links are free to follow the rename.
+ *
  * Known icon collisions: Cloudflare's own icon set reuses the same glyph across
- * Workers/Workflows/Workers VPC, R2/R2 Data Catalog, Containers/Sandbox, Agents/AI Gateway, and
- * Email Routing/Email Service. This catalog uses the official glyph as-is in every case rather than
- * inventing a glyph Cloudflare itself doesn't provide -- each pair still reads as distinct on
- * canvas via its category color, accent border, and label.
+ * Workers/Workflows/Workers VPC, R2/Basin Catalog, Containers/Sandbox, Agents/AI Gateway, Email
+ * Routing/Email Service, and all four Realtime entries (Realtime, RealtimeKit, Realtime SFU, TURN
+ * Service). This catalog uses the official glyph as-is in every case rather than inventing a glyph
+ * Cloudflare itself doesn't provide -- each pair still reads as distinct on canvas via its category
+ * color, accent border, and label.
  */
 export const NODE_TYPES: NodeTypeDef[] = [
   // Compute
@@ -382,6 +394,36 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: 'doc',
         title: 'Cron Triggers Docs',
         url: 'https://developers.cloudflare.com/workers/configuration/cron-triggers/'
+      }
+    ]
+  },
+  {
+    typeId: 'dynamic-workers',
+    label: 'Dynamic Workers',
+    category: 'compute',
+    icon: svgIcon('dynamic-workers'),
+    description: 'Spin up isolated Workers on demand to execute code',
+    defaultHandles,
+    docLinks: [
+      {
+        icon: 'doc',
+        title: 'Dynamic Workers Docs',
+        url: 'https://developers.cloudflare.com/dynamic-workers/'
+      }
+    ]
+  },
+  {
+    typeId: 'flagship',
+    label: 'Flagship',
+    category: 'compute',
+    icon: svgIcon('flagship'),
+    description: 'Feature flags evaluated at the edge for Workers',
+    defaultHandles,
+    docLinks: [
+      {
+        icon: 'doc',
+        title: 'Flagship Docs',
+        url: 'https://developers.cloudflare.com/flagship/'
       }
     ]
   },
@@ -565,8 +607,14 @@ export const NODE_TYPES: NodeTypeDef[] = [
     ]
   },
   {
+    // Relabelled from the earlier "Pipelines": Cloudflare folded the product into the Basin family
+    // and renamed it to "Basin Pipelines". `typeId` stays "pipelines" so previously saved diagrams
+    // (`graph_data` JSON referencing this typeId) keep resolving to a valid catalog entry -- the
+    // same compatibility rule the "autorag" and "browser-rendering" entries below follow. The
+    // vendored icon keeps its old filename too, because Cloudflare's own icon set has not yet
+    // published a `basin-pipelines` glyph; see follow-on 4 in `specs/architect/04-follow-ons.md`.
     typeId: 'pipelines',
-    label: 'Pipelines',
+    label: 'Basin Pipelines',
     category: 'storage',
     icon: svgIcon('pipelines'),
     description: 'Ingest and transform streaming data into R2',
@@ -574,14 +622,16 @@ export const NODE_TYPES: NodeTypeDef[] = [
     docLinks: [
       {
         icon: 'doc',
-        title: 'Pipelines Docs',
-        url: 'https://developers.cloudflare.com/pipelines/'
+        title: 'Basin Pipelines Docs',
+        url: 'https://developers.cloudflare.com/basin-pipelines/'
       }
     ]
   },
   {
+    // Relabelled from the earlier "R2 SQL" to "Basin SQL", for the same reason as "pipelines"
+    // above. `typeId` stays "r2-sql" for saved-diagram compatibility.
     typeId: 'r2-sql',
-    label: 'R2 SQL',
+    label: 'Basin SQL',
     category: 'storage',
     icon: svgIcon('r2-sql'),
     description: 'Serverless SQL query engine for R2 data',
@@ -589,14 +639,16 @@ export const NODE_TYPES: NodeTypeDef[] = [
     docLinks: [
       {
         icon: 'doc',
-        title: 'R2 SQL Docs',
-        url: 'https://developers.cloudflare.com/r2-sql/'
+        title: 'Basin SQL Docs',
+        url: 'https://developers.cloudflare.com/basin-sql/'
       }
     ]
   },
   {
+    // Relabelled from the earlier "R2 Data Catalog" to "Basin Catalog", for the same reason as
+    // "pipelines" above. `typeId` stays "r2-data-catalog" for saved-diagram compatibility.
     typeId: 'r2-data-catalog',
-    label: 'R2 Data Catalog',
+    label: 'Basin Catalog',
     category: 'storage',
     icon: svgIcon('r2-data-catalog'),
     description: 'Managed Apache Iceberg catalog for R2',
@@ -604,8 +656,23 @@ export const NODE_TYPES: NodeTypeDef[] = [
     docLinks: [
       {
         icon: 'doc',
-        title: 'R2 Data Catalog Docs',
-        url: 'https://developers.cloudflare.com/r2-data-catalog/'
+        title: 'Basin Catalog Docs',
+        url: 'https://developers.cloudflare.com/basin-catalog/'
+      }
+    ]
+  },
+  {
+    typeId: 'artifacts',
+    label: 'Artifacts',
+    category: 'storage',
+    icon: svgIcon('artifacts'),
+    description: 'Store, version, and share filesystem artifacts',
+    defaultHandles,
+    docLinks: [
+      {
+        icon: 'doc',
+        title: 'Artifacts Docs',
+        url: 'https://developers.cloudflare.com/artifacts/'
       }
     ]
   },
@@ -736,6 +803,36 @@ export const NODE_TYPES: NodeTypeDef[] = [
       }
     ]
   },
+  {
+    typeId: 'agent-memory',
+    label: 'Agent Memory',
+    category: 'ai',
+    icon: svgIcon('agent-memory'),
+    description: 'Persistent, recallable memory for AI agents',
+    defaultHandles,
+    docLinks: [
+      {
+        icon: 'doc',
+        title: 'Agent Memory Docs',
+        url: 'https://developers.cloudflare.com/agent-memory/'
+      }
+    ]
+  },
+  {
+    typeId: 'web-search',
+    label: 'Web Search API',
+    category: 'ai',
+    icon: svgIcon('web-search'),
+    description: 'Ground agents with real-time web search results',
+    defaultHandles,
+    docLinks: [
+      {
+        icon: 'doc',
+        title: 'Web Search API Docs',
+        url: 'https://developers.cloudflare.com/web-search/'
+      }
+    ]
+  },
 
   // Media
   {
@@ -785,6 +882,69 @@ export const NODE_TYPES: NodeTypeDef[] = [
         icon: 'video',
         title: 'Realtime Video',
         url: 'https://www.youtube.com/watch?v=z4ZQIjN3I7k'
+      }
+    ]
+  },
+  {
+    // The three Realtime components below, and Realtime itself, share one glyph: Cloudflare's icon
+    // set ships byte-identical artwork for all four, so this catalog uses it as-is rather than
+    // inventing distinctions Cloudflare does not draw. See the icon-collision note on NODE_TYPES.
+    typeId: 'realtime-kit',
+    label: 'RealtimeKit',
+    category: 'media',
+    icon: svgIcon('realtime-kit'),
+    description: 'SDKs and APIs for low-latency real-time applications',
+    defaultHandles,
+    docLinks: [
+      {
+        icon: 'doc',
+        title: 'RealtimeKit Docs',
+        url: 'https://developers.cloudflare.com/realtime/realtimekit/'
+      }
+    ]
+  },
+  {
+    typeId: 'realtime-sfu',
+    label: 'Realtime SFU',
+    category: 'media',
+    icon: svgIcon('realtime-sfu'),
+    description: 'Serverless video, audio, and data routing',
+    defaultHandles,
+    docLinks: [
+      {
+        icon: 'doc',
+        title: 'Realtime SFU Docs',
+        url: 'https://developers.cloudflare.com/realtime/sfu/'
+      }
+    ]
+  },
+  {
+    typeId: 'realtime-turn',
+    label: 'TURN Service',
+    category: 'media',
+    icon: svgIcon('realtime-turn'),
+    description: 'Relay point for traffic between WebRTC clients',
+    defaultHandles,
+    docLinks: [
+      {
+        icon: 'doc',
+        title: 'TURN Service Docs',
+        url: 'https://developers.cloudflare.com/realtime/turn/'
+      }
+    ]
+  },
+  {
+    typeId: 'moq',
+    label: 'MoQ',
+    category: 'media',
+    icon: svgIcon('moq'),
+    description: 'Media over QUIC protocol for live media',
+    defaultHandles,
+    docLinks: [
+      {
+        icon: 'doc',
+        title: 'MoQ Docs',
+        url: 'https://developers.cloudflare.com/moq/'
       }
     ]
   },

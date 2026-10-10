@@ -226,6 +226,14 @@ describe('built stylesheet contract', () => {
         /\.dashboard__empty\{(?=[^}]*display:flex)(?=[^}]*flex-direction:column)(?=[^}]*gap:1rem)/u
       );
       expect(css).toMatch(/\.dashboard__empty :is\(h2,p\)\{margin:0/u);
+      // A few vendored icons paint their shapes with a literal `fill="#000"`, which beats the
+      // `fill: currentColor` inherited from the root `<svg>` and renders them solid black —
+      // invisible on a dark-theme node. The shape-level override is what makes them theme-aware,
+      // and `:not([fill=none])` is what stops it filling in the outline-drawn icons. jsdom applies
+      // no stylesheets, so this is the only place the rule itself can be proven to survive.
+      expect(css).toMatch(
+        /\.product-icon--svg svg \[fill\]:not\(\[fill=none\]\)\{fill:currentColor\}/u
+      );
     });
 
     // Animated data-flow edges are useful direction cues, but motion is not decorative to somebody

@@ -243,6 +243,19 @@ load-bearing: it holds the two React Flow type keys every stored node and edge c
 literal re-typed independently on either side would render as React Flow's unstyled default rather
 than failing a build.
 
+Product names, descriptions and documentation links in `src/catalog.ts` track the
+`src/content/directory/*.yaml` collection in the
+[`cloudflare/cloudflare-docs`](https://github.com/cloudflare/cloudflare-docs) repository, which is
+the registry the documentation site itself uses to resolve them; the product glyphs are vendored
+byte-identically from that repository's `src/icons/`. Both are the authority to re-check when
+refreshing the catalogue. Two rules govern a refresh. A renamed product keeps its original `typeId`,
+because that is the value saved diagrams store in their `graph_data` JSON and changing it would
+strand every existing diagram on an unresolvable type — only the user-facing label, description,
+icon and links follow the rename. And a product with no published glyph is not added at all, because
+an unresolvable icon renders as a label-only node that reads as a bug;
+[`specs/architect/04-follow-ons.md`](../../specs/architect/04-follow-ons.md) tracks the products
+currently waiting on artwork.
+
 The Worker currently exposes:
 
 - `GET /api/health` — public liveness, returning `{ "status": "ok" }`;

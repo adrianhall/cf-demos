@@ -101,4 +101,35 @@ describe('ProductIcon', () => {
 
     expect(container.querySelector('svg')).toHaveAttribute('width', '24');
   });
+
+  // The vendored icons are byte-identical copies of Cloudflare's own artwork, and a few of them
+  // paint their shapes with a literal `fill="#000"` rather than inheriting. A presentation
+  // attribute on the shape beats the `fill: currentColor` set on the root `<svg>`, so those icons
+  // would render solid black: invisible on a dark-theme node and ignoring the category colour
+  // everywhere. `app.css` therefore carries a second rule targeting the shapes themselves. jsdom
+  // does not apply stylesheets, so these cases assert the *selector contract* the rule depends on
+  // — which shapes it must reach and which it must leave alone — while `built-css.test.ts` proves
+  // the rule survives into the built stylesheet.
+  describe('theme-aware fills', () => {
+    it.each(['ai-search', 'dynamic-workers'])(
+      'exposes paintable shapes in %s for the fill override to reach',
+      (name) => {
+        const { container } = render(<ProductIcon icon={{ kind: 'svg', name }} />);
+
+        const painted = container.querySelectorAll('svg [fill]:not([fill="none"])');
+
+        expect(painted.length).toBeGreaterThan(0);
+      }
+    );
+
+    // The counter-case, and the reason the selector excludes `fill="none"`: this icon is a line
+    // drawing whose shapes are deliberately unpainted and outlined with `stroke`. Forcing a fill
+    // onto them would turn it into a solid blob, so the override must select nothing here.
+    it('leaves the outline-drawn artifacts icon unfilled', () => {
+      const { container } = render(<ProductIcon icon={{ kind: 'svg', name: 'artifacts' }} />);
+
+      expect(container.querySelectorAll('svg [fill]:not([fill="none"])')).toHaveLength(0);
+      expect(container.querySelectorAll('svg [stroke="currentColor"]').length).toBeGreaterThan(0);
+    });
+  });
 });

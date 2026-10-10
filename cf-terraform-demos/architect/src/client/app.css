@@ -1902,8 +1902,8 @@ button {
   flex: 0 0 auto;
 }
 
-/* `ProductIcon.tsx`'s vendored-SVG branch: these files have no `fill`/`stroke` attribute of
-   their own (SVG's implicit default is opaque black), so force `currentColor` here to make them
+/* `ProductIcon.tsx`'s vendored-SVG branch: most of these files carry no `fill`/`stroke` attribute
+   of their own (SVG's implicit default is opaque black), so force `currentColor` here to make them
    theme-aware and recolorable via the wrapper's inline `color` style, matching `react-feather`'s
    own `stroke="currentColor"` default. */
 .product-icon--svg svg {
@@ -1911,6 +1911,22 @@ button {
   fill: currentColor;
   height: 100%;
   width: 100%;
+}
+
+/* A few icons in Cloudflare's official set *do* paint their shapes with a literal `fill="#000"`
+   (currently `ai-search` and `dynamic-workers`). A presentation attribute on the shape beats the
+   inherited `fill` set on the root above, so those icons would render solid black — invisible
+   against a dark-theme node, and ignoring the category colour on every theme. They are vendored
+   byte-identically on purpose, so the fix belongs here rather than in an edited copy of
+   Cloudflare's artwork.
+
+   `:not([fill="none"])` is what keeps this safe: `fill="none"` marks a shape that is deliberately
+   unpainted — an outline drawn with `stroke`, as in `artifacts` — and forcing a fill onto it would
+   turn a line drawing into a solid blob. A `fill` inside a `<clipPath>` (as in `pipelines`) is
+   ignored by the renderer, which uses only the clip shape's geometry, so recolouring it is inert
+   rather than a second special case. */
+.product-icon--svg svg [fill]:not([fill="none"]) {
+  fill: currentColor;
 }
 
 .cf-node__label {

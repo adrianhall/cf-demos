@@ -1295,7 +1295,7 @@ export const BLUEPRINTS: Blueprint[] = [
     id: 'serverless-etl',
     title: 'Serverless ETL Pipeline',
     description:
-      'Land raw objects in R2, let event notifications drive a Queues consumer that cleans and standardises each batch, then query the curated tables with R2 SQL.',
+      'Land raw objects in R2, let event notifications drive a Queues consumer that cleans and standardises each batch, then query the curated tables with Basin SQL.',
     category: 'Serverless',
     referenceUrl:
       'https://developers.cloudflare.com/reference-architecture/diagrams/serverless/serverless-etl/',
@@ -1328,16 +1328,16 @@ export const BLUEPRINTS: Blueprint[] = [
           x: 0,
           y: 600,
           typeId: 'pipelines',
-          label: 'Pipelines'
+          label: 'Basin Pipelines'
         },
         {
           id: 'catalog',
           x: 250,
           y: 600,
           typeId: 'r2-data-catalog',
-          label: 'R2 Data Catalog'
+          label: 'Basin Catalog'
         },
-        { id: 'sql', x: 500, y: 600, typeId: 'r2-sql', label: 'R2 SQL' }
+        { id: 'sql', x: 500, y: 600, typeId: 'r2-sql', label: 'Basin SQL' }
       ],
       [
         {

@@ -2,6 +2,7 @@ import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as FeatherIcons from 'react-feather';
 import { describe, expect, it } from 'vitest';
+import { BLUEPRINTS } from '../../src/blueprints.ts';
 import {
   CATEGORY_COLORS,
   CATEGORY_LABELS,
@@ -32,7 +33,7 @@ const vendoredIconFiles = new Set(
 
 describe('catalog', () => {
   it('defines the full documented product set', () => {
-    expect(NODE_TYPES).toHaveLength(42);
+    expect(NODE_TYPES).toHaveLength(51);
   });
 
   // A duplicate makes `NODE_TYPE_MAP` keep whichever entry was built last, so the canvas would
@@ -234,6 +235,35 @@ describe('catalog', () => {
       for (const [category, nodes] of Object.entries(getNodesByCategory())) {
         for (const node of nodes) {
           expect(node.category).toBe(category);
+        }
+      }
+    });
+  });
+
+  // A product rename must change only the user-facing surface -- label, description, icon and
+  // documentation links -- and never a `typeId`, because `typeId` is what a saved diagram stores
+  // in its `graph_data` JSON. Renaming one would strand every existing diagram containing that
+  // node on a type the catalogue can no longer resolve, which renders as a label-only node with no
+  // icon rather than failing anywhere a test would normally notice.
+  //
+  // The blueprints are the only persisted graphs committed to this repository, so they stand in
+  // for every diagram already saved in D1: if a rename breaks them, it breaks those too.
+  describe('blueprint graph compatibility', () => {
+    it('resolves every typeId used by a blueprint to a catalogue entry', () => {
+      for (const blueprint of BLUEPRINTS) {
+        const graph = JSON.parse(blueprint.graphData) as {
+          nodes?: { data?: { typeId?: string } }[];
+        };
+
+        for (const node of graph.nodes ?? []) {
+          const typeId = node.data?.typeId;
+          expect(typeId).toBeDefined();
+          // Asserted through the map the renderers actually use, so this fails for exactly the
+          // reason a canvas would render the node without its icon.
+          expect(
+            NODE_TYPE_MAP.has(typeId ?? ''),
+            `blueprint "${blueprint.id}" uses unknown typeId "${typeId}"`
+          ).toBe(true);
         }
       }
     });

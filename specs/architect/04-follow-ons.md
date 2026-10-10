@@ -349,3 +349,98 @@ carry no artwork dependency.
 10. Note in the demo `README.md` that product labels track the `directory` collection in
     `cloudflare/cloudflare-docs`, so the next person refreshing this list knows where the authority
     lives instead of searching the docs site by hand.
+
+### 3.4 Outcome
+
+Done. The three Basin renames and nine new products landed in `src/catalog.ts`, taking `NODE_TYPES`
+from 42 to 51 entries:
+
+| Product        | Category | Note                                   |
+| -------------- | -------- | -------------------------------------- |
+| Agent Memory   | `ai`     | new                                    |
+| Web Search API | `ai`     | new                                    |
+| Artifacts      | `storage`| new                                    |
+| Dynamic Workers| `compute`| new                                    |
+| Flagship       | `compute`| new                                    |
+| RealtimeKit    | `media`  | new                                    |
+| Realtime SFU   | `media`  | new                                    |
+| TURN Service   | `media`  | new                                    |
+| MoQ            | `media`  | new                                    |
+| Basin Pipelines| `storage`| renamed, `typeId` stays `pipelines`    |
+| Basin SQL      | `storage`| renamed, `typeId` stays `r2-sql`       |
+| Basin Catalog  | `storage`| renamed, `typeId` stays `r2-data-catalog` |
+
+Each icon was vendored byte-identically from `cloudflare/cloudflare-docs`. `cf`, Agent Lee and
+Cloudflare Wallets were deliberately excluded; K2 and Basin are deferred to follow-on 4.
+
+Two things turned up that the plan had not anticipated:
+
+**All four Realtime icons are the same file.** `realtime.svg`, `realtime-kit.svg`,
+`realtime-sfu.svg` and `realtime-turn.svg` are byte-identical in Cloudflare's own icon set. This is
+consistent with the collisions the catalogue already documents, so the glyph is used as-is and the
+note on `NODE_TYPES` now lists the Realtime family among them.
+
+**A pre-existing theming defect surfaced.** `app.css` set `fill: currentColor` on the root `<svg>`
+only, but a handful of official icons paint their shapes with a literal `fill="#000"` — a
+presentation attribute on the shape beats an inherited value, so those icons rendered solid black:
+invisible on a dark-theme node and ignoring the category colour on every theme. This already
+affected the shipped `ai-search` icon and would have affected the new `dynamic-workers` one. Fixed
+with a shape-level override excluding `fill="none"`, which is what keeps outline-drawn icons such as
+`artifacts` from being filled into solid blobs. A `fill` inside a `<clipPath>` (as in `pipelines`)
+is inert, since the renderer uses only the clip shape's geometry.
+
+## 4. Products awaiting an official icon
+
+### 4.1 Observation
+
+Two current Developer platform products could not be added to the catalogue during follow-on 3,
+because Cloudflare's own icon set has no glyph for either:
+
+- **K2** — "A durable event stream" (`/k2/`), registered with `additional_groups: [Storage]`.
+- **Basin** — "A serverless data analytics platform for ingesting, managing, and querying Apache
+  Iceberg tables stored in R2" (`/basin/`), the umbrella product over Basin Pipelines, Basin SQL and
+  Basin Catalog.
+
+Both have documentation and a `src/content/directory/*.yaml` registry entry, so they are genuinely
+published products rather than unannounced ones.
+
+### 4.2 Investigation notes
+
+`~/repos/cloudflare/cloudflare-docs/src/icons/` (checked at `0017e51a28`, 2026-10-09) contains no
+`k2.svg`, no `basin.svg`, and none of `basin-pipelines.svg`, `basin-sql.svg` or
+`basin-catalog.svg` — the icon set has not caught up with the Basin rename at all. The three
+renamed products therefore still use their pre-rename artwork (`pipelines.svg`, `r2-sql.svg`,
+`r2-data-catalog.svg`), which remains correct because it is still the only artwork Cloudflare
+publishes for them.
+
+Adding a product without an icon is not a cosmetic compromise. `ProductIcon` returns `null` when it
+cannot resolve a name, so the node would render as label-only — reading as a broken node rather
+than a deliberate one — and `tests/worker/catalog.test.ts` fails any `svg`-kind icon name with no
+file behind it. Substituting a lookalike glyph was rejected as actively misleading: K2 and Basin are
+distinct products, and borrowing another product's icon would assert a relationship that does not
+exist.
+
+Whether Basin should become a canvas node at all is a separate question worth deciding on its
+merits. It is an umbrella over three products already in the catalogue, so a diagram containing
+Basin *and* Basin Pipelines would be ambiguous about what is actually deployed. K2 has no such
+problem and should simply be added once its glyph exists.
+
+### 4.3 Plan
+
+Deliberately deferred, not forgotten. The trigger is upstream artwork, so the work is small and
+entirely mechanical once it lands.
+
+1. **Re-check `cloudflare/cloudflare-docs` for `k2.svg` and `basin*.svg`** when next refreshing the
+   catalogue. A `git pull` in that checkout followed by `ls src/icons | grep -E 'k2|basin'` is the
+   whole check.
+2. **When `k2.svg` appears**, add K2 as a `storage` node — matching its registry
+   `additional_groups: [Storage]` — vendoring the glyph byte-identically and taking the description
+   from the registry's `meta.description`. Bump the `NODE_TYPES` length assertion.
+3. **When `basin*.svg` appears**, first decide whether Basin belongs on a canvas at all given the
+   umbrella ambiguity above; if it does, add it as `storage`. Separately, re-vendor the three Basin
+   product icons so the artwork matches the names already shipped, replacing `pipelines.svg`,
+   `r2-sql.svg` and `r2-data-catalog.svg` in place. The filenames may stay as they are — they are
+   referenced by `svgIcon(...)` calls, not by product name — but renaming them alongside a comment
+   update would read better, and `typeId` must still not change.
+4. **Leave the `typeId` values alone regardless.** The saved-diagram compatibility rule in the
+   `NODE_TYPES` documentation applies to artwork refreshes exactly as it does to renames.
