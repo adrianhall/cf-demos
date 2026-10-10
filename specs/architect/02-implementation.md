@@ -1055,7 +1055,7 @@ documented with a reproduction and assigned to Phase 23, every throwaway probe f
 `pnpm fix`, `pnpm check`, `pnpm test` and `pnpm test:coverage` pass with coverage at or above 80% on
 every metric.
 
-### Phase 22 — Chat tooling and documentation client
+### Phase 22 — Chat tooling and documentation client — **complete**
 
 #### Goal
 
@@ -1103,6 +1103,46 @@ binding, no D1, no Durable Object and no network call anywhere in the phase's ow
 Every tool dispatches to the exact operation shape the session already accepts, the docs adapter's
 failure paths are all covered, nothing in the phase imports `DiagramSession`, D1 or a binding, and
 `pnpm check`, `pnpm test` and the coverage gate pass.
+
+#### Outcome
+
+Delivered as planned. `src/worker/domain/ai/catalog-context.ts`,
+`src/worker/domain/ai/tools.ts`, `src/worker/application/ports/documentation-search.ts` and
+`src/worker/infrastructure/ai/docs-client.ts`, with
+`tests/worker/ai-catalog-context.test.ts`, `tests/worker/ai-tools.test.ts` and
+`tests/worker/ai-docs-client.test.ts`. All three new source files reach 100% of statements,
+branches, functions and lines; the demo-wide figure is 98.69 / 96.71 / 98.95 / 98.83. No chat
+tool test touches a binding, D1, a Durable Object or the network.
+
+Three decisions the plan left open, each resolved in favour of the narrower surface:
+
+- The port is `DocumentationSearchPort`, with the `DocumentationResult` and
+  `DocumentationSearchOutcome` types declared **on the port** rather than in the adapter, so the
+  application tier never imports from `infrastructure/`. The adapter adds a one-method
+  `McpDocumentationSearch` class implementing it, matching how
+  `infrastructure/durable-diagram-sessions.ts` adapts its own port; the throwing function and the
+  `*Safe` wrapper are both exported alongside it, as deliverable 3 requires. The port
+  deliberately has no throwing variant: a caller who can throw on a documentation lookup
+  eventually will.
+- `update_node` also omits `NodePatch.style`, as well as the `typeId` the plan already excluded.
+  It is an unbounded `Record<string, unknown>` of editor visual overrides with no schema a model
+  could be given.
+- `add_node`/`add_edge` do not offer the optional `id` that `AddNodeInput`/`AddEdgeInput` accept.
+  The session mints and replicates the id, and a model-chosen id would collide with an existing
+  element the first time it guessed a word already in use.
+
+Two adaptations the reference implementation needed for this repository, neither a change of
+behaviour. `z.toJSONSchema()`'s two unwanted keywords are filtered by key rather than removed by
+destructuring, because the shared Oxlint baseline rejects the unused bindings the
+rest-destructuring idiom creates. The docs-client test's `Client`/`StreamableHTTPClientTransport`
+doubles are `function` expressions rather than arrows, since the adapter reaches both through
+`new` and Vitest 4 warns on — and construction fails against — an arrow mock.
+
+Nothing in the plan turned out to be wrong. The one claim worth recording as verified rather than
+assumed: `@modelcontextprotocol/client@2.0.0` does export both `Client` and
+`StreamableHTTPClientTransport` from its package root, and `callTool()` returns a
+`CallToolResult` whose `isError` is optional — hence the explicit `=== true` test rather than a
+truthiness check.
 
 ### Phase 23 — `DiagramSession` chat capability
 
