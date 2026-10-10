@@ -79,6 +79,37 @@ export async function withFakeAi<T>(fakeAi: unknown, body: () => Promise<T>): Pr
 }
 
 /**
+ * The `AI` binding as it stood before any test substituted it.
+ *
+ * Captured at module load, which is before the first test runs, so it is the genuine original
+ * rather than whatever a previous file happened to leave behind. {@link expectAiBindingRestored}
+ * compares against it.
+ */
+const ORIGINAL_AI_BINDING = (testEnv as TestEnv & { AI?: unknown }).AI;
+
+/**
+ * Asserts that no test has left a fixture `AI` binding installed.
+ *
+ * Called from an `afterEach`, so the leak is reported by the test that caused it rather than by
+ * whichever unrelated test runs next and finds a fake model answering it. {@link withFakeAi}'s
+ * `finally` is what prevents the leak; this is what stops that `finally` being a convention a
+ * future test can quietly opt out of by substituting the binding by hand.
+ *
+ * @returns Nothing.
+ * @throws {Error} When the binding differs from the one captured at module load.
+ */
+export function expectAiBindingRestored(): void {
+  const current = (testEnv as TestEnv & { AI?: unknown }).AI;
+  if (current !== ORIGINAL_AI_BINDING) {
+    throw new Error(
+      'A test left a substituted `AI` binding installed. Substitution is process-wide in this '
+        + 'pool and survives eviction, so it must go through `withFakeAi`, whose `finally` '
+        + 'restores it.'
+    );
+  }
+}
+
+/**
  * Dispatches a request through the Worker under test.
  *
  * @param request Request to dispatch.

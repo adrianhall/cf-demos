@@ -369,8 +369,93 @@ projection outside the Zustand graph, which prevents a whole-graph REST fallback
 persisting it. Selection markers are advisory — an outline or connection midpoint says what someone
 is currently looking at; it does not lock that element or change conflict resolution.
 
+## The assistant runs inside the session, not behind a route of its own
+
+The obvious shape for an AI feature is a stateless HTTP endpoint: post a prompt, stream an answer,
+let the client apply whatever it decides. This one deliberately is not that, and the reason is
+visible the moment it edits something.
+
+**A chat turn is a writer, so it has to be ordered with the other writers.** The assistant does not
+answer questions about a diagram; it changes one, several times, in the middle of a conversation,
+while two people may be dragging nodes around. A stateless route would be a fourth writer reaching
+D1 from outside the serialized chain that
+[One serialized write path](#one-serialized-write-path-and-why-the-platform-is-the-mechanism)
+describes, and "one serialized writer per diagram" would simply stop being true. Running the turn
+_inside_ `DiagramSession` means each tool call goes through the same `runOperation` as a human edit
+and an MCP tool call, with the same persist-then-broadcast rule and the same input gate. The
+assistant gets no privileged path because there is no other path to give it.
+
+**The model needs the current graph, and the session is already holding it.** Every round of the
+loop rebuilds the digest of ids the model is allowed to name, from the graph as it stands after the
+previous round's mutation. A stateless route would have to re-read D1 for each round, and would
+still be reading a graph somebody else might be mid-write on. This is also the subtler of the two
+correctness rules in the engine: `applyMutation` returns the graph **the session** persisted, and
+the engine adopts it in preference to replaying the operation itself. Replaying locally mints
+different ids, and the model is then told about a node that exists nowhere.
+
+**A turn outlives the tab that started it**, which only works because something durable is running
+it. Closing the browser mid-turn does not cancel anything: the operations already applied are
+persisted, the remaining ones still land, and reopening the diagram shows the finished result. That
+is why the panel's Stop control says "stop watching" rather than "cancel" — there is no cancellation
+frame in the protocol, because there is nothing a client could usefully cancel.
+
+**Nothing in Phases 21–26 could have come first.** The assistant adds no HTTP route, no WebSocket
+route, no Durable Object class and no D1 table. It is a new message type on a connection that
+already existed, authorized by a check that already covered it, mutating through operations that
+already had a vocabulary, broadcast by a fan-out that already worked both ways. Had it been built
+before live sync, every one of those would have had to be invented for it and then reconciled
+afterwards — and the reconciliation, not the feature, is where the bugs would have been.
+
+### `'ai-chat'` is a third origin, not a flavour of `'agent'`
+
+`ChangeOrigin` was `'human' | 'agent'` and is now `'human' | 'agent' | 'ai-chat'`. The distinction
+is one a user can act on, which is the test every value in that union has to pass. An `'agent'`
+change came from a harness they configured, running somewhere they are not looking — surprising, and
+worth a notice. An `'ai-chat'` change came from the assistant, in response to something a person in
+some tab typed a second ago. Collapsing them would tell a visitor their own request was an external
+agent's edit.
+
+Two things follow:
+
+- **An `'ai-chat'` operation carries no operation id.** The session authored it, so there is no
+  optimistic client edit to reconcile it against. The chatting tab suppresses its own "updated by
+  somebody else" notice by knowing it has a turn in flight; a tab merely watching gets the notice
+  exactly as it would for a person's edit, and needs no assistant-specific code to see the changes
+  arrive. That is the whole mechanism by which a collaborator watches a diagram being built.
+- **The transcript narrates from the confirmed broadcast, never from a status frame.** A status is
+  necessarily emitted _before_ an operation is applied, so narrating from one announces changes the
+  session then rejects. One confirmed operation is exactly one line; a rejected one is no line at
+  all. `chat_status` therefore serves only the two tools that produce no broadcast of their own —
+  renaming the diagram, and looking something up in the documentation.
+
+### The conversation is transient, exactly as presence is
+
+Chat history lives per socket, in memory, and is gone when the connection ends. It is treated as
+[presence is](#presence-is-a-projection-not-document-state), for the same reason and with the same
+discipline: it is a property of a connection rather than of the document. The diagram is durable;
+the conversation about it is not. A transcript parked in the Zustand graph store would eventually be
+written to D1 by the whole-graph REST fallback as part of somebody's diagram, which is precisely the
+failure that rule exists to prevent.
+
+### Outbound, the demo is an MCP client
+
+The documentation tool reaches Cloudflare's own public documentation MCP server over Streamable
+HTTP, unauthenticated. Architect is therefore an MCP **server** at `/mcp` and an MCP **client** in
+the same Durable Object, which is worth pointing out rather than leaving as a coincidence of the
+code. The call sits behind a port with a timeout and a non-fatal failure outcome: a documentation
+lookup is an optimisation of an answer, never a precondition for one, so an unreachable server costs
+the reader a citation rather than a conversation. The timeout is not decoration — a pending
+operation keeps a Durable Object alive and billed, so an un-timed outbound call is a cost risk as
+well as a hung turn.
+
 ## Deliberate limitations
 
+- The assistant has no memory beyond the connection it is talking on, and no knowledge of any
+  diagram other than the one its session owns. Reloading the tab starts the conversation over; the
+  diagram it built is unaffected, because the diagram was never in the conversation.
+- Collaboration resolves last-applied-wins, and an assistant turn is subject to exactly that: a
+  person editing the same node mid-turn can win, and the model is told its change was refused rather
+  than being allowed to retry into a conflict loop.
 - Presence represents currently connected identities, not an audit trail, typing indicator, cursor
   history or lock. A disconnected socket immediately removes its participant and markers; a
   hibernated session can reconstruct only what live sockets still carry.
@@ -408,6 +493,18 @@ is currently looking at; it does not lock that element or change conflict resolu
 - A separate suite asserts that **nothing** the MCP surface logs carries a share token, graph
   content or an email address — across the whole catalogue in one pass, so a seventeenth tool added
   without that discipline fails it.
+- The AI path is covered rather than exempted, and the thing that makes that possible is the same
+  thing that makes the architecture defensible: both outbound dependencies sit behind a seam. The
+  Workers AI binding is substituted through `runInDurableObject()` — process-wide in that pool and
+  surviving eviction, so `withFakeAi`'s `finally` restores it and an `afterEach` asserts no test
+  left one installed. The documentation adapter is a field on the session rather than a `new` at the
+  call site, which is what lets the Workers-runtime suite exercise a failed lookup without reaching
+  Cloudflare's live documentation server. A turn's authorization, its tool failures, its round-cap
+  exhaustion, a binding outage and a documentation outage each have a test that leaves the
+  connection open and the diagram consistent.
+- A separate suite asserts the Worker's structured logs carry no prompt, answer, documentation
+  snippet or diagram content — by name, against the emitted lines rather than against the types, so
+  a field added later that happened to carry content would fail it even though it compiled.
 - The local browser pass covers desktop/narrow geometry, themes, modal focus, initial fit, keyboard
   connection and responsive drawers. It complements rather than duplicates DOM tests.
 - One thing is deliberately not automated: the Managed OAuth round trip, which is an Access-edge

@@ -1394,7 +1394,7 @@ Three, all of them extractions the deliverables implied rather than departures f
    unmounting discards all of it in one place — including closing the connection, through the
    effect's own teardown.
 
-### Phase 26 — AI assistance verification
+### Phase 26 — AI assistance verification — **complete**
 
 #### Goal
 
@@ -1436,6 +1436,37 @@ rather than exempted.
 `pnpm fix`, `pnpm check`, `pnpm test` and `pnpm test:coverage` pass with the gate at or above 80% on
 every metric; the manual two-profile and mid-turn-disconnect reviews pass; and this demo still has
 no Wrangler command, configuration file, generation step or cloud-reaching Terraform plan.
+
+#### Outcome
+
+All four automated gates pass: 100 test files, 2,489 tests, and coverage of 98.71% statements,
+96.80% branches, 98.95% functions and 98.81% lines. The demo has no Wrangler command, configuration
+file or generation step, and no Terraform command in `pnpm check` reaches the account.
+
+Three things changed beyond closing gaps, each because verifying the feature exposed something
+worth fixing rather than recording:
+
+1. **The integration suite was reaching the live network.** A test of a failed documentation lookup
+   passed only because the machine running it was offline-ish and slow, and the suite took 13.9s.
+   The documentation adapter is now a field on `DiagramSession` rather than a `new` at the call
+   site, substituted through `runInDurableObject()` exactly as the AI binding already was. The
+   suite runs in 4.1s and passes offline, which the repository rules require.
+2. **`withFakeAi`'s discipline is now asserted rather than trusted.** `expectAiBindingRestored()`
+   runs in `afterEach`, so a test that substitutes the binding by hand and leaks it is reported by
+   the test that caused it instead of by an unrelated later one finding a fake model answering.
+3. **Seven WCAG 2.2 AA findings in the new UI were fixed, not logged.** Two contrast failures
+   (brand orange as tab and button text, ~2.6:1 in light mode), two target-size failures, a
+   keyboard-unreachable scroll region, focus dropped to `<body>` when the generation modal switches
+   views, and a reflow failure where a modal taller than the viewport clipped its own footer
+   buttons with no way to scroll to them. Each has a test; the three visible only in built CSS are
+   asserted against the build.
+
+#### Outstanding
+
+The manual smoke check on the deployed hostname (deliverable 4) has not been run: deployment is
+blocked on an API token with permission to migrate the production D1 database. The steps are
+written up as section 6 of [`DEMO.md`](../../cf-terraform-demos/architect/DEMO.md) and should be
+walked through once that is resolved.
 
 ## 14. Definition of complete
 

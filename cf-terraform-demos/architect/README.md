@@ -120,6 +120,26 @@ Worker's own structured logs deliberately contain only ids, counts, durations an
 prompt, response, documentation snippet or diagram content. The repository-root `.env.example`
 already documents the required `AI Gateway: Edit` and `Workers AI: Edit` permissions.
 
+**Where the cost is.** **AI → AI Gateway → `architect-chat` → Logs / Analytics** in the Cloudflare
+dashboard is this feature's cost surface: requests, tokens, latency, errors and spend, filterable by
+time, for every turn the demo has run. It is deliberately the only place — the Worker never calls
+`env.AI.gateway(id).getLog()` to show a figure in its own interface, because the claim this demo
+makes is that the gateway shows the cost, and reading a log back would add a round trip and an error
+path for nothing visible. (The `playground` demo _does_ read logs back, because per-request cost in
+the application UI is that demo's whole subject. The two demos teach different lessons on purpose.)
+
+Two operational facts worth knowing before a presentation:
+
+- **The chat model needs a paid plan.** `@cf/zai-org/glm-5.2` is marked "paid access required": it
+  is unavailable on Workers Free billing and needs the Workers Paid plan or prepaid AI Gateway
+  credits. The gateway's `workers_ai_billing_mode` chooses between those two, explicitly rather than
+  by inheritance. `AI_CHAT_MODEL` is a plain binding in `cloudflare.config.ts`, so swapping to the
+  documented fallback (`@cf/zai-org/glm-5.3-flash`, same family and roughly nine times cheaper) is a
+  one-line change and a redeploy.
+- **Gateway log retention depends on when the gateway was created.** Gateways created on or after
+  2026-09-24 follow Workers Logs pricing and retention; older ones use Legacy Logs. A gateway this
+  demo provisions today is on the Workers Logs path.
+
 ```text
 pnpm deploy
   terraform apply
@@ -539,9 +559,22 @@ Terraform defaults reserved for this port.
 or real-browser checks. It also records the WCAG 2.2 AA review and explains why React Flow fitting,
 responsive drawer geometry, target boxes, focus paint and hit-testing cannot be validated by jsdom.
 
-The performance contract is artifact-based: `tests/worker/built-bundle.test.ts` requires ELK to stay
-in one dynamic chunk and out of the initial application bundle. The Phase 7 production build emitted
-a 602.34 kB initial JS entry and a separate 1,431.11 kB ELK chunk loaded only by Auto layout.
+The performance contract is artifact-based: `tests/worker/built-bundle.test.ts` requires ELK and the
+assistant's Markdown renderer each to stay in dynamic chunks of their own, out of the initial
+application bundle. The current production build emits a 676 kB initial JS entry, a 1,431 kB ELK
+chunk loaded only by Auto layout, and 113 kB + 38 kB of `react-markdown`/`remark-gfm` loaded only
+when somebody opens the assistant. A visitor who comes to look at a diagram downloads none of the
+three.
+
+The assistant's own UI was reviewed against WCAG 2.2 AA and the findings fixed rather than recorded:
+the active tab's state is carried by its underline rather than by brand-orange text that measured
+~2.6:1 in light mode; the transcript is a named, keyboard-reachable scroll region; "New
+conversation" and each documentation citation clear the 24×24 minimum target; the generation modal
+moves focus deliberately when its view switches, rather than dropping it to `<body>`; its
+"Connecting…" state is an `<output>`; the tab pair implements the arrow/Home/End keys its `tab` role
+promises; and every modal now caps its height and scrolls, which the generation modal is the first
+content tall enough to need. Each of those has a test, and the three that are only visible in built
+CSS are asserted against the build.
 
 ## Storage choices
 

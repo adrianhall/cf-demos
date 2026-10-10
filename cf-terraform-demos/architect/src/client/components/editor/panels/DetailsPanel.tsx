@@ -52,10 +52,12 @@ export interface DetailsPanelProps {
  * properties form knowing it has been, and it is why the assistant tab could arrive without
  * touching that form at all.
  *
- * The two tabs implement the full ARIA tabs pattern: a `role="tablist"` of two real `<button>`s
- * carrying `aria-selected` and `aria-controls`, and one `role="tabpanel"` whose `aria-labelledby`
- * tracks whichever tab is active. They are buttons rather than anything more elaborate, so Tab,
- * Enter and Space already work with no key handling of this component's own.
+ * The two tabs implement the ARIA tabs pattern: a `role="tablist"` of two real `<button>`s carrying
+ * `aria-selected` and `aria-controls`, one `role="tabpanel"` whose `aria-labelledby` tracks
+ * whichever tab is active, a roving `tabIndex` making the pair one Tab stop, and arrow, Home and
+ * End keys moving between them. They are buttons rather than anything more elaborate, so Enter and
+ * Space already activate them with no key handling of this component's own; the arrow keys are
+ * added because announcing something as a "tab" promises they will work.
  *
  * Which tab is showing is store state rather than local state, because the toolbar's assistant
  * control sets it from outside this component and selecting a node resets it. It is deliberately
@@ -90,16 +92,64 @@ export function DetailsPanel({
   const propertiesActive = detailsPanelTab === 'properties';
   const label = detailsPanelExpanded ? 'Collapse panel' : 'Expand panel';
 
+  /**
+   * Moves between the tabs with the arrow, Home and End keys.
+   *
+   * Not required for conformance — the tabs are real `<button>`s, so Tab reaches each one and Enter
+   * or Space activates it — but announcing an element as "tab" sets an expectation that Left and
+   * Right move between tabs, and meeting that expectation with silence is its own kind of failure.
+   * Manual activation rather than automatic: with only two tabs, arrowing onto one and having the
+   * panel change underneath would make exploring the control destructive.
+   *
+   * @param event The keyboard event from either tab.
+   * @returns Nothing.
+   */
+  const onTabKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    const moves: Record<string, 'properties' | 'ai-chat' | undefined> = {
+      ArrowLeft: propertiesActive ? 'ai-chat' : 'properties',
+      ArrowRight: propertiesActive ? 'ai-chat' : 'properties',
+      End: 'ai-chat',
+      Home: 'properties'
+    };
+    const next = moves[event.key];
+    if (next === undefined) {
+      return;
+    }
+    event.preventDefault();
+    setDetailsPanelTab(next);
+    // Focus follows the selection, which is what makes the arrow keys feel like navigation rather
+    // than a remote control. Read from the DOM rather than held in a ref: the tabs are two fixed
+    // elements with known ids, and a ref pair would be two more things to keep in step.
+    document.getElementById(next === 'properties' ? propertiesTabId : chatTabId)?.focus();
+  };
+
   return (
     <div className={`details-panel${detailsPanelExpanded ? ' details-panel--expanded' : ''}`}>
       <div className="details-panel__header">
-        <div className="details-panel__tablist" role="tablist" aria-label="Details panel">
+        {/* `onKeyDown` on the list rather than on each tab: the keys move *between* the tabs, so
+            the behaviour belongs to the set rather than to either member of it.
+
+            `tabIndex={-1}` satisfies the rule that an element with an interactive role must be
+            focusable, without making the list itself a Tab stop — which would be wrong here. The
+            tabs pattern puts exactly one stop in the list, and the roving `tabIndex` on the two
+            buttons below is where it lives; a focusable container would add a second. */}
+        <div
+          className="details-panel__tablist"
+          role="tablist"
+          aria-label="Details panel"
+          onKeyDown={onTabKeyDown}
+          tabIndex={-1}
+        >
           <button
             type="button"
             id={propertiesTabId}
             role="tab"
             aria-selected={propertiesActive}
             aria-controls={tabpanelId}
+            // Roving tabindex, as the tabs pattern specifies: the tab list is one Tab stop, and
+            // the arrow keys move within it. Without this, Tab would walk through every tab
+            // before reaching the panel's content.
+            tabIndex={propertiesActive ? 0 : -1}
             className={`details-panel__tab${propertiesActive ? ' details-panel__tab--active' : ''}`}
             onClick={() => setDetailsPanelTab('properties')}
           >
@@ -111,6 +161,7 @@ export function DetailsPanel({
             role="tab"
             aria-selected={!propertiesActive}
             aria-controls={tabpanelId}
+            tabIndex={propertiesActive ? -1 : 0}
             className={`details-panel__tab${!propertiesActive ? ' details-panel__tab--active' : ''}`}
             onClick={() => setDetailsPanelTab('ai-chat')}
           >

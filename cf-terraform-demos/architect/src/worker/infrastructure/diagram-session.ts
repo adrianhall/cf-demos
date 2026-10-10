@@ -10,7 +10,10 @@ import type {
   GraphWriteOutcome,
   RejectedGraphWrite
 } from '../application/ports/diagram-session.ts';
-import type { DocumentationSearchOutcome } from '../application/ports/documentation-search.ts';
+import type {
+  DocumentationSearchOutcome,
+  DocumentationSearchPort
+} from '../application/ports/documentation-search.ts';
 import { parseClientFrame } from '../domain/client-frame.ts';
 import { applyGraphOperation, type GraphOperation } from '../domain/graph-operations.ts';
 import { canonicalizeGraphData, type GraphData } from '../domain/graph.ts';
@@ -293,6 +296,23 @@ export class DiagramSession extends DurableObject<Env> {
    * the poisoning failure it recovers from.
    */
   private writer: SerializedGraphWriter | null = null;
+
+  /**
+   * The documentation adapter a chat turn reaches outward through.
+   *
+   * A field rather than a `new McpDocumentationSearch()` at the call site, and that is a testing
+   * seam rather than taste. {@link McpDocumentationSearch} opens a real connection to Cloudflare's
+   * public documentation server, so a Workers-runtime test exercising a turn that calls the
+   * documentation tool would reach the live network — which this repository's tests must not do,
+   * and which would make the failure path untestable in the bargain, since the outcome would depend
+   * on whether the machine running the suite happened to be online.
+   *
+   * It is `public` for the same reason `env.AI` is substitutable in that suite: a test replaces it
+   * through `runInDurableObject()`, which is the only way to reach an instance's own state. It is
+   * never reassigned in production, and nothing outside a test has a reference to an instance to
+   * reassign it on.
+   */
+  public documentationSearch: DocumentationSearchPort = new McpDocumentationSearch();
 
   /**
    * Accepts an editor's connection to this diagram.
@@ -669,7 +689,7 @@ export class DiagramSession extends DurableObject<Env> {
           };
         },
         description: this.description,
-        documentationSearch: new McpDocumentationSearch(),
+        documentationSearch: this.documentationSearch,
         env: {
           // The generated `Ai.run()` overload cannot describe a dynamic model id's streamed
           // OpenAI-chat tool-call response. The engine's narrow interface is the runtime contract

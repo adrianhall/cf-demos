@@ -5,6 +5,7 @@ import {
   ALICE,
   callTool,
   createDiagram,
+  expectAiBindingRestored,
   expectNoFrameOfType,
   type FrameRecorder,
   MALLORY,
@@ -88,6 +89,10 @@ describe('live sync', () => {
     }
     openSockets.clear();
     await evictAllDurableObjects({ webSockets: 'close' });
+    // Asserted every test rather than trusted: `env` substitution is process-wide in this pool
+    // and survives eviction, so a leak is reported here, by the test that caused it, instead of
+    // by an unrelated later test finding a fake model answering it.
+    expectAiBindingRestored();
   });
 
   /**
@@ -563,6 +568,126 @@ describe('live sync', () => {
       // the same connection remains usable after `chat_done`.
       first.socket.send(JSON.stringify({ type: 'resync' }));
       expect(await first.received.next('snapshot')).toMatchObject({ type: 'snapshot' });
+    });
+
+    // Chatting is editing, so it follows the graph-edit rule rather than the owner-only one. A
+    // collaborator can already add a node by hand through this same socket; refusing to let them
+    // ask the assistant to do it would be a distinction with no justification behind it.
+    it('lets a collaborator chat, exactly as they may edit', async () => {
+      const diagramId = await createDiagram();
+      const granted = await send(
+        await requestAs(`/api/diagrams/${diagramId}/collaborators`, {
+          body: JSON.stringify({ email: MALLORY }),
+          method: 'POST'
+        })
+      );
+      await granted.text();
+      const collaborator = await connect(diagramId, MALLORY);
+
+      await withFakeAi(
+        fakeAi([{ choices: [{ message: { content: 'Two Workers.' } }] }]),
+        async () => {
+          collaborator.socket.send(
+            JSON.stringify({
+              clientRequestId: 'turn-collab',
+              text: 'What is here?',
+              type: 'chat_message'
+            })
+          );
+          expect(await collaborator.received.next('chat_done')).toMatchObject({
+            assistantText: 'Two Workers.',
+            clientRequestId: 'turn-collab'
+          });
+        }
+      );
+    });
+
+    // The authorization for a chat turn is the upgrade's own check and nothing else: there is no
+    // second gate inside the session, because an unauthorized caller never reaches it. This is the
+    // statement of that — an outsider cannot open the socket, so they cannot chat.
+    it('refuses an outsider the connection a chat turn would have to travel on', async () => {
+      const diagramId = await createDiagram(ALICE);
+
+      const response = await send(
+        await requestAs(
+          `/api/diagrams/${diagramId}/live`,
+          { headers: { Upgrade: 'websocket' } },
+          MALLORY
+        )
+      );
+
+      expect(response.status).toBe(404);
+      expect(response.webSocket).toBeNull();
+    });
+
+    // A documentation lookup is the one tool that reaches outside this account, so it is also the
+    // one that fails for reasons nothing here controls. Its failure is non-fatal by construction:
+    // the outcome travels to the reader, the model is told and answers anyway, and the turn ends
+    // normally rather than as an error.
+    it('completes a turn whose documentation lookup failed, reporting the outcome', async () => {
+      const diagramId = await createDiagram();
+      const { received, socket } = await connect(diagramId);
+      // Substituted rather than left to the real adapter, which would open a connection to
+      // Cloudflare's public documentation server: this suite must pass offline, and an outcome
+      // that depended on the network would make the failure path untestable rather than tested.
+      await runInDurableObject(testEnv.DIAGRAM_SESSIONS.getByName(diagramId), (session) => {
+        session.documentationSearch = {
+          search: async () =>
+            Promise.resolve({
+              message: 'Documentation search is currently unavailable.',
+              ok: false as const
+            })
+        };
+      });
+
+      await withFakeAi(
+        fakeAi([
+          {
+            choices: [
+              {
+                message: {
+                  content: null,
+                  tool_calls: [
+                    {
+                      function: {
+                        arguments: '{"query":"durable objects"}',
+                        name: 'search_cloudflare_documentation'
+                      },
+                      id: 'call-docs',
+                      type: 'function'
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          { choices: [{ message: { content: 'I could not check, but broadly:' } }] }
+        ]),
+        async () => {
+          socket.send(
+            JSON.stringify({
+              clientRequestId: 'turn-docs',
+              text: 'How do Durable Objects work?',
+              type: 'chat_message'
+            })
+          );
+          // The real adapter runs here and cannot reach `docs.mcp.cloudflare.com` from the test
+          // pool, which is precisely the failure under test: no network stub, a genuine outage.
+          expect(await received.next('chat_tool_result')).toMatchObject({
+            clientRequestId: 'turn-docs',
+            outcome: { ok: false },
+            query: 'durable objects',
+            tool: 'search_cloudflare_documentation'
+          });
+          expect(await received.next('chat_done')).toMatchObject({
+            assistantText: 'I could not check, but broadly:',
+            clientRequestId: 'turn-docs'
+          });
+        }
+      );
+
+      socket.send(JSON.stringify({ type: 'resync' }));
+      expect(await received.next('snapshot')).toMatchObject({ type: 'snapshot' });
     });
 
     it('reports a binding failure only to the chat originator and leaves its socket usable', async () => {

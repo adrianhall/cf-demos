@@ -286,6 +286,17 @@ export function GenerateWithAiModal({ onClose }: GenerateWithAiModalProps) {
     );
   }, [connected, chat]);
 
+  // Focus, when the view switches from the description form to the conversation. The Generate
+  // button the operator just activated is unmounted by that switch, which drops focus to `<body>`
+  // — outside the `aria-modal` dialog, with nothing said about it. Moving focus to the dialog
+  // deliberately is what keeps the change announced and the trap meaningful; it is not left to
+  // `useModalFocus`, whose own focus-in runs on open and does not re-run here.
+  useEffect(() => {
+    if (diagramId !== null) {
+      dialogRef.current?.focus();
+    }
+  }, [diagramId]);
+
   /**
    * Creates the diagram the conversation will build into.
    *
@@ -436,7 +447,14 @@ export function GenerateWithAiModal({ onClose }: GenerateWithAiModalProps) {
           </div>
         ) : (
           <div className="generate-with-ai-modal__chat">
-            {!connected && <p className="generate-with-ai-modal__connecting">Connecting…</p>}
+            {/* An `<output>`, which carries `role="status"` natively: this is the only indication
+                that nothing has gone wrong yet, and a reader who cannot see it would otherwise
+                meet a silent, empty transcript. The element rather than the role because the lint
+                rule is right — a native element cannot have its semantics stripped by a stylesheet
+                or a future refactor the way an attribute can. */}
+            {!connected && (
+              <output className="generate-with-ai-modal__connecting">Connecting…</output>
+            )}
             <div className="generate-with-ai-modal__transcript">
               <AiChatPanel
                 transcript={chat.transcript}

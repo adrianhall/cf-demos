@@ -399,6 +399,67 @@ describe('the two tabs', () => {
     expect(useDiagramStore.getState().detailsPanelExpanded).toBe(true);
   });
 
+  // A roving tabindex is what makes the pair one Tab stop rather than two: without it, Tab walks
+  // through every tab before reaching the content the tabs are for.
+  it('puts exactly one tab in the tab order, following the selection', () => {
+    render(<DetailsPanel {...chatProps()} />);
+
+    expect(screen.getByRole('tab', { name: 'Properties' })).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('tab', { name: 'AI Assistant' })).toHaveAttribute('tabindex', '-1');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'AI Assistant' }));
+
+    expect(screen.getByRole('tab', { name: 'Properties' })).toHaveAttribute('tabindex', '-1');
+    expect(screen.getByRole('tab', { name: 'AI Assistant' })).toHaveAttribute('tabindex', '0');
+  });
+
+  // Announcing something as a "tab" promises the arrow keys will work; meeting that expectation
+  // with silence is its own kind of failure, even though the pattern conforms without it.
+  it.each([
+    ['ArrowRight', 'ai-chat'],
+    ['ArrowLeft', 'ai-chat'],
+    ['End', 'ai-chat']
+  ])('moves to the assistant with %s', (key, expected) => {
+    render(<DetailsPanel {...chatProps()} />);
+
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Properties' }), { key });
+
+    expect(useDiagramStore.getState().detailsPanelTab).toBe(expected);
+  });
+
+  it.each([
+    ['ArrowLeft', 'properties'],
+    ['ArrowRight', 'properties'],
+    ['Home', 'properties']
+  ])('moves back to Properties with %s', (key, expected) => {
+    useDiagramStore.setState({ detailsPanelTab: 'ai-chat' });
+    render(<DetailsPanel {...chatProps()} />);
+
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'AI Assistant' }), { key });
+
+    expect(useDiagramStore.getState().detailsPanelTab).toBe(expected);
+  });
+
+  // Focus follows the selection, which is what makes the arrow keys feel like navigation rather
+  // than a remote control operating something elsewhere on the page.
+  it('moves focus along with the arrow key', () => {
+    render(<DetailsPanel {...chatProps()} />);
+    const properties = screen.getByRole('tab', { name: 'Properties' });
+    properties.focus();
+
+    fireEvent.keyDown(properties, { key: 'ArrowRight' });
+
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'AI Assistant' }));
+  });
+
+  it('ignores a key that means nothing to a tab list', () => {
+    render(<DetailsPanel {...chatProps()} />);
+
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Properties' }), { key: 'ArrowDown' });
+
+    expect(useDiagramStore.getState().detailsPanelTab).toBe('properties');
+  });
+
   it('threads the assistant tab\u2019s callbacks through to the panel', () => {
     const props = chatProps();
     useDiagramStore.setState({ detailsPanelTab: 'ai-chat' });

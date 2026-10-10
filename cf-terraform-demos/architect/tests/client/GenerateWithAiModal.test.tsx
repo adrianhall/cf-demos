@@ -231,6 +231,25 @@ describe('GenerateWithAiModal', () => {
       expect(screen.queryByText(/rename_diagram/u)).not.toBeInTheDocument();
     });
 
+    // The Generate button the operator just activated is unmounted by the view switch, which
+    // drops focus to `<body>` — outside the `aria-modal` dialog, with nothing said about it.
+    it('moves focus into the dialog when the view switches', async () => {
+      await startGenerating();
+
+      expect(document.activeElement).toBe(screen.getByRole('dialog', { name: 'Generate with AI' }));
+    });
+
+    it('announces the connecting state rather than only showing it', async () => {
+      render(<GenerateWithAiModal onClose={vi.fn()} />);
+      fireEvent.change(screen.getByLabelText(/describe the architecture/iu), {
+        target: { value: 'A game backend' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+      await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+
+      expect(screen.getByRole('status')).toHaveTextContent('Connecting…');
+    });
+
     it('sends the opening message exactly once', async () => {
       await startGenerating();
       await deliver({ clientRequestId: sentRequestId(), text: 'Working…', type: 'chat_token' });

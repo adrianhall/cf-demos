@@ -54,6 +54,19 @@ describe('the transcript', () => {
     expect(document.querySelectorAll('[aria-live]')).toHaveLength(1);
   });
 
+  // The transcript scrolls, and Safari does not add a scroll container to the tab order, so
+  // without an explicit stop a keyboard user cannot reach a long conversation's earlier messages
+  // at all. A focusable region also has to be named, or it is announced as nothing in particular.
+  it('is a named, keyboard-reachable scroll region', () => {
+    render(<AiChatPanel {...baseProps()} />);
+
+    const log = screen.getByRole('log', { name: 'Assistant conversation' });
+
+    expect(log).toHaveAttribute('tabindex', '0');
+    log.focus();
+    expect(document.activeElement).toBe(log);
+  });
+
   it('renders every kind of entry from a scripted sequence', () => {
     const transcript: ChatTranscriptEntry[] = [
       { id: '1', kind: 'user', text: 'Add a Worker' },

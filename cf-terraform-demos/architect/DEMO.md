@@ -1,6 +1,6 @@
 # Presenting Architect
 
-A 20–25 minute walkthrough. See [`README.md`](README.md) for setup/lifecycle and
+A 25–30 minute walkthrough. See [`README.md`](README.md) for setup/lifecycle and
 [`EXPLAIN-DEMO.md`](EXPLAIN-DEMO.md) for the architecture behind each step.
 
 ## Before the presentation
@@ -18,7 +18,11 @@ A 20–25 minute walkthrough. See [`README.md`](README.md) for setup/lifecycle a
 6. Arrange a second authenticated browser profile for section 5. Have the owner grant that identity
    editor access through **Manage collaborators** before the audience arrives; each identity must
    have signed in once before it can be granted.
-7. Confirm teardown is planned: `pnpm teardown` deletes the Worker before destroying bindings.
+7. **Open the AI Gateway dashboard for section 6 in advance** — **AI → AI Gateway → `architect-chat`
+   → Logs** — and run one throwaway generation beforehand so the view is not empty when you first
+   switch to it. Confirm the account is on a paid plan or has AI Gateway credits: the chat model is
+   marked "paid access required" and a free account fails the first turn.
+8. Confirm teardown is planned: `pnpm teardown` deletes the Worker before destroying bindings.
 
 ## Opening sentence
 
@@ -134,7 +138,44 @@ so ask it for somebody else's diagram and it gets the same non-enumerating `404`
    while both tabs are open. Both update live with the agent notice: MCP is not a bypass or a second
    graph copy, but a third caller serialized through the exact same `DiagramSession` and D1 write.
 
-## 6. Export and appearance (3 minutes)
+## 6. The assistant (5 minutes)
+
+The point of this section is that the assistant is a **fourth caller** of machinery the audience has
+already watched work three times, not a feature with a pipeline of its own. Say that before you
+start typing, because once the diagram starts building, the obvious reading is that something new is
+happening.
+
+1. From the blueprint gallery, open **Generate with AI** and describe an architecture in one
+   sentence — "the backend for a real-time strategy game: matchmaking, live game state and a
+   leaderboard" works well. Press **Generate**.
+2. Watch the transcript. Each line reading "Added node: …" is a **confirmed** `operation_applied`
+   broadcast, not a prediction: the session persisted that change to D1 before the frame was sent,
+   so every line is something the diagram already contains. The assistant also calls
+   `rename_diagram`, which is why the title stops being "Untitled Diagram".
+3. Refine before opening anything: "add a queue between matchmaking and game state". It runs on the
+   same connection, so the model still remembers the first turn. The diagram is correct and durable
+   between every turn — nothing here is staged for a later save.
+4. Press **Open in Editor**. One ELK pass tidies the positions the assistant staggered onto a grid,
+   and that is the **only** whole-graph write this path performs. Everything else was already
+   stored. Point at the editor: it shows exactly what the conversation produced, because there was
+   never a second copy to disagree with.
+5. In the editor, open the **AI Assistant** tab beside Properties and ask a question that needs the
+   documentation: "when should I use a Durable Object instead of KV here?" The Sources list comes
+   from Cloudflare's own public documentation MCP server — the demo is an MCP _client_ here, having
+   been an MCP _server_ in section 4.
+6. Ask it to add a node, then press **Ctrl+Z**. The undo is ordinary editor undo, because the
+   assistant's edit arrived as an ordinary operation on the ordinary graph.
+7. With the second profile still on the same diagram, ask the assistant for another change from the
+   owner's tab only. The watching profile sees the nodes appear live with the usual notice and has
+   no chat panel open at all — the assistant's edits travel as operations, so a collaborator needs
+   no assistant-specific code to see them.
+8. Open **AI → AI Gateway → `architect-chat` → Logs** in the dashboard. Every turn from this section
+   is there with its tokens, latency and cost, and the spend limit is visible on the gateway. Then
+   open Workers Logs and filter for `ai_chat_turn_completed`: counts, durations and a model id, and
+   deliberately no prompt or answer text. The gateway is where content may be retained; the
+   application's own logs are where it is not.
+
+## 7. Export and appearance (3 minutes)
 
 1. Export PNG and SVG: both frame graph bounds rather than the current pan/zoom.
 2. Export the project ZIP and show its `cf`-based typed configuration. This is the one deliberate
@@ -144,7 +185,7 @@ so ask it for somebody else's diagram and it gets the same non-enumerating `404`
 4. Cycle system → light → dark. Explain that native `light-dark()` must survive production CSS
    minification or the in-app override silently stops working.
 
-## 7. Administration and defence in depth (3 minutes)
+## 8. Administration and defence in depth (3 minutes)
 
 1. As an ordinary identity, show there is no Admin link and direct `/app/admin` access is refused.
 2. As `ADMIN_EMAIL`, open Admin. The user directory is an observation surface, not an authorization
@@ -183,6 +224,11 @@ KV, hostname and Access resources.
   diagrams, and its changes reach an open tab live with a visible explanation.
 - `diagram_updated` events carry `via: "mcp"` for an agent's change and `via: "api"` for a
   browser's; no log line carries a share token, graph content or an email address.
+- A sentence typed on the blueprint page produces a diagram that is already persisted turn by turn,
+  refinable before the editor is ever opened, and opening it writes nothing back but one layout
+  pass. The assistant's edits reach every connected tab as ordinary operations, are undoable with
+  Ctrl+Z, and appear in the AI Gateway logs with their cost — while `ai_chat_turn_completed` in
+  Workers Logs carries counts and durations and no prompt or answer text.
 - Explicit appearance overrides work in the production build; responsive drawers preserve canvas
   width; reduced-motion preference stops directional edge animation.
 - ELK is fetched only on Auto layout, not initial application load.

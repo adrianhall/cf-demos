@@ -186,6 +186,27 @@ describe('built stylesheet contract', () => {
       );
       expect(css).toMatch(/\.modal__close\{[^}]*min-width:24px;min-height:24px/u);
       expect(css).toMatch(/\.diagram-card__menu-button\{[^}]*min-width:24px;min-height:24px/u);
+      // The assistant panel's two smallest targets, both of which sat under 24px before.
+      expect(css).toMatch(/\.ai-chat-panel__new-conversation\{[^}]*min-height:24px/u);
+      expect(css).toMatch(/\.ai-chat-panel__source-link\{[^}]*min-height:24px/u);
+      // The active tab's state is the 2px underline, never the label's colour: the brand orange
+      // is around 2.6:1 as text on the light surface, which fails 1.4.3. A regression here would
+      // be invisible in jsdom and perfectly legible to anybody reviewing it in light mode.
+      expect(css).toMatch(
+        /\.details-panel__tab--active\{[^}]*border-bottom-color:var\(--cf-orange\)/u
+      );
+      expect(css).not.toMatch(/\.details-panel__tab--active\{[^}]*[^-]color:var\(--cf-orange\)/u);
+      expect(css).toMatch(/\.ai-chat-panel__transcript:focus-visible\{[^}]*outline:2px solid/u);
+    });
+
+    // A fixed, centred overlay clips a dialog taller than the viewport at both ends, and what is
+    // clipped is the footer where every modal here puts its confirm button. The cap and its
+    // scroll are what make the generation modal usable at 400% zoom and at the 320x256 reflow
+    // target — neither of which jsdom can measure, so the rule itself is the assertion.
+    it('keeps a modal scrollable rather than clipped on a short viewport', () => {
+      expect(css).toMatch(/\.modal\{[^}]*max-height:calc\(100vh - 2rem\)/u);
+      expect(css).toMatch(/\.modal\{[^}]*overflow-y:auto/u);
+      expect(css).toContain('@media (height<=700px)');
     });
 
     it('retains the geometry fixes that jsdom cannot measure', () => {

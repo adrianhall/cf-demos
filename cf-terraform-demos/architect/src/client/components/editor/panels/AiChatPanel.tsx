@@ -241,9 +241,12 @@ export function AiChatPanel({
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     const text = draft.trim();
-    // The Send button is disabled in both of these cases, so neither is reachable by clicking it.
-    // The guard is here because Enter in the textarea submits the form directly, which no disabled
-    // button can prevent.
+    // The Send button is disabled in both of these cases, so neither is reachable through this
+    // component's own UI — Enter inside a `<textarea>` inserts a newline rather than submitting,
+    // so there is no keyboard path around the disabled button either. The guard stays because a
+    // form's submit event is not this component's to guarantee: a future composer control, or a
+    // caller that submits the form programmatically, would otherwise send an empty message or a
+    // second one over a turn already in flight.
     if (text.length === 0 || inFlight) {
       return;
     }
@@ -266,7 +269,24 @@ export function AiChatPanel({
         </button>
       </div>
 
-      <div className="ai-chat-panel__transcript" role="log" aria-live="polite">
+      {/* `tabIndex={0}` rather than relying on the browser: this region scrolls, and Safari does
+          not add a scroll container to the tab order, so without it a keyboard user cannot reach
+          a long conversation's earlier messages at all — a WCAG 2.1.1 failure. A focusable region
+          needs a name, hence the label, which also gives the live region an identity when a
+          screen reader enters it.
+
+          The lint rule is right in general and cannot see that this one is a scroll container,
+          which is the documented exception the WAI makes for exactly this case. Scoped to this
+          line and paired with a `:focus-visible` outline, exactly as `../../guide/CopyBlock.tsx`
+          already does for the same reason. */}
+      <div
+        className="ai-chat-panel__transcript"
+        role="log"
+        aria-live="polite"
+        aria-label="Assistant conversation"
+        // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        tabIndex={0}
+      >
         {transcript.length === 0 && (
           <p className="ai-chat-panel__empty">
             Ask the assistant to add nodes, explain the diagram, or search Cloudflare&apos;s docs.

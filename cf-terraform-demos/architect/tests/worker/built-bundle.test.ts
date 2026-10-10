@@ -35,6 +35,17 @@ const WORKER_BUNDLE = path.resolve(
 const ELK_CHUNK_MARKER = 'elk';
 
 /**
+ * Markers identifying the Markdown renderer's own emitted chunks.
+ *
+ * `react-markdown` and `remark-gfm` together are around 150 kB raw, loaded only when somebody opens
+ * the assistant panel — which most sessions never do. They are lazily imported for exactly the
+ * reason ELK is, and are asserted separately for exactly the reason ELK is: a lazy import collapses
+ * back into a static one as soon as somebody adds a top-level `import` of either, and nothing about
+ * the application's behaviour would change to say so.
+ */
+const MARKDOWN_CHUNK_MARKERS = ['react-markdown', 'remark-gfm'];
+
+/**
  * Ceiling for the entry bundle, in bytes.
  *
  * Not a performance budget so much as a tripwire: ELK alone is around 1.4 MB, so an entry chunk
@@ -135,6 +146,31 @@ describe('built bundle contract', () => {
 
     expect(containing).toHaveLength(1);
     expect(containing[0]).toContain(ELK_CHUNK_MARKER);
+  });
+
+  // The assistant panel is reached by two routes — the editor's second tab and the generation
+  // modal — and neither is on the path a visitor who only wants to look at a diagram takes. Its
+  // renderer therefore stays out of the entry chunk, which is only true for as long as nobody
+  // adds a top-level import of either package.
+  it.each(MARKDOWN_CHUNK_MARKERS)('emits %s as a chunk of its own', (marker) => {
+    expect(chunks.map((chunk) => chunk.name).filter((name) => name.includes(marker))).toHaveLength(
+      1
+    );
+  });
+
+  it('keeps the Markdown renderer out of the entry chunk', async () => {
+    const entry = chunks.find(
+      (chunk) =>
+        chunk.name.startsWith('index-')
+        && chunk.name.endsWith('.js')
+        && !MARKDOWN_CHUNK_MARKERS.some((marker) => chunk.name.includes(marker))
+    );
+
+    expect(entry, 'expected an entry chunk named index-*.js').toBeDefined();
+    const contents = await readFile(path.join(ASSET_DIR, (entry as { name: string }).name), 'utf8');
+    // A string only the Markdown parser carries. Asserting on the absence of a package name would
+    // be defeated by minification; this is part of the parser's own data.
+    expect(contents).not.toContain('thematicBreak');
   });
 
   // Catches a dependency arriving that has no business in a Worker, not ordinary growth — see
