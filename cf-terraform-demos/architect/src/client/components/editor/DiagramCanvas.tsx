@@ -4,9 +4,7 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  type Edge,
   MiniMap,
-  type Node,
   ReactFlow,
   useNodesInitialized,
   useReactFlow
@@ -20,7 +18,6 @@ import type {
   PresenceParticipant,
   SessionFrame
 } from '../../../live-sync-protocol.ts';
-import { applyGraphOperation } from '../../../worker/domain/graph-operations.ts';
 import {
   diagramLiveUrl,
   getAccessibleDiagram,
@@ -33,10 +30,11 @@ import {
   LAYOUT_FIT_DELAY_MS,
   LAYOUT_FIT_DURATION_MS
 } from '../../lib/auto-layout.ts';
+import { applyClientOperation, type ParsedGraph, parseGraphData } from '../../lib/client-graph.ts';
 import { describeOperation } from '../../lib/describe-operation.ts';
 import { diffGraphOperations, type ClientGraph } from '../../lib/graph-operation-diff.ts';
 import { useDiagramStore } from '../../stores/diagramStore.ts';
-import { type ChatTranscriptEntry, nextTranscriptEntryId } from './chat-transcript.ts';
+import { nextTranscriptEntryId } from './chat-transcript.ts';
 import { edgeTypes } from './edges/edgeTypes.ts';
 import { nodeTypes } from './nodes/nodeTypes.ts';
 import { DetailsPanel } from './panels/DetailsPanel.tsx';
@@ -48,7 +46,8 @@ import {
 } from './RemoteCursorsOverlay.tsx';
 import { StatusBar } from './toolbar/StatusBar.tsx';
 import { Toolbar } from './toolbar/Toolbar.tsx';
-import type { CFEdgeData, CFNodeData } from './types.ts';
+import type { CFNodeData } from './types.ts';
+import { useChatConversation } from './use-chat-conversation.ts';
 
 /**
  * How long after the last change the graph is saved, in milliseconds.
@@ -101,75 +100,6 @@ const PRINT_MODE_BODY_CLASS = 'diagram-editor-print-mode';
 const PRINT_ORIENTATION_STYLE_ID = 'diagram-editor-print-orientation';
 
 /**
- * A diagram's graph, parsed.
- */
-interface ParsedGraphData {
-  /**
-   * Nodes on the canvas.
-   */
-  nodes: Node<CFNodeData>[];
-  /**
-   * Edges on the canvas.
-   */
-  edges: Edge<CFEdgeData>[];
-  /**
-   * Stored pan and zoom.
-   */
-  viewport: { x: number; y: number; zoom: number };
-}
-
-/**
- * Parses a diagram's stored graph.
- *
- * Tolerant on purpose: an empty, truncated or unparseable value yields an empty canvas rather than
- * an exception. The alternative is an editor that refuses to open at all, which leaves the visitor
- * with no way to repair the diagram — whereas an empty canvas they can rebuild and save over is
- * recoverable.
- *
- * @param graphData Stored JSON string.
- * @returns The parsed graph, with every missing field defaulted.
- */
-function parseGraphData(graphData: string): ParsedGraphData {
-  try {
-    const parsed = JSON.parse(graphData || '{}') as Partial<ParsedGraphData>;
-    return {
-      edges: parsed.edges ?? [],
-      nodes: parsed.nodes ?? [],
-      viewport: parsed.viewport ?? { x: 0, y: 0, zoom: 1 }
-    };
-  } catch {
-    return { edges: [], nodes: [], viewport: { x: 0, y: 0, zoom: 1 } };
-  }
-}
-
-/**
- * Applies one shared graph operation to a client graph.
- *
- * The server's own pure function is used rather than reimplemented; this helper only restores the
- * richer React Flow types it cannot know about. It is the building block for optimistic replay:
- * remote operations are applied to the confirmed graph, then pending local operations are replayed
- * over it in dispatch order.
- *
- * @param graph Graph to change.
- * @param operation Operation to apply.
- * @param viewport Current viewport, which operations never change but the shared graph shape needs.
- * @returns A new client graph.
- * @throws {ProblemDetailsError} When the operation cannot be applied to this graph, which means the
- *   client has diverged and must request a snapshot.
- */
-function applyClientOperation(
-  graph: ClientGraph,
-  operation: OperationAppliedFrame['operation'],
-  viewport: ParsedGraphData['viewport']
-): ClientGraph {
-  const next = applyGraphOperation({ edges: graph.edges, nodes: graph.nodes, viewport }, operation);
-  return {
-    edges: next.edges as Edge<CFEdgeData>[],
-    nodes: next.nodes as Node<CFNodeData>[]
-  };
-}
-
-/**
  * Replays pending optimistic operations over a confirmed graph.
  *
  * @param confirmed Graph the session has confirmed.
@@ -183,7 +113,7 @@ function applyClientOperation(
 function replayPendingOperations(
   confirmed: ClientGraph,
   pending: Iterable<OperationAppliedFrame['operation']>,
-  viewport: ParsedGraphData['viewport']
+  viewport: ParsedGraph['viewport']
 ): ClientGraph {
   let optimistic = confirmed;
   for (const operation of pending) {
@@ -290,12 +220,6 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
   const [remoteCursors, setRemoteCursors] = useState<RemoteCursor[]>([]);
   const [remoteSelections, setRemoteSelections] = useState<RemoteSelection[]>([]);
 
-  // The assistant conversation, held here for the same reason `remoteChange` is: it describes this
-  // tab's view of a stream of frames, nothing else reads it, and putting it in the editor store
-  // would make it part of the document — which the whole-graph REST fallback writes back to D1.
-  const [chatTranscript, setChatTranscript] = useState<ChatTranscriptEntry[]>([]);
-  const [chatInFlight, setChatInFlight] = useState(false);
-
   /**
    * The live connection this tab may write through, or `null` before it is open and after it
    * closes. A ref rather than state because rendering does not depend on the object itself; the
@@ -335,38 +259,6 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
    * Time of the last cursor frame sent from this tab. A ref avoids rendering on every pointer move.
    */
   const lastCursorSentAtRef = useRef(0);
-
-  /**
-   * The turn this tab is waiting on, or `null` when none is in flight.
-   *
-   * It is also what decides whether an `ai-chat` operation belongs to this tab's own conversation,
-   * which is what suppresses the "updated by somebody else" notice for a change the visitor asked
-   * for a second ago.
-   */
-  const activeChatRequestIdRef = useRef<string | null>(null);
-
-  /**
-   * The assistant bubble tokens are currently appending to, or `null` when the next token should
-   * open a fresh one.
-   *
-   * Cleared by {@link appendInterruptingEntry} every time a non-assistant entry is appended, which
-   * is what keeps the transcript chronological: a turn typically narrates, calls tools, then
-   * narrates again, and a bubble left anchored where its first token landed would collect the
-   * closing summary _above_ the tool activity that preceded it.
-   */
-  const activeAssistantEntryIdRef = useRef<string | null>(null);
-
-  /**
-   * Whether the in-flight turn has streamed at least one token, which decides whether `chat_done`
-   * has to record the answer itself.
-   */
-  const streamedAnyTokenRef = useRef(false);
-
-  /**
-   * Turns the visitor has stopped watching. Their remaining tokens are dropped and their eventual
-   * `chat_done` or `chat_error` is consumed silently rather than appended a second time.
-   */
-  const stoppedRequestIdsRef = useRef(new Set<string>());
 
   /**
    * Whether the turn in flight has added or removed a node, so one layout pass is owed when it
@@ -422,11 +314,6 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
         setParticipants([]);
         setRemoteCursors([]);
         setRemoteSelections([]);
-        // A conversation belongs to the connection it ran on: the session keeps its history per
-        // socket, so a transcript carried into a different diagram would be one this tab
-        // remembers and the model has never seen.
-        setChatTranscript([]);
-        setChatInFlight(false);
         dispatchedGraphRef.current = { edges: parsed.edges, nodes: parsed.nodes };
         confirmedGraphRef.current = { edges: parsed.edges, nodes: parsed.nodes };
         pendingOperationsRef.current.clear();
@@ -521,24 +408,6 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
   }, [readOnly, dirty, diagramId, markSaving, markSaved, markSaveError]);
 
   /**
-   * Appends a non-assistant transcript entry, closing out any assistant bubble being streamed to.
-   *
-   * Closing the bubble is what keeps the transcript chronological, and it is the whole reason this
-   * is a named function rather than a bare `setChatTranscript`. A turn narrates, calls tools, then
-   * narrates again; every entry here is a plain end-append, so a bubble left anchored where its
-   * first token landed would go on collecting that later prose and put the turn's closing summary
-   * _above_ the tool activity it followed. Clearing the anchor makes the next token open a fresh
-   * bubble beneath this entry instead.
-   *
-   * @param entry The status, action, docs or error entry to append.
-   * @returns Nothing.
-   */
-  const appendInterruptingEntry = useCallback((entry: ChatTranscriptEntry): void => {
-    activeAssistantEntryIdRef.current = null;
-    setChatTranscript((current) => [...current, entry]);
-  }, []);
-
-  /**
    * Lays the diagram out once, after a turn that changed how many nodes are on the canvas.
    *
    * The assistant places new nodes on a simple staggered grid, which is legible enough to watch a
@@ -606,6 +475,29 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     }
   }, [fitView]);
 
+  // The assistant conversation, held outside the editor store for the same reason `remoteChange`
+  // is: it describes this tab's view of a stream of frames, nothing else reads it, and putting it
+  // in the store would make it part of the document — which the whole-graph REST fallback writes
+  // back to D1. The hook is shared with the blueprint page's generation modal, which watches the
+  // same frames over its own short-lived connection.
+  const chat = useChatConversation({
+    onTurnEnded: () => {
+      // A turn that changed how many nodes are on the canvas is owed one layout pass. It runs on
+      // failure too: a failed turn keeps whatever it had already applied, because each operation
+      // was persisted and broadcast on its own, so the nodes it added still deserve their pass.
+      if (chatChangedNodeCountRef.current) {
+        chatChangedNodeCountRef.current = false;
+        void runPostTurnLayout();
+      }
+    }
+  });
+  const {
+    appendInterruptingEntry,
+    applyChatFrame,
+    hasTurnInFlight,
+    resetConversation: resetChatConversation
+  } = chat;
+
   // Live sync. Both directions use the same socket: another editor's or agent's operation appears
   // here immediately, and the save debounce above sends this tab's own operations back. The REST
   // whole-graph save remains only as a resilience fallback while the socket is unavailable.
@@ -621,16 +513,11 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
 
     const socket = new WebSocket(diagramLiveUrl(diagramId));
     const pendingOperations = pendingOperationsRef.current;
-    const stoppedRequestIds = stoppedRequestIdsRef.current;
 
     // A turn belongs to the connection it ran on, so nothing from a previous one may be waited on
-    // here. The transcript itself is cleared by the load effect above, which is where the rest of
-    // this tab's per-diagram state is reset; only the bookkeeping refs belong with the socket.
-    activeChatRequestIdRef.current = null;
-    activeAssistantEntryIdRef.current = null;
-    streamedAnyTokenRef.current = false;
+    // here — including a transcript the model on the other end has never seen.
+    resetChatConversation();
     chatChangedNodeCountRef.current = false;
-    stoppedRequestIds.clear();
 
     /**
      * Makes the live path available to the save debounce.
@@ -800,7 +687,7 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
             confirmedGraphRef.current = confirmed;
             if (ownOperation !== undefined && frame.operationId !== null) {
               pendingOperationsRef.current.delete(frame.operationId);
-            } else if (frame.origin !== 'ai-chat' || activeChatRequestIdRef.current === null) {
+            } else if (frame.origin !== 'ai-chat' || !hasTurnInFlight()) {
               // An `ai-chat` operation carries no operation id — the session authored it, so there
               // is no optimistic edit of this tab's to reconcile it against — which means the
               // ordinary "was this mine?" test cannot tell the tab that is chatting from one
@@ -891,104 +778,16 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
           markSaveError(frame.detail);
           return;
         case 'chat_status':
-          appendInterruptingEntry({
-            id: nextTranscriptEntryId(),
-            kind: 'status',
-            text: frame.message
-          });
-          return;
-        case 'chat_token': {
-          if (stoppedRequestIdsRef.current.has(frame.clientRequestId)) {
-            return;
-          }
-          // The entry id is resolved and both refs are written **here**, synchronously, never
-          // inside the updater below. React defers an updater until render and may run it more
-          // than once, so an updater that reads or writes a ref does not observe what its own
-          // handler saw — which is how a token and the `chat_done` batched into the same render
-          // used to produce two bubbles for one answer.
-          const openBubbleId = activeAssistantEntryIdRef.current;
-          const isNewBubble = openBubbleId === null;
-          const entryId = openBubbleId ?? nextTranscriptEntryId();
-          activeAssistantEntryIdRef.current = entryId;
-          streamedAnyTokenRef.current = true;
-          const { text } = frame;
-          setChatTranscript((current) =>
-            isNewBubble
-              ? [...current, { id: entryId, kind: 'assistant', stopped: false, text }]
-              : current.map((entry) =>
-                  entry.id === entryId && entry.kind === 'assistant'
-                    ? { ...entry, text: entry.text + text }
-                    : entry
-                )
-          );
-          return;
-        }
+        case 'chat_token':
         case 'chat_tool_result':
-          appendInterruptingEntry({
-            id: nextTranscriptEntryId(),
-            kind: 'docs_result',
-            outcome: frame.outcome,
-            query: frame.query
-          });
+        case 'chat_done':
+        case 'chat_error':
+          // Every chat frame is handled identically by the editor and by the blueprint page's
+          // generation modal, so the rules live in one hook rather than in each of them; see
+          // `./use-chat-conversation.ts`. What stays here is the editor's own end-of-turn work,
+          // which that hook calls back into.
+          applyChatFrame(frame);
           return;
-        case 'chat_done': {
-          const wasStopped = stoppedRequestIdsRef.current.delete(frame.clientRequestId);
-          // Read synchronously, before the reset below, for the reason the token arm documents.
-          const streamedAnyToken = streamedAnyTokenRef.current;
-          if (!wasStopped && !streamedAnyToken) {
-            // Nothing streamed — an empty answer, or a whole response that arrived unstreamed —
-            // so there is no bubble showing it and this frame's copy is the only one there is.
-            //
-            // When tokens *did* stream there is deliberately nothing to do. `assistantText` is by
-            // construction the concatenation of exactly those tokens, and a turn may now own
-            // several bubbles because tool activity splits them, so rewriting "the" bubble with
-            // the whole answer would duplicate every earlier bubble's prose into the last one.
-            const { assistantText } = frame;
-            setChatTranscript((current) => [
-              ...current,
-              {
-                id: nextTranscriptEntryId(),
-                kind: 'assistant',
-                stopped: false,
-                text: assistantText
-              }
-            ]);
-          }
-          if (activeChatRequestIdRef.current === frame.clientRequestId) {
-            activeChatRequestIdRef.current = null;
-            activeAssistantEntryIdRef.current = null;
-            streamedAnyTokenRef.current = false;
-            setChatInFlight(false);
-            if (chatChangedNodeCountRef.current) {
-              chatChangedNodeCountRef.current = false;
-              void runPostTurnLayout();
-            }
-          }
-          return;
-        }
-        case 'chat_error': {
-          const wasStopped = stoppedRequestIdsRef.current.delete(frame.clientRequestId);
-          if (!wasStopped) {
-            appendInterruptingEntry({
-              id: nextTranscriptEntryId(),
-              kind: 'error',
-              text: frame.message
-            });
-          }
-          if (activeChatRequestIdRef.current === frame.clientRequestId) {
-            activeChatRequestIdRef.current = null;
-            activeAssistantEntryIdRef.current = null;
-            streamedAnyTokenRef.current = false;
-            setChatInFlight(false);
-            // A failed turn keeps whatever it had already applied — each operation was persisted
-            // and broadcast on its own — so the nodes it added still deserve their one pass.
-            if (chatChangedNodeCountRef.current) {
-              chatChangedNodeCountRef.current = false;
-              void runPostTurnLayout();
-            }
-          }
-          return;
-        }
         case 'diagram_renamed':
           // Set directly rather than through `setTitle`/`setDescription`, which would mark the
           // graph dirty: the `rename_diagram` tool call that produced this broadcast already
@@ -1022,7 +821,6 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
       socket.removeEventListener('message', onMessage);
       onUnavailable();
       pendingOperations.clear();
-      stoppedRequestIds.clear();
       // Closed unconditionally, including while still connecting: a socket abandoned mid-handshake
       // would otherwise finish opening after the component has gone and stay open until the tab
       // is closed.
@@ -1034,9 +832,11 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     applyRemoteSnapshot,
     acknowledgeRemoteOperation,
     appendInterruptingEntry,
+    applyChatFrame,
+    hasTurnInFlight,
+    resetChatConversation,
     markSaved,
-    markSaveError,
-    runPostTurnLayout
+    markSaveError
   ]);
 
   // The last line of defence for unsaved work: a visitor who closes the tab within the debounce
@@ -1264,87 +1064,20 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
   /**
    * Sends one message to the assistant over the same socket every other change travels on.
    *
-   * The person's own line is appended to the transcript here rather than waiting for the session to
-   * echo it, because the session never does: the frame carries no author, exactly as an operation
-   * does not, and what the visitor typed is already known locally.
-   *
    * @param text The person's message, already trimmed by the composer.
    * @returns Whether the frame reached the socket. `false` leaves the composer's draft in place, so
    *   a message typed while the connection was dropping is not lost.
    */
-  const sendChatMessage = useCallback((text: string): boolean => {
-    const socket = liveSocketRef.current;
-    if (socket?.readyState !== WebSocket.OPEN) {
-      return false;
-    }
-
-    const clientRequestId = crypto.randomUUID();
-    activeChatRequestIdRef.current = clientRequestId;
-    activeAssistantEntryIdRef.current = null;
-    streamedAnyTokenRef.current = false;
-    chatChangedNodeCountRef.current = false;
-    setChatInFlight(true);
-    setChatTranscript((current) => [
-      ...current,
-      { id: nextTranscriptEntryId(), kind: 'user', text }
-    ]);
-    socket.send(
-      JSON.stringify({ clientRequestId, text, type: 'chat_message' } satisfies ClientFrame)
-    );
-    return true;
-  }, []);
-
-  /**
-   * Stops rendering the in-flight turn's remaining answer.
-   *
-   * Client-side only, and the wording in the panel says so. There is no cancellation frame in the
-   * protocol: the turn is running inside the Durable Object, which deliberately completes a turn
-   * whose originator has disconnected entirely, so there is nothing this tab could send that would
-   * interrupt it. Every mutation the turn still makes arrives as an ordinary broadcast and is still
-   * applied to the canvas; only this tab's narration of the rest is suppressed.
-   *
-   * @returns Nothing. A no-op when no turn is in flight.
-   */
-  const stopChatTurn = useCallback((): void => {
-    const clientRequestId = activeChatRequestIdRef.current;
-    if (clientRequestId === null) {
-      return;
-    }
-
-    stoppedRequestIdsRef.current.add(clientRequestId);
-    const bubbleId = activeAssistantEntryIdRef.current;
-    if (bubbleId !== null) {
-      setChatTranscript((current) =>
-        current.map((entry) =>
-          entry.id === bubbleId && entry.kind === 'assistant' ? { ...entry, stopped: true } : entry
-        )
-      );
-    }
-
-    activeChatRequestIdRef.current = null;
-    activeAssistantEntryIdRef.current = null;
-    streamedAnyTokenRef.current = false;
-    setChatInFlight(false);
-  }, []);
-
-  /**
-   * Clears this tab's transcript.
-   *
-   * Local only. The session's own per-connection history is not reset, because no frame in this
-   * protocol asks it to — every frame either starts a turn or reports one's outcome — and closing
-   * and reopening the socket to achieve it would also discard this tab's presence and every
-   * operation still in flight. The resulting gap is small and deliberate: the reader gets a clean
-   * panel, and the model remembers a conversation that is no longer on screen until the connection
-   * ends.
-   *
-   * @returns Nothing.
-   */
-  const clearChatTranscript = useCallback((): void => {
-    setChatTranscript([]);
-    // An in-flight turn's next token opens a fresh bubble rather than trying to append to an id
-    // the now-empty transcript no longer contains.
-    activeAssistantEntryIdRef.current = null;
-  }, []);
+  const sendChatMessage = useCallback(
+    (text: string): boolean => {
+      // Reset before the send rather than in the turn's own handler: the flag records whether
+      // *this* turn changed the node count, and a previous turn's value would otherwise schedule
+      // a layout pass for changes that have already been laid out.
+      chatChangedNodeCountRef.current = false;
+      return chat.sendChatMessage(liveSocketRef.current, text);
+    },
+    [chat]
+  );
 
   const onNodeClick = useCallback(
     (_event: unknown, node: { id: string }) => {
@@ -1580,11 +1313,11 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
             read-only visitor who selects a node has nothing to change about it. */}
         {!readOnly && !printMode && propertiesOpen && (
           <DetailsPanel
-            chatTranscript={chatTranscript}
-            chatInFlight={chatInFlight}
+            chatTranscript={chat.transcript}
+            chatInFlight={chat.inFlight}
             onSendChatMessage={sendChatMessage}
-            onStopChatTurn={stopChatTurn}
-            onNewConversation={clearChatTranscript}
+            onStopChatTurn={chat.stopChatTurn}
+            onNewConversation={chat.clearTranscript}
           />
         )}
       </div>

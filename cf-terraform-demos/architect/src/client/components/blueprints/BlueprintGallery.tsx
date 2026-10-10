@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
+import { Cpu } from 'react-feather';
 import { type Blueprint, BLUEPRINTS } from '../../../blueprints.ts';
 import { BlueprintPreview } from './BlueprintPreview.tsx';
 import { CreateDiagramModal } from './CreateDiagramModal.tsx';
+import { GenerateWithAiModal } from './GenerateWithAiModal.tsx';
 
 /**
  * Label for the unfiltered view.
@@ -12,24 +14,27 @@ import { CreateDiagramModal } from './CreateDiagramModal.tsx';
 const ALL_CATEGORY = 'All';
 
 /**
- * The public gallery of blueprint templates, plus a permanent blank-canvas card.
+ * The public gallery of blueprint templates, plus two permanent cards for starting without one.
  *
- * Every card opens {@link CreateDiagramModal} over this page rather than navigating anywhere. The
- * page itself is public — browsing starting points is useful before signing in — and only the
- * create request the modal sends requires an identity, which Cloudflare Access challenges at that
- * point. The dashboard's create control links here, so there is one creation journey rather than
- * one for a signed-in visitor and another for everybody else.
+ * Every card opens a modal over this page rather than navigating anywhere: a template or the blank
+ * canvas opens {@link CreateDiagramModal}, and the third card opens {@link GenerateWithAiModal} to
+ * describe a diagram in plain language instead. The page itself is public — browsing starting
+ * points is useful before signing in — and only the create request a modal sends requires an
+ * identity, which Cloudflare Access challenges at that point. The dashboard's create control links
+ * here, so there is one creation journey rather than one for a signed-in visitor and another for
+ * everybody else.
  *
  * Each card is a single `<button>` wrapping the whole panel: one tab stop, one activation target,
  * and no nested control announcing the same action twice. The thumbnail inside it is inert and
  * `aria-hidden` (see {@link BlueprintPreview}), so it adds nothing to the card's accessible name.
  *
- * @returns The filterable gallery and its creation modal.
+ * @returns The filterable gallery and its two modals.
  */
 export function BlueprintGallery() {
   const [activeCategory, setActiveCategory] = useState(ALL_CATEGORY);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedBlueprint, setSelectedBlueprint] = useState<Blueprint | null>(null);
+  const [generateOpen, setGenerateOpen] = useState(false);
 
   // Derived from the data rather than listed separately, so adding a template with a new category
   // adds its filter automatically instead of leaving it unreachable behind the existing pills.
@@ -100,6 +105,28 @@ export function BlueprintGallery() {
           </div>
         </button>
 
+        {/* Outside the filtered list for the same reason the blank card is: describing what you
+            want belongs to no category. Named by its title alone, as that card is. */}
+        <button
+          type="button"
+          className="blueprint-card blueprint-card--generate"
+          aria-label="Generate with AI"
+          onClick={() => setGenerateOpen(true)}
+        >
+          <div
+            className="blueprint-card__preview blueprint-card__preview--generate"
+            aria-hidden="true"
+          >
+            <Cpu size={40} />
+          </div>
+          <div className="blueprint-card__body">
+            <div className="blueprint-card__title">Generate with AI</div>
+            <div className="blueprint-card__description">
+              Describe the architecture you want, and let the assistant build an initial diagram.
+            </div>
+          </div>
+        </button>
+
         {filtered.map((blueprint) => (
           <button
             type="button"
@@ -124,6 +151,13 @@ export function BlueprintGallery() {
         onClose={() => setModalOpen(false)}
         blueprint={selectedBlueprint}
       />
+
+      {/* Mounted only while open, unlike `CreateDiagramModal` above, which takes an `open` prop
+          and renders `null` while closed. That modal holds two text fields; this one holds a live
+          WebSocket, a conversation and a tracked graph, and unmounting is the one place that
+          discards all of it — including closing the connection, through the modal's own effect
+          teardown. */}
+      {generateOpen && <GenerateWithAiModal onClose={() => setGenerateOpen(false)} />}
     </>
   );
 }

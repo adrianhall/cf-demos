@@ -167,6 +167,41 @@ describe('BlueprintGallery', () => {
     });
   });
 
+  describe('the generate-with-AI card', () => {
+    it('offers it alongside the blank canvas', () => {
+      render(<BlueprintGallery />);
+
+      expect(screen.getByRole('button', { name: 'Generate with AI' })).toBeInTheDocument();
+    });
+
+    // Describing what you want belongs to no category, exactly as starting from nothing does.
+    it.each(CATEGORIES)('keeps it visible under the %s filter', (category) => {
+      render(<BlueprintGallery />);
+
+      fireEvent.click(screen.getByRole('tab', { name: category }));
+
+      expect(screen.getByRole('button', { name: 'Generate with AI' })).toBeInTheDocument();
+    });
+
+    it('opens the generation modal rather than the creation form', () => {
+      render(<BlueprintGallery />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Generate with AI' }));
+
+      expect(screen.getByRole('dialog', { name: 'Generate with AI' })).toBeInTheDocument();
+      expect(screen.getByLabelText(/describe the architecture/iu)).toBeInTheDocument();
+    });
+
+    it('closes on Cancel', () => {
+      render(<BlueprintGallery />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Generate with AI' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
   describe('card structure', () => {
     // One tab stop and one activation target per card. A nested control inside it would announce
     // the same action a second time.

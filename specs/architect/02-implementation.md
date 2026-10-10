@@ -1338,7 +1338,7 @@ A scripted turn against a mocked socket adds nodes and edges to the canvas throu
 reconciliation path with no chat-specific canvas code, triggers one layout pass, and the panel is
 usable by keyboard and announces new assistant text without flooding.
 
-### Phase 25 — Generation from a description
+### Phase 25 — Generation from a description — **complete**
 
 #### Goal
 
@@ -1373,6 +1373,26 @@ session and the same frames the editor uses, with no new endpoint.
 A description entered on `/blueprints` produces a diagram that is already persisted through the
 session's own write chain, refinable before opening, and opening it shows exactly what the
 conversation produced.
+
+#### Deviations
+
+Three, all of them extractions the deliverables implied rather than departures from them.
+
+1. **The transcript is shared as a hook, not only as a component.** Deliverable 3 asks the modal to
+   render the editor's own `AiChatPanel`, which it does. But the rules that _produce_ a transcript
+   — the chronological-ordering anchor, the one-bubble-per-answer resolution, the stop-watching
+   set — lived inside `DiagramCanvas.tsx`, and a second socket owner needed every one of them. They
+   moved to `src/client/components/editor/use-chat-conversation.ts`, which both callers use. The
+   canvas's behaviour is unchanged, and its existing tests passed throughout the move without
+   modification.
+2. **`parseGraphData` and `applyClientOperation` moved to `src/client/lib/client-graph.ts`.** Both
+   were private helpers in the canvas; the modal needs both to know what the conversation built.
+   They sit beside `graph-operation-diff.ts`, which already owns `ClientGraph` and the inverse
+   direction of the same relationship.
+3. **The modal is mounted only while open**, rather than taking an `open` prop and rendering `null`
+   as `CreateDiagramModal` does. It holds a socket, a conversation and a tracked graph, and
+   unmounting discards all of it in one place — including closing the connection, through the
+   effect's own teardown.
 
 ### Phase 26 — AI assistance verification
 
