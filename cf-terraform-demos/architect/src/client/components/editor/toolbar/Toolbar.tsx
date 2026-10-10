@@ -8,6 +8,7 @@ import {
   // `Map` constructor that `../../../lib/auto-layout.ts` uses.
   Map as MapIcon,
   Maximize,
+  MessageSquare,
   RotateCcw,
   RotateCw,
   Share2,
@@ -20,7 +21,12 @@ import { useReactFlow } from '@xyflow/react';
 import type { PresenceParticipant } from '../../../../live-sync-protocol.ts';
 import { useDismissableMenu } from '../../../hooks/useDismissableMenu.ts';
 import { useIdentity } from '../../../hooks/useIdentity.ts';
-import { computeAutoLayout, type LayoutDirection } from '../../../lib/auto-layout.ts';
+import {
+  computeAutoLayout,
+  LAYOUT_FIT_DELAY_MS,
+  LAYOUT_FIT_DURATION_MS,
+  type LayoutDirection
+} from '../../../lib/auto-layout.ts';
 import { useDiagramStore } from '../../../stores/diagramStore.ts';
 import { DarkModeToggle } from '../../DarkModeToggle.tsx';
 import { CollaboratorsModal } from './CollaboratorsModal.tsx';
@@ -29,19 +35,6 @@ import { ExportButton } from './ExportButton.tsx';
 import { PresenceStack } from './PresenceStack.tsx';
 import { PrintButton } from './PrintButton.tsx';
 import { ShareModal } from './ShareModal.tsx';
-
-/**
- * How long the viewport takes to settle after an auto-layout, in milliseconds.
- */
-const LAYOUT_FIT_DURATION_MS = 300;
-
-/**
- * How long to wait after replacing the graph before fitting the view, in milliseconds.
- *
- * React Flow measures nodes after it has rendered them, so fitting in the same tick would frame the
- * positions the nodes have just left.
- */
-const LAYOUT_FIT_DELAY_MS = 50;
 
 /**
  * Props for {@link Toolbar}.
@@ -90,6 +83,8 @@ export function Toolbar({ participants = [], readOnly = false }: ToolbarProps) {
     togglePalette,
     propertiesOpen,
     toggleProperties,
+    detailsPanelTab,
+    setDetailsPanelTab,
     minimapOpen,
     toggleMinimap
   } = useDiagramStore();
@@ -101,6 +96,15 @@ export function Toolbar({ participants = [], readOnly = false }: ToolbarProps) {
   const [shareOpen, setShareOpen] = useState(false);
   const [collaboratorsOpen, setCollaboratorsOpen] = useState(false);
   const layoutGroupRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Whether the assistant control has already nudged the palette closed once.
+   *
+   * A ref rather than a module-level flag, so it resets exactly when this toolbar remounts — which
+   * is a fresh editor session from the visitor's point of view, and which keeps the behaviour from
+   * leaking between tests.
+   */
+  const paletteNudgedRef = useRef(false);
 
   // Resolved here rather than passed down, because the collaborators dialog needs to know which
   // row in its list is the visitor's own in order to offer Leave rather than Remove. The share
@@ -168,6 +172,33 @@ export function Toolbar({ participants = [], readOnly = false }: ToolbarProps) {
     [fitView]
   );
 
+  /**
+   * Opens the details panel on its AI Assistant tab, and once per session makes room for it.
+   *
+   * The palette nudge is a **one-time** nudge rather than an enforced state, and the distinction
+   * matters. The conversation reads better in a wider sidebar, and on a laptop the palette and the
+   * details panel together leave very little canvas — so the first time somebody opens the
+   * assistant, the palette steps aside. Every press after that leaves it exactly as they have set
+   * it, and its own toggle keeps working throughout: a control that kept re-closing a panel the
+   * visitor had deliberately reopened would be fighting them.
+   *
+   * @returns Nothing.
+   */
+  const onAiAssistantClick = useCallback(() => {
+    setDetailsPanelTab('ai-chat');
+    // Read imperatively rather than from the render-scoped value, so two presses in one frame
+    // cannot both see the panel as closed and toggle it twice.
+    if (!useDiagramStore.getState().propertiesOpen) {
+      toggleProperties();
+    }
+    if (!paletteNudgedRef.current) {
+      paletteNudgedRef.current = true;
+      if (useDiagramStore.getState().paletteOpen) {
+        togglePalette();
+      }
+    }
+  }, [setDetailsPanelTab, toggleProperties, togglePalette]);
+
   return (
     <div className="toolbar">
       <div className="toolbar__group">
@@ -230,6 +261,19 @@ export function Toolbar({ participants = [], readOnly = false }: ToolbarProps) {
             aria-pressed={propertiesOpen}
           >
             <Sidebar size={18} aria-hidden="true" />
+          </button>
+          {/* Pressed only when the panel is both open and showing the assistant: the control
+              describes what is on screen, and reporting it pressed while the panel was closed
+              would be describing a tab nobody can see. */}
+          <button
+            type="button"
+            onClick={onAiAssistantClick}
+            className="toolbar__button"
+            title="AI Assistant"
+            aria-label="AI Assistant"
+            aria-pressed={propertiesOpen && detailsPanelTab === 'ai-chat'}
+          >
+            <MessageSquare size={18} aria-hidden="true" />
           </button>
           <button
             type="button"

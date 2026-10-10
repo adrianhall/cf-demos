@@ -28,6 +28,17 @@ vi.mock('../../src/client/api/diagrams.ts', () => ({
   updateDiagram: mockUpdateDiagram
 }));
 
+// ELK is a 1.4 MB layout engine the canvas reaches through a dynamic import, so the assistant's
+// post-turn pass is asserted against a stub exactly as `./auto-layout.test.ts` asserts the module
+// itself. What is under test here is *that* one pass runs and what it persists, never how well a
+// third-party engine arranges a graph.
+const { mockElkLayout } = vi.hoisted(() => ({ mockElkLayout: vi.fn() }));
+vi.mock('elkjs/lib/elk.bundled.js', () => ({
+  default: class MockElk {
+    layout = mockElkLayout;
+  }
+}));
+
 const { installFakeWebSocket, mostRecentSocket, FakeWebSocket } =
   await import('./fake-websocket.ts');
 const { useDiagramStore } = await import('../../src/client/stores/diagramStore.ts');
@@ -83,11 +94,13 @@ beforeEach(() => {
     'matchMedia',
     vi.fn(() => ({ addEventListener: vi.fn(), matches: false, removeEventListener: vi.fn() }))
   );
+  mockElkLayout.mockReset().mockResolvedValue({ children: [] });
   useDiagramStore.setState({
     description: '',
     diagramId: null,
     dirty: false,
     detailsPanelExpanded: false,
+    detailsPanelTab: 'properties',
     edges: [],
     lastSavedAt: null,
     minimapOpen: true,
@@ -1516,5 +1529,605 @@ describe('live sync', () => {
     });
 
     expect(screen.queryByText('Updated by an agent')).not.toBeInTheDocument();
+  });
+});
+
+describe('the assistant conversation', () => {
+  /**
+   * A one-node graph, so a removal has something to remove and a narration has a label to read.
+   */
+  const ONE_NODE_GRAPH = JSON.stringify({
+    edges: [],
+    nodes: [{ data: { label: 'Queue' }, id: 'pushed', position: { x: 0, y: 0 }, type: 'cf-node' }],
+    viewport: { x: 0, y: 0, zoom: 1 }
+  });
+
+  /**
+   * Delivers a `snapshot` frame, which is what gives this tab a confirmed base to apply the
+   * assistant's operations to.
+   *
+   * @param updatedAt Server timestamp the snapshot carries.
+   * @param graphData Graph JSON it carries.
+   * @param origin Who produced it, or `null` for a connect answer that announces nothing.
+   * @returns A promise fulfilled once React has processed it.
+   */
+  async function pushBaseSnapshot(
+    updatedAt: string,
+    graphData: string = EMPTY_GRAPH,
+    origin: 'human' | 'agent' | null = null
+  ): Promise<void> {
+    await act(async () => {
+      mostRecentSocket().simulateMessage({
+        actor: origin === null ? null : 'alice@example.com',
+        graphData,
+        origin,
+        sequence: 1,
+        type: 'snapshot',
+        updatedAt
+      });
+    });
+  }
+
+  /**
+   * Opens the assistant tab on a loaded canvas.
+   *
+   * @returns Nothing.
+   */
+  function openAssistant(): void {
+    act(() => {
+      useDiagramStore.getState().setDetailsPanelTab('ai-chat');
+      useDiagramStore.setState({ propertiesOpen: true });
+    });
+  }
+
+  /**
+   * Loads the canvas with the assistant tab showing.
+   *
+   * @returns The render result.
+   */
+  async function renderWithAssistant() {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    const view = await renderLoaded();
+    openAssistant();
+    return view;
+  }
+
+  /**
+   * Delivers one frame and lets React process it.
+   *
+   * @param frame The frame to deliver.
+   * @returns A promise fulfilled once the resulting state change has been applied.
+   */
+  async function deliver(frame: Record<string, unknown>): Promise<void> {
+    await act(async () => {
+      mostRecentSocket().simulateMessage(frame);
+    });
+  }
+
+  /**
+   * Delivers several frames inside **one** React batch, as a burst arriving in one task does.
+   *
+   * @param frames The frames to deliver, in order.
+   * @returns A promise fulfilled once the batch has been rendered.
+   */
+  async function deliverTogether(frames: Record<string, unknown>[]): Promise<void> {
+    await act(async () => {
+      for (const frame of frames) {
+        mostRecentSocket().simulateMessage(frame);
+      }
+    });
+  }
+
+  /**
+   * Types a message into the composer and sends it.
+   *
+   * @param text The message to send.
+   * @returns A promise fulfilled once the send has been processed.
+   */
+  async function sendMessage(text: string): Promise<void> {
+    fireEvent.change(screen.getByLabelText('Message the AI assistant'), {
+      target: { value: text }
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    });
+  }
+
+  /**
+   * Reads the transcript as the ordered list of lines a reader would see.
+   *
+   * @returns Each entry's text content, in document order.
+   */
+  function transcriptLines(): string[] {
+    return [...screen.getByRole('log').children].map((entry) => entry.textContent ?? '');
+  }
+
+  /**
+   * An `operation_applied` frame the assistant produced.
+   *
+   * @param operation The change it announces.
+   * @param sequence Position in the session's operation stream.
+   * @returns The frame.
+   */
+  function aiOperation(operation: Record<string, unknown>, sequence: number) {
+    return {
+      actor: 'alice@example.com',
+      operation,
+      operationId: null,
+      origin: 'ai-chat',
+      sequence,
+      type: 'operation_applied',
+      updatedAt: '2026-02-01T00:00:00.000Z'
+    };
+  }
+
+  it('sends the typed message over the diagram’s own socket, with no author field', async () => {
+    await renderWithAssistant();
+
+    await sendMessage('Add a Worker');
+
+    const sent = mostRecentSocket().sent.map(
+      (payload) => JSON.parse(payload) as Record<string, unknown>
+    );
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ text: 'Add a Worker', type: 'chat_message' });
+    expect(sent[0]).toHaveProperty('clientRequestId');
+    // The session attributes the turn to the identity pinned to the socket, so a frame naming an
+    // actor would be a field it must refuse. It must not be sent in the first place.
+    expect(sent[0]).not.toHaveProperty('actor');
+    expect(screen.getByText('Add a Worker')).toBeInTheDocument();
+  });
+
+  it('refuses to send while the socket is closed, keeping the draft', async () => {
+    await renderWithAssistant();
+    act(() => {
+      mostRecentSocket().simulateServerClose();
+    });
+
+    await sendMessage('Add a Worker');
+
+    expect(mostRecentSocket().sent).toEqual([]);
+    expect(screen.getByLabelText('Message the AI assistant')).toHaveValue('Add a Worker');
+  });
+
+  it('renders status, documentation and streamed answer frames', async () => {
+    await renderWithAssistant();
+    await sendMessage('What is Workers AI?');
+    const clientRequestId = (
+      JSON.parse(mostRecentSocket().sent[0] as string) as { clientRequestId: string }
+    ).clientRequestId;
+
+    await deliver({ clientRequestId, message: 'Checking Cloudflare docs…', type: 'chat_status' });
+    await deliver({
+      clientRequestId,
+      outcome: {
+        ok: true,
+        results: [{ snippet: '…', title: 'Workers AI', url: 'https://example.test/ai' }]
+      },
+      query: 'Workers AI',
+      tool: 'search_cloudflare_documentation',
+      type: 'chat_tool_result'
+    });
+    await deliver({ clientRequestId, text: 'It runs ', type: 'chat_token' });
+    await deliver({ clientRequestId, text: 'models at the edge.', type: 'chat_token' });
+    await deliver({
+      assistantText: 'It runs models at the edge.',
+      clientRequestId,
+      type: 'chat_done'
+    });
+
+    expect(screen.getByText('Checking Cloudflare docs…')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Workers AI' })).toBeInTheDocument();
+    // Accumulated rather than replaced: the two fragments are one answer.
+    expect(screen.getByText('It runs models at the edge.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  });
+
+  it('reports a failed turn and leaves the composer usable', async () => {
+    await renderWithAssistant();
+    await sendMessage('Explain this diagram');
+    const clientRequestId = (
+      JSON.parse(mostRecentSocket().sent[0] as string) as { clientRequestId: string }
+    ).clientRequestId;
+
+    await deliver({ clientRequestId, message: 'Gateway unavailable.', type: 'chat_error' });
+
+    expect(screen.getByText('Gateway unavailable.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Message the AI assistant'), {
+      target: { value: 'Try again' }
+    });
+    expect(screen.getByRole('button', { name: 'Send message' })).not.toBeDisabled();
+  });
+
+  it('stops watching a turn without claiming the model was cancelled', async () => {
+    await renderWithAssistant();
+    await sendMessage('Explain this diagram');
+    const clientRequestId = (
+      JSON.parse(mostRecentSocket().sent[0] as string) as { clientRequestId: string }
+    ).clientRequestId;
+    await deliver({ clientRequestId, text: 'Partial answer', type: 'chat_token' });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Stop/ }));
+    });
+
+    expect(screen.getByText(/may still be working in the background/)).toBeInTheDocument();
+
+    // The turn keeps running server-side: its remaining frames must change nothing on screen.
+    await deliver({ clientRequestId, text: ' continues', type: 'chat_token' });
+    await deliver({
+      assistantText: 'Partial answer continues',
+      clientRequestId,
+      type: 'chat_done'
+    });
+
+    expect(screen.getByText('Partial answer')).toBeInTheDocument();
+    expect(screen.queryByText('Partial answer continues')).not.toBeInTheDocument();
+  });
+
+  // Two presses land in one batch before the control is withdrawn, so the second one finds no
+  // turn to stop. It must be a no-op rather than marking a second bubble or clearing the next
+  // turn's state.
+  it('ignores a second Stop press in the same batch', async () => {
+    await renderWithAssistant();
+    await sendMessage('Explain this diagram');
+    const clientRequestId = (
+      JSON.parse(mostRecentSocket().sent[0] as string) as { clientRequestId: string }
+    ).clientRequestId;
+    await deliver({ clientRequestId, text: 'Partial answer', type: 'chat_token' });
+
+    const stop = screen.getByRole('button', { name: /Stop/ });
+    await act(async () => {
+      fireEvent.click(stop);
+      fireEvent.click(stop);
+    });
+
+    expect(screen.getAllByText(/may still be working in the background/)).toHaveLength(1);
+  });
+
+  it('consumes a stopped turn’s failure silently rather than reporting it twice', async () => {
+    await renderWithAssistant();
+    await sendMessage('Explain this diagram');
+    const clientRequestId = (
+      JSON.parse(mostRecentSocket().sent[0] as string) as { clientRequestId: string }
+    ).clientRequestId;
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Stop/ }));
+    });
+
+    await deliver({ clientRequestId, message: 'Gateway unavailable.', type: 'chat_error' });
+
+    expect(screen.queryByText('Gateway unavailable.')).not.toBeInTheDocument();
+  });
+
+  it('clears only the local transcript for a new conversation', async () => {
+    await renderWithAssistant();
+    await sendMessage('Add a Worker');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
+    });
+
+    expect(screen.queryByText('Add a Worker')).not.toBeInTheDocument();
+    expect(screen.getByText(/Ask the assistant to add nodes/)).toBeInTheDocument();
+    // No frame is sent: nothing in this protocol can reset the session's own history, and closing
+    // the socket to achieve it would discard this tab's presence and pending operations too.
+    expect(mostRecentSocket().sent).toHaveLength(1);
+  });
+
+  it('applies a renamed diagram without marking it dirty', async () => {
+    await renderWithAssistant();
+
+    await deliver({ description: 'An AI design.', title: 'AI design', type: 'diagram_renamed' });
+
+    expect(useDiagramStore.getState().title).toBe('AI design');
+    expect(useDiagramStore.getState().description).toBe('An AI design.');
+    expect(useDiagramStore.getState().dirty).toBe(false);
+  });
+
+  it('normalises a cleared description on a rename', async () => {
+    await renderWithAssistant();
+
+    await deliver({ description: null, title: 'AI design', type: 'diagram_renamed' });
+
+    expect(useDiagramStore.getState().description).toBe('');
+  });
+
+  // Regression (1 of 3). The narration of a graph change comes from the **confirmed**
+  // `operation_applied` broadcast and nowhere else. A status frame is necessarily emitted before
+  // the operation is applied, so narrating from one would both double every line and announce
+  // changes the session then rejected — which is exactly what made a transcript claim edges had
+  // been connected when they had not. Narrating from the status frame fails this test twice: the
+  // rejected turn would produce a line, and the applied one would produce two.
+  it('narrates a mutation exactly once, and only once it is confirmed', async () => {
+    await renderWithAssistant();
+    await pushBaseSnapshot('2026-02-01T00:00:00.000Z');
+    await sendMessage('Add a Worker and a cache');
+    const clientRequestId = (
+      JSON.parse(mostRecentSocket().sent[0] as string) as { clientRequestId: string }
+    ).clientRequestId;
+
+    // The turn the session refused: it reports the rejection to the model as a tool result and
+    // broadcasts nothing, so the only frames this tab sees are the turn's own narration.
+    await deliver({ clientRequestId, message: 'Working on it…', type: 'chat_status' });
+    await deliver({
+      assistantText: 'That node already exists.',
+      clientRequestId,
+      type: 'chat_done'
+    });
+
+    expect(screen.queryByText(/^Added node:/)).not.toBeInTheDocument();
+
+    // The turn the session applied.
+    await sendMessage('Add a Worker');
+    await deliver(
+      aiOperation(
+        {
+          input: { id: 'api', label: 'API', position: { x: 0, y: 0 }, typeId: 'worker' },
+          kind: 'add_node'
+        },
+        2
+      )
+    );
+
+    expect(screen.getAllByText('Added node: API')).toHaveLength(1);
+    expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['api']);
+  });
+
+  // Regression (2 of 3). A bubble anchored where its first token landed goes on collecting the
+  // turn's later prose, so a turn that narrates, acts, then narrates again puts its closing
+  // summary *above* the action it followed. Appending any non-assistant entry must therefore
+  // clear the anchor. Without that, the last assertion below finds 'Here is the plan:Done.' in
+  // position 1 and the action line after it.
+  it('reads chronologically when a turn narrates, acts, then narrates again', async () => {
+    await renderWithAssistant();
+    await pushBaseSnapshot('2026-02-01T00:00:00.000Z');
+    await sendMessage('Design something');
+    const clientRequestId = (
+      JSON.parse(mostRecentSocket().sent[0] as string) as { clientRequestId: string }
+    ).clientRequestId;
+
+    await deliver({ clientRequestId, text: 'Here is the plan:', type: 'chat_token' });
+    await deliver(
+      aiOperation(
+        {
+          input: { id: 'api', label: 'API', position: { x: 0, y: 0 }, typeId: 'worker' },
+          kind: 'add_node'
+        },
+        2
+      )
+    );
+    await deliver({ clientRequestId, text: 'Done.', type: 'chat_token' });
+    await deliver({ assistantText: 'Here is the plan:Done.', clientRequestId, type: 'chat_done' });
+
+    expect(transcriptLines()).toEqual([
+      'Design something',
+      'Here is the plan:',
+      'Added node: API',
+      'Done.'
+    ]);
+  });
+
+  // Regression (3 of 3). The last token of a turn and the `chat_done` that follows it routinely
+  // arrive in one task and therefore render in one batch. Resolving the bubble id or reading the
+  // "did anything stream?" ref *inside* a deferred `setState` updater means neither handler
+  // observes what it saw itself, and the answer appears twice. Every id and ref here is resolved
+  // synchronously, outside the updater, and `chat_done` records the answer only when nothing
+  // streamed — because a turn may own several bubbles and rewriting "the" bubble with the whole
+  // answer would duplicate every earlier one's prose into the last.
+  it('produces one bubble when a token and its completion render in the same batch', async () => {
+    await renderWithAssistant();
+    await sendMessage('Explain this diagram');
+    const clientRequestId = (
+      JSON.parse(mostRecentSocket().sent[0] as string) as { clientRequestId: string }
+    ).clientRequestId;
+
+    await deliverTogether([
+      { clientRequestId, text: 'One answer.', type: 'chat_token' },
+      { assistantText: 'One answer.', clientRequestId, type: 'chat_done' }
+    ]);
+
+    expect(screen.getAllByText('One answer.')).toHaveLength(1);
+    expect(transcriptLines()).toEqual(['Explain this diagram', 'One answer.']);
+  });
+
+  // The other half of the same rule: with nothing streamed there is no bubble, so the completion
+  // frame's own copy of the answer is the only one there is.
+  it('records the answer when a turn completes without streaming anything', async () => {
+    await renderWithAssistant();
+    await sendMessage('Explain this diagram');
+    const clientRequestId = (
+      JSON.parse(mostRecentSocket().sent[0] as string) as { clientRequestId: string }
+    ).clientRequestId;
+
+    await deliver({ assistantText: 'A short answer.', clientRequestId, type: 'chat_done' });
+
+    expect(transcriptLines()).toEqual(['Explain this diagram', 'A short answer.']);
+  });
+
+  it('suppresses the remote-change notice for the tab that is chatting', async () => {
+    await renderWithAssistant();
+    await pushBaseSnapshot('2026-02-01T00:00:00.000Z');
+    await sendMessage('Add a Worker');
+
+    await deliver(
+      aiOperation(
+        {
+          input: { id: 'api', label: 'API', position: { x: 0, y: 0 }, typeId: 'worker' },
+          kind: 'add_node'
+        },
+        2
+      )
+    );
+
+    expect(screen.queryByText('Updated by another editor')).not.toBeInTheDocument();
+    expect(screen.getByText('Added node: API')).toBeInTheDocument();
+  });
+
+  // A passive collaborator's tab has no turn in flight, so it is told — exactly as it would be
+  // for a person's edit — that the canvas changed under it.
+  it('shows the notice to a tab that is not chatting', async () => {
+    await renderWithAssistant();
+    await pushBaseSnapshot('2026-02-01T00:00:00.000Z');
+
+    await deliver(
+      aiOperation(
+        {
+          input: { id: 'api', label: 'API', position: { x: 0, y: 0 }, typeId: 'worker' },
+          kind: 'add_node'
+        },
+        2
+      )
+    );
+
+    expect(screen.getByText('Updated by another editor')).toBeInTheDocument();
+  });
+
+  it('starts a fresh transcript when the editor opens a different diagram', async () => {
+    const view = await renderWithAssistant();
+    await sendMessage('Add a Worker');
+
+    respondWithDiagram({ id: 'd2', updatedAt: '2026-01-01T00:00:00.000Z' });
+    view.rerender(<DiagramCanvas diagramId="d2" />);
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
+    openAssistant();
+
+    expect(screen.queryByText('Add a Worker')).not.toBeInTheDocument();
+  });
+
+  describe('the post-turn layout pass', () => {
+    /**
+     * Drives one turn that adds a node and completes.
+     *
+     * @param lastFrame The frame that ends the turn.
+     * @returns A promise fulfilled once the turn's frames have been processed.
+     */
+    async function runNodeAddingTurn(lastFrame: 'chat_done' | 'chat_error'): Promise<void> {
+      await pushBaseSnapshot('2026-02-01T00:00:00.000Z');
+      await sendMessage('Add a Worker');
+      const clientRequestId = (
+        JSON.parse(mostRecentSocket().sent[0] as string) as { clientRequestId: string }
+      ).clientRequestId;
+
+      await deliver(
+        aiOperation(
+          {
+            input: { id: 'api', label: 'API', position: { x: 0, y: 0 }, typeId: 'worker' },
+            kind: 'add_node'
+          },
+          2
+        )
+      );
+      await deliver(
+        lastFrame === 'chat_done'
+          ? { assistantText: 'Done.', clientRequestId, type: 'chat_done' }
+          : { clientRequestId, message: 'Gateway unavailable.', type: 'chat_error' }
+      );
+    }
+
+    it('runs once and persists the result through the existing whole-graph route', async () => {
+      mockElkLayout.mockResolvedValue({ children: [{ id: 'api', x: 48, y: 96 }] });
+      await renderWithAssistant();
+
+      await runNodeAddingTurn('chat_done');
+      await waitFor(() => expect(mockSaveDiagramGraph).toHaveBeenCalledTimes(1));
+
+      expect(mockElkLayout).toHaveBeenCalledTimes(1);
+      expect(useDiagramStore.getState().nodes[0]?.position).toEqual({ x: 48, y: 96 });
+      const [diagramId, graphData] = mockSaveDiagramGraph.mock.calls[0] as [string, string];
+      expect(diagramId).toBe('d1');
+      expect(
+        (JSON.parse(graphData) as { nodes: { position: unknown }[] }).nodes[0]?.position
+      ).toEqual({ x: 48, y: 96 });
+      // No new frame and no new endpoint: the layout travels on the route the autosave already
+      // uses, which reaches the same session object.
+      expect(mostRecentSocket().sent).toHaveLength(1);
+    });
+
+    // A failed turn keeps whatever it already applied — each operation was persisted and
+    // broadcast on its own — so the nodes it added still deserve their one pass.
+    it('runs after a failed turn that had already added a node', async () => {
+      mockElkLayout.mockResolvedValue({ children: [{ id: 'api', x: 48, y: 96 }] });
+      await renderWithAssistant();
+
+      await runNodeAddingTurn('chat_error');
+
+      await waitFor(() => expect(mockElkLayout).toHaveBeenCalledTimes(1));
+    });
+
+    it('does not run for a turn that changed no node count', async () => {
+      await renderWithAssistant();
+      await pushBaseSnapshot('2026-02-01T00:00:00.000Z', ONE_NODE_GRAPH);
+      await sendMessage('Rename the cache');
+      const clientRequestId = (
+        JSON.parse(mostRecentSocket().sent[0] as string) as { clientRequestId: string }
+      ).clientRequestId;
+
+      await deliver(
+        aiOperation({ kind: 'update_node', nodeId: 'pushed', patch: { label: 'Cache' } }, 2)
+      );
+      await deliver({ assistantText: 'Renamed.', clientRequestId, type: 'chat_done' });
+
+      expect(mockElkLayout).not.toHaveBeenCalled();
+      expect(mockSaveDiagramGraph).not.toHaveBeenCalled();
+    });
+
+    it('does nothing on an empty canvas', async () => {
+      await renderWithAssistant();
+      await pushBaseSnapshot('2026-02-01T00:00:00.000Z', ONE_NODE_GRAPH);
+      await sendMessage('Remove everything');
+      const clientRequestId = (
+        JSON.parse(mostRecentSocket().sent[0] as string) as { clientRequestId: string }
+      ).clientRequestId;
+
+      await deliver(aiOperation({ kind: 'remove_node', nodeId: 'pushed' }, 2));
+      await deliver({ assistantText: 'Removed.', clientRequestId, type: 'chat_done' });
+
+      expect(screen.getByText('Removed node: Queue')).toBeInTheDocument();
+      expect(mockElkLayout).not.toHaveBeenCalled();
+    });
+
+    // The conversation's own changes are already persisted; only the tidying failed, so the
+    // diagram is still usable and there is nothing worth interrupting the reader about.
+    it('absorbs a failed layout without disturbing the diagram', async () => {
+      mockElkLayout.mockRejectedValue(new Error('offline'));
+      await renderWithAssistant();
+
+      await runNodeAddingTurn('chat_done');
+
+      expect(mockSaveDiagramGraph).not.toHaveBeenCalled();
+      expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['api']);
+    });
+
+    it('leaves the canvas alone when the engine computed nothing', async () => {
+      mockElkLayout.mockResolvedValue({});
+      await renderWithAssistant();
+
+      await runNodeAddingTurn('chat_done');
+
+      expect(mockSaveDiagramGraph).not.toHaveBeenCalled();
+      expect(useDiagramStore.getState().nodes[0]?.position).toEqual({ x: 0, y: 0 });
+    });
+
+    // The whole-graph write is echoed back to its own author, so without the in-flight guard the
+    // visitor would be told another editor had rearranged the diagram they just tidied.
+    it('does not announce its own write as somebody else’s change', async () => {
+      mockElkLayout.mockResolvedValue({ children: [{ id: 'api', x: 48, y: 96 }] });
+      let resolveSave: (updatedAt: string) => void = () => {};
+      mockSaveDiagramGraph.mockImplementation(
+        async () => new Promise<string>((resolve) => (resolveSave = resolve))
+      );
+      await renderWithAssistant();
+
+      await runNodeAddingTurn('chat_done');
+      await waitFor(() => expect(mockSaveDiagramGraph).toHaveBeenCalledTimes(1));
+      await pushBaseSnapshot('2026-03-01T00:00:00.000Z', ONE_NODE_GRAPH, 'human');
+
+      expect(screen.queryByText('Updated by another editor')).not.toBeInTheDocument();
+
+      await act(async () => {
+        resolveSave('2026-03-01T00:00:00.000Z');
+      });
+    });
   });
 });

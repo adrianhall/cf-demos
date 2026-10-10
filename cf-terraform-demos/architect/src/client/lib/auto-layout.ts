@@ -21,6 +21,22 @@ import type { CFEdgeData, CFNodeData } from '../components/editor/types.ts';
 export type LayoutDirection = 'DOWN' | 'RIGHT';
 
 /**
+ * How long the viewport takes to settle after a layout, in milliseconds.
+ *
+ * Shared by every caller that lays the diagram out, so the toolbar button and the assistant's
+ * post-turn pass look like the same action rather than two differently-timed ones.
+ */
+export const LAYOUT_FIT_DURATION_MS = 300;
+
+/**
+ * How long to wait after replacing the graph before fitting the view, in milliseconds.
+ *
+ * React Flow measures nodes after it has rendered them, so fitting in the same tick would frame the
+ * positions the nodes have just left.
+ */
+export const LAYOUT_FIT_DELAY_MS = 50;
+
+/**
  * The handles each direction prefers, when the node's type declares them.
  */
 const DIRECTION_HANDLES: Record<LayoutDirection, { source: string; target: string }> = {

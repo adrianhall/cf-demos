@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '../../src/catalog.ts';
 import type { CFEdgeData } from '../../src/client/components/editor/types.ts';
 
@@ -11,13 +11,32 @@ const { DetailsPanel } = await import('../../src/client/components/editor/panels
 /**
  * @file Covers the details panel and the properties form inside it: what each kind of selection
  *   offers to edit, and that every edit reaches the store — which is what makes it saved, since
- *   nothing else is watching these fields.
+ *   nothing else is watching these fields — plus the two-tab switch that wraps them.
  */
+
+/**
+ * Props for an idle, empty assistant tab.
+ *
+ * Every test here is about the panel rather than the conversation, so these are inert by default
+ * and overridden only where the assertion is about one of them.
+ *
+ * @returns The five assistant-tab props.
+ */
+function chatProps() {
+  return {
+    chatInFlight: false,
+    chatTranscript: [],
+    onNewConversation: vi.fn(),
+    onSendChatMessage: vi.fn(() => true),
+    onStopChatTurn: vi.fn()
+  };
+}
 
 beforeEach(() => {
   localStorage.clear();
   useDiagramStore.setState({
     detailsPanelExpanded: false,
+    detailsPanelTab: 'properties',
     edges: [],
     nodes: [],
     propertiesOpen: true,
@@ -60,13 +79,13 @@ function selectEdge(data: CFEdgeData | undefined = { edgeType: 'data-flow' }): v
 
 describe('with nothing selected', () => {
   it('explains what the panel is for', () => {
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     expect(screen.getByText('Select a node or edge to view its properties.')).toBeInTheDocument();
   });
 
   it('can still be closed', () => {
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Close properties panel' }));
 
@@ -77,7 +96,7 @@ describe('with nothing selected', () => {
 describe('with a node selected', () => {
   it('reports the node\u2019s catalogue type and category', () => {
     selectNode();
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     expect(screen.getByText('Workers')).toBeInTheDocument();
     expect(screen.getByText(CATEGORY_LABELS.compute)).toBeInTheDocument();
@@ -85,7 +104,7 @@ describe('with a node selected', () => {
 
   it('edits the label through the store', () => {
     selectNode();
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Renamed' } });
 
@@ -94,7 +113,7 @@ describe('with a node selected', () => {
 
   it('edits the description through the store', () => {
     selectNode();
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     fireEvent.change(screen.getByLabelText('Description'), {
       target: { value: 'Handles requests' }
@@ -105,7 +124,7 @@ describe('with a node selected', () => {
 
   it('edits the accent colour through the store', () => {
     selectNode();
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     fireEvent.change(screen.getByLabelText('Accent Color'), { target: { value: '#123456' } });
 
@@ -116,7 +135,7 @@ describe('with a node selected', () => {
   // the colour the node is actually painted with rather than anything empty-ish.
   it('defaults the colour input to the category colour', () => {
     selectNode('d1');
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     expect(screen.getByLabelText('Accent Color')).toHaveValue(
       CATEGORY_COLORS.storage.toLowerCase()
@@ -125,7 +144,7 @@ describe('with a node selected', () => {
 
   it('keeps an existing accent colour rather than the category default', () => {
     selectNode('worker', { style: { accentColor: '#abcdef' } });
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     expect(screen.getByLabelText('Accent Color')).toHaveValue('#abcdef');
   });
@@ -133,7 +152,7 @@ describe('with a node selected', () => {
   // A diagram outlives a renamed product, so the stored identifier is shown rather than nothing.
   it('falls back to the stored type and the external category for an unknown product', () => {
     selectNode('no-longer-a-product');
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     expect(screen.getByText('no-longer-a-product')).toBeInTheDocument();
     expect(screen.getByText(CATEGORY_LABELS.external)).toBeInTheDocument();
@@ -141,7 +160,7 @@ describe('with a node selected', () => {
 
   it('links the catalogue documentation for the product', () => {
     selectNode();
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     const link = screen.getByRole('link', { name: 'Workers Docs' });
 
@@ -157,7 +176,7 @@ describe('with a node selected', () => {
   // the link exists — the doc icon would satisfy a href-only assertion just as well.
   it('marks a video documentation link with the video icon', () => {
     selectNode('workers-ai');
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     const link = screen.getByRole('link', { name: 'Workers AI Video' });
 
@@ -170,7 +189,7 @@ describe('with a node selected', () => {
 
   it('opens a video documentation link safely in a new tab', () => {
     selectNode('workers-ai');
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     const link = screen.getByRole('link', { name: 'Workers AI Video' });
 
@@ -182,7 +201,7 @@ describe('with a node selected', () => {
   // should announce the title alone rather than reading a decorative glyph before it.
   it('names a documentation link by its title alone, hiding the icon from assistive technology', () => {
     selectNode('workers-ai');
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     for (const name of ['Workers AI Docs', 'Workers AI Video']) {
       const icon = screen.getByRole('link', { name }).querySelector('svg');
@@ -196,7 +215,7 @@ describe('with a node selected', () => {
   // map's two entries would still satisfy a test that only ever looks at one of them.
   it('distinguishes the two documentation-link icons on the same product', () => {
     selectNode('workers-ai');
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     const docLink = screen.getByRole('link', { name: 'Workers AI Docs' });
     const videoLink = screen.getByRole('link', { name: 'Workers AI Video' });
@@ -207,7 +226,7 @@ describe('with a node selected', () => {
 
   it('offers no documentation section for a product that has none', () => {
     selectNode('no-longer-a-product');
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     expect(screen.queryByText('Documentation')).not.toBeInTheDocument();
   });
@@ -216,7 +235,7 @@ describe('with a node selected', () => {
 describe('with an edge selected', () => {
   it('edits the edge type through the store', () => {
     selectEdge();
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     expect(screen.getByLabelText('Edge Type')).toHaveValue('data-flow');
 
@@ -227,7 +246,7 @@ describe('with an edge selected', () => {
 
   it('edits the label, protocol and description through the store', () => {
     selectEdge();
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'HTTPS' } });
     fireEvent.change(screen.getByLabelText('Protocol'), { target: { value: 'http' } });
@@ -246,7 +265,7 @@ describe('with an edge selected', () => {
   // looks the same whether it has ever been annotated or not.
   it('removes the protocol entirely when reset to None', () => {
     selectEdge({ edgeType: 'data-flow', protocol: 'http' });
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     fireEvent.change(screen.getByLabelText('Protocol'), { target: { value: '' } });
 
@@ -262,7 +281,7 @@ describe('with an edge selected', () => {
       edges: [{ id: 'e1', source: 'a', target: 'b' }],
       selectedEdgeId: 'e1'
     });
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     expect(screen.getByLabelText('Edge Type')).toHaveValue('data-flow');
   });
@@ -275,16 +294,127 @@ describe('with an edge selected', () => {
       edges: [{ data: { edgeType: 'data-flow' }, id: 'e1', source: 'a', target: 'b' }],
       selectedEdgeId: 'e1'
     });
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     expect(screen.getByText('Node Properties')).toBeInTheDocument();
     expect(screen.queryByText('Edge Properties')).not.toBeInTheDocument();
   });
 });
 
+describe('the two tabs', () => {
+  it('implements the ARIA tabs pattern, with the tabpanel labelled by the active tab', () => {
+    render(<DetailsPanel {...chatProps()} />);
+
+    expect(screen.getByRole('tablist', { name: 'Details panel' })).toBeInTheDocument();
+    const properties = screen.getByRole('tab', { name: 'Properties' });
+    const assistant = screen.getByRole('tab', { name: 'AI Assistant' });
+    const tabpanel = screen.getByRole('tabpanel');
+
+    expect(properties).toHaveAttribute('aria-selected', 'true');
+    expect(assistant).toHaveAttribute('aria-selected', 'false');
+    // The two halves of the pattern have to point at each other, or a screen reader announces a
+    // panel with no name and a tab that controls nothing.
+    expect(properties).toHaveAttribute('aria-controls', tabpanel.getAttribute('id'));
+    expect(assistant).toHaveAttribute('aria-controls', tabpanel.getAttribute('id'));
+    expect(tabpanel).toHaveAttribute('aria-labelledby', properties.getAttribute('id'));
+  });
+
+  it('shows the assistant and moves the tabpanel label with it', () => {
+    render(<DetailsPanel {...chatProps()} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'AI Assistant' }));
+
+    expect(useDiagramStore.getState().detailsPanelTab).toBe('ai-chat');
+    const assistant = screen.getByRole('tab', { name: 'AI Assistant' });
+    expect(assistant).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute(
+      'aria-labelledby',
+      assistant.getAttribute('id')
+    );
+    expect(screen.getByLabelText('Message the AI assistant')).toBeInTheDocument();
+    expect(screen.queryByText('Select a node or edge to view its properties.')).toBeNull();
+  });
+
+  it('switches back to Properties', () => {
+    useDiagramStore.setState({ detailsPanelTab: 'ai-chat' });
+    render(<DetailsPanel {...chatProps()} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Properties' }));
+
+    expect(useDiagramStore.getState().detailsPanelTab).toBe('properties');
+    expect(screen.getByText('Select a node or edge to view its properties.')).toBeInTheDocument();
+  });
+
+  // Selecting something is an explicit statement about what the visitor wants to look at, so it
+  // wins over whichever tab happened to be open.
+  it.each([
+    ['a node', () => useDiagramStore.getState().setSelectedNode('n1')],
+    ['an edge', () => useDiagramStore.getState().setSelectedEdge('e1')]
+  ])('returns to Properties when %s is selected', (_label, select) => {
+    useDiagramStore.setState({ detailsPanelTab: 'ai-chat' });
+    render(<DetailsPanel {...chatProps()} />);
+    expect(screen.getByRole('tab', { name: 'AI Assistant' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+
+    act(select);
+
+    expect(screen.getByRole('tab', { name: 'Properties' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+  });
+
+  // Clearing the selection says nothing about what the panel should show, so it must not drag a
+  // reader out of the conversation they were reading.
+  it('leaves the assistant tab alone when the selection is cleared', () => {
+    useDiagramStore.setState({ detailsPanelTab: 'ai-chat' });
+    render(<DetailsPanel {...chatProps()} />);
+
+    act(() => useDiagramStore.getState().setSelectedNode(null));
+
+    expect(useDiagramStore.getState().detailsPanelTab).toBe('ai-chat');
+  });
+
+  it('is reachable and operable by keyboard alone', () => {
+    render(<DetailsPanel {...chatProps()} />);
+
+    const properties = screen.getByRole('tab', { name: 'Properties' });
+    const assistant = screen.getByRole('tab', { name: 'AI Assistant' });
+    const expand = screen.getByRole('button', { name: 'Expand panel' });
+
+    // Every control is a real `<button>`, so Tab, Enter and Space work natively; focusing and
+    // activating each is what a keyboard pass amounts to here.
+    properties.focus();
+    expect(document.activeElement).toBe(properties);
+    assistant.focus();
+    expect(document.activeElement).toBe(assistant);
+    fireEvent.click(assistant);
+    expect(useDiagramStore.getState().detailsPanelTab).toBe('ai-chat');
+
+    expand.focus();
+    expect(document.activeElement).toBe(expand);
+    fireEvent.click(expand);
+    expect(useDiagramStore.getState().detailsPanelExpanded).toBe(true);
+  });
+
+  it('threads the assistant tab\u2019s callbacks through to the panel', () => {
+    const props = chatProps();
+    useDiagramStore.setState({ detailsPanelTab: 'ai-chat' });
+    render(<DetailsPanel {...props} chatTranscript={[{ id: '1', kind: 'user', text: 'Hello' }]} />);
+
+    expect(screen.getByText('Hello')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
+
+    expect(props.onNewConversation).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('the panel width', () => {
   it('widens and narrows the panel, remembering the choice', () => {
-    render(<DetailsPanel />);
+    render(<DetailsPanel {...chatProps()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand panel' }));
 

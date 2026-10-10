@@ -55,6 +55,7 @@ beforeEach(() => {
     vi.fn(async () => new Response(JSON.stringify({ email: 'alice@example.com', isAdmin: false })))
   );
   useDiagramStore.setState({
+    detailsPanelTab: 'properties',
     diagramId: 'd1',
     edges: [],
     minimapOpen: true,
@@ -155,6 +156,71 @@ describe('the panel toggles', () => {
 
     expect(useDiagramStore.getState()[key]).toBe(!initiallyOpen);
     expect(button).toHaveAttribute('aria-pressed', String(!initiallyOpen));
+  });
+});
+
+describe('the AI Assistant control', () => {
+  // The control describes what is on screen, so it reports itself pressed only when the panel is
+  // both open and showing the assistant.
+  it('opens the details panel on the assistant tab', () => {
+    render(<Toolbar />);
+
+    const button = screen.getByRole('button', { name: 'AI Assistant' });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(button);
+
+    expect(useDiagramStore.getState().propertiesOpen).toBe(true);
+    expect(useDiagramStore.getState().detailsPanelTab).toBe('ai-chat');
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('leaves an already-open panel open while switching it to the assistant', () => {
+    useDiagramStore.setState({ propertiesOpen: true });
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI Assistant' }));
+
+    expect(useDiagramStore.getState().propertiesOpen).toBe(true);
+    expect(useDiagramStore.getState().detailsPanelTab).toBe('ai-chat');
+  });
+
+  it('reports itself unpressed while the assistant tab is chosen but the panel is closed', () => {
+    useDiagramStore.setState({ detailsPanelTab: 'ai-chat', propertiesOpen: false });
+    render(<Toolbar />);
+
+    expect(screen.getByRole('button', { name: 'AI Assistant' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+  });
+
+  // A one-time nudge: the conversation reads better in a wider sidebar, and the palette and the
+  // details panel together leave very little canvas on a laptop.
+  it('makes room for the conversation by closing the palette, once', () => {
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI Assistant' }));
+
+    expect(useDiagramStore.getState().paletteOpen).toBe(false);
+
+    // Reopened deliberately, and a later press must leave that choice alone: a control that kept
+    // re-closing a panel the visitor had reopened would be fighting them.
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle service palette' }));
+    expect(useDiagramStore.getState().paletteOpen).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI Assistant' }));
+
+    expect(useDiagramStore.getState().paletteOpen).toBe(true);
+  });
+
+  it('leaves an already-closed palette closed', () => {
+    useDiagramStore.setState({ paletteOpen: false });
+    render(<Toolbar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI Assistant' }));
+
+    expect(useDiagramStore.getState().paletteOpen).toBe(false);
   });
 });
 
@@ -437,6 +503,7 @@ describe('the read-only posture', () => {
     'Redo',
     'Zoom in',
     'Auto layout',
+    'AI Assistant',
     'Share diagram'
   ])('omits %s entirely', (name) => {
     render(<Toolbar readOnly />);

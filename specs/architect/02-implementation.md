@@ -1236,7 +1236,61 @@ to a non-chatting second connection; no write bypasses `runOperation()`; the gat
 owned with a `depends_on` edge and a scalar output; and `pnpm check`, `pnpm test` and the coverage
 gate pass.
 
-### Phase 24 — In-editor chat UI
+### Phase 24 — In-editor chat UI — **complete**
+
+#### Outcome
+
+Delivered all five deliverables. The details panel is a real ARIA tab pair holding
+`AiChatPanel.tsx` beside the untouched properties form; the transcript is one consolidating
+`role="log"` region rendering user text, Markdown answers, confirmed action narration and
+documentation citations; the composer has its labelled textarea, in-flight-disabled Send,
+streaming-only Stop and New conversation control; a turn that changed the node count triggers one
+ELK pass persisted through `PUT /api/diagrams/:id/graph`; and the toolbar has its AI Assistant
+toggle with the one-time palette nudge. Coverage is 98.66 / 96.74 / 98.80 / 98.77, with no
+threshold lowered and no exclusion added. The four new source files reach 100% of statements,
+branches, functions and lines; every line still uncovered in `DiagramCanvas.tsx` predates this
+phase.
+
+All three required regression tests were confirmed to fail against the broken behaviour before
+being accepted, each by reintroducing the original defect and running that test alone. The
+narration test fails twice over when narration is moved to the pre-apply status frame — the
+rejected turn narrates, and the applied one narrates twice. The ordering test fails when
+`appendInterruptingEntry` stops clearing the bubble anchor. The single-bubble test fails only
+against the *exact* original defect — a `chat_done` that reconciles "the" bubble by reading the
+anchor ref **inside** its deferred `setState` updater, by which time the handler has cleared it,
+so the answer is appended a second time. A weaker break (resolving ids inside the token arm's own
+updater) does not reproduce it, which is itself worth recording: the defect is specifically about
+one handler's updater reading a ref another handler has since written.
+
+Four things the plan assumed that turned out differently, none a change of behaviour:
+
+- **Deliverable 4's extraction was already done.** `src/client/lib/auto-layout.ts` already exported
+  `computeAutoLayout(nodes, edges, direction)` with the `elkjs` import inside the function body,
+  and `Toolbar.tsx` already used it. Only the post-turn pass remained. The two layout timing
+  constants moved from `Toolbar.tsx` into that module so the toolbar button and the assistant's
+  pass look like one action rather than two differently-timed ones.
+- **The `.details-panel` and `.ai-chat-panel*` CSS was already ported**, including the
+  `var(--cf-danger)` error style and the Markdown scope. No stylesheet change was needed, and the
+  built-stylesheet `light-dark()` contract is untouched.
+- **The source's `useDiagramLiveSync` hook has no equivalent here**, as the brief notes. Its logic
+  lives inline in `DiagramCanvas.tsx`, so the transcript state, the four bookkeeping refs and the
+  three callbacks were added there alongside the existing awareness state rather than a hook being
+  introduced that nothing else in this port uses. The entry type and its id generator went to
+  `src/client/components/editor/chat-transcript.ts`, beside `types.ts` and `connect.ts`, because
+  the canvas produces entries and the panel renders them so neither can own the definition.
+- **The post-turn layout needed one guard the source did not document.** A whole-graph save is
+  broadcast back as a `snapshot` to its own author, so without suppressing the notice for the
+  window the write is in flight, tidying the diagram announced itself as another editor's change.
+
+Two deliberate decisions worth stating. `diagram_renamed` is applied with a direct `setState`
+rather than through `setTitle`/`setDescription`, which would mark the graph dirty over a value the
+tool call already persisted; the title debounce still writes it back unchanged a second later,
+which is idempotent and cheaper to leave than to suppress with a flag that would have to be right
+in every other path. And the remote-change notice is suppressed for an `ai-chat` operation only
+while this tab has a turn in flight — an `ai-chat` operation carries no operation id, so the
+ordinary "was this mine?" test cannot distinguish the chatting tab from a watching one. It is an
+approximation, and an exact one in practice, since the composer refuses to send a second message
+while one is in flight.
 
 #### Goal
 

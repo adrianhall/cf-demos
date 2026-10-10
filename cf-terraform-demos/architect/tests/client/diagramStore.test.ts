@@ -43,6 +43,7 @@ beforeEach(() => {
     diagramId: null,
     dirty: false,
     detailsPanelExpanded: false,
+    detailsPanelTab: 'properties',
     edges: [],
     lastSavedAt: null,
     minimapOpen: true,
@@ -332,6 +333,32 @@ describe('selection', () => {
 
     expect(useDiagramStore.getState().propertiesOpen).toBe(false);
   });
+
+  // Selecting something is an explicit statement about what the visitor wants to look at, so it
+  // wins over whichever tab happened to be open.
+  it.each([
+    ['a node', (): void => useDiagramStore.getState().setSelectedNode('a')],
+    ['an edge', (): void => useDiagramStore.getState().setSelectedEdge('e1')]
+  ])('returns to the properties tab when %s is selected', (_description, select) => {
+    useDiagramStore.setState({ detailsPanelTab: 'ai-chat' });
+
+    select();
+
+    expect(useDiagramStore.getState().detailsPanelTab).toBe('properties');
+  });
+
+  // Clicking empty canvas says nothing about what the panel should show, so it must not pull a
+  // reader out of the conversation they were reading.
+  it.each([
+    ['a node', (): void => useDiagramStore.getState().setSelectedNode(null)],
+    ['an edge', (): void => useDiagramStore.getState().setSelectedEdge(null)]
+  ])('leaves the tab alone when %s selection is cleared', (_description, clear) => {
+    useDiagramStore.setState({ detailsPanelTab: 'ai-chat' });
+
+    clear();
+
+    expect(useDiagramStore.getState().detailsPanelTab).toBe('ai-chat');
+  });
 });
 
 describe('panel preferences', () => {
@@ -359,6 +386,29 @@ describe('panel preferences', () => {
 
     expect(useDiagramStore.getState().detailsPanelExpanded).toBe(false);
     expect(localStorage.getItem('details-panel-expanded')).toBe('false');
+  });
+
+  // The width is a lasting preference about the shape of the screen; the tab is about what the
+  // visitor is doing right now, and a remembered conversation tab would greet every later editing
+  // session with an empty transcript instead of the properties of what they are about to select.
+  it('switches tabs without persisting the choice', () => {
+    useDiagramStore.getState().setDetailsPanelTab('ai-chat');
+
+    expect(useDiagramStore.getState().detailsPanelTab).toBe('ai-chat');
+    expect(localStorage.length).toBe(0);
+
+    useDiagramStore.getState().setDetailsPanelTab('properties');
+
+    expect(useDiagramStore.getState().detailsPanelTab).toBe('properties');
+    expect(localStorage.length).toBe(0);
+  });
+
+  // Opening the panel is the toolbar control's job; a tab change made while it is closed must not
+  // reopen it behind the visitor's back.
+  it('does not open the panel when the tab changes', () => {
+    useDiagramStore.getState().setDetailsPanelTab('ai-chat');
+
+    expect(useDiagramStore.getState().propertiesOpen).toBe(false);
   });
 });
 

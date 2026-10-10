@@ -167,6 +167,17 @@ interface DiagramState {
    */
   detailsPanelExpanded: boolean;
   /**
+   * Which of the details panel's two tabs is showing.
+   *
+   * Deliberately **not** persisted, unlike {@link detailsPanelExpanded} immediately above. The
+   * width is a lasting preference about how much of the screen this visitor wants the sidebar to
+   * take; the tab is about what they are doing right now, and a remembered `'ai-chat'` would open
+   * every later editing session on an empty conversation instead of the properties of whatever they
+   * are about to select. `../lib/details-panel-preferences.ts` says the same thing from the other
+   * side, and its rule is not widened for this.
+   */
+  detailsPanelTab: 'properties' | 'ai-chat';
+  /**
    * Undo snapshots, oldest first.
    */
   undoStack: HistoryEntry[];
@@ -356,19 +367,33 @@ interface DiagramActions {
    */
   removeSelected: () => void;
   /**
-   * Selects a node, clearing any edge selection and opening the details panel.
+   * Selects a node, clearing any edge selection and opening the details panel on its Properties
+   * tab.
+   *
+   * Returning to Properties is the point rather than a side effect: selecting something is an
+   * explicit statement that this element is what the visitor wants to look at, and it should win
+   * over whichever tab happened to be open. Clearing the selection leaves the tab alone, because
+   * clicking empty canvas says nothing about what the panel should show.
    *
    * @param id Node id, or `null` to clear the selection.
    * @returns Nothing.
    */
   setSelectedNode: (id: string | null) => void;
   /**
-   * Selects an edge; the mirror of {@link setSelectedNode}.
+   * Selects an edge; the mirror of {@link setSelectedNode}, including its return to Properties.
    *
    * @param id Edge id, or `null` to clear the selection.
    * @returns Nothing.
    */
   setSelectedEdge: (id: string | null) => void;
+  /**
+   * Shows one of the details panel's two tabs.
+   *
+   * @param tab Tab to show.
+   * @returns Nothing. Does not open the panel: the toolbar's assistant control does that, and a tab
+   *   change made while the panel is closed should not reopen it behind the visitor's back.
+   */
+  setDetailsPanelTab: (tab: DiagramState['detailsPanelTab']) => void;
   /**
    * Shows or hides the service palette.
    *
@@ -511,6 +536,7 @@ export type DiagramStore = DiagramState & DiagramActions;
 export const useDiagramStore = create<DiagramStore>((set, get) => ({
   description: '',
   detailsPanelExpanded: getStoredDetailsPanelExpanded(),
+  detailsPanelTab: 'properties',
   diagramId: null,
   dirty: false,
   edges: [],
@@ -737,6 +763,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   setSelectedNode: (id) =>
     set((state) => ({
+      detailsPanelTab: id !== null ? 'properties' : state.detailsPanelTab,
       propertiesOpen: id !== null ? true : state.propertiesOpen,
       selectedEdgeId: null,
       selectedNodeId: id
@@ -744,10 +771,13 @@ export const useDiagramStore = create<DiagramStore>((set, get) => ({
 
   setSelectedEdge: (id) =>
     set((state) => ({
+      detailsPanelTab: id !== null ? 'properties' : state.detailsPanelTab,
       propertiesOpen: id !== null ? true : state.propertiesOpen,
       selectedEdgeId: id,
       selectedNodeId: null
     })),
+
+  setDetailsPanelTab: (tab) => set({ detailsPanelTab: tab }),
 
   togglePalette: () => set((state) => ({ paletteOpen: !state.paletteOpen })),
   toggleProperties: () => set((state) => ({ propertiesOpen: !state.propertiesOpen })),
