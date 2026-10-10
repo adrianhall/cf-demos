@@ -1349,23 +1349,73 @@ describe('live sync', () => {
   ])('names a %s change in the notice', async (origin, expected) => {
     respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
     await renderLoaded();
-
-    await pushSnapshot('2026-02-01T00:00:00.000Z', PUSHED_GRAPH, origin as 'human' | 'agent');
+    // First snapshot establishes the connection's baseline. The second is the actual remote update
+    // this case is naming.
+    await pushSnapshot('2026-02-01T00:00:00.000Z', EMPTY_GRAPH, null);
+    await pushSnapshot('2026-03-01T00:00:00.000Z', PUSHED_GRAPH, origin as 'human' | 'agent');
 
     expect(screen.getByText(expected)).toBeInTheDocument();
   });
 
-  // The snapshot a joining tab is sent on connect describes no change — it is the graph the tab
-  // already asked for — so announcing it would explain something that did not happen.
-  it('shows no notice for the snapshot it is sent on connect', async () => {
+  // The snapshot a joining tab is sent on connect establishes the stream baseline. It is silent
+  // even when a write landed in the narrow HTTP-read-to-WebSocket-upgrade gap and the session
+  // attributes that newer graph: the visitor has not seen a prior canvas state, so "another
+  // editor" is a false story — particularly visible after creating a blueprint, whose creator is
+  // the only person involved.
+  it.each([null, 'human', 'agent'] as const)(
+    'shows no notice for its initial %s-attributed snapshot',
+    async (origin) => {
+      respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+      await renderLoaded();
+
+      await pushSnapshot('2026-02-01T00:00:00.000Z', PUSHED_GRAPH, origin);
+
+      expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['pushed']);
+      expect(screen.queryByText('Updated by an agent')).not.toBeInTheDocument();
+      expect(screen.queryByText('Updated by another editor')).not.toBeInTheDocument();
+    }
+  );
+
+  it('automatically dismisses a genuine remote-update notice', async () => {
     respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
     await renderLoaded();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+    // First snapshot establishes the baseline. The second one is a real later broadcast.
+    await pushSnapshot('2026-02-01T00:00:00.000Z', PUSHED_GRAPH, null);
+    await pushSnapshot('2026-03-01T00:00:00.000Z', EMPTY_GRAPH, 'human');
+
+    expect(screen.getByText('Updated by another editor')).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6_000);
+    });
+
+    expect(screen.queryByText('Updated by another editor')).not.toBeInTheDocument();
+  });
+
+  it('restarts the dismissal timer when a newer change replaces the notice', async () => {
+    respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
+    await renderLoaded();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 
     await pushSnapshot('2026-02-01T00:00:00.000Z', PUSHED_GRAPH, null);
+    await pushSnapshot('2026-03-01T00:00:00.000Z', EMPTY_GRAPH, 'human');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    await pushSnapshot('2026-04-01T00:00:00.000Z', PUSHED_GRAPH, 'agent');
 
-    expect(useDiagramStore.getState().nodes.map((node) => node.id)).toEqual(['pushed']);
+    // The original timer would have expired now, but the newer agent notice owns a fresh window.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(screen.getByText('Updated by an agent')).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
     expect(screen.queryByText('Updated by an agent')).not.toBeInTheDocument();
-    expect(screen.queryByText('Updated by another editor')).not.toBeInTheDocument();
   });
 
   // Operation-based sync diverges silently when a frame is missed: the operation after the gap
@@ -1436,7 +1486,8 @@ describe('live sync', () => {
     respondWithDiagram({ updatedAt: '2026-01-01T00:00:00.000Z' });
     await renderLoaded();
 
-    await pushSnapshot('2026-02-01T00:00:00.000Z');
+    await pushSnapshot('2026-02-01T00:00:00.000Z', EMPTY_GRAPH, null);
+    await pushSnapshot('2026-03-01T00:00:00.000Z');
     const notice = screen.getByText('Updated by an agent');
     // An `<output>`, which carries the `status` role natively, so the notice is announced without
     // stealing focus — the change is informational, and taking focus would interrupt whatever the

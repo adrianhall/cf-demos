@@ -74,6 +74,15 @@ const CURSOR_THROTTLE_MS = 1_000 / 15;
 const TITLE_SAVE_DEBOUNCE_MS = 1_000;
 
 /**
+ * How long a genuine remote-update notice remains visible, in milliseconds.
+ *
+ * Long enough for somebody who was looking at the canvas to read it, short enough that a completed
+ * collaboration event does not occupy the corner indefinitely. The dismiss button remains for a
+ * reader who has already understood it or needs the space now.
+ */
+const REMOTE_CHANGE_NOTICE_MS = 6_000;
+
+/**
  * Grid, in pixels, that dragged nodes snap to. Alignment by construction rather than by eye.
  */
 const SNAP_GRID: [number, number] = [16, 16];
@@ -228,6 +237,16 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
   const liveSocketRef = useRef<WebSocket | null>(null);
 
   /**
+   * Whether this connection has received its first snapshot.
+   *
+   * The first snapshot establishes the stream baseline, even if another writer landed a change in
+   * the small gap between the editor's initial HTTP read and the upgrade. It is not a live update
+   * the visitor observed, so it must never raise the "another editor" notice; only snapshots after
+   * this baseline are announcements.
+   */
+  const receivedInitialSnapshotRef = useRef(false);
+
+  /**
    * Last graph this tab dispatched or adopted from a session snapshot.
    *
    * The debounce diffs this against the optimistic canvas to derive operations. Updated
@@ -277,6 +296,17 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
    * discarded as stale by the snapshot's ordinary newness rule.
    */
   const layoutWriteInFlightRef = useRef(false);
+
+  // A real remote change is useful orientation, not a persistent part of the editor. Replacing an
+  // earlier notice also restarts the timer, so a burst of collaboration remains readable through
+  // its final change rather than disappearing halfway through it.
+  useEffect(() => {
+    if (remoteChange === null) {
+      return undefined;
+    }
+    const timer = setTimeout(() => setRemoteChange(null), REMOTE_CHANGE_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [remoteChange]);
 
   useEffect(() => {
     // The share viewer's diagram arrived with the props, resolved anonymously by `/api/shares`.
@@ -518,6 +548,7 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
     // here — including a transcript the model on the other end has never seen.
     resetChatConversation();
     chatChangedNodeCountRef.current = false;
+    receivedInitialSnapshotRef.current = false;
 
     /**
      * Makes the live path available to the save debounce.
@@ -626,12 +657,25 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
             frame.updatedAt,
             frame.sequence
           );
-          // Announced only when the store took it *and* it describes somebody's change. A
-          // snapshot with no origin is this tab's own connect or resync answer, which the visitor
-          // did not need telling about, and a stale one changed nothing. A whole-graph save is
-          // echoed to its own author too, so this tab's in-flight layout write is excluded —
-          // otherwise tidying the diagram would announce itself as somebody else's edit.
-          if (applied && frame.origin !== null && !layoutWriteInFlightRef.current) {
+          // The first snapshot is the baseline for this connection, not a live update. The route
+          // read a graph before opening the socket, and another writer may have landed something
+          // during that gap; adopting the session's newer graph is still required for correctness,
+          // but telling a person who has only just opened their own blueprint "another editor"
+          // changed it is a false story. Every snapshot after this one is a genuine broadcast or
+          // resync answer and retains the ordinary attribution rule.
+          const isInitialSnapshot = !receivedInitialSnapshotRef.current;
+          receivedInitialSnapshotRef.current = true;
+          // Announced only when the store took it, it is not the initial baseline, and it describes
+          // somebody's change. A snapshot with no origin is a resync answer, which the visitor did
+          // not need telling about, and a stale one changed nothing. A whole-graph save is echoed
+          // to its own author too, so this tab's in-flight layout write is excluded — otherwise
+          // tidying the diagram would announce itself as somebody else's edit.
+          if (
+            applied
+            && !isInitialSnapshot
+            && frame.origin !== null
+            && !layoutWriteInFlightRef.current
+          ) {
             setRemoteChange(frame.origin);
           }
           return;
