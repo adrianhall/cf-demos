@@ -1,4 +1,5 @@
 import { MCP_GUIDE_ROUTE } from '../mcp-route.ts';
+import { ACCESS_RECOVERY_QUERY, AccessRecoveryPage } from './api/access-recovery.ts';
 import { AppShellView } from './views/AppShellView.tsx';
 import { BlueprintsView } from './views/BlueprintsView.tsx';
 import { LandingView } from './views/LandingView.tsx';
@@ -25,8 +26,14 @@ import { ShareView } from './views/ShareView.tsx';
  * @returns The view matching `window.location.pathname`.
  */
 export function App() {
-  const { pathname } = window.location;
+  const { pathname, search } = window.location;
   if (pathname.startsWith('/app')) {
+    // Reached only after an API wrapper received a 401 and deliberately navigated to this
+    // Access-gated document. Access completes its sign-in before this bundle runs; this tiny
+    // continuation then replays the saved request and returns to the original public page.
+    if (new URLSearchParams(search).get(ACCESS_RECOVERY_QUERY) === '1') {
+      return <AccessRecoveryPage />;
+    }
     return <AppShellView />;
   }
   if (pathname === '/blueprints') {

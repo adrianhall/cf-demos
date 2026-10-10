@@ -188,6 +188,39 @@ describe('requests', () => {
 });
 
 describe('failures', () => {
+  // A 401 is not rendered as a generic API error: fetch cannot follow Access's HTML login flow, so
+  // the shared continuation stores this exact request and starts a real navigation to protected
+  // `/app`. Access returns there after sign-in, the request replays once, and the original page
+  // consumes that result. The navigation is stubbed here because jsdom cannot leave the document.
+  it('starts the Access continuation for an expired session', async () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...window.location,
+        assign,
+        hash: '',
+        href: 'http://localhost/blueprints',
+        pathname: '/blueprints',
+        search: ''
+      },
+      writable: true
+    });
+    stubFetch(jsonResponse({ detail: 'Unauthorized.' }, 401));
+
+    await expect(createDiagram({ title: 'Recovered diagram' })).rejects.toThrow('Unauthorized.');
+
+    expect(assign).toHaveBeenCalledWith('/app?resume-api-request=1');
+    expect(sessionStorage.getItem('architect.pending-api-request')).toEqual(
+      JSON.stringify({
+        body: JSON.stringify({ title: 'Recovered diagram' }),
+        method: 'POST',
+        path: '/api/diagrams',
+        returnTo: '/blueprints',
+        version: 1
+      })
+    );
+  });
   it('raises the server\u2019s own RFC 9457 detail', async () => {
     stubFetch(jsonResponse({ detail: 'Diagram not found.', status: 404 }, 404));
 

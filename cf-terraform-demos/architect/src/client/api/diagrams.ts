@@ -1,3 +1,5 @@
+import { beginAccessRecovery, takeRecoveredApiResult } from './access-recovery.ts';
+
 /**
  * @file The browser's only route to diagram data. Every function here speaks to the Worker's
  *   same-origin JSON API. Nothing in the client reaches D1, KV or a Durable Object, and nothing
@@ -181,6 +183,19 @@ function requestError(body: Record<string, unknown> | null): Error {
  *   successful response's body is absent or is not a JSON object.
  */
 async function request(path: string, init?: RequestInit): Promise<Record<string, unknown>> {
+  // A completed continuation is consumed before a new fetch, so returning from Access replays the
+  // original action exactly once rather than sending it once in the recovery page and again here.
+  const recovered = takeRecoveredApiResult(path, init);
+  if (recovered !== null) {
+    if (!recovered.ok) {
+      throw requestError(recovered.body);
+    }
+    if (recovered.body === null) {
+      throw new Error(UNEXPECTED_RESPONSE);
+    }
+    return recovered.body;
+  }
+
   const response = await fetch(path, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...init?.headers }
@@ -188,6 +203,12 @@ async function request(path: string, init?: RequestInit): Promise<Record<string,
 
   const body = await jsonObject(response);
   if (!response.ok) {
+    // API paths deliberately answer 401 rather than redirecting a fetch to Access HTML. Stage this
+    // one JSON request, cross the real document-navigation Access boundary, then consume its replay
+    // result above once the browser has returned to the page where the person started.
+    if (response.status === 401) {
+      beginAccessRecovery(path, init);
+    }
     throw requestError(body);
   }
 
@@ -228,7 +249,9 @@ async function requestField<T>(path: string, field: string, init?: RequestInit):
  *
  * @returns Every diagram the caller owns, each carrying its full graph so a card can render a real
  *   thumbnail without a second request.
- * @throws {Error} When the request fails, including a `401` when the Access session has expired.
+ * @throws {Error} When the request fails. An expired Access session starts the shared sign-in
+ *   continuation and replays this request once after the browser returns; a failed replay reaches
+ *   this error path rather than redirecting in a loop.
  */
 export async function listDiagrams(): Promise<DiagramSummary[]> {
   return requestField<DiagramSummary[]>('/api/diagrams', 'diagrams');
@@ -244,7 +267,9 @@ export async function listDiagrams(): Promise<DiagramSummary[]> {
  *
  * @returns The diagrams shared with the caller, newest activity first, each carrying `ownerEmail`
  *   so a card can say who shared it. Empty when none have been.
- * @throws {Error} When the request fails, including a `401` when the Access session has expired.
+ * @throws {Error} When the request fails. An expired Access session starts the shared sign-in
+ *   continuation and replays this request once after the browser returns; a failed replay reaches
+ *   this error path rather than redirecting in a loop.
  */
 export async function listSharedWithMe(): Promise<DiagramSummary[]> {
   return requestField<DiagramSummary[]>('/api/diagrams/shared-with-me', 'diagrams');
@@ -352,13 +377,23 @@ export async function addCollaborator(diagramId: string, email: string): Promise
  *   somebody other than themselves, or when no such grant exists.
  */
 export async function removeCollaborator(diagramId: string, email: string): Promise<void> {
-  const response = await fetch(
-    `/api/diagrams/${encodeURIComponent(diagramId)}/collaborators/${encodeURIComponent(email)}`,
-    { headers: { 'Content-Type': 'application/json' }, method: 'DELETE' }
-  );
+  const path = `/api/diagrams/${encodeURIComponent(diagramId)}/collaborators/${encodeURIComponent(email)}`;
+  const init = { headers: { 'Content-Type': 'application/json' }, method: 'DELETE' };
+  const recovered = takeRecoveredApiResult(path, init);
+  if (recovered !== null) {
+    if (!recovered.ok) {
+      throw requestError(recovered.body);
+    }
+    return;
+  }
 
+  const response = await fetch(path, init);
   if (!response.ok) {
-    throw requestError(await jsonObject(response));
+    const body = await jsonObject(response);
+    if (response.status === 401) {
+      beginAccessRecovery(path, init);
+    }
+    throw requestError(body);
   }
 }
 
@@ -462,12 +497,22 @@ export function diagramLiveUrl(id: string): string {
  * @throws {Error} When the request fails or the diagram is not the caller's.
  */
 export async function deleteDiagram(id: string): Promise<void> {
-  const response = await fetch(`/api/diagrams/${encodeURIComponent(id)}`, {
-    headers: { 'Content-Type': 'application/json' },
-    method: 'DELETE'
-  });
+  const path = `/api/diagrams/${encodeURIComponent(id)}`;
+  const init = { headers: { 'Content-Type': 'application/json' }, method: 'DELETE' };
+  const recovered = takeRecoveredApiResult(path, init);
+  if (recovered !== null) {
+    if (!recovered.ok) {
+      throw requestError(recovered.body);
+    }
+    return;
+  }
 
+  const response = await fetch(path, init);
   if (!response.ok) {
-    throw requestError(await jsonObject(response));
+    const body = await jsonObject(response);
+    if (response.status === 401) {
+      beginAccessRecovery(path, init);
+    }
+    throw requestError(body);
   }
 }

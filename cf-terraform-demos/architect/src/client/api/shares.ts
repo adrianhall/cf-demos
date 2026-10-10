@@ -1,3 +1,5 @@
+import { beginAccessRecovery, takeRecoveredApiResult } from './access-recovery.ts';
+
 /**
  * @file The browser's only route to share data. Two postures live here, exactly as they do on the
  *   server: the owner-scoped management calls, which require the visitor's Access session, and the
@@ -133,6 +135,17 @@ function requestError(body: Record<string, unknown> | null): Error {
  *   successful response's body is absent or is not a JSON object.
  */
 async function request(path: string, init?: RequestInit): Promise<Record<string, unknown>> {
+  const recovered = takeRecoveredApiResult(path, init);
+  if (recovered !== null) {
+    if (!recovered.ok) {
+      throw requestError(recovered.body);
+    }
+    if (recovered.body === null) {
+      throw new Error(UNEXPECTED_RESPONSE);
+    }
+    return recovered.body;
+  }
+
   const response = await fetch(path, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...init?.headers }
@@ -140,6 +153,9 @@ async function request(path: string, init?: RequestInit): Promise<Record<string,
 
   const body = await jsonObject(response);
   if (!response.ok) {
+    if (response.status === 401) {
+      beginAccessRecovery(path, init);
+    }
     throw requestError(body);
   }
 
@@ -201,13 +217,23 @@ export async function createShare(diagramId: string): Promise<CreatedShare> {
  *   active link.
  */
 export async function revokeShare(diagramId: string): Promise<void> {
-  const response = await fetch(`/api/diagrams/${encodeURIComponent(diagramId)}/share`, {
-    headers: { 'Content-Type': 'application/json' },
-    method: 'DELETE'
-  });
+  const path = `/api/diagrams/${encodeURIComponent(diagramId)}/share`;
+  const init = { headers: { 'Content-Type': 'application/json' }, method: 'DELETE' };
+  const recovered = takeRecoveredApiResult(path, init);
+  if (recovered !== null) {
+    if (!recovered.ok) {
+      throw requestError(recovered.body);
+    }
+    return;
+  }
 
+  const response = await fetch(path, init);
   if (!response.ok) {
-    throw requestError(await jsonObject(response));
+    const body = await jsonObject(response);
+    if (response.status === 401) {
+      beginAccessRecovery(path, init);
+    }
+    throw requestError(body);
   }
 }
 

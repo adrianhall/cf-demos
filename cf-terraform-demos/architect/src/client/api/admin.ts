@@ -1,3 +1,4 @@
+import { beginAccessRecovery, takeRecoveredApiResult } from './access-recovery.ts';
 import type { SharedDiagram } from './shares.ts';
 
 /**
@@ -124,6 +125,17 @@ function requestError(body: Record<string, unknown> | null): Error {
  *   JSON object.
  */
 async function request(path: string, init?: RequestInit): Promise<Record<string, unknown>> {
+  const recovered = takeRecoveredApiResult(path, init);
+  if (recovered !== null) {
+    if (!recovered.ok) {
+      throw requestError(recovered.body);
+    }
+    if (recovered.body === null) {
+      throw new Error(UNEXPECTED_RESPONSE);
+    }
+    return recovered.body;
+  }
+
   const response = await fetch(path, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...init?.headers }
@@ -131,6 +143,9 @@ async function request(path: string, init?: RequestInit): Promise<Record<string,
 
   const body = await jsonObject(response);
   if (!response.ok) {
+    if (response.status === 401) {
+      beginAccessRecovery(path, init);
+    }
     throw requestError(body);
   }
 
@@ -214,12 +229,22 @@ export async function getAnyDiagram(diagramId: string): Promise<SharedDiagram> {
  * @throws {Error} When the caller is not the configured administrator, or no diagram has that id.
  */
 export async function deleteAnyDiagram(diagramId: string): Promise<void> {
-  const response = await fetch(`/api/admin/diagrams/${encodeURIComponent(diagramId)}`, {
-    headers: { 'Content-Type': 'application/json' },
-    method: 'DELETE'
-  });
+  const path = `/api/admin/diagrams/${encodeURIComponent(diagramId)}`;
+  const init = { headers: { 'Content-Type': 'application/json' }, method: 'DELETE' };
+  const recovered = takeRecoveredApiResult(path, init);
+  if (recovered !== null) {
+    if (!recovered.ok) {
+      throw requestError(recovered.body);
+    }
+    return;
+  }
 
+  const response = await fetch(path, init);
   if (!response.ok) {
-    throw requestError(await jsonObject(response));
+    const body = await jsonObject(response);
+    if (response.status === 401) {
+      beginAccessRecovery(path, init);
+    }
+    throw requestError(body);
   }
 }

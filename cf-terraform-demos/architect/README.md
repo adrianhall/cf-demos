@@ -175,6 +175,24 @@ though the Worker's stricter MCP policy regex did not. The same ordered policy b
 Access emulation and Worker-side verification; every API and MCP policy uses `redirect: false`, so a
 programmatic caller receives an RFC 9457 `401` rather than HTML from a login redirect.
 
+### Expired browser sessions
+
+A browser `fetch` cannot complete Cloudflare Access's HTML sign-in flow — unlike a real document
+navigation, it only receives that RFC 9457 `401`. The shared client API wrapper treats that status
+as a short-lived continuation rather than showing "The request could not be completed": it writes
+**one** same-origin JSON request into session storage, navigates to the already Access-gated `/app`
+document, and, after Access has signed the visitor in, replays the request once before returning to
+the original page. The reloaded API wrapper consumes that replay result instead of sending a second
+request. A failed replay is consumed as an ordinary error and is never re-queued, so a bad identity
+or policy change cannot create a redirect loop.
+
+This intentionally applies to every authenticated diagram, share-management and administration API
+call, including `204 No Content` deletes. It does **not** apply to `/api/me`: public pages use that
+passive identity probe to decide whether to render **Sign in**, and forcing a login merely to learn
+that somebody is anonymous would turn the public gallery into an authentication loop. WebSocket
+upgrades remain `401`/`426` as before; a constructor cannot replay an upgrade, and the page will
+open a fresh socket after the document return.
+
 Edge Access is not authorization. The Worker validates the exact Access application audience, and
 administrative routes additionally compare the verified email to the Terraform-provided
 `ADMIN_EMAIL`. There is no role column or promote/demote flow.
