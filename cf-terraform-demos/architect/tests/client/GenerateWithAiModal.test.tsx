@@ -169,6 +169,14 @@ describe('GenerateWithAiModal', () => {
     );
   });
 
+  it('focuses the prompt field as soon as the modal opens', () => {
+    render(<GenerateWithAiModal onClose={vi.fn()} />);
+
+    expect(document.activeElement).toBe(
+      screen.getByLabelText('Describe the architecture you want to build')
+    );
+  });
+
   it('closes on Escape, like every other modal', () => {
     const onClose = vi.fn();
     render(<GenerateWithAiModal onClose={onClose} />);

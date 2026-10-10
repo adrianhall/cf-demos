@@ -103,6 +103,7 @@ export interface GenerateWithAiModalProps {
  */
 export function GenerateWithAiModal({ onClose }: GenerateWithAiModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
   useModalFocus(true, dialogRef, onClose);
 
   const [description, setDescription] = useState('');
@@ -286,6 +287,15 @@ export function GenerateWithAiModal({ onClose }: GenerateWithAiModalProps) {
     );
   }, [connected, chat]);
 
+  // The modal opens for the specific purpose of receiving a prompt, so focus the prompt field
+  // rather than making the visitor tab past the close button, heading and label before they can
+  // type. This runs after the modal is mounted, following `useModalFocus`'s initial focus pass.
+  useEffect(() => {
+    if (diagramId === null) {
+      descriptionRef.current?.focus();
+    }
+  }, [diagramId]);
+
   // Focus, when the view switches from the description form to the conversation. The Generate
   // button the operator just activated is unmounted by that switch, which drops focus to `<body>`
   // — outside the `aria-modal` dialog, with nothing said about it. Moving focus to the dialog
@@ -416,6 +426,7 @@ export function GenerateWithAiModal({ onClose }: GenerateWithAiModalProps) {
               Describe the architecture you want to build
             </label>
             <textarea
+              ref={descriptionRef}
               id="generate-with-ai-description"
               className="properties-panel__input properties-panel__textarea"
               value={description}
