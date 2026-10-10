@@ -56,6 +56,29 @@ interface TestEnv extends Env {
 export const testEnv = env as TestEnv;
 
 /**
+ * Runs an async assertion with a fixture Workers AI binding installed.
+ *
+ * `env` substitution is process-wide in this pool and survives Durable Object eviction, not a
+ * per-instance convenience. The `finally` is therefore load-bearing: without it an unrelated later
+ * test sees this fake binding and fails for a reason nowhere near the test that leaked it.
+ *
+ * @param fakeAi Fixture to expose as the otherwise-undeclared `AI` binding.
+ * @param body Test work to run while the fixture is installed.
+ * @returns The result of `body`.
+ * @throws {Error} Any error `body` throws, after the original binding has been restored.
+ */
+export async function withFakeAi<T>(fakeAi: unknown, body: () => Promise<T>): Promise<T> {
+  const bindings = testEnv as TestEnv & { AI?: unknown };
+  const original = bindings.AI;
+  bindings.AI = fakeAi;
+  try {
+    return await body();
+  } finally {
+    bindings.AI = original;
+  }
+}
+
+/**
  * Dispatches a request through the Worker under test.
  *
  * @param request Request to dispatch.

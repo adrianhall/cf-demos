@@ -4,10 +4,14 @@
  */
 
 /**
- * The nine outputs declared in `infra/outputs.tf`, camelCased from their snake_case Terraform
- * output names.
+ * The ten outputs declared in `infra/outputs.tf`, camelCased from their snake_case Terraform output
+ * names.
  */
 export type TerraformOutputs = {
+  /**
+   * AI Gateway identifier used to route every assistant inference call.
+   */
+  aiGatewayId: string;
   /**
    * Cloudflare Access Application Audience (AUD) tag the Worker validates the JWT `aud` claim
    * against.
@@ -51,6 +55,7 @@ export type TerraformOutputs = {
  * Maps {@link TerraformOutputs}' keys to the output names declared in `infra/outputs.tf`.
  */
 export const OUTPUT_KEYS = {
+  aiGatewayId: 'ai_gateway_id',
   accessAud: 'access_aud',
   adminEmail: 'admin_email',
   cloudflareTeamDomain: 'cloudflare_team_domain',

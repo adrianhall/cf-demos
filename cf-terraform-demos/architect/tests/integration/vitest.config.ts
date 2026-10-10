@@ -37,6 +37,11 @@ export default defineProject(async () => {
             // Matches the audience the suite signs development JWTs for. A test that signs a
             // token for a different audience must be rejected, which is what proves the Worker's
             // cross-application replay defence actually works.
+            // Workers AI has no local simulation and is deliberately not declared: chat tests
+            // substitute a fixture through the mutable environment and restore it in `finally`.
+            // Declaring an `ai` binding here would make an unstubbed test a remote call.
+            AI_GATEWAY_ID: 'architect-test-ai',
+            AI_CHAT_MODEL: '@cf/test/model',
             ACCESS_AUD: 'a'.repeat(64),
             ADMIN_EMAIL: 'admin@example.com',
             CLOUDFLARE_TEAM_DOMAIN: 'local.cloudflareaccess.com',

@@ -108,8 +108,17 @@ runnable when diagnosing one stage.
 > cover it. The commands below create and remove real resources.
 
 Terraform owns the Worker registration/bootstrap deployment, custom hostname, Access applications,
-D1 database and Workers KV namespace. `cf` owns the application code upload and deploy-time
-bindings. Neither tool recreates the other's resources.
+D1 database, Workers KV namespace and the AI Gateway that records the assistant's requests, tokens,
+errors and cost. `cf` owns the application code upload and deploy-time bindings. Neither tool
+recreates the other's resources.
+
+The assistant routes every deployed inference call through that gateway. Its small daily cost spend
+limit is a visible guard for a presentation, and `cache_ttl = 0` because a tool-calling turn is not
+cacheable: replaying a cached round could narrate stale state or skip a mutation. Gateway Logs and
+Analytics may retain prompt/response payloads according to Cloudflare's gateway settings; the
+Worker's own structured logs deliberately contain only ids, counts, durations and model names — no
+prompt, response, documentation snippet or diagram content. The repository-root `.env.example`
+already documents the required `AI Gateway: Edit` and `Workers AI: Edit` permissions.
 
 ```text
 pnpm deploy

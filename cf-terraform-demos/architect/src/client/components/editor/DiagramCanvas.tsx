@@ -615,7 +615,10 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
             confirmedGraphRef.current = confirmed;
             if (ownOperation !== undefined && frame.operationId !== null) {
               pendingOperationsRef.current.delete(frame.operationId);
-            } else {
+            } else if (frame.origin !== 'ai-chat') {
+              // The session excludes the socket that started a chat turn from its `ai-chat`
+              // operation broadcasts. Keep this guard as defence in depth: a future transport
+              // that does echo one must not tell somebody their own assistant changed the canvas.
               setRemoteChange(frame.origin);
             }
 
@@ -695,6 +698,20 @@ export function DiagramCanvas({ diagramId, readOnly = false, initialDiagram }: D
           pendingOperationsRef.current.delete(frame.operationId);
           requestResync();
           markSaveError(frame.detail);
+          return;
+        case 'chat_status':
+        case 'chat_token':
+        case 'chat_tool_result':
+        case 'chat_done':
+        case 'chat_error':
+          // Phase 23 establishes the transport contract. The conversation UI arrives in Phase 24;
+          // ignoring its unicast frames here is intentional so the exhaustive protocol switch stays
+          // honest without inventing a second transcript surface in the canvas.
+          return;
+        case 'diagram_renamed':
+          // The editor's metadata debounce owns its local title field. A live metadata projection
+          // joins the chat UI in Phase 24; this protocol arm deliberately avoids overwriting a
+          // title somebody is currently typing while still making the shared union exhaustive.
           return;
         case 'connected':
           // Acknowledgement only. The identity is echoed from the socket attachment the server

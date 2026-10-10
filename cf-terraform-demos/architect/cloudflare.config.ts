@@ -120,6 +120,13 @@ export default defineConfig({
           worker: values.workerName,
           exportName: 'DiagramSession'
         }),
+        // Workers AI reaches the Terraform-owned gateway through the account-authenticated binding;
+        // `@cf/zai-org/glm-5.3-flash` is the documented cheaper fallback if the verified default
+        // model becomes unavailable. This is a static demo choice with no resource behind it, so
+        // Terraform would add indirection without creating a source of truth.
+        AI: bindings.ai(),
+        AI_GATEWAY_ID: bindings.text(values.aiGatewayId),
+        AI_CHAT_MODEL: bindings.text('@cf/zai-org/glm-5.2'),
         ACCESS_AUD: bindings.text(values.accessAud),
         ADMIN_EMAIL: bindings.text(values.adminEmail),
         CLOUDFLARE_TEAM_DOMAIN: bindings.text(values.cloudflareTeamDomain),

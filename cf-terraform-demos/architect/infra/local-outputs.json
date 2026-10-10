@@ -1,4 +1,9 @@
 {
+  "ai_gateway_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "architect-local-ai"
+  },
   "access_aud": {
     "sensitive": false,
     "type": "string",

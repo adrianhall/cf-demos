@@ -1,13 +1,21 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { ChangeOrigin, PresenceParticipant, SessionFrame } from '../../live-sync-protocol.ts';
+import {
+  runDiagramChatTurn,
+  type ChatAiBinding,
+  type ChatMessage
+} from '../application/ai/chat-engine.ts';
 import type {
   GraphSnapshot,
   GraphWriteOutcome,
   RejectedGraphWrite
 } from '../application/ports/diagram-session.ts';
+import type { DocumentationSearchOutcome } from '../application/ports/documentation-search.ts';
 import { parseClientFrame } from '../domain/client-frame.ts';
 import { applyGraphOperation, type GraphOperation } from '../domain/graph-operations.ts';
 import { canonicalizeGraphData, type GraphData } from '../domain/graph.ts';
+import { logSessionEvent } from '../logging.ts';
+import { McpDocumentationSearch } from './ai/docs-client.ts';
 import { D1DiagramRepository } from './d1-diagram-repository.ts';
 import { SerializedGraphWriter, toRejection } from './graph-writer.ts';
 import { presenceColorFor } from './presence-color.ts';
@@ -229,6 +237,29 @@ export class DiagramSession extends DurableObject<Env> {
    * ISO-8601 timestamp of the most recent persisted write, or `null` before the first hydration.
    */
   private updatedAt: string | null = null;
+
+  /**
+   * Current diagram title, loaded with the graph because a chat turn needs both in one coherent
+   * prompt. Like the graph cache it is disposable: D1 remains authoritative and a reconstructed
+   * session hydrates it again before use.
+   */
+  private title: string | null = null;
+
+  /**
+   * Current optional diagram description, paired with {@link title}.
+   */
+  private description: string | null = null;
+
+  /**
+   * Plain conversational history for each open socket.
+   *
+   * Deliberately an in-memory field, like cursor and selection data, not Durable Object storage and
+   * not D1. A conversation is a convenience of one connected tab rather than a durable property of
+   * a diagram; persisting it would introduce a second durable write path and retain user content
+   * the diagram feature never promised to store. Hibernation clears it, which is the intended "new
+   * conversation" boundary for an idle session.
+   */
+  private readonly chatHistories = new Map<WebSocket, ChatMessage[]>();
 
   /**
    * How many writes this session has applied since it was constructed.
@@ -533,6 +564,9 @@ export class DiagramSession extends DurableObject<Env> {
         }
         return;
       }
+      case 'chat_message':
+        await this.handleChatMessage(socket, frame.clientRequestId, frame.text, attachment.viewer);
+        return;
       case 'resync': {
         const snapshot = await this.getSnapshot();
         if (snapshot !== null) {
@@ -579,6 +613,131 @@ export class DiagramSession extends DurableObject<Env> {
   }
 
   /**
+   * Runs one bounded assistant turn for a connection.
+   *
+   * The method deliberately awaits the complete engine call rather than starting it with
+   * `waitUntil()`. A pending WebSocket event is what keeps this Durable Object active while its
+   * inference and documentation calls are outstanding; the platform must not hibernate an object
+   * that still owns the one serialized graph write path. Awaiting does not make unrelated events
+   * atomic: the first model-call `await` yields the input gate, and any mutation re-enters the same
+   * synchronous {@link apply} region every other writer uses.
+   *
+   * Nothing escapes this method. An uncaught exception in a Durable Object can reset the instance
+   * and disrupt every editor; an AI failure is an ordinary feature failure, so it is sent as
+   * `chat_error` to the originator alone while every other connection remains usable.
+   *
+   * @param socket Connection that started the turn and receives its unicast chat frames.
+   * @param clientRequestId Client correlation id repeated on every unicast result.
+   * @param text The person's new message.
+   * @param actor Verified identity from the socket attachment, never from the frame.
+   * @returns A promise fulfilled once the turn completed or its failure was reported.
+   */
+  private async handleChatMessage(
+    socket: WebSocket,
+    clientRequestId: string,
+    text: string,
+    actor: string
+  ): Promise<void> {
+    const startedAt = Date.now();
+    const diagramId = this.ctx.id.name ?? 'unknown';
+
+    try {
+      const refusal = await this.hydrate();
+      if (refusal !== null) {
+        send(socket, { clientRequestId, message: refusal.detail, type: 'chat_error' });
+        logSessionEvent({ diagramId, event: 'ai_chat_turn_failed', reason: refusal.detail });
+        return;
+      }
+
+      const history = this.chatHistories.get(socket) ?? [];
+      const result = await runDiagramChatTurn({
+        applyMutation: async (operation) => {
+          const outcome = await this.runOperation(operation, {
+            actor,
+            operationId: null,
+            origin: 'ai-chat'
+          });
+          if (outcome.outcome === 'rejected') {
+            return { reason: outcome.detail, rejected: true };
+          }
+          // The session, rather than the engine, minted the id and persisted the graph. Returning
+          // this authoritative graph is load-bearing: a local replay of add_node/add_edge would
+          // mint a different UUID and tell the model about an element that exists nowhere.
+          return {
+            graph: JSON.parse(outcome.graphData) as GraphData,
+            rejected: false
+          };
+        },
+        description: this.description,
+        documentationSearch: new McpDocumentationSearch(),
+        env: {
+          // The generated `Ai.run()` overload cannot describe a dynamic model id's streamed
+          // OpenAI-chat tool-call response. The engine's narrow interface is the runtime contract
+          // it actually uses; this is the single justified narrowing site.
+          AI: this.env.AI as unknown as ChatAiBinding,
+          AI_CHAT_MODEL: this.env.AI_CHAT_MODEL,
+          AI_GATEWAY_ID: this.env.AI_GATEWAY_ID
+        },
+        graph: JSON.parse(this.graphData as string) as GraphData,
+        messages: history,
+        onDocsLookup: (query: string, outcome: DocumentationSearchOutcome): void => {
+          send(socket, {
+            clientRequestId,
+            outcome,
+            query,
+            tool: 'search_cloudflare_documentation',
+            type: 'chat_tool_result'
+          });
+        },
+        onStatus: (message: string): void => {
+          send(socket, { clientRequestId, message, type: 'chat_status' });
+        },
+        onToken: (token: string): void => {
+          send(socket, { clientRequestId, text: token, type: 'chat_token' });
+        },
+        renameDiagram: async (title?: string, description?: string | null): Promise<void> => {
+          const updated = await new D1DiagramRepository(this.env.DB).updateMetadata(diagramId, {
+            ...(description === undefined ? {} : { description }),
+            ...(title === undefined ? {} : { title })
+          });
+          if (updated === null) {
+            throw new Error('Diagram not found.');
+          }
+          this.description = updated.description;
+          this.title = updated.title;
+          this.broadcast({
+            description: updated.description,
+            title: updated.title,
+            type: 'diagram_renamed'
+          });
+        },
+        text,
+        title: this.title as string
+      });
+
+      history.push(
+        { content: text, role: 'user' },
+        { content: result.assistantText, role: 'assistant' }
+      );
+      this.chatHistories.set(socket, history);
+      send(socket, { assistantText: result.assistantText, clientRequestId, type: 'chat_done' });
+      logSessionEvent({
+        diagramId,
+        event: 'ai_chat_turn_completed',
+        latencyMs: Date.now() - startedAt,
+        model: this.env.AI_CHAT_MODEL,
+        mutated: result.mutated,
+        toolCallCount: result.toolCallCount
+      });
+    } catch (error) {
+      const reason =
+        error instanceof Error ? error.message : 'The assistant hit an unexpected error.';
+      send(socket, { clientRequestId, message: reason, type: 'chat_error' });
+      logSessionEvent({ diagramId, event: 'ai_chat_turn_failed', reason });
+    }
+  }
+
+  /**
    * Announces an identity's departure when this was their final open tab.
    *
    * The runtime owns the authoritative live-socket list. Recomputing from that list avoids an
@@ -605,6 +764,7 @@ export class DiagramSession extends DurableObject<Env> {
    * @returns Nothing.
    */
   webSocketClose(socket: WebSocket, _code: number, _reason: string): void {
+    this.chatHistories.delete(socket);
     this.announceDeparture(socket);
   }
 
@@ -616,6 +776,7 @@ export class DiagramSession extends DurableObject<Env> {
    * @returns Nothing.
    */
   webSocketError(socket: WebSocket, _error: unknown): void {
+    this.chatHistories.delete(socket);
     this.announceDeparture(socket);
   }
 
@@ -844,7 +1005,9 @@ export class DiagramSession extends DurableObject<Env> {
       return { detail: 'Diagram not found.', outcome: 'rejected', status: 404 };
     }
 
+    this.description = diagram.description;
     this.graphData = diagram.graphData;
+    this.title = diagram.title;
     this.updatedAt = diagram.updatedAt;
     // Built with the id resolved above, so the writer physically cannot be pointed at another
     // diagram's row.

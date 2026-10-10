@@ -1144,7 +1144,26 @@ assumed: `@modelcontextprotocol/client@2.0.0` does export both `Client` and
 `CallToolResult` whose `isError` is optional — hence the explicit `=== true` test rather than a
 truthiness check.
 
-### Phase 23 — `DiagramSession` chat capability
+### Phase 23 — `DiagramSession` chat capability — **complete**
+
+#### Outcome
+
+Delivered all seven planned items. The replicable-id repair shipped first as the independently
+shippable protocol commit `fix(architect): broadcast the ids a creating operation persisted`; it
+makes server-authored `add_node`/`add_edge` operations deterministic before they are both applied
+and broadcast, with regression coverage for using learned node ids as edge endpoints. The bounded
+chat engine then landed in the application tier, with OpenAI-chat streamed fragments first,
+Cloudflare-native fallback, per-round tools and graph digests, safe truncated-JSON repair, isolated
+per-connection history, and injected documentation search. The session routes every mutation back
+through `runOperation()`, returns its authoritative graph to the engine, and turns all failures into
+originator-only `chat_error` frames. Terraform validation was performed offline after adding the
+owned AI Gateway and bindings.
+
+One plan detail needed an implementation correction rather than a behavioural deviation: the
+installed provider schema permits `workers_ai_billing_mode` values `postpaid`/`unified` (not
+`prepaid`), requires `log_management >= 10000`, and accepts `fixed`/`sliding` for a spend-limit
+rule's `technique`. The delivered resource pins the schema-valid `unified`, `10000`, and `sliding`
+values. No Cloudflare account operation was run.
 
 #### Goal
 

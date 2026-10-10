@@ -26,6 +26,59 @@ describe('parseClientFrame', () => {
     expect(parseClientFrame(JSON.stringify({ type: 'resync' }))).toEqual({ type: 'resync' });
   });
 
+  it('accepts a chat message carrying only its correlation id and text', () => {
+    expect(
+      parseClientFrame(
+        JSON.stringify({
+          clientRequestId: 'turn-1',
+          text: 'Add a Worker and D1.',
+          type: 'chat_message'
+        })
+      )
+    ).toEqual({ clientRequestId: 'turn-1', text: 'Add a Worker and D1.', type: 'chat_message' });
+  });
+
+  it.each(['actor', 'author', 'viewer', 'origin', 'ownerEmail'])(
+    'refuses a chat message that invents an %s',
+    (field) => {
+      expectProblemStatus(
+        () =>
+          parseClientFrame(
+            JSON.stringify({
+              [field]: 'mallory@example.com',
+              clientRequestId: 'turn-1',
+              text: 'Add a Worker.',
+              type: 'chat_message'
+            })
+          ),
+        400
+      );
+    }
+  );
+
+  it.each(['messages', 'history'])('refuses client-supplied chat %s', (field) => {
+    expectProblemStatus(
+      () =>
+        parseClientFrame(
+          JSON.stringify({
+            [field]: [],
+            clientRequestId: 'turn-1',
+            text: 'Add a Worker.',
+            type: 'chat_message'
+          })
+        ),
+      400
+    );
+  });
+
+  it.each([
+    ['an empty request id', { clientRequestId: '', text: 'Hello', type: 'chat_message' }],
+    ['empty text', { clientRequestId: 'turn-1', text: '', type: 'chat_message' }],
+    ['a non-string text', { clientRequestId: 'turn-1', text: 3, type: 'chat_message' }]
+  ])('refuses a chat message with %s', (_label, value) => {
+    expectProblemStatus(() => parseClientFrame(JSON.stringify(value)), 400);
+  });
+
   it('accepts finite cursor coordinates without an asserted identity', () => {
     expect(parseClientFrame(JSON.stringify({ type: 'cursor_moved', x: 12.5, y: -8 }))).toEqual({
       type: 'cursor_moved',

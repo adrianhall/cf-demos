@@ -17,7 +17,8 @@ import {
   SMUGGLED_IDENTITY_HEADER,
   storedGraph,
   testEnv,
-  toolText
+  toolText,
+  withFakeAi
 } from './live-sync-fixtures.ts';
 
 /**
@@ -471,6 +472,127 @@ describe('live sync', () => {
   // protocol-level rather than specific to any one origin; these tests drive it through the RPC
   // entry point because that is the one that authors an operation server-side, with no
   // optimistically-applied client id to carry.
+  /**
+   * Creates an OpenAI-chat-shaped non-streaming fake AI response queue for the hermetic runtime
+   * suite. The engine accepts object results as a defensive fallback even though production
+   * streams, which makes this fixture exercise the tool loop without a network binding.
+   */
+  function fakeAi(rounds: object[]): { run: () => Promise<object> } {
+    let next = 0;
+    return {
+      async run(): Promise<object> {
+        const result = rounds[next];
+        next += 1;
+        if (result === undefined) {
+          throw new Error('Fake AI received more rounds than the test scripted.');
+        }
+        return result;
+      }
+    };
+  }
+
+  describe('AI chat turns', () => {
+    it('persists graph changes, broadcasts them to another connection, and keeps the originator usable', async () => {
+      const diagramId = await createDiagram();
+      const first = await connect(diagramId);
+      const second = await connect(diagramId);
+
+      await withFakeAi(
+        fakeAi([
+          {
+            choices: [
+              {
+                message: {
+                  content: null,
+                  tool_calls: [
+                    {
+                      function: {
+                        arguments: '{"label":"API","typeId":"worker"}',
+                        name: 'add_node'
+                      },
+                      id: 'call-node',
+                      type: 'function'
+                    },
+                    {
+                      function: { arguments: '{"title":"AI design"}', name: 'rename_diagram' },
+                      id: 'call-title',
+                      type: 'function'
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          { choices: [{ message: { content: 'Done.' } }] }
+        ]),
+        async () => {
+          first.socket.send(
+            JSON.stringify({
+              clientRequestId: 'turn-1',
+              text: 'Add a Worker.',
+              type: 'chat_message'
+            })
+          );
+          expect(await first.received.next('chat_status')).toMatchObject({
+            clientRequestId: 'turn-1',
+            type: 'chat_status'
+          });
+          expect(await first.received.next('chat_done')).toMatchObject({
+            assistantText: 'Done.',
+            clientRequestId: 'turn-1'
+          });
+          expect(await second.received.next('operation_applied')).toMatchObject({
+            origin: 'ai-chat',
+            operation: { kind: 'add_node' }
+          });
+          expect(await second.received.next('diagram_renamed')).toMatchObject({
+            title: 'AI design'
+          });
+        }
+      );
+
+      const row = await testEnv.DB.prepare('SELECT title, graph_data FROM diagrams WHERE id = ?')
+        .bind(diagramId)
+        .first<{ graph_data: string; title: string }>();
+      expect(row?.title).toBe('AI design');
+      expect(JSON.parse(row?.graph_data ?? '{}')).toMatchObject({
+        nodes: [expect.objectContaining({ data: expect.objectContaining({ label: 'API' }) })]
+      });
+
+      // A failed or completed turn must not poison the socket. This ordinary live operation proves
+      // the same connection remains usable after `chat_done`.
+      first.socket.send(JSON.stringify({ type: 'resync' }));
+      expect(await first.received.next('snapshot')).toMatchObject({ type: 'snapshot' });
+    });
+
+    it('reports a binding failure only to the chat originator and leaves its socket usable', async () => {
+      const diagramId = await createDiagram();
+      const first = await connect(diagramId);
+      const second = await connect(diagramId);
+
+      await withFakeAi(
+        { run: async (): Promise<never> => Promise.reject(new Error('Gateway unavailable')) },
+        async () => {
+          first.socket.send(
+            JSON.stringify({
+              clientRequestId: 'turn-error',
+              text: 'Explain.',
+              type: 'chat_message'
+            })
+          );
+          expect(await first.received.next('chat_error')).toMatchObject({
+            clientRequestId: 'turn-error',
+            message: 'Gateway unavailable'
+          });
+          await expectNoFrameOfType(second.socket, 'chat_error');
+        }
+      );
+
+      first.socket.send(JSON.stringify({ type: 'resync' }));
+      expect(await first.received.next('snapshot')).toMatchObject({ type: 'snapshot' });
+    });
+  });
+
   describe('a creating operation replicates the id it persisted', () => {
     it('broadcasts the id a server-authored add_node actually stored', async () => {
       const diagramId = await createDiagram();

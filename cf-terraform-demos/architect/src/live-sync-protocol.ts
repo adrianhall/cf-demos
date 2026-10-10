@@ -1,3 +1,4 @@
+import type { DocumentationSearchOutcome } from './worker/application/ports/documentation-search.ts';
 import type { GraphOperation } from './worker/domain/graph-operations.ts';
 
 /**
@@ -46,8 +47,15 @@ import type { GraphOperation } from './worker/domain/graph-operations.ts';
  * person who configured it, so an MCP tool call and that same person's own edit arrive from the
  * same email address. Without this the interface could not honestly say "an agent changed this",
  * which is the one thing a user most needs to know about a change they did not make.
+ *
+ * `ai-chat` is a third case rather than a flavour of `agent`, and the distinction is one a user can
+ * act on. An `agent` change came from outside the application — an MCP client this person
+ * configured, running somewhere they are not looking. An `ai-chat` change came from the assistant
+ * panel in a browser tab, usually their own, as the direct result of a sentence somebody just
+ * typed. Collapsing the two would make the notice say "an agent changed this" to the very person
+ * who asked for the change a second ago.
  */
-export type ChangeOrigin = 'human' | 'agent';
+export type ChangeOrigin = 'human' | 'agent' | 'ai-chat';
 
 /**
  * An operation a client asks the session to apply — the only frame a client may send.
@@ -142,12 +150,52 @@ export interface SelectionChangedFrame {
 }
 
 /**
+ * One message a person typed at the assistant, starting a chat turn on this connection.
+ *
+ * It carries no author field, for exactly the reason {@link OperationFrame} does not: the turn is
+ * attributed to the identity pinned to the socket it arrived on, and every mutation it makes is
+ * attributed the same way. A chat message is the one place where letting a client name an actor
+ * would be most tempting and most wrong — the text is free-form, so a frame carrying an `actor`
+ * would read like a field the assistant honours. `src/worker/domain/client-frame.ts` refuses one.
+ *
+ * It carries no conversation history either. The session keeps the transcript per connection, as
+ * ephemeral in-memory state alongside the cursor and selection data, so a client cannot replay an
+ * invented exchange to steer a later turn.
+ */
+export interface ChatMessageFrame {
+  /**
+   * Discriminator identifying this frame.
+   */
+  type: 'chat_message';
+  /**
+   * Client-chosen id for this turn, echoed on every frame the turn produces.
+   *
+   * It exists so a client can attribute a stream of tokens to the message that started it — the
+   * same correlation job {@link OperationFrame.operationId} does, and with the same rule: the server
+   * never interprets it.
+   */
+  clientRequestId: string;
+  /**
+   * The person's message text.
+   */
+  text: string;
+}
+
+/**
  * Every frame a client may send.
  *
  * Operations and resync requests concern the durable graph. Cursor and selection frames are
- * best-effort ephemeral awareness signals; the session relays them without touching D1.
+ * best-effort ephemeral awareness signals; the session relays them without touching D1. A chat
+ * message starts a turn that may produce any number of operations, each of which travels back as an
+ * ordinary {@link OperationAppliedFrame} rather than as anything chat-specific — which is what keeps
+ * the canvas free of a second way to change itself.
  */
-export type ClientFrame = OperationFrame | ResyncFrame | CursorMovedFrame | SelectionChangedFrame;
+export type ClientFrame =
+  | OperationFrame
+  | ResyncFrame
+  | CursorMovedFrame
+  | SelectionChangedFrame
+  | ChatMessageFrame;
 
 /**
  * Sent once to a connection the moment it is accepted.
@@ -401,6 +449,159 @@ export interface ErrorFrame {
 }
 
 /**
+ * A chat turn's progress narration, sent to the connection that started it and nobody else.
+ *
+ * Deliberately **not** emitted for a graph mutation. A mutation already narrates itself to every
+ * connected tab through its confirmed {@link OperationAppliedFrame}, so a status would be a second
+ * line about the same change — and, because a status is necessarily emitted before the operation is
+ * applied, it would announce changes that were then rejected. This frame therefore serves only the
+ * two tools that produce no broadcast of their own: renaming the diagram, and looking something up
+ * in the documentation.
+ */
+export interface ChatStatusFrame {
+  /**
+   * Discriminator identifying this frame.
+   */
+  type: 'chat_status';
+  /**
+   * The turn this belongs to, echoed from {@link ChatMessageFrame.clientRequestId}.
+   */
+  clientRequestId: string;
+  /**
+   * Short human-readable narration, written to be shown verbatim.
+   */
+  message: string;
+}
+
+/**
+ * One fragment of the assistant's answer, as it is generated.
+ *
+ * The concatenation of every fragment in one turn is exactly {@link ChatDoneFrame.assistantText}, so
+ * a client that replaces its streamed text with that final value never sees the answer change under
+ * it.
+ *
+ * Only the model's answer travels here. A reasoning model streams its chain of thought on a
+ * separate field, and the session never relays it: it is the model talking to itself, and showing
+ * it to a user is both confusing and a disclosure nobody asked for.
+ */
+export interface ChatTokenFrame {
+  /**
+   * Discriminator identifying this frame.
+   */
+  type: 'chat_token';
+  /**
+   * The turn this belongs to.
+   */
+  clientRequestId: string;
+  /**
+   * The next piece of the answer, to be appended to whatever has arrived so far.
+   */
+  text: string;
+}
+
+/**
+ * The result of a documentation lookup the assistant performed during a turn.
+ *
+ * Separate from {@link ChatStatusFrame} because it carries structure rather than a sentence: a
+ * client renders it as a list of followable citations, which a narration string could not be.
+ */
+export interface ChatToolResultFrame {
+  /**
+   * Discriminator identifying this frame.
+   */
+  type: 'chat_tool_result';
+  /**
+   * The turn this belongs to.
+   */
+  clientRequestId: string;
+  /**
+   * The tool that produced it. Only the documentation search reports through this frame; a graph
+   * mutation reports through its own broadcast instead.
+   */
+  tool: 'search_cloudflare_documentation';
+  /**
+   * The query the assistant chose, so a reader can see what was actually asked on their behalf.
+   */
+  query: string;
+  /**
+   * What the lookup produced — the matching pages, or the non-fatal "unavailable" outcome. The
+   * failure case travels rather than being suppressed, because a turn that answered without being
+   * able to check its facts is a thing the reader should know.
+   */
+  outcome: DocumentationSearchOutcome;
+}
+
+/**
+ * A chat turn that finished, sent to the connection that started it.
+ *
+ * It repeats the whole answer rather than relying on the client's accumulation. That redundancy is
+ * cheap and it closes a real gap: a client that missed a token frame would otherwise display a
+ * silently incomplete answer with no way to notice.
+ */
+export interface ChatDoneFrame {
+  /**
+   * Discriminator identifying this frame.
+   */
+  type: 'chat_done';
+  /**
+   * The turn this completes.
+   */
+  clientRequestId: string;
+  /**
+   * The assistant's complete answer.
+   */
+  assistantText: string;
+}
+
+/**
+ * A chat turn that failed, sent to the connection that started it and nobody else.
+ *
+ * Nobody else asked for the turn, and a connection quietly editing the diagram should not be told
+ * that somebody else's conversation went wrong. The connection stays open and usable: a model or
+ * gateway failure is an outage of one feature, not of the editor.
+ */
+export interface ChatErrorFrame {
+  /**
+   * Discriminator identifying this frame.
+   */
+  type: 'chat_error';
+  /**
+   * The turn that failed.
+   */
+  clientRequestId: string;
+  /**
+   * User-safe explanation of what did not happen. Any graph changes the turn had already applied
+   * stay applied — each one persisted and broadcast on its own — so this says the conversation
+   * ended, not that the diagram was rolled back.
+   */
+  message: string;
+}
+
+/**
+ * The diagram's title and/or description changed, sent to **every** connection.
+ *
+ * Broadcast rather than unicast because it is a change to the document, exactly like an operation:
+ * every open tab shows the title, so every open tab is now showing a stale one. It is a separate
+ * frame rather than part of the graph protocol because the title and description are diagram
+ * metadata and live in their own D1 columns — they are not expressible as a {@link GraphOperation}
+ * at all.
+ */
+export interface DiagramRenamedFrame {
+  /**
+   * Discriminator identifying this frame.
+   */
+  type: 'diagram_renamed';
+  /**
+   * The diagram's new title.
+   */
+  title: string;
+  /**
+   * The diagram's new description, or `null` when it has none.
+   */
+  description: string | null;
+}
+
+/**
  * Every frame the session may send.
  *
  * A discriminated union, so a `switch` on `type` in the browser is exhaustiveness-checked and a
@@ -416,4 +617,10 @@ export type SessionFrame =
   | PresenceLeftFrame
   | RemoteCursorMovedFrame
   | RemoteSelectionChangedFrame
+  | ChatStatusFrame
+  | ChatTokenFrame
+  | ChatToolResultFrame
+  | ChatDoneFrame
+  | ChatErrorFrame
+  | DiagramRenamedFrame
   | ErrorFrame;

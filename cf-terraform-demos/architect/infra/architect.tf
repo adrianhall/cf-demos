@@ -29,6 +29,7 @@ resource "cloudflare_worker" "demo" {
   # namespace themselves, since nothing in either resource's own arguments references the other.
   # Without them, Cloudflare would refuse to delete storage that is still bound to a live Worker.
   depends_on = [
+    cloudflare_ai_gateway.demo,
     cloudflare_d1_database.demo,
     cloudflare_workers_kv_namespace.shares
   ]

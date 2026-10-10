@@ -1,3 +1,8 @@
+output "ai_gateway_id" {
+  description = "AI Gateway identifier bound to the Worker for every assistant inference call, so Logs and Analytics show its request cost in one place."
+  value       = cloudflare_ai_gateway.demo.id
+}
+
 output "access_aud" {
   description = "Cloudflare Access Application Audience (AUD) tag the Worker validates the JWT `aud` claim against, so a token minted for a different Access application in the same team is rejected."
   value       = cloudflare_zero_trust_access_application.app.aud

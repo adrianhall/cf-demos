@@ -1,5 +1,5 @@
 import { badRequest } from '@adrianhall/cloudflare-toolkit/errors';
-import type { ClientFrame, OperationFrame } from '../../live-sync-protocol.ts';
+import type { ChatMessageFrame, ClientFrame, OperationFrame } from '../../live-sync-protocol.ts';
 import type { GraphOperation } from './graph-operations.ts';
 
 /**
@@ -27,6 +27,37 @@ import type { GraphOperation } from './graph-operations.ts';
  * list can see exactly what the protocol declines to take on trust.
  */
 const FORBIDDEN_OPERATION_FIELDS = ['actor', 'author', 'viewer', 'origin', 'ownerEmail'];
+
+/**
+ * Field names a client must never send on a chat message.
+ *
+ * The same rule as {@link FORBIDDEN_OPERATION_FIELDS}, and it matters more here rather than less. A
+ * chat turn applies operations attributed to the connection's own identity, so a frame naming an
+ * actor is asking the assistant to make changes in somebody else's name. `messages` and `history`
+ * are refused alongside the attribution fields because the transcript is the session's, held per
+ * connection: a client that could supply one could fabricate an exchange in which the assistant had
+ * already agreed to something.
+ */
+const FORBIDDEN_CHAT_FIELDS = [
+  'actor',
+  'author',
+  'viewer',
+  'origin',
+  'ownerEmail',
+  'messages',
+  'history'
+];
+
+/**
+ * Longest chat message this session accepts, in characters.
+ *
+ * A bound rather than a judgement about what somebody might reasonably type: the text is sent to a
+ * paid inference call that is re-sent on every round of the turn, so an unbounded field is an
+ * unbounded cost. Eight thousand characters is several pages of prose, well beyond any real
+ * request, and it mirrors the 8 KiB default `@demos/worker-common`'s `jsonBodyLimit()` applies to
+ * the HTTP side of this application.
+ */
+const MAX_CHAT_MESSAGE_LENGTH = 8_000;
 
 /**
  * Reports whether a value is a plain JSON object.
@@ -289,6 +320,42 @@ function validateOperation(value: unknown): GraphOperation {
 }
 
 /**
+ * Validates an inbound chat message frame.
+ *
+ * @param parsed The decoded frame object.
+ * @returns The validated frame.
+ * @throws {ProblemDetailsError} `badRequest()` (400) when the frame carries a field reserved for
+ *   server attribution or for the session's own transcript, when `clientRequestId` or `text` is
+ *   absent or empty, or when the text exceeds {@link MAX_CHAT_MESSAGE_LENGTH}. An empty message is
+ *   refused rather than sent: it would spend an inference call asking the model to respond to
+ *   nothing.
+ */
+function validateChatMessage(parsed: Record<string, unknown>): ChatMessageFrame {
+  for (const field of FORBIDDEN_CHAT_FIELDS) {
+    if (parsed[field] !== undefined) {
+      throw badRequest({
+        detail:
+          `A chat message must not carry "${field}": a turn is attributed to the connection it `
+          + 'arrived on, and its transcript belongs to the session.'
+      });
+    }
+  }
+
+  const text = requireString(parsed, 'text');
+  if (text.length > MAX_CHAT_MESSAGE_LENGTH) {
+    throw badRequest({
+      detail: `text must be at most ${MAX_CHAT_MESSAGE_LENGTH} characters.`
+    });
+  }
+
+  return {
+    clientRequestId: requireString(parsed, 'clientRequestId'),
+    text,
+    type: 'chat_message'
+  };
+}
+
+/**
  * Parses and validates one raw frame a client sent over a live session socket.
  *
  * @param raw Raw frame payload as it arrived.
@@ -321,6 +388,8 @@ export function parseClientFrame(raw: string | ArrayBuffer): ClientFrame {
         operationId: requireString(parsed, 'operationId'),
         type: 'operation'
       } satisfies OperationFrame;
+    case 'chat_message':
+      return validateChatMessage(parsed);
     case 'resync':
       return { type: 'resync' };
     case 'cursor_moved':
