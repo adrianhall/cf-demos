@@ -77,6 +77,47 @@ function attachmentFor(socket: WebSocket): SocketAttachment | null {
 }
 
 /**
+ * Returns an operation whose creating inputs carry a concrete id, minting one only when the
+ * originator did not supply it.
+ *
+ * `operation_applied` is a **replicated** message. This session applies the operation to its own
+ * working graph, and every connected browser re-applies the broadcast copy to its own. That is only
+ * correct when applying the same operation twice produces the same ids — and an id-less `add_node`
+ * or `add_edge` does not: `../domain/graph-mutations.ts` mints a fresh `crypto.randomUUID()` on
+ * every call, so each replica invents a different id and diverges from this session permanently.
+ * Nothing recovers from that on its own, because a snapshot is only sent on connect, on a
+ * whole-graph write, and on request.
+ *
+ * It is a **protocol-level** fix rather than an AI-chat one. A remote human edit, an MCP tool call
+ * and a chat turn all replicate through the same broadcast, so all three have the same defect; it
+ * simply takes an actor that creates an element and then immediately references it by id to make
+ * the divergence visible. The symptom is characteristic and misleading: the server reports every
+ * edge connected, and the canvas shows none, because each `add_edge` named a node id only the
+ * server has.
+ *
+ * The browser already supplies its own id (`src/client/lib/graph-operation-diff.ts`), so this is a
+ * no-op for a human edit. It matters for every server-authored operation, which is every operation
+ * that was never optimistically applied somewhere first.
+ *
+ * Applied **before** the mutation rather than after it, so the operation that is applied and the
+ * operation that is broadcast are the same value. Deriving the id afterwards would leave two
+ * objects that have to be kept in step, which is the shape of the bug rather than its fix.
+ *
+ * @param operation The operation as its originator authored it.
+ * @returns The operation unchanged when it creates nothing or already names an id, and a copy
+ *   carrying a minted `input.id` otherwise. `operation` itself is never mutated.
+ */
+function withReplicableIds(operation: GraphOperation): GraphOperation {
+  if (operation.kind === 'add_node' && operation.input.id === undefined) {
+    return { ...operation, input: { ...operation.input, id: crypto.randomUUID() } };
+  }
+  if (operation.kind === 'add_edge' && operation.input.id === undefined) {
+    return { ...operation, input: { ...operation.input, id: crypto.randomUUID() } };
+  }
+  return operation;
+}
+
+/**
  * The result of a synchronous mutation region: either nothing happened, or a persist is pending.
  *
  * Returned as a value rather than awaited inside the mutation itself, which is the whole point —
@@ -614,7 +655,12 @@ export class DiagramSession extends DurableObject<Env> {
 
     this.rebaseSurvivingSockets();
 
-    const applied = this.apply((graph) => applyGraphOperation(graph, operation));
+    // Before the mutation, so what is applied here and what is broadcast below are one value. A
+    // server-authored creating operation would otherwise persist an id it never announced; see
+    // {@link withReplicableIds}.
+    const replicable = withReplicableIds(operation);
+
+    const applied = this.apply((graph) => applyGraphOperation(graph, replicable));
     if (applied.outcome === 'rejected') {
       // Refused before anything was enqueued, so the stored diagram is exactly as it was and no
       // sequence number was consumed. A stale target lands here.
@@ -627,7 +673,7 @@ export class DiagramSession extends DurableObject<Env> {
       // the edit it has in progress. See `src/live-sync-protocol.ts`.
       this.broadcast({
         actor: attribution.actor,
-        operation,
+        operation: replicable,
         operationId: attribution.operationId,
         origin: attribution.origin,
         sequence: outcome.sequence,

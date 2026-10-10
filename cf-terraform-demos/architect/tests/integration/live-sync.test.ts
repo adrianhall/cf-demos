@@ -464,6 +464,99 @@ describe('live sync', () => {
     });
   });
 
+  // A broadcast operation is **replicated**: the session applies it to its own graph and every
+  // connected browser re-applies the same value to its own. That only works when applying it twice
+  // produces the same ids, which an id-less `add_node`/`add_edge` does not — each side mints its
+  // own UUID and diverges permanently, with no periodic resync to recover. The defect is
+  // protocol-level rather than specific to any one origin; these tests drive it through the RPC
+  // entry point because that is the one that authors an operation server-side, with no
+  // optimistically-applied client id to carry.
+  describe('a creating operation replicates the id it persisted', () => {
+    it('broadcasts the id a server-authored add_node actually stored', async () => {
+      const diagramId = await createDiagram();
+      const { received } = await connect(diagramId);
+
+      const push = received.next('operation_applied');
+      // No `id` in the input, which is exactly the shape a chat tool call produces.
+      await testEnv.DIAGRAM_SESSIONS.getByName(diagramId).applyOperation(
+        { input: { label: 'API', position: { x: 0, y: 0 }, typeId: 'worker' }, kind: 'add_node' },
+        ALICE
+      );
+
+      const frame = (await push) as { operation: { input: { id?: unknown } } };
+      const broadcastId = frame.operation.input.id;
+      const persisted = JSON.parse(String(await storedGraph(diagramId))) as {
+        nodes: { id: string }[];
+      };
+
+      // The precise failure before this fix: `broadcastId` was `undefined` while a real UUID sat
+      // in storage, so every replica invented a different one.
+      expect(typeof broadcastId).toBe('string');
+      expect(broadcastId).toBe(persisted.nodes[0]?.id);
+    });
+
+    // The sequence that makes the divergence visible, and the one an AI chat turn performs on
+    // every "add these services and wire them together" request: create, learn the id from the
+    // broadcast, then reference it. Against the unfixed session the second `add_edge` endpoint
+    // names a node only the server has.
+    it('accepts ids learned from add_node broadcasts as add_edge endpoints', async () => {
+      const diagramId = await createDiagram();
+      const { received } = await connect(diagramId);
+      const session = testEnv.DIAGRAM_SESSIONS.getByName(diagramId);
+
+      const ids: string[] = [];
+      for (const label of ['API', 'DB']) {
+        const push = received.next('operation_applied');
+        await session.applyOperation(
+          { input: { label, position: { x: 0, y: 0 }, typeId: 'worker' }, kind: 'add_node' },
+          ALICE
+        );
+        const frame = (await push) as { operation: { input: { id: string } } };
+        ids.push(frame.operation.input.id);
+      }
+
+      const edgePush = received.next('operation_applied');
+      const outcome = await session.applyOperation(
+        {
+          input: { edgeType: 'data-flow', source: ids[0] as string, target: ids[1] as string },
+          kind: 'add_edge'
+        },
+        ALICE
+      );
+
+      // Applied rather than refused with `notFound()`, which is what a replica-only id produces.
+      expect(outcome.outcome).toBe('applied');
+      const edgeFrame = (await edgePush) as {
+        operation: { input: { id: string; source: string; target: string } };
+      };
+      expect(edgeFrame.operation.input).toMatchObject({ source: ids[0], target: ids[1] });
+
+      // And the edge a replica would build from the broadcast is the edge that was stored.
+      const persisted = JSON.parse(String(await storedGraph(diagramId))) as {
+        edges: { id: string }[];
+      };
+      expect(edgeFrame.operation.input.id).toBe(persisted.edges[0]?.id);
+    });
+
+    // The client already supplies its own id so its optimistic edit round-trips unchanged. The fix
+    // must not quietly replace it, which would make every human edit a rollback-and-reapply.
+    it('leaves a caller-supplied id exactly as it was given', async () => {
+      const diagramId = await createDiagram();
+      const { received } = await connect(diagramId);
+
+      const push = received.next('operation_applied');
+      await testEnv.DIAGRAM_SESSIONS.getByName(diagramId).applyOperation(
+        {
+          input: { id: 'chosen-id', label: 'API', position: { x: 0, y: 0 }, typeId: 'worker' },
+          kind: 'add_node'
+        },
+        ALICE
+      );
+
+      expect(await push).toMatchObject({ operation: { input: { id: 'chosen-id' } } });
+    });
+  });
+
   // This sub-phase's subject: the channel now carries operations in both directions, so a second
   // person's edit arrives while you are looking at the diagram rather than on your next reload.
   describe('two editors on one diagram', () => {
