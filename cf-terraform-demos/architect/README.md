@@ -130,12 +130,13 @@ the application UI is that demo's whole subject. The two demos teach different l
 
 Two operational facts worth knowing before a presentation:
 
-- **The chat model needs a paid plan.** `@cf/zai-org/glm-5.2` is marked "paid access required": it
-  is unavailable on Workers Free billing and needs the Workers Paid plan or prepaid AI Gateway
-  credits. The gateway's `workers_ai_billing_mode` chooses between those two, explicitly rather than
-  by inheritance. `AI_CHAT_MODEL` is a plain binding in `cloudflare.config.ts`, so swapping to the
-  documented fallback (`@cf/zai-org/glm-5.3-flash`, same family and roughly nine times cheaper) is a
-  one-line change and a redeploy.
+- **The chat model needs unified billing credits.** The default, `@cf/zai-org/glm-5.3-flash`, is the
+  lower-cost member of the same tool-calling Z.ai family as the model the chat wire format was
+  verified against — roughly nine times cheaper than the original `glm-5.2` default. It still needs
+  sufficient unified billing credits; the gateway's `workers_ai_billing_mode` chooses whether calls
+  bill against the Workers plan or prepaid AI Gateway credits, explicitly rather than by
+  inheritance. `AI_CHAT_MODEL` is a plain binding in `cloudflare.config.ts`, so changing models
+  remains a one-line change and a redeploy.
 - **Gateway log retention depends on when the gateway was created.** Gateways created on or after
   2026-09-24 follow Workers Logs pricing and retention; older ones use Legacy Logs. A gateway this
   demo provisions today is on the Workers Logs path.

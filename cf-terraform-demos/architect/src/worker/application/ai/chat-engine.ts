@@ -26,10 +26,10 @@ import {
  *
  * - _Every round streams._ An earlier design ran each tool-calling round non-streaming and then
  *   re-ran the final, tool-call-free round a second time with `stream: true` purely to get tokens.
- *   That generated the entire final answer twice and billed for it twice. `@cf/zai-org/ glm-5.2`
- *   streams `tool_calls` as ordinary OpenAI-style `choices[0].delta.tool_calls[]` fragments keyed
- *   by `index`, so {@link consumeSseStream} can assemble them itself and the whole loop needs
- *   exactly one inference call per round.
+ *   That generated the entire final answer twice and billed for it twice. The original
+ *   `@cf/zai-org/glm-5.2` verification model streams `tool_calls` as ordinary OpenAI-style
+ *   `choices[0].delta.tool_calls[]` fragments keyed by `index`, so {@link consumeSseStream} can
+ *   assemble them itself and the whole loop needs exactly one inference call per round.
  * - _Every round carries `tools`._ {@link buildSystemPrompt} tells the model it can change the
  *   diagram by calling tools. `spikes/03-agent-skills-composability/REPORT.md` §7 already
  *   documented what happens when that same system prompt is reused for a call that omits `tools`:
@@ -38,16 +38,17 @@ import {
  *   names -- so a tool-instructing system prompt must never be sent without the matching tool
  *   definitions.
  *
- * **Not the full generated `Ai` binding type.** `AI_CHAT_MODEL` (`@cf/zai-org/glm-5.2`,
- * docs/DECISIONS.md #35) is not a literal key of the generated `AiModelList`, so a real call
- * through the platform's own `Ai.run()` overloads always resolves to its "unknown model" fallback
- * overload (`Record<string, unknown>` in, `Record<string, unknown>` out) regardless of the `stream`
- * flag -- the _runtime_ binding still honors `stream` correctly (confirmed by this repository's own
- * Workers AI streaming precedent, docs/DECISIONS.md #9-11 and #37), only the compile-time overload
- * resolution cannot express it for this specific model id. {@link ChatAiBinding} below is this
- * module's own narrower, honest description of the binding's actual runtime contract for a
- * tool-calling chat call, confirmed against
- * https://developers.cloudflare.com/workers-ai/features/function-calling/ and
+ * **Not the full generated `Ai` binding type.** `AI_CHAT_MODEL` (currently
+ * `@cf/zai-org/glm-5.3-flash`, while its OpenAI-chat wire shape was verified against
+ * `@cf/zai-org/glm-5.2`; docs/DECISIONS.md #35 and `06-ai-chat-spike.md`) is not a literal key of
+ * the generated `AiModelList`, so a real call through the platform's own `Ai.run()` overloads
+ * always resolves to its "unknown model" fallback overload (`Record<string, unknown>` in,
+ * `Record<string, unknown>` out) regardless of the `stream` flag -- the _runtime_ binding still
+ * honors `stream` correctly (confirmed by this repository's own Workers AI streaming precedent,
+ * docs/DECISIONS.md #9-11 and #37), only the compile-time overload resolution cannot express it for
+ * this specific model id. {@link ChatAiBinding} below is this module's own narrower, honest
+ * description of the binding's actual runtime contract for a tool-calling chat call, confirmed
+ * against https://developers.cloudflare.com/workers-ai/features/function-calling/ and
  * https://developers.cloudflare.com/ai-gateway/usage/worker-binding-methods/ -- callers
  * (`../diagram-session/diagram-session.ts`) pass `this.env.AI` cast to this interface at the one
  * call site, with that cast's justification documented there.
