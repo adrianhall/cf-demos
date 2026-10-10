@@ -219,6 +219,13 @@ describe('built stylesheet contract', () => {
       expect(css).toMatch(/\.diagram-card__menu\{[^}]*z-index:6/u);
       expect(css).toMatch(/\.diagram-card__preview\{[^}]*pointer-events:none/u);
       expect(css).toMatch(/\.diagram-card__timestamp\{[^}]*z-index:6/u);
+      // The empty dashboard CTA has three vertical children. Its 1rem gap is explicit rather
+      // than accidentally supplied by browser-default heading/paragraph margins — the CTA itself
+      // is an inline anchor, so it otherwise sits flush against the prose in some engines.
+      expect(css).toMatch(
+        /\.dashboard__empty\{(?=[^}]*display:flex)(?=[^}]*flex-direction:column)(?=[^}]*gap:1rem)/u
+      );
+      expect(css).toMatch(/\.dashboard__empty :is\(h2,p\)\{margin:0/u);
     });
 
     // Animated data-flow edges are useful direction cues, but motion is not decorative to somebody

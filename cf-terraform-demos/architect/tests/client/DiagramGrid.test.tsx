@@ -91,6 +91,25 @@ describe('load states', () => {
     );
   });
 
+  // The empty state owns the rhythm of all three pieces. It must not depend on browser default
+  // margins: those happen to space h2 → p, but the final button is an inline anchor and sits flush
+  // against the paragraph in some browsers unless the container supplies a gap.
+  it('keeps the empty-state heading, prose and CTA as one deliberate layout group', async () => {
+    mockListDiagrams.mockResolvedValue([]);
+    render(<DiagramGrid />);
+
+    const heading = await screen.findByRole('heading', { name: 'No diagrams yet' });
+    const empty = heading.closest('.dashboard__empty');
+
+    expect(empty).not.toBeNull();
+    expect(empty?.children).toHaveLength(3);
+    expect(empty?.children[0]).toBe(heading);
+    expect(empty?.children[1]).toHaveTextContent(
+      'Create your first Cloudflare architecture diagram to get started.'
+    );
+    expect(empty?.children[2]).toBe(screen.getByRole('link', { name: /new diagram/iu }));
+  });
+
   it('heads the populated dashboard and links to the gallery', async () => {
     mockListDiagrams.mockResolvedValue([diagram()]);
     render(<DiagramGrid />);

@@ -442,11 +442,25 @@ button {
   margin: 0;
 }
 
+/* The empty state is a three-part vertical call to action, so it owns spacing explicitly instead
+   of relying on the browser's default `h2`/`p` margins. Those margins happen to make the heading
+   and prose appear one em apart through margin collapse, but the final `.button` is an inline
+   anchor, not a block sibling with a margin — it therefore sits flush against the paragraph in
+   some browsers. A flex column makes every adjacent pair, including prose → CTA, exactly 1rem apart
+   and lets the children carry zero margins without each element having a hidden spacing contract. */
 .dashboard__empty {
+  align-items: center;
   border: 1px dashed var(--cf-border);
   border-radius: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
   padding: 3rem 1.5rem;
   text-align: center;
+}
+
+.dashboard__empty :is(h2, p) {
+  margin: 0;
 }
 
 .dashboard__loading,
