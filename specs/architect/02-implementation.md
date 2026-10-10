@@ -1000,17 +1000,309 @@ Wrangler command, config file, generation step, or Terraform plan requirement.
 
 ## 13. Phases 21–26 — AI assistance
 
-These phases implement `09D-ARCHITECT-AICHAT.md`, after re-retrieving all current Workers AI, AI
-Gateway, Agents SDK and documentation-MCP guidance.
+These phases implement `09D-ARCHITECT-AICHAT.md`. That source document was written for a Wrangler
+deployment: its entire `wrangler.jsonc.tpl` instruction set is void here, and its model, gateway
+schema and logging guidance have each been superseded.
+[`06-ai-chat-spike.md`](./06-ai-chat-spike.md) records the current `cf` + Terraform, four-tier and
+`@demos/worker-common` equivalents, and is the authority wherever it differs from the source text.
 
-- **Phase 21:** spike model, AI Gateway, tool-call wire schema, cost/log correlation and Durable
-  Object lifecycle.
-- **Phase 22:** implement validated agent tooling and Cloudflare documentation client.
-- **Phase 23:** add `DiagramSession` chat capability without bypassing shared operations/services.
-- **Phase 24:** port/add source-compatible in-editor chat UI and reloadable turn state.
-- **Phase 25:** add blueprint-page generation from a natural-language description.
-- **Phase 26:** verify authorization, prompt/tool validation, tool failures, streaming lifecycle,
-  persistence, broadcasts, observability and cleanup.
+### Phase 21 — AI chat spike — **complete**
+
+#### Goal
+
+Settle the model, the AI Gateway resource schema, the tool-call wire shape, the cost/log mechanism,
+the Durable Object lifecycle guarantee and the documentation MCP client before any production code
+is written, and establish whether the AI path can be tested at all in this repository's Workers
+pool.
+
+#### Deliverables
+
+1. [`06-ai-chat-spike.md`](./06-ai-chat-spike.md), stating for each finding whether it is
+   documentary or empirical, and recording the verification date.
+2. A confirmed `AI_CHAT_MODEL` default and fallback checked against current model pages rather than
+   a changelog entry, with the residual plain-gateway tool-calling uncertainty explicitly assigned
+   to Phase 23 rather than silently inherited.
+3. A field-by-field `cloudflare_ai_gateway` schema dump from the provider version this repository
+   actually pins, classified required / optional+computed / optional, compared against
+   `cf-terraform-demos/playground/infra/playground.tf`'s own working block.
+4. The full tool-call request and response contract, including the OpenAI-chat fragment shape, the
+   JSON-string arguments, the truncated-nested-object repair and its two deliberate refusals, the
+   never-relayed `reasoning_content` field, and "every round carries the tools".
+5. A decision on how to emit structured log events from inside a Durable Object **in this
+   repository**, where the toolkit logger is Hono-`Context`-scoped and `src/worker/logging.ts` is a
+   vocabulary module rather than a logger.
+6. Throwaway `workerd` probes, deleted after running, covering disconnect-mid-operation durability,
+   post-eviction reconnect, and the per-test binding substitution the Phase 23/26 test strategy
+   depends on.
+
+#### Tests
+
+- Throwaway integration probes prove that an operation whose originator closes its socket
+  immediately still persists, and that a reconnect after eviction still reflects it.
+- Throwaway probes prove `instance.env` is substitutable on a live Durable Object, that a real
+  method body reads the substitute, and — a caveat no prior decision record contains — that the
+  substitution is process-wide and survives eviction, so every such test must restore it.
+- A throwaway probe establishes whether a server-authored, id-less creating operation broadcasts the
+  id it persisted.
+- No production code changes, so `pnpm check`, `pnpm test` and `pnpm test:coverage` are run purely
+  as a regression check.
+
+#### Exit criteria
+
+Every one of the six spike questions has a written answer with its evidence, the three corrections
+to the source document and older decision records are recorded, the latent replicable-id defect is
+documented with a reproduction and assigned to Phase 23, every throwaway probe file is deleted, and
+`pnpm fix`, `pnpm check`, `pnpm test` and `pnpm test:coverage` pass with coverage at or above 80% on
+every metric.
+
+### Phase 22 — Chat tooling and documentation client
+
+#### Goal
+
+Build the pure, independently testable pieces the chat loop will compose — the prompt context, the
+validated tool catalog and its dispatcher, and the Cloudflare documentation adapter — with no
+binding, no D1, no Durable Object and no network call anywhere in the phase's own tests.
+
+#### Deliverables
+
+1. Add `src/worker/domain/ai/catalog-context.ts`: `buildCatalogPromptContext()` over the live
+   `src/catalog.ts` maps, `buildGraphPromptContext(graph)` emitting each node's `id`/`typeId`/`label`
+   and each edge's `id`/`source`/`target`/`edgeType` with an explicit "use these exact ids, never a
+   label" instruction, and `nextGridPosition(graph)`. Positions, descriptions and viewport state are
+   deliberately excluded from the graph digest; say why in the file comment.
+2. Add `src/worker/domain/ai/tools.ts`: a zod schema per tool with `.describe()` on every field,
+   mirroring `domain/graph-operations.ts`'s vocabulary one-for-one, plus `rename_diagram` and
+   `search_cloudflare_documentation`. Patchable fields must match the real `NodePatch`/`EdgePatch`
+   exactly — `NodePatch` has no `typeId`, so the tool must not offer one even though the source
+   document's table lists it. `typeId`/`edgeType` are `z.string()` validated against the live
+   catalog maps at dispatch time, never a hard-coded enum snapshot, so an unrecognised value returns
+   a tool error naming the valid values rather than throwing.
+3. Add a documentation-search **port** in `src/worker/application/ports/`, and its adapter
+   `src/worker/infrastructure/ai/docs-client.ts` using `Client` +
+   `StreamableHTTPClientTransport`: connect, one `callTool`, disconnect, with a per-call timeout.
+   Parse the concatenated `<result><url><title><text></result>` blocks into `{ title, url, snippet }`
+   and truncate each snippet. A response containing no such block yields an empty array rather than
+   throwing. Export both a throwing function and the `*Safe` wrapper that turns any failure into the
+   non-fatal "documentation search is currently unavailable" outcome.
+4. Add `@modelcontextprotocol/client@2.0.0` to `dependencies` — pinned to match the already-pinned
+   `@modelcontextprotocol/server@2.0.0`, since both run in one bundle — and `react-markdown` plus
+   `remark-gfm` are deferred to Phase 24 where they are actually used.
+
+#### Tests
+
+- Worker-project unit tests for the catalog and graph digests, `nextGridPosition()`'s staggering,
+  and every tool's validation and dispatch path against fixture `GraphData`, asserting each produces
+  exactly the `GraphOperation` value `runOperation()` already accepts.
+- An unrecognised `typeId` and an unrecognised `edgeType` each produce a tool error listing valid
+  values, not a thrown error.
+- The docs adapter is tested against a transport double for success, timeout, tool-level error,
+  malformed response and zero-result response. No real network call in any test.
+
+#### Exit criteria
+
+Every tool dispatches to the exact operation shape the session already accepts, the docs adapter's
+failure paths are all covered, nothing in the phase imports `DiagramSession`, D1 or a binding, and
+`pnpm check`, `pnpm test` and the coverage gate pass.
+
+### Phase 23 — `DiagramSession` chat capability
+
+#### Goal
+
+Give the existing session a chat turn that drives the model through a bounded tool-calling loop and
+applies its mutations through the one serialized write path, without creating a second write path, a
+second protocol file or a second idea of who the actor is. Provision the gateway and bind it.
+
+#### Deliverables
+
+1. **Fix the replicable-id defect first, as its own commit.** Add `withReplicableIds(operation)` to
+   `src/worker/infrastructure/diagram-session.ts`, applied in `runOperation()` **before**
+   `this.apply(...)`, so the operation applied and the operation broadcast are byte-for-byte
+   identical. This is a protocol-level fix for every origin, not an `ai-chat` special case: a remote
+   human edit and an MCP tool call replicate through the same path and have the same bug today. See
+   [`06-ai-chat-spike.md`](./06-ai-chat-spike.md) §8 for the reproduction.
+2. Add `src/worker/application/ai/chat-engine.ts`'s `runDiagramChatTurn()`: one streamed
+   `env.AI.run()` call per round, **every** round carrying the full tool catalog, the system prompt
+   rebuilt with a fresh graph digest before every round, a `MAX_TOOL_ROUNDS` budget plus one
+   trailing round whose tool calls are ignored, the OpenAI-chat-first response reader with the
+   Cloudflare-native shape as fallback, index-keyed streamed fragment accumulation, the truncated
+   JSON repair with its two refusals, re-serialized echoed arguments, and `delta.content` only —
+   never `delta.reasoning_content`. It depends on injected callbacks and a narrow binding interface,
+   never on `DiagramSession`, D1 or a socket.
+3. Extend `src/live-sync-protocol.ts`: `'ai-chat'` on `ChangeOrigin`, `ChatMessageFrame` in
+   `ClientFrame`, and the chat status/token/tool-result/done/error and `diagram_renamed` frames in
+   `SessionFrame`. Teach `src/worker/domain/client-frame.ts` to validate `chat_message`, refusing a
+   frame that invents an author.
+4. Wire `DiagramSession.handleChatMessage()` to the engine, with `applyMutation` wrapping
+   `runOperation(op, { actor, origin: 'ai-chat', operationId: null })` and returning the
+   **authoritative** post-operation graph so the engine reports ids that actually exist. The actor
+   comes from the socket attachment, never from the frame. A failed turn sends `chat_error` to the
+   originator alone and never rethrows.
+5. Extend `src/worker/logging.ts` with a typed `logSessionEvent()` helper and the three event
+   shapes, enforcing the no-content rule in one place.
+6. Add `infra/ai-gateway.tf` following `cf-terraform-demos/playground/infra/playground.tf`'s own
+   block, pinning every required and every optional+computed field listed in
+   [`06-ai-chat-spike.md`](./06-ai-chat-spike.md) §3, with `cache_ttl = 0`,
+   `rate_limiting_technique`, a small `spend_limits` cost rule, and a comment explaining why this
+   gateway's `authentication` choice differs from playground's. Add the `ai_gateway_id` output,
+   the `aiGatewayId` entry in `infra/outputs.ts`'s `TerraformOutputs` **and** `OUTPUT_KEYS`, the
+   value in the committed `infra/local-outputs.json`, the `depends_on` edge from the Worker, and the
+   three `cloudflare.config.ts` bindings (`bindings.ai()`, `bindings.text(values.aiGatewayId)`, and
+   `AI_CHAT_MODEL` as a literal with its fallback named in the comment).
+7. Extend the editor's remote-change notice with an `ai-chat` arm, suppressed for the connection
+   that originated the turn.
+
+#### Tests
+
+- Worker-project unit tests drive the engine against a fixture Workers AI double: a tool-calling
+  round reaching `applyMutation`, the round cap, a rejected operation fed back as a tool result
+  rather than ending the turn, and the documentation tool's success and failure outcomes. Two tests
+  assert `tools` is present on **every** recorded round. Truncated-argument repair is tested
+  including both deliberate refusals.
+- Integration tests substitute the `AI` binding through the fixture helper described in
+  [`06-ai-chat-spike.md`](./06-ai-chat-spike.md) §6.2, which must restore it in a `finally`. One
+  turn calling `add_node`, `add_edge` and `rename_diagram` produces the expected graph and metadata
+  in D1, delivers status/token/done frames to the originator, and delivers the
+  `operation_applied` (`origin: 'ai-chat'`) and `diagram_renamed` broadcasts to a **second**
+  connection that sent nothing.
+- A disconnect-mid-turn test closes the originating socket after the first round and asserts the
+  turn still completes, D1 reflects it, and a fresh connection's snapshot shows the result.
+- Regression tests for deliverable 1: an id-less server-authored `add_node` broadcasts the id that
+  was persisted, and ids learned from `add_node` broadcasts work as `add_edge` endpoints.
+- A turn whose binding throws sends `chat_error` and leaves the connection open and usable.
+
+#### Exit criteria
+
+A scripted conversation produces the expected graph, title and description in D1 and is visible live
+to a non-chatting second connection; no write bypasses `runOperation()`; the gateway is Terraform-
+owned with a `depends_on` edge and a scalar output; and `pnpm check`, `pnpm test` and the coverage
+gate pass.
+
+### Phase 24 — In-editor chat UI
+
+#### Goal
+
+Give the editor a second details-panel tab that holds a real conversation, reusing the existing
+socket and the existing operation-applied reconciliation rather than adding a second way to change
+the canvas.
+
+#### Deliverables
+
+1. Turn `src/client/components/editor/panels/DetailsPanel.tsx`'s existing single-span tablist into a
+   real ARIA tab pair, with matching `aria-controls`/`id` and `aria-labelledby`, and add
+   `AiChatPanel.tsx` beside `PropertiesPanel.tsx`. Add `detailsPanelTab` to `diagramStore.ts` as
+   **in-memory** state; `src/client/lib/details-panel-preferences.ts` persists width only and its
+   stated rule must not be widened. Selecting a node returns to the Properties tab.
+2. Render the transcript as one `role="log"`/`aria-live="polite"` region — one consolidating region,
+   never one per token — with user and assistant text, compact action entries driven by
+   `operation_applied` frames filtered to `origin: 'ai-chat'`, and documentation results as a
+   clickable Sources list. Add `react-markdown` + `remark-gfm`; deliberately no `rehype-raw`, so
+   model-authored HTML is inert. Scope the Markdown CSS under the panel and reuse existing `--cf-*`
+   custom properties rather than introducing new colour literals.
+3. Add the composer: a labelled textarea, a Send button disabled while a turn is in flight or the
+   input is empty, a Stop control shown only while streaming, and a "New conversation" control that
+   clears only the local transcript.
+4. Extract `computeAutoLayout(nodes, edges, direction)` into `src/client/lib/auto-layout.ts` if the
+   toolbar does not already share it, keeping the dynamic `elkjs` import inside the function body so
+   no new eager chunk is pulled in, and run one client-side layout pass after a turn that added or
+   removed nodes, persisting through the existing `PUT /api/diagrams/:id/graph` route.
+5. Add the toolbar's AI Assistant toggle.
+
+#### Tests
+
+- Client-project tests for tab switching including the return-to-Properties rule, width persistence,
+  and transcript rendering from a scripted frame sequence.
+- Three regression tests for the defects the source project shipped and repaired: exactly one
+  narration per mutation and none before the operation is confirmed; a turn that narrates, calls
+  tools, then narrates again reads chronologically; and `chat_token` followed by `chat_done` in one
+  batched render produces one assistant bubble, not two.
+- A keyboard-only pass through the composer and transcript, and an accessible name on every
+  icon-only control.
+- A build check confirming the `elkjs` chunk is unchanged.
+
+#### Exit criteria
+
+A scripted turn against a mocked socket adds nodes and edges to the canvas through the existing
+reconciliation path with no chat-specific canvas code, triggers one layout pass, and the panel is
+usable by keyboard and announces new assistant text without flooding.
+
+### Phase 25 — Generation from a description
+
+#### Goal
+
+Let the blueprints page turn a sentence into a started diagram, reusing the same route, the same
+session and the same frames the editor uses, with no new endpoint.
+
+#### Deliverables
+
+1. Add a "Generate with AI" tile to `BlueprintGallery.tsx` opening `GenerateWithAiModal.tsx`, using
+   `useModalFocus()` exactly as `CreateDiagramModal.tsx` does.
+2. On submit, create a blank diagram through the existing route, open the modal's own short-lived
+   socket to `/api/diagrams/:id/live`, and send one synthesized `chat_message`. The composer gains a
+   `displayText` so the transcript shows what the operator typed rather than the synthesized
+   instruction.
+3. Render the same transcript component the editor panel uses, support follow-up refinement turns on
+   the same connection, and add an "Open in Editor" control that runs the layout pass, closes the
+   socket and navigates.
+4. Document the abandoned-modal case plainly: the diagram row is left behind containing whatever was
+   built, exactly as if it had been created blank and edited. Creation is deliberately not
+   transactional with the conversation.
+
+#### Tests
+
+- A scripted generation run: create, connect, send, observe `operation_applied` and `chat_done`,
+  close, navigate — plus a follow-up turn before Open in Editor.
+- Open in Editor must not write a client-derived graph back over the persisted one; assert the
+  navigation path performs no whole-graph write other than the explicit layout pass.
+- The abandoned-modal case leaves the row intact and raises no error.
+
+#### Exit criteria
+
+A description entered on `/blueprints` produces a diagram that is already persisted through the
+session's own write chain, refinable before opening, and opening it shows exactly what the
+conversation produced.
+
+### Phase 26 — AI assistance verification
+
+#### Goal
+
+Close the feature as a documented, fully verified extension, with the AI path genuinely covered
+rather than exempted.
+
+#### Deliverables
+
+1. Close coverage gaps across all three Vitest projects, retaining at least 80% statements,
+   branches, functions and lines. The documentation-tool closure is reachable here because the
+   adapter sits behind a port, so it must not be recorded as an exception; any genuinely uncoverable
+   branch needs an inline comment stating why.
+2. Update `README.md` (the already-present `AI Gateway: Edit` and `Workers AI: Edit` permissions,
+   the AI Gateway dashboard as the cost surface, the Workers-Logs retention note for gateways
+   created after 2026-09-24, and the paid-access requirement for the chosen model), `DEMO.md` (the
+   generation-then-refine-then-open flow) and `EXPLAIN-DEMO.md` (why this runs inside the session
+   rather than a stateless route, why Phases 11–20 had to exist first, and how `'ai-chat'` relates
+   to the existing `'human'`/`'agent'` origins).
+3. Run a WCAG 2.2 AA review of the new panel, modal and controls, and a `web-perf` pass confirming
+   no new eager bundle weight beyond the new UI itself.
+4. Manual smoke check on the deployed hostname: a generation conversation through to an opened
+   diagram; an in-editor conversation that adds nodes, asks a question exercising the documentation
+   tool, and is undone with Ctrl+Z; two browser profiles on one diagram with only one chatting,
+   confirming the watcher sees the edits live; a deliberate mid-turn disconnect followed by
+   reopening; and the AI Gateway dashboard showing the logs, cost and spend limit.
+
+#### Tests
+
+- Authorization: a non-owner, non-collaborator cannot open the socket and therefore cannot chat; a
+  collaborator can, matching the graph-edit rule rather than the owner-only rule.
+- Tool failures, round-cap exhaustion, binding failure, and documentation-lookup failure each leave
+  the connection open and the diagram consistent.
+- Every integration test that substitutes a binding restores it, asserted by a teardown check rather
+  than by convention.
+- The no-content logging rule is asserted directly against the logging helper.
+
+#### Exit criteria
+
+`pnpm fix`, `pnpm check`, `pnpm test` and `pnpm test:coverage` pass with the gate at or above 80% on
+every metric; the manual two-profile and mid-turn-disconnect reviews pass; and this demo still has
+no Wrangler command, configuration file, generation step or cloud-reaching Terraform plan.
 
 ## 14. Definition of complete
 
