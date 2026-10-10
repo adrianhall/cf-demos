@@ -1,0 +1,29 @@
+# Copy this file to .dev.vars and fill in your own values before running `npm start`.
+#
+# Unlike every other demo in this repository, this file documents real, operator-owned secrets
+# (see docs/07-PR-REVIEW-AGENT.md's "Explicit Exceptions" -- this demo's .dev.vars is gitignored,
+# not committed, for exactly that reason). Never commit a filled-in .dev.vars.
+
+# Local-only override, distinct from the Terraform-generated production value.
+ENVIRONMENT=development
+
+# A GitHub personal access token with read access to the repositories you want to review and
+# permission to post issue/PR comments (`repo` scope for a classic PAT, or `Contents: Read` plus
+# `Pull requests: Read and write` for a fine-grained one).
+GITHUB_TOKEN=ghp_your_token_here
+
+# The shared secret configured on your GitHub repository's webhook (Settings > Webhooks), used
+# to verify the `X-Hub-Signature-256` header on inbound deliveries.
+GITHUB_WEBHOOK_SECRET=your_github_webhook_secret
+
+# A GitLab personal access token with `read_api` and `api` scope (posting a note requires `api`)
+# for the projects you want to review.
+GITLAB_TOKEN=glpat_your_token_here
+
+# The shared secret configured on your GitLab project's webhook (Settings > Webhooks), sent
+# verbatim as the `X-Gitlab-Token` header on inbound deliveries.
+GITLAB_WEBHOOK_SECRET=your_gitlab_webhook_secret
+
+# Base URL of the GitLab instance to call. Defaults to the SaaS instance; override for a
+# self-managed GitLab.
+GITLAB_BASE_URL=https://gitlab.com

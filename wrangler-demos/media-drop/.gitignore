@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.wrangler/
+wrangler.jsonc
+worker-configuration.d.ts
+coverage/
+.env
+.env.*
+!.env.example
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+
+# `.dev.vars` holds no secrets and is intentionally committed.

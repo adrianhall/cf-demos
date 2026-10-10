@@ -1,0 +1,8 @@
+{
+  "cloudflare_team_domain": "local.cloudflareaccess.com",
+  "d1_database_id": "00000000-0000-0000-0000-000000000000",
+  "d1_database_name": "media-drop-local",
+  "environment": "development",
+  "r2_bucket_name": "media-drop-local",
+  "worker_name": "media-drop-local"
+}

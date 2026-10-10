@@ -1,0 +1,7 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# State is local for this demonstration scaffold.
+.terraform.lock.hcl

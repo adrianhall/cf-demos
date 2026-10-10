@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "useDefineForClassFields": true,
+    "lib": ["ES2024", "DOM", "DOM.Iterable", "WebWorker"],
+    "module": "ESNext",
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": false,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["node", "vite/client", "@cloudflare/vitest-pool-workers/types"]
+  },
+  "include": [
+    "src",
+    "tests",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "src/worker/vitest.config.ts",
+    "worker-configuration.d.ts"
+  ],
+  "exclude": [
+    // Downloaded-project starter templates (`src/client/lib/scaffold.ts`, Phase 5), imported
+    // only as raw text via Vite's `?raw` suffix and never compiled or executed by this project.
+    // They target a standalone project with its own dependencies (Drizzle, Hono) this project
+    // does not install, and are intentionally minimal boilerplate this project's own strictness
+    // settings (`noUnusedParameters`, for example) do not apply to.
+    "src/client/lib/scaffold-templates"
+  ]
+}

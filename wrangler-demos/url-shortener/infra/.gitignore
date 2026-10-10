@@ -1,0 +1,7 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# Note: in real systems, we would not gitignore the lock file, but it's a demo
+.terraform.lock.hcl

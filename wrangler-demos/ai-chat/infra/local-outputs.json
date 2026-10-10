@@ -1,0 +1,5 @@
+{
+  "cloudflare_team_domain": "local.cloudflareaccess.com",
+  "environment": "development",
+  "worker_name": "ai-chat-local"
+}
