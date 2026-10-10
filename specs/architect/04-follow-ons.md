@@ -33,6 +33,73 @@ either extend `add_node` to accept connection intent, add a higher-level compoun
 creates a node and its edges atomically, or return a proposed placement for the agent to confirm.
 It must preserve the present explicit-position contract until that behaviour is specified and tested.
 
+#### Additional findings
+
+`autoLayout` in
+[`src/worker/domain/graph-mutations.ts`](../../cf-terraform-demos/architect/src/worker/domain/graph-mutations.ts)
+already contains most of the machinery a placement decision needs. It builds an adjacency list and
+an in-degree count keyed by node index, assigns a row by breadth-first longest-path tiering from
+the zero-in-degree roots, and tolerates a dangling edge by skipping it rather than throwing. A
+placement function can reuse exactly that tiering to answer "which row does a node with these
+connections belong in", without re-deriving the graph model.
+
+The ordering problem is the real obstacle, and it is a sequencing problem rather than a geometry
+one. `add_node` runs strictly before `add_edge`, so at the moment the position is chosen the graph
+genuinely does not know what the node will connect to. No amount of cleverness inside `add_node`
+recovers that information; it has to be supplied by the caller or deferred until the edges exist.
+
+The observed defect is also specifically an *edge-routing* misreading, not an overlap. The Orders
+node was placed in genuinely free space and the stored graph was correct; the picture misled because
+the new edge's straight path crossed behind an unrelated node. That means node-overlap avoidance
+alone would not have prevented it, and a placement rule has to consider the corridor an edge will
+travel through, not just whether the destination cell is empty.
+
+`src/blueprints.ts` is a useful oracle here: every blueprint carries hand-authored coordinates that
+a human judged readable. They are a ready-made fixture set for asserting that a derived placement
+agrees with human judgement on graphs whose correct answer is already known.
+
+### 1.3 Plan
+
+Adopt the **compound-mutation** option. It is the only one of the three that removes the root cause
+rather than mitigating it: it makes the connections known at the instant the position is chosen,
+which is precisely the information `add_node` lacks today. Extending `add_node` with "connection
+intent" would encode the same information in a second, weaker form that could contradict the
+`add_edge` calls that follow, and returning a proposal for confirmation adds a round trip while
+still leaving an unconfirmed proposal to be handled.
+
+Keep `add_node` exactly as it is. Its explicit-position contract stays the documented, deterministic
+path, and no existing caller changes behaviour.
+
+1. **Add a pure placement function to the domain tier.** In `graph-mutations.ts`, add
+   `derivePosition(graph, connections)` returning a `{ x, y }`. Reuse the existing `autoLayout`
+   tiering to place the node one row below its highest-tier source (or one row above its lowest-tier
+   target when it has only targets), then choose the free column in that row that minimises edge
+   crossings over unrelated nodes. Fall back to the first free cell in the row when every column is
+   contested, and to `autoLayout`'s own origin when the graph is empty. It stays pure and
+   synchronous, so it is unit-testable without a Durable Object.
+2. **Make edge readability an explicit, tested property.** Add a helper that reports whether a
+   straight segment between two points passes through any other node's bounding box, and assert in
+   the unit tests that a derived placement produces no such crossing for the API Gateway blueprint's
+   Orders-database case. This is the specific regression in the observation, so it gets a test that
+   fails against today's behaviour.
+3. **Add one new MCP tool, `add_connected_node`.** Parameters: `diagramId`, `typeId`, `label`,
+   optional `id`/`description`, and `connectTo` — a list of `{ nodeId, direction }`, with `position`
+   deliberately absent. It derives the position, creates the node, and creates every edge, applying
+   the whole set through the existing operation vocabulary so it persists and broadcasts as one
+   coherent change rather than a node followed by separately-observable edges.
+4. **Steer callers toward it in the tool descriptions.** `add_node`'s description should name
+   `add_connected_node` as the better choice when the node will be connected to something, which is
+   the common case; `add_node` remains correct for a deliberately standalone node or an exact
+   coordinate.
+5. **Leave `auto_layout_diagram` unchanged.** It stays the "tidy the whole thing" escape hatch, and
+   remains the deterministic grid fallback for the reason the investigation notes record.
+
+Tests: unit coverage for `derivePosition` (empty graph, single source, several sources across tiers,
+a full row, target-only connections) and for the crossing helper; an MCP-tool test proving
+`add_connected_node` emits node and edge operations together; and a blueprint-derived case asserting
+no edge crosses an unrelated node. Documentation: record the new tool in `MCP-VALIDATION.md` and the
+demo `README.md`.
+
 ## 2. Provide a backup and restore capability
 
 ### 2.1 Observation
@@ -67,3 +134,218 @@ My process will be:
 4. Run the import script and validate the database and KV store have been restored.
 
 This is important because the terraform setup for the original version and the terraform setup for the new version are different, so we can't just tear down the original.
+
+#### Additional findings
+
+**There is no `cf d1 export` or `cf d1 import`.** `cf d1` offers only `create`, `delete`, `edit`,
+`get`, `list`, `migrations`, `query`, `raw`, `time-travel` and `update`. The plan's assumption that
+contents can be dumped with a single `cf` command does not hold, and the export has to be built from
+`cf d1 query --sql`, reading each table and writing the rows as JSON. This is workable — the schema
+is three small tables — but it means the scripts own the row-to-SQL round trip and must be tested
+rather than trusted.
+
+The building blocks that *do* exist are sufficient:
+
+| Need                 | Command                                                           |
+| -------------------- | ----------------------------------------------------------------- |
+| Find the database    | `cf d1 list --name <prefix>-db`                                    |
+| Read rows            | `cf d1 query <database-id> --sql "SELECT ..."`                     |
+| Write rows           | `cf d1 query <database-id> --batch @file.json`                     |
+| Find the namespace   | `cf kv namespaces list`                                            |
+| Read keys            | `cf kv keys list --namespace-id <id> --limit --cursor` (paginated) |
+| Read values          | `cf kv bulk get <namespace-id>`                                    |
+| Write values         | `cf kv bulk put <namespace-id>` (10,000 pairs / 100 MB per call)   |
+
+Resource names are derivable from the prefix, which is what makes a prefix argument viable:
+`infra/providers.tf` sets `database_name = "${var.worker_name}-db"` and
+`shares_kv_name = "${var.worker_name}-shares"`.
+
+**The KV namespace does not need to be exported at all, and arguably should not be.**
+`D1KvShareRepository.resolve` treats KV purely as a lookup cache in front of D1, and D1 is
+authoritative for the share lifecycle: every KV hit is re-confirmed against an unrevoked
+`diagram_shares` row, a miss is backfilled from D1, and a stale hit is deleted. An empty KV
+namespace is therefore a cold cache that repairs itself on first use, not data loss. Restoring KV
+also carries a genuine hazard the D1 restore does not: a key whose D1 row has since been revoked
+would be reintroduced as a cache entry, and although `resolve` would refuse it, the restore would
+have deliberately written back a digest for a dead bearer capability.
+
+The export should still capture KV, because the stated purpose includes routine backup and a
+forensic record of what was live is worth having. The *import* should skip it by default and offer
+`--include-kv` for an operator who explicitly wants the warm cache. This should be stated in the
+spec rather than left as an implementation detail, because it changes the operator's expectations
+at step 4 of the cutover: a correct restore will leave the KV namespace empty.
+
+**The non-empty guard needs care.** `diagram_shares` rows are never hard-deleted — revocation sets
+`revoked_at` — so emptiness must be judged per table by `SELECT COUNT(*)`, not inferred from the
+database existing. The guard must also run against every table before writing any of them, so a
+partially-populated target is refused before the import has written half a dataset.
+
+**Ordering and idempotency.** There are no foreign keys in the schema (a deliberate choice recorded
+in `0001_create_diagrams_and_users.sql`), so table insert order does not matter for integrity.
+Migrations must still have been applied before import, since the import writes rows and does not
+create tables.
+
+**Secrets.** `diagram_shares` stores only a SHA-256 digest and the KV values are digest → diagram-id
+pairs, so no backup file contains a usable bearer token. This is worth asserting in a test so a
+future schema change cannot quietly start writing raw tokens into a backup directory.
+
+### 2.3 Plan
+
+Two scripts in the repository-root `scripts/` directory, matching the existing
+`scripts/d1-migrate.ts` conventions: `commander` for arguments, `cf` resolved from
+`node_modules/cf/bin/cf`, full JSDoc, and failure messages that name the remediation.
+
+**`node scripts/export.ts <prefix>`**
+
+1. Resolve the database via `cf d1 list --name <prefix>-db` and the namespace via
+   `cf kv namespaces list`, matching `<prefix>-shares`. Fail if either resolves to anything other
+   than exactly one resource — an ambiguous prefix during a cutover, when both the old and new
+   resources exist, is the single most dangerous condition these scripts can meet, and it must stop
+   rather than guess.
+2. Write a backup directory (default `backups/<prefix>-<ISO timestamp>/`) containing one JSON file
+   per table (`diagrams.json`, `users.json`, `diagram_shares.json`, `diagram_collaborators.json`),
+   one `shares-kv.json`, and a `manifest.json` recording the prefix, resolved resource ids and
+   names, row counts, schema version (highest applied migration), and the export timestamp.
+3. Page through `cf kv keys list` with `--cursor` until exhausted, then fetch values with
+   `cf kv bulk get`. A single unpaged listing would silently truncate a large namespace, which is
+   the worst possible failure in a backup tool.
+4. Print a summary table of row counts so step 1 of the cutover process — "validate the output" —
+   has something concrete to check.
+
+**`node scripts/import.ts <prefix> --from <dir>`**
+
+1. Resolve resources by the same rules, with the same ambiguity refusal.
+2. Verify the manifest's schema version matches the target's applied migrations, and refuse on a
+   mismatch. This is what makes "the database has not changed shape" a checked precondition rather
+   than an assumption.
+3. **Refuse unless every target table is empty**, counting all of them before writing any. Offer
+   `--force` for a deliberate overwrite, defaulting to off.
+4. Insert rows in batches via `cf d1 query --batch` with parameterised statements, never by
+   string-concatenating values into SQL.
+5. Skip KV unless `--include-kv` is passed, and say so in the output, for the self-healing-cache
+   reason above.
+6. Print the same summary table, so step 4's validation is a direct comparison against step 1's.
+
+Both scripts take `--dry-run`, reporting exactly what they would read or write without doing it.
+
+Tests: unit coverage for prefix → resource-name derivation, the ambiguity refusal, the non-empty
+guard, cursor pagination assembling a complete key set, the schema-version check, batch chunking at
+the 10,000-pair boundary, and an assertion that no exported field carries a raw share token. The
+`cf` invocations are injected as a runner function so the tests stay offline, as the repository
+requires.
+
+Documentation: add a "Backup and restore" section to the demo `README.md` covering both routine
+backup and the four-step cutover, stating explicitly that a correct restore leaves KV empty.
+
+One sequencing note on the stated process: run the export **twice** — once to validate, and once
+immediately before step 2 — so the restored data reflects the last moments before the old Worker was
+removed rather than whatever was true when validation happened.
+
+## 3. Product names are not current
+
+### 3.1 Observation
+
+The list of products in the sidebar are not consistent with current naming.  There are new products (such as K2), renames (such as Pipelines renamed to Basin Pipelines).  The cloudflare-docs are in ~/repos/cloudflare/cloudflare-docs for your review, and that repo contains the SVG icons for all products.   Task is to update the product list that is presented in the sidebar.
+
+### 3.2 Investigation notes
+
+The local checkout of `cloudflare/cloudflare-docs` is on `production` at `0017e51a28`
+(2026-10-09), so it is current enough to be authoritative.
+
+**There is a canonical product registry**, and it is better than reading page titles:
+`src/content/directory/*.yaml`, one file per product, each carrying a `name`, an `entry.title`, an
+`entry.url` and an `entry.group`. Filtering to `group: Developer platform` yields the 48 products
+relevant to this catalogue. This is the list the docs site itself uses to resolve product names and
+links, so matching it is matching Cloudflare's own source of truth rather than a transcription of
+it.
+
+**The renames are confirmed in the product documentation itself**, not inferred:
+
+- `src/content/docs/basin/index.mdx`: "Basin was formerly known as Cloudflare Data Platform.
+  Cloudflare Pipelines, R2 Data Catalog, and R2 SQL are now named Basin Pipelines, Basin Catalog,
+  and Basin SQL. Existing resources and configurations continue to work."
+- `src/content/docs/basin-pipelines/index.mdx`: "Basin Pipelines, formerly known as Cloudflare
+  Pipelines, is now Generally Available."
+- `src/content/docs/basin-sql/index.mdx`: "Basin SQL, formerly known as R2 SQL … Existing R2 SQL
+  APIs continue to work and will be deprecated in the future."
+- `src/content/docs/basin-catalog/index.mdx`: "Basin Catalog, formerly known as R2 Data Catalog, is
+  now Generally Available."
+
+So the three affected entries are `pipelines` → Basin Pipelines, `r2-sql` → Basin SQL, and
+`r2-data-catalog` → Basin Catalog, with `basin` itself a new umbrella product. Each rename has a new
+documentation URL (`/basin-pipelines/`, `/basin-sql/`, `/basin-catalog/`), so `docLinks` change too,
+not just labels.
+
+**The catalogue already has the right pattern for this.** The `autorag` and `browser-rendering`
+entries were relabelled to "AI Search" and "Browser Run" while keeping their original `typeId`,
+with a comment explaining that saved diagrams reference `typeId` in their stored `graph_data` JSON.
+The same rule must apply here, and it is load-bearing in a way worth stating plainly: changing
+`typeId: 'pipelines'` to `'basin-pipelines'` would make every saved diagram containing that node —
+including the `data-pipeline` blueprint in `src/blueprints.ts`, which uses `pipelines`, `r2-sql` and
+`r2-data-catalog` — resolve to an unknown type. The user-facing surface (`label`, `description`,
+`icon`, `docLinks`) is what changes.
+
+**Icons are the one genuine blocker.** `src/icons/` in the docs repo still ships `pipelines.svg`,
+`r2-sql.svg` and `r2-data-catalog.svg`, and has **no** `basin*.svg` or `k2.svg`. The icon set has
+not caught up with the rename. The existing vendored copies therefore remain the correct artwork
+for the renamed products, and any new product whose icon is absent cannot be added until artwork
+exists. Icons that *are* available for plausible additions: `agent-memory.svg`, `artifacts.svg`,
+`dynamic-workers.svg`, `flagship.svg`, `web-search.svg`, `realtime-kit.svg`, `realtime-sfu.svg`,
+`realtime-turn.svg`, `moq.svg`.
+
+**Candidate new products** from the Developer platform group not currently in the catalogue:
+Agent Memory, Artifacts, Dynamic Workers, Flagship, Web Search API, K2, Basin, RealtimeKit,
+Realtime SFU, TURN Service, MoQ, Cloudflare Wallets, Agent Lee. Not all of these are architecture-
+diagram nodes — Agent Lee is a dashboard copilot and `cf` is a CLI — so the list needs judgement
+rather than wholesale adoption.
+
+**Two tests pin the current state** and will need updating together with the catalogue:
+`tests/worker/catalog.test.ts` asserts `NODE_TYPES` has exactly 42 entries, and it asserts every
+`svg`-kind icon name resolves to a real file under `src/client/icons/`. The latter is the guard that
+makes an icon-less product addition fail loudly rather than render blank.
+
+### 3.3 Plan
+
+Treat this as two separable changes, and do the renames first — they are unambiguous, evidenced, and
+carry no artwork dependency.
+
+**Stage 1 — corrections to existing entries (no new products).**
+
+1. Relabel the three Basin products in `src/catalog.ts`, keeping each `typeId` untouched and adding
+   the same style of comment the `autorag` and `browser-rendering` entries already carry, naming the
+   former product so the next reader understands why id and label disagree:
+   - `pipelines` → label "Basin Pipelines", doc URL `/basin-pipelines/`
+   - `r2-sql` → label "Basin SQL", doc URL `/basin-sql/`
+   - `r2-data-catalog` → label "Basin Catalog", doc URL `/basin-catalog/`
+2. Audit every remaining entry's `label` and `docLinks` against its `directory` YAML entry, and fix
+   any other drift the audit turns up. `analytics-engine` is worth checking specifically: the
+   registry calls it "Workers Analytics Engine" at `/analytics/analytics-engine/`.
+3. Update the blueprint node labels in `src/blueprints.ts` that spell the old names
+   (`label: 'Pipelines'`, `'R2 Data Catalog'`, `'R2 SQL'`) and the `data-pipeline` blueprint's
+   description prose, which names "R2 SQL" in a sentence.
+4. Keep the existing vendored icons. They are still Cloudflare's current artwork for these products;
+   re-vendor only if and when `basin*.svg` appears upstream.
+
+**Stage 2 — new products, gated on artwork.**
+
+5. Add only products that are genuinely diagrammable components and have an icon available. On
+   current evidence that means Agent Memory, Artifacts, Dynamic Workers, Flagship and Web Search API
+   are addable; K2 and Basin are **not**, because no icon exists for either. Record that explicitly
+   in the spec so the omission reads as a decision rather than an oversight, and revisit when the
+   icons land. For each addition: vendor the SVG byte-identically from
+   `~/repos/cloudflare/cloudflare-docs/src/icons/` into `src/client/icons/`, and take the
+   description from the registry's `meta.description`.
+6. Assign each new product a category from the existing six. Agent Memory and Web Search API are
+   `ai`; Artifacts is `storage`; Dynamic Workers is `compute`; Flagship is `compute`.
+
+**Across both stages.**
+
+7. Update the `NODE_TYPES` length assertion in `tests/worker/catalog.test.ts` to the new count. The
+   existing icon-resolution, doc-link-shape and category tests then cover the additions for free.
+8. Add a test asserting that the `typeId`s referenced by every blueprint resolve in `NODE_TYPE_MAP`.
+   This is the regression that a careless rename would cause, and nothing currently catches it.
+9. Check `src/worker/domain/ai/catalog-context.ts`, which feeds the catalogue to the assistant, so
+   the AI is offered current names rather than retired ones.
+10. Note in the demo `README.md` that product labels track the `directory` collection in
+    `cloudflare/cloudflare-docs`, so the next person refreshing this list knows where the authority
+    lives instead of searching the docs site by hand.
