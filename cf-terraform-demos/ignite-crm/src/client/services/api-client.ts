@@ -500,7 +500,7 @@ export class ApiClient {
    * @throws {ApiError} On failure.
    */
   deals(
-    query: { q?: string; status?: DealStatus; limit?: number; cursor?: string },
+    query: { q?: string; status?: DealStatus; stage?: string; limit?: number; cursor?: string },
     signal?: AbortSignal
   ) {
     return this.request(

@@ -337,13 +337,18 @@ export class D1SalesRepository extends D1IdempotencyReader implements SalesRepos
    */
   async listDeals(
     criteria: ListCriteria,
-    status: Deal['status'] | null
+    filters: { readonly status: Deal['status'] | null; readonly stageId: string | null }
   ): Promise<Array<Deal & { sortKey: string }>> {
     let text = DEAL_SELECT;
     const params: SqlValue[] = [];
-    if (status !== null) {
+    if (filters.status !== null) {
       text += ' AND d.status = ?';
-      params.push(status);
+      params.push(filters.status);
+    }
+    if (filters.stageId !== null) {
+      // Served by `deals_stage_list` (stage, then the same keyset order as the unfiltered list).
+      text += ' AND d.stage_id = ?';
+      params.push(filters.stageId);
     }
     if (criteria.q !== null) {
       text += ` AND (lower(d.title) LIKE ? ESCAPE '\\' OR lower(coalesce(co.name, '')) LIKE ? ESCAPE '\\'

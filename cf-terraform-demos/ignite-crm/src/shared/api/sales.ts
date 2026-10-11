@@ -700,6 +700,10 @@ export const DealListQuerySchema = v.strictObject({
    */
   status: v.optional(DealStatusSchema),
   /**
+   * Restrict to one pipeline stage.
+   */
+  stage: v.optional(IdSchema),
+  /**
    * Page size, 1–100.
    */
   limit: v.optional(

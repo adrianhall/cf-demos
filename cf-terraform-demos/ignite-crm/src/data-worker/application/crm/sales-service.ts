@@ -36,6 +36,7 @@ import {
   UpdateDealInputSchema
 } from '../../../shared/api/sales.ts';
 import { serviceError } from '../../../shared/common/errors.ts';
+import { IdSchema } from '../../../shared/common/ids.ts';
 import { DEFAULT_PAGE_SIZE, type Page, PageRequestSchema } from '../../../shared/common/paging.ts';
 import type {
   ActorContext,
@@ -291,12 +292,12 @@ export interface SalesRepository extends IdempotencyRepository {
    * One page of active deals ordered by lower-cased title then id.
    *
    * @param criteria Search and keyset position.
-   * @param status Outcome filter.
+   * @param filters Outcome and stage filters (`null` for either means any).
    * @returns Up to `limit + 1` deals with sort keys.
    */
   listDeals(
     criteria: ListCriteria,
-    status: Deal['status'] | null
+    filters: { readonly status: Deal['status'] | null; readonly stageId: string | null }
   ): Promise<Array<Deal & { sortKey: string }>>;
   /**
    * Read an active deal.
@@ -458,6 +459,7 @@ export interface SalesSettings {
 const DealListOptionsSchema = v.strictObject({
   q: v.optional(SearchTermSchema),
   status: v.optional(DealStatusSchema),
+  stageId: v.optional(IdSchema),
   ...PageRequestSchema.entries
 });
 
@@ -556,7 +558,14 @@ export class SalesService implements SalesPort {
       after: parsed.cursor === undefined ? null : decodeCursor(parsed.cursor, caller.requestId)
     };
     await this.authorizer.require(caller, 'crm.read');
-    const rows = await this.repository.listDeals(criteria, parsed.status ?? null);
+    if (parsed.stageId !== undefined) {
+      // An unknown stage is a field error, not an empty page, so a stale bookmark is explained.
+      this.stageIn(await this.requirePipeline(caller.requestId), parsed.stageId, caller.requestId);
+    }
+    const rows = await this.repository.listDeals(criteria, {
+      status: parsed.status ?? null,
+      stageId: parsed.stageId ?? null
+    });
     const visible = rows.slice(0, criteria.limit);
     const last = visible.at(-1);
     return {

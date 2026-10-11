@@ -244,6 +244,10 @@ export interface DealListOptions extends ListOptions {
    * Restrict to one outcome.
    */
   readonly status?: DealStatus;
+  /**
+   * Restrict to one pipeline stage (validated against the pipeline's stages).
+   */
+  readonly stageId?: string;
 }
 
 /**

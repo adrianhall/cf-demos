@@ -445,7 +445,9 @@ describe('deals page', () => {
     await settle();
     expect(wrapper.findAll('tbody tr')).toHaveLength(27);
 
-    const outcome = wrapper.findAllComponents({ name: 'VSelect' })[0] as VueWrapper;
+    const outcome = wrapper
+      .findAllComponents({ name: 'VSelect' })
+      .find((select) => select.props('label') === 'Outcome') as VueWrapper;
     outcome.vm.$emit('update:modelValue', 'won');
     await vi.advanceTimersByTimeAsync(300);
     await settle();
@@ -460,6 +462,51 @@ describe('deals page', () => {
     await router.push(`/companies/${fake.ada.company?.id ?? ''}`);
     await settle();
     expect(wrapper.text()).toContain('Deal 26');
+  });
+
+  it('filters the list by stage from the URL and the Stage select', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fake = await seeded();
+    const { stages } = await fake.service.crm.getPipeline(fake.sales);
+    for (const [title, stage] of [
+      ['Early', stages[0]!],
+      ['Later', stages[1]!]
+    ] as const) {
+      await fake.service.crm.createDeal(
+        fake.sales,
+        {
+          title,
+          primaryContactId: fake.ada.id,
+          stageId: stage.id,
+          amountMinor: 0,
+          statusLine: null,
+          nextActionText: null,
+          nextActionDate: null,
+          expectedCloseDate: null
+        },
+        { idempotencyKey: `seed-stage-${title}` }
+      );
+    }
+    useApi('sales@example.com', fake);
+    const { wrapper, router } = await mountWithApp(App, {
+      route: `/deals?view=list&stage=${stages[1]!.id}`
+    });
+    expect(wrapper.find('tbody').text()).toContain('Later');
+    expect(wrapper.find('tbody').text()).not.toContain('Early');
+    const stage = wrapper
+      .findAllComponents({ name: 'VSelect' })
+      .find((select) => select.props('label') === 'Stage')!;
+    expect(stage.props('modelValue')).toBe(stages[1]!.id);
+    stage.vm.$emit('update:modelValue', stages[0]!.id);
+    await vi.advanceTimersByTimeAsync(300);
+    await settle();
+    expect(router.currentRoute.value.query).toEqual({ view: 'list', stage: stages[0]!.id });
+    expect(wrapper.find('tbody').text()).toContain('Early');
+    stage.vm.$emit('update:modelValue', 'all');
+    await vi.advanceTimersByTimeAsync(300);
+    await settle();
+    expect(wrapper.findAll('tbody tr')).toHaveLength(2);
+    vi.useRealTimers();
   });
 
   it('refreshes the board and explains a move that lost a version race', async () => {

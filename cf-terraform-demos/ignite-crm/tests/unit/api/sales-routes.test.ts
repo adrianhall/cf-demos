@@ -122,6 +122,24 @@ describe('deals', () => {
       await call('/api/v1/deals?q=renew&status=pending&limit=5', { as: 'reader@example.com' })
     );
     expect(list.items).toHaveLength(1);
+    // The seeded first stage (Lead) holds the new deal; another stage has none.
+    const lead = '10000000-0000-4000-8000-000000000011';
+    const qualified = '10000000-0000-4000-8000-000000000012';
+    expect(
+      (
+        await body<{ items: unknown[] }>(
+          await call(`/api/v1/deals?stage=${lead}`, { as: 'reader@example.com' })
+        )
+      ).items
+    ).toHaveLength(1);
+    expect(
+      (
+        await body<{ items: unknown[] }>(
+          await call(`/api/v1/deals?stage=${qualified}`, { as: 'reader@example.com' })
+        )
+      ).items
+    ).toHaveLength(0);
+    expect((await call('/api/v1/deals?stage=nope', { as: 'reader@example.com' })).status).toBe(422);
     const detail = await call(`/api/v1/deals/${deal.id}`, { as: 'reader@example.com' });
     expect(detail.headers.get('ETag')).toBe('"1"');
 

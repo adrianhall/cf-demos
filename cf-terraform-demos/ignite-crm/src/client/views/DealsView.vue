@@ -3,7 +3,8 @@ import { computed, onMounted, ref, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 /**
  * Deals: a pipeline board of open deals and a searchable, filterable table of all deals, plus the
- * create-deal dialog. The view mode, search, and status filter live in the URL.
+ * create-deal dialog. The view mode, search, outcome, and stage filters live in the URL, so a
+ * filtered list is bookmarkable (and is what the dashboard's pipeline panel links to).
  */
 import { mdiMagnify, mdiPlus } from '@mdi/js';
 import type { UserRef } from '../../shared/api/crm.ts';
@@ -33,6 +34,7 @@ const status = ref<DealStatus | 'all'>(
     ? route.query.status
     : 'all'
 );
+const stageFilter = ref<string>(typeof route.query.stage === 'string' ? route.query.stage : 'all');
 const items = shallowRef<Deal[]>([]);
 const nextCursor = ref<string | null>(null);
 const loadingMore = ref(false);
@@ -44,14 +46,15 @@ const assignees = shallowRef<UserRef[]>([]);
  *
  * @returns Query parameters.
  */
-function query(): { q?: string; status?: DealStatus; limit: number } {
+function query(): { q?: string; status?: DealStatus; stage?: string; limit: number } {
   if (view.value === 'board') {
     return { status: 'pending', limit: 100 };
   }
   return {
     limit: 25,
     ...(search.value.trim() === '' ? {} : { q: search.value.trim() }),
-    ...(status.value === 'all' ? {} : { status: status.value })
+    ...(status.value === 'all' ? {} : { status: status.value }),
+    ...(stageFilter.value === 'all' ? {} : { stage: stageFilter.value })
   };
 }
 
@@ -67,14 +70,15 @@ const page = useResource(async (signal) => {
 });
 
 let debounce: ReturnType<typeof setTimeout> | undefined;
-watch([view, search, status], () => {
+watch([view, search, status, stageFilter], () => {
   clearTimeout(debounce);
   debounce = setTimeout(() => {
     void router.replace({
       query: {
         ...(view.value === 'list' ? { view: 'list' } : {}),
         ...(search.value.trim() === '' ? {} : { q: search.value.trim() }),
-        ...(status.value === 'all' ? {} : { status: status.value })
+        ...(status.value === 'all' ? {} : { status: status.value }),
+        ...(stageFilter.value === 'all' ? {} : { stage: stageFilter.value })
       }
     });
     void page.load();
@@ -165,6 +169,13 @@ async function create(value: DealFormValue): Promise<void> {
 }
 
 const stages = computed(() => pipeline.value?.stages ?? []);
+/**
+ * Stage filter choices, in pipeline order.
+ */
+const stageItems = computed(() => [
+  { title: 'All stages', value: 'all' },
+  ...stages.value.map((stage) => ({ title: stage.label, value: stage.id }))
+]);
 
 onMounted(() => void page.load());
 </script>
@@ -195,7 +206,7 @@ onMounted(() => void page.load());
       >{{ moveError }}</v-alert
     >
     <v-row v-if="view === 'list'" density="compact" class="mb-2">
-      <v-col cols="12" sm="8">
+      <v-col cols="12" sm="6">
         <v-text-field
           v-model="search"
           label="Search deals"
@@ -205,7 +216,10 @@ onMounted(() => void page.load());
           type="search"
         />
       </v-col>
-      <v-col cols="12" sm="4">
+      <v-col cols="12" sm="3">
+        <v-select v-model="stageFilter" label="Stage" :items="stageItems" />
+      </v-col>
+      <v-col cols="12" sm="3">
         <v-select
           v-model="status"
           label="Outcome"
@@ -223,7 +237,9 @@ onMounted(() => void page.load());
       :error="page.error.value"
       :empty="view === 'list' && items.length === 0"
       :has-data="page.data.value !== null"
-      :empty-title="search || status !== 'all' ? 'No matching deals' : 'No deals yet'"
+      :empty-title="
+        search || status !== 'all' || stageFilter !== 'all' ? 'No matching deals' : 'No deals yet'
+      "
       empty-text="Create a deal from a contact or with New deal."
       @retry="page.load"
     >

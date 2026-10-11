@@ -86,6 +86,7 @@ export function salesRoutes(): Hono<ApiEnv> {
       limit: query.limit ?? DEFAULT_PAGE_SIZE,
       ...(query.q === undefined ? {} : { q: query.q }),
       ...(query.status === undefined ? {} : { status: query.status }),
+      ...(query.stage === undefined ? {} : { stageId: query.stage }),
       ...(query.cursor === undefined ? {} : { cursor: query.cursor })
     });
     return context.json(checkResponse(DealPageSchema, page));

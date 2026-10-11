@@ -627,6 +627,52 @@ describe('listDeals', () => {
     ).toBe('VALIDATION_FAILED');
   });
 
+  it('filters by stage, combined with outcome and search, keeping keyset paging', async () => {
+    const { service, actor, ids } = await world();
+    const pipeline = await service.crm.getPipeline(actor('sales'));
+    const [lead, qualified] = pipeline.stages;
+    for (const [title, stageId] of [
+      ['A lead', lead!.id],
+      ['B qualified', qualified!.id],
+      ['C qualified', qualified!.id],
+      ['D qualified', qualified!.id]
+    ] as const) {
+      await service.crm.createDeal(actor('sales'), dealInput(ids.ada, { title, stageId }), key());
+    }
+    const first = await service.crm.listDeals(actor('read-only'), {
+      stageId: qualified!.id,
+      limit: 2
+    });
+    expect(first.items.map((deal) => deal.title)).toEqual(['B qualified', 'C qualified']);
+    const second = await service.crm.listDeals(actor('read-only'), {
+      stageId: qualified!.id,
+      limit: 2,
+      cursor: first.nextCursor ?? ''
+    });
+    expect(second).toMatchObject({ nextCursor: null });
+    expect(second.items.map((deal) => deal.title)).toEqual(['D qualified']);
+    expect(
+      (
+        await service.crm.listDeals(actor('sales'), {
+          stageId: qualified!.id,
+          status: 'pending',
+          q: 'c qual',
+          limit: 10
+        })
+      ).items.map((deal) => deal.title)
+    ).toEqual(['C qualified']);
+    expect(
+      (await service.crm.listDeals(actor('sales'), { stageId: lead!.id, status: 'won', limit: 10 }))
+        .items
+    ).toEqual([]);
+    // A stage outside the pipeline is a field error, not an empty page.
+    const unknown = await failure(
+      service.crm.listDeals(actor('sales'), { stageId: crypto.randomUUID(), limit: 10 })
+    );
+    expect(unknown.code).toBe('VALIDATION_FAILED');
+    expect(unknown.fields).toHaveProperty('stageId');
+  });
+
   it('reports a missing deal', async () => {
     const { service, actor } = await world();
     expect((await failure(service.crm.getDeal(actor('sales'), crypto.randomUUID()))).code).toBe(

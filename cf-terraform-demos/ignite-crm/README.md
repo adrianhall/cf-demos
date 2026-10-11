@@ -596,6 +596,12 @@ Items from the first follow-on pass in
   gzip in the Data Worker (65 → 108 kB) and lives in the lazily loaded contact chunks of the SPA
   (the entry chunk grew by under 2 kB gzip).
 
+- **Deals stage filter.** The Deals table adds a **Stage** filter beside search and outcome, kept in
+  the URL as `?view=list&stage=<id>`. `GET /api/v1/deals?stage=` passes `stageId` to the Data
+  Worker, which refuses a stage outside the pipeline with a `stageId` field error rather than
+  returning an empty page. Migration `0006_deal_stage_filter.sql` adds
+  `deals_stage_list (stage_id, lower(title), id)`, so a filtered page follows the same keyset order.
+
 ## Known limitations (first release)
 
 - Notes cannot yet be deleted, task-list checkboxes are read-only (edit the Markdown to tick one),
