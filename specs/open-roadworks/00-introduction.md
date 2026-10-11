@@ -18,7 +18,7 @@ The [Street Manager API](https://department-for-transport-streetmanager.github.i
 
 Success means timely live data, traceable history, visible coverage and freshness, recoverable processing, accessible map/list views and predictable operating costs.
 
-Focus is on replicating a web application like [Causeway one.network](https://one.network/) for live events.  This demonstration provides demonstration capabilities for data ingest and processing best practices along with Basin capabilities.  Note that "public capabilities" will still be gated behind a Cloudflare Access login (but anyone can log in) to prevent abuse and fraud.
+Focus is on replicating a live-events application such as [Causeway one.network](https://one.network/), demonstrating data ingest and processing best practice alongside Basin capabilities. "Public capabilities" remain gated behind a Cloudflare Access login — anyone may sign in — to deter abuse and fraud.
 
 ## 2. Scope and phases
 
@@ -27,7 +27,7 @@ Focus is on replicating a web application like [Causeway one.network](https://on
 - Street Manager SNS ingestion and scheduled reconciliation.
 - Initial snapshot/backfill strategy with an explicit historical coverage boundary.
 - EPSG:27700 geometry conversion to WGS84 for web-map display.
-- Append-only event archive and current-state projection.
+- Append-only event archive, current-state projection and map read model.
 - Public map and equivalent accessible list; filters by area, date, authority, promoter and status.
 - Record detail with event timeline and source attribution.
 - Historical search and cached analytical summaries.
@@ -57,11 +57,9 @@ flowchart TD
     POLL --> Q
     Q --> PROC[Processing Worker]
     PROC --> GEO[Geometry validation and reprojection]
-    GEO --> TX[Database transaction: event ledger, projection and outbox]
-    TX --> LIVE[Live serving database]
-    TX --> OUT[Durable archive outbox]
-    OUT --> PUB[Outbox publisher]
-    PUB --> PIPE[Basin Pipelines]
+    GEO --> TX[Database transaction: event ledger and projection]
+    TX --> LIVE[Live serving database: projection and map read model]
+    TX --> PIPE[Basin Pipelines stream]
     PIPE --> ICE[Iceberg history in R2 / Basin Catalog]
     ICE --> SQL[Basin SQL]
     SQL --> SUM[Historical summaries and cache]
@@ -71,6 +69,7 @@ flowchart TD
     PROC --> DLQ[Dead-letter queue]
     EVICT[Hourly eviction coordinator] --> LIVE
     EVICT --> ICE
+    LIVESWEEP[Scheduled liveness sweep] --> LIVE
 ```
 
 Workers, Queues, R2 and Basin services are billed independently of the Pro/Business website plan. Database selection is provisional: D1 may suit a bounded MVP; geographic query requirements, concurrency and limits must be benchmarked. PostgreSQL/PostGIS is an alternative with a separate hosting budget, potentially on PlanetScale or Supabase.
@@ -100,7 +99,9 @@ Default polling interval: 60 minutes, configurable subject to upstream restricti
 
 Persist a checkpoint per source stream/filter. Poll from the last successful checkpoint using an overlap window, enumerate all pages and advance the checkpoint only after the complete range is durably enqueued. Serialize overlapping poll runs or use a lease. Honour upstream rate limits and retry with bounded exponential backoff and jitter.
 
-Before implementation, verify polling availability for Open Data credentials, request fields, pagination, time-window inclusivity, ordering, maximum lookback, rate limits and payload completeness. The V7 documentation references /works/updates, but its exact contract was not verified during initial design. V7 is labelled under development and V6 stable in the reviewed documentation; select a supported version with the provider.
+Before implementation, verify polling availability for Open Data credentials, request fields, pagination, time-window inclusivity, ordering, maximum lookback, rate limits and payload completeness. The V7 documentation references /works/updates, but its exact contract was not verified during initial design.
+
+V7 is labelled under development and V6 stable in the reviewed documentation; select a supported version with the provider.
 
 ### 4.3 Bootstrap and backfill
 
@@ -119,8 +120,7 @@ sequenceDiagram
     participant Q as Queue
     participant P as Processor
     participant D as Database
-    participant O as Outbox publisher
-    participant B as Basin Pipelines
+    participant B as Basin Pipelines stream
     S->>W: Signed SNS notification
     W->>W: Validate envelope and source
     W->>Q: Enqueue event
@@ -128,14 +128,12 @@ sequenceDiagram
     W-->>S: HTTP success
     Q->>P: Deliver message, possibly repeated
     P->>P: Validate, normalize and transform geometry
-    P->>D: Transaction: ledger + conditional projection + outbox
+    P->>D: Transaction: ledger + conditional projection
     D-->>P: Commit
+    P->>B: Publish event with stable event key
+    B-->>P: Durable stream acceptance
     P-->>Q: Acknowledge
-    O->>D: Claim pending outbox item
-    O->>B: Publish event with stable event key
-    B-->>O: Durable stream acceptance
-    O->>D: Record submitted status
-    Note over O,B: Uncertain outcomes may cause duplicate submissions
+    Note over P,B: A crash or timeout after commit may cause duplicate submissions on redelivery
 ```
 
 Event identity:
@@ -157,9 +155,11 @@ Ordering:
 - Archive legitimate older events even when they do not update the live projection.
 - Accept full-record replacement only where payload completeness is confirmed; otherwise merge or fetch an authoritative snapshot using an approved API.
 
-The event ledger, projection update and archive outbox must commit atomically in the selected database. Queue acknowledgement follows commit. Publisher retries must use the same event key. Basin delivery guarantees do not remove application-level duplicate submissions; historical queries and materializations must deduplicate by event key.
+The event ledger and projection update must commit atomically in the selected database. The processor commits, publishes to the Basin stream, then acknowledges the Queue, so a failed publish leaves the message eligible for retry without blocking live state.
 
-Retain outbox payloads until archival verification, not merely stream acceptance. Drain failures through observable retries and a dead-letter workflow. Ledger/outbox retention must be bounded only after durable history is confirmed; otherwise the supposedly small live database will grow indefinitely.
+Every redelivery republishes the same event key, even when the ledger already records the event, because a prior attempt may have failed before, during or after submission. Historical queries and materializations must therefore deduplicate by event key.
+
+Retain the ledger payload and verification metadata until archival is verified; bound retention only then, or the supposedly small live database grows indefinitely. Validate records before submission and monitor stream schema-drop errors. Drain persistent failures through Queue retries and a dead-letter workflow, replaying before Queue retention expires.
 
 ## 6. Coordinate conversion
 
@@ -187,8 +187,7 @@ Implementation requirements:
 - Load a controlled, checksummed grid from a bundled asset or R2. Share initialization through a promise per isolate; reload safely after isolate restarts.
 - Avoid per-event external grid downloads and optional-grid configurations that silently degrade accuracy.
 - Parse WKT/GeoJSON separately. Transform every vertex of supported point, line, polygon, multipart and collection geometries; preserve ring closure and topology. Consider densification where required by accuracy tests.
-- Output GeoJSON using longitude-first order. Do not relabel projected coordinates as WGS84.
-- Do not invent altitude or assume horizontal transformation converts vertical datums.
+- Output GeoJSON using longitude-first order. Do not relabel projected coordinates as WGS84, invent altitude, or assume horizontal transformation converts vertical datums.
 - Preserve source date/time null semantics independently of geometry conversion.
 - Record original geometry, original CRS, derived geometry, bounding box, method, library/grid version and conversion status.
 - Test independent control points across the coverage area, axis order, malformed/empty geometry, out-of-grid coordinates, ring closure and large vertex counts. Round-trip tests alone do not prove absolute accuracy.
@@ -214,6 +213,8 @@ Malformed geometry must not discard an otherwise valid source event. Archive it 
 | display_geometry / bounds | Derived WGS84 representation |
 | transformation_metadata | Method, version, grid and status |
 | normalized_fields | Status, dates, authority, promoter, USRN and other query fields |
+| activity_category / impact_level | Works or restriction class and traffic-management severity |
+| effective_from / effective_to | Activity window used to decide what is in force at a given instant |
 | schema_version / payload_hash | Processing provenance and integrity |
 
 Archive the complete source business payload; isolate any retained SNS envelope/security fields under an appropriate access policy. Do not store credentials or signed URLs in publicly accessible analytical fields.
@@ -221,9 +222,10 @@ Archive the complete source business payload; isolate any retained SNS envelope/
 ### Operational tables
 
 - current_objects: latest accepted snapshot, last source ordering marker, state, dates, geometry and query fields.
+- map_features: the interactive map's read model. One row per currently displayable object, holding a simplified display geometry, a representative point, the bounding box as four indexed scalar columns, an `is_live` flag, the activity window, and the small set of fields a popup needs. Maintained in the same transaction as `current_objects`.
+- tile_cache: rendered tile or clustered-response bodies keyed by tile coordinate and filter signature, with the generation marker they were built from.
 - object_catalogue: compact lookup and last-seen marker retained after live eviction.
-- event_ledger: deduplication/processing records with managed retention.
-- archive_outbox: payload, stable event key, state, attempts and verification metadata.
+- event_ledger: deduplication/processing records with the source payload, stable event key, stream-submission observations and archive-verification metadata; retained until verified archive durability permits managed retention.
 - poll_checkpoints: source/filter, completed range and execution lease.
 - archive_batches: batch identity, expected event keys/versions, manifest and verification result.
 
@@ -252,7 +254,8 @@ Run an hourly coordinator with a configurable closure grace period and recent-hi
 2. Confirm all required events and the selected final snapshot exist durably in the archive. Write an additional snapshot only if required.
 3. Persist a batch manifest with keys, versions, hashes/counts and archive verification metadata.
 4. Delete only rows whose version still matches and whose state remains eligible.
-5. Retain the compact catalogue/ordering marker and historic lookup path.
+5. Delete the object's `map_features` row in the same step, so an evicted object cannot linger on the map.
+6. Retain the compact catalogue/ordering marker and historic lookup path.
 
 No distributed transaction spans the database, Pipelines and Iceberg. Use a retry-safe state machine. Stream acceptance alone is not proof that an Iceberg table commit has completed. Establish a supported commit/visibility verification method before enabling eviction; if verification is unavailable, retain records and alert.
 
@@ -267,12 +270,39 @@ Public capabilities:
 
 Serving strategy:
 
-- Query current-state/geographic indexes for live map requests.
+- Serve live map requests from `map_features`, never from the event ledger or Iceberg.
 - Bound geographic extent, result size and pagination; use tiles or clustered results when necessary.
 - Use Basin SQL for historical research and producing summaries; cache/materialize repeatable dashboard queries.
 - Precompute historical facets and bounding boxes where appropriate. Bounding-box filtering is not a substitute for exact spatial predicates.
 - Choose a spatial-capable serving engine if the product requires exact intersection, containment or distance queries beyond the selected database's capabilities.
 - Rate-limit public endpoints and historical scans. Keep catalog, R2 and database credentials server-side.
+
+### The map read model
+
+The ledger and projection answer "what happened to this record". A map asks a different question: "which objects are in force, inside this viewport, at this zoom". Serving that from `current_objects` means scanning and filtering geometry per request, so the map has its own read model.
+
+```mermaid
+flowchart LR
+    TX[Ledger and projection commit] --> MF[map_features upsert]
+    MF --> GEN[Generation marker increments]
+    REQ[Map request: viewport, zoom, filters] --> TC{tile_cache hit for this generation?}
+    TC -->|Yes| OUT[Tile or clustered response]
+    TC -->|No| BUILD[Query map_features by bbox and filters]
+    BUILD --> OUT
+    BUILD --> TC
+```
+
+Requirements:
+
+- **Liveness is computed, not inferred from status alone.** An object is live when its state is non-terminal and the request instant falls inside its activity window. Store `effective_from`/`effective_to` and recompute `is_live` both on event application and on a scheduled sweep, because an activity becomes live or lapses with the passage of time, with no upstream event to trigger it. Planned future works must remain distinguishable from works in force today.
+- **Index the bounding box as four scalar columns** (`min_lon`, `min_lat`, `max_lon`, `max_lat`), not as a serialized blob. A viewport query is then an indexable range scan. In D1 this is the only way to avoid a full-table scan, and D1 bills rows scanned rather than rows returned.
+- **Store a representative point per object** so low zooms can cluster and count without parsing full geometry.
+- **Store simplified geometry per zoom band.** Full-fidelity line and polygon geometry is wasted at low zoom and expensive to transfer. Precompute a small number of simplified variants at write time; keep the exact geometry for record detail and download. Never simplify the archived original.
+- **Serve zoom levels below the detail threshold as clusters or counts**, not as individual features, to bound response size over a dense urban area.
+- **Carry a generation marker** that increments on every `map_features` write, and key `tile_cache` entries by it so a cached tile cannot outlive the data it was built from.
+- **Treat an unconvertible geometry as absent from the map, not as a point at (0, 0).** Objects whose conversion failed are listed in the accessible list view with a stated reason, so a geometry failure degrades to a known gap rather than a false location.
+- **Keep the list view equivalent.** The same `map_features` query backs both, so the keyboard and screen-reader path cannot drift from the map.
+- Rebuild `map_features` from `current_objects` at any time; it is a derived cache and must never be the only copy of anything.
 
 Target WCAG 2.2 AA, responsive mobile layouts, clear language and no map-only navigation. Authenticated collaboration, when added, requires separate tenant-scoped private data, roles, audit trails and publication controls.
 
@@ -282,10 +312,11 @@ Monitor:
 
 - Notification acceptance/rejection, signature failures and enqueue failures.
 - Poll completion, checkpoint age, upstream throttling and missed ranges.
-- Queue backlog age, retries, duplicate rate and dead-letter count.
+- Queue backlog age, retry age, duplicate rate and dead-letter depth.
 - Conversion failures, grid initialization time, CPU per vertex and vertex distributions.
 - Projection lag, stale-event rejection and ordering conflicts.
-- Outbox age, archive visibility delay, verification failures and blocked eviction.
+- Map request latency by zoom, tile-cache hit rate, rows scanned per viewport query, response size at the densest tile, liveness-sweep age and count of live objects lacking usable geometry.
+- Unverified-ledger age, archive visibility delay, stream schema-drop errors, verification failures and blocked eviction.
 - Live database size/read-write usage, stored archive growth, SQL scanned bytes and cost.
 
 Provisional targets, to validate rather than promise:
@@ -297,7 +328,7 @@ Provisional targets, to validate rather than promise:
 
 Use managed secrets, least-privilege bindings, private R2 access, HTTPS, appropriate retention policies and separate dev/test/production resources. Avoid recording full payloads in routine logs. Configure budget alerts and request/CPU/query bounds; alerts are not hard spending caps.
 
-Test crash points between database commit, publish, submission recording, archive verification and deletion. Rebuild a fresh projection from deduplicated archived events during restore drills. Define incident, replay and dead-letter review runbooks. R2 persistence alone is not a complete accidental-deletion recovery strategy; define backups and recovery objectives before launch.
+Test a crash at each boundary of the section 5 sequence, plus archive verification and deletion. Rebuild a fresh projection from deduplicated archived events during restore drills. Define incident, replay and dead-letter review runbooks, including recovery before Queue retention expires. R2 persistence alone is not a complete accidental-deletion recovery strategy; define backups and recovery objectives before launch.
 
 ## 11. Retention, licensing and privacy
 
@@ -309,7 +340,7 @@ Expire obsolete Iceberg metadata snapshots and superseded compacted files withou
 
 ## 12. Cost model
 
-Pro/Business website pricing and application usage are separate. Published indicative rates from design research:
+Pro/Business website pricing and application usage are separate. Published rates from design research:
 
 | Component | Included / base | Overage |
 |---|---|---|
@@ -329,11 +360,11 @@ Illustrative monthly scenario, not measured feed volume:
 
 - 1M distinct 5 KB events; 2M queued deliveries including overlap.
 - 3M public API calls; total Worker requests and CPU remain within included allowances.
-- D1 remains within allowances including ledger/outbox, indexes and deletion.
+- D1 remains within allowances including ledger, indexes, verification metadata and deletion.
 - 60 GB average archive storage; 1 TB SQL scans; 100 GB compaction.
 - Pipeline output, R2 operations, catalog operations and compaction object counts remain within their allowances.
 
-Application subtotal is approximately $10.68/month: Workers $5, Queues $2, R2 $0.75, SQL $2.48 and compaction $0.45. With monthly-billed Pro: approximately $35.68; with Business: approximately $260.68. These are not quotes or capacity guarantees. OSTN15 CPU/memory/loading, outbox verification and operational overhead must be measured before relying on the assumed included allowances.
+Application subtotal is approximately $10.68/month: Workers $5, Queues $2, R2 $0.75, SQL $2.48 and compaction $0.45. With monthly-billed Pro: approximately $35.68; with Business: approximately $260.68. Direct stream delivery removes outbox writes and publisher execution at negligible saving here, because D1 allowances already cover the workload. OSTN15 CPU/memory/loading, archive verification, tile serving and operational overhead must be measured before relying on the assumed included allowances.
 
 Excluded: tax, development, support, map tiles/geocoding, additional feeds, initial backfill, external database hosting, backups and additional observability. Indefinite storage grows: approximately $15/month per retained TB at R2 Standard rates before operations. Measure at least a week of events and representative dashboard queries before issuing a budget.
 
@@ -342,10 +373,10 @@ Excluded: tax, development, support, map tiles/geocoding, additional feeds, init
 1. Validate data access/version, licences, coverage, payloads and source ordering. Capture a representative volume sample.
 2. Prototype SNS verification, durable queueing and checkpointed polling.
 3. Benchmark Proj4js/OSTN15 with reference coordinates and real geometry sizes.
-4. Select the live database through map-query and transaction benchmarks.
-5. Implement ledger/projection/outbox, Iceberg delivery and duplicate-safe queries.
+4. Select the live database by benchmarking viewport queries over a dense urban extent at realistic object counts, alongside transaction throughput.
+5. Implement commit-first ledger/projection processing, direct Basin stream delivery and duplicate-safe queries.
 6. Prove archival verification, crash recovery, replay and conditional eviction.
-7. Build accessible public live and historic views with cached summaries.
+7. Build the map read model, tile/cluster serving and the equivalent accessible list, then the historic views with cached summaries.
 8. Validate cost, security and restore runbooks; launch with explicit coverage limitations.
 9. Add regional feeds and authenticated collaboration after MVP evidence.
 
@@ -358,6 +389,8 @@ Excluded: tax, development, support, map tiles/geocoding, additional feeds, init
 - Archived events can rebuild a clean current projection with the same accepted states.
 - A crash or newer update during archival cannot cause premature deletion; reopened objects return to the live view.
 - Historical search resolves evicted objects and visibly states historical coverage and known gaps.
+- The map shows exactly the objects in force at the request instant for the requested viewport: a lapsed activity disappears without an upstream event, a planned future work is distinguishable from a current one, and an evicted or reopened object leaves or returns within one coordinator cycle.
+- A dense urban viewport meets the agreed latency and response-size budget at every zoom level, and an object whose geometry failed conversion appears in the list view with a stated reason rather than at a false location.
 - Public map/list workflows meet the agreed accessibility checks; no private credentials or tenant data are exposed.
 - Measured load, lag and cost meet approved targets. Dead-letter, backup and recovery drills are completed.
 
@@ -370,7 +403,9 @@ Excluded: tax, development, support, map tiles/geocoding, additional feeds, init
 | Record ordering and identity | Verified event identity, ordering and payload completeness |
 | Historical starting point | Baseline/backfill availability, dates and terms |
 | Positional tolerance | Public versus operational use, reference-point comparison |
-| Database selection | Geographic queries, concurrency, limits and atomic-outbox support |
+| Database selection | Geographic queries, concurrency, limits and atomic ledger/projection support |
+| Map serving shape | Measured viewport latency, rows scanned and response size at the densest tile; whether bounding-box columns suffice or exact spatial predicates require PostGIS |
+| Liveness definition | Per-object-type rule for "in force now", sweep frequency and planned-versus-current presentation |
 | Archive verification | Supported commit/visibility check and maximum retention during failures |
 | Closure/eviction policy | Per-object rules, grace period and recent-history window |
 | Retention and correction | Legal terms, privacy assessment and authorized deletion process |

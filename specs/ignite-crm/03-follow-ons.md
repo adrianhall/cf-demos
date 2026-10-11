@@ -246,11 +246,15 @@ items to review at the end. Each entry names the phase that made it.
   open deals (`?view=list&status=pending`). Depends on the stage filter above. Make each row label a
   real link (keyboard-reachable, with an accessible name such as "Show deals in Qualified"), and
   test that the filtered list's counts agree with the panel.
-- **Rename "Open total" to "Pipeline" — not scheduled in Phases 2–7.** In the dashboard's Pipeline
-  panel, relabel the open-deals total row from "Open total" to "Pipeline", the usual sales term for
+- **Rename "Open total" to "Pipeline total" — not scheduled in Phases 2–7.** In the dashboard's Pipeline
+  panel, relabel the open-deals total row from "Open total" to "Pipeline total", the usual sales term for
   the value of open opportunities. Because the panel heading is also "Pipeline", review the heading
   at the same time (for example "Pipeline summary") so the row label and heading do not read as a
   duplicate to screen-reader users; update the DOM tests that assert the label.
+- **Add "Pipeline this qtr" line to the dashboard's Pipeline panel** (below the pipeline total) - this will 
+  provide the total pipeline for deals that are expected to close this quarter.
+- **Add a "Quarterly Pipeline" report to the report set**, covering this quarters pipeline deals and
+  where they are in the pipeline (stage).
 
 - **Phase 1 — check script writes ignored artifacts.** The implementation plan requires generated
   type freshness for both Workers and dry Vite builds inside `pnpm check`; `cf workers types` and

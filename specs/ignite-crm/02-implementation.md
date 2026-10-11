@@ -446,7 +446,8 @@ all checks, and 80%-minimum complete-source Istanbul gate pass.
 ### Goal
 
 Perform the deliberately deferred corner-case sweep without confusing it with the main test-first
-interface design. Harden correctness, recovery, accessibility, security, and operations for the
+interface design. Complete a review using the provided agents for security, accessibility, system
+architecture, and code. Harden correctness, recovery, accessibility, security, and operations for the
 finished first release.
 
 ### Deliverables
@@ -472,6 +473,9 @@ finished first release.
 6. Rehearse lifecycle from a clean state: `pnpm check`, `pnpm test`, `pnpm start`, full local E2E,
    `pnpm deploy`, deployed smoke test, and `pnpm teardown`. Verify account cleanup and update README
    with measured bundle observations and remaining product limitations.
+
+Use the review-orchestrator agent for reviews, storing the resulting review output in
+`specs/ignite-crm/04-mvp-review.md`
 
 ### Something to review
 
