@@ -18,7 +18,9 @@ import {
   type Dashboard,
   type HistoryEntry,
   type UpdateCompanyInput,
-  UpdateCompanyInputSchema
+  UpdateCompanyInputSchema,
+  type UpdateContactInput,
+  UpdateContactInputSchema
 } from '../../../shared/api/crm.ts';
 import {
   type CompanyDetail,
@@ -127,6 +129,53 @@ export interface NewContactRow {
    * Creation instant.
    */
   readonly createdAt: string;
+}
+
+/**
+ * A contact update to apply if the version still matches. Every editable column is written with its
+ * merged (new or unchanged) value, so the stored display name always agrees with the names.
+ */
+export interface ContactChange {
+  /**
+   * Contact identifier.
+   */
+  readonly id: string;
+  /**
+   * Version the caller read.
+   */
+  readonly expectedVersion: number;
+  /**
+   * Given name.
+   */
+  readonly firstName: string | null;
+  /**
+   * Family name.
+   */
+  readonly lastName: string | null;
+  /**
+   * Recomputed display name.
+   */
+  readonly displayName: string;
+  /**
+   * E-mail.
+   */
+  readonly email: string | null;
+  /**
+   * Telephone.
+   */
+  readonly phone: string | null;
+  /**
+   * Job title.
+   */
+  readonly jobTitle: string | null;
+  /**
+   * Company after the change.
+   */
+  readonly companyId: string | null;
+  /**
+   * Modification instant.
+   */
+  readonly updatedAt: string;
 }
 
 /**
@@ -279,6 +328,25 @@ export interface CrmRepository extends IdempotencyRepository {
    *   `CONFLICT` (duplicate name), or `DEPENDENCY_FAILURE`.
    */
   updateCompany(write: { change: CompanyChange; envelope: MutationEnvelope }): Promise<void>;
+  /**
+   * Atomically update a contact if it is still at `expectedVersion`, optionally inserting a new
+   * company or verifying an existing one, and write the envelope rows. When `leftCompanyId` is set,
+   * that company's primary contact is cleared (and its version bumped) **only if** it still points
+   * at this contact — evaluated in SQL at commit, so a concurrent reassignment is kept.
+   *
+   * @param write The change.
+   * @returns Once committed.
+   * @throws {Error} `VERSION_MISMATCH`, `NOT_FOUND` (the chosen company was deleted), `CONFLICT` (a
+   *   concurrent create of the same new company name), or `DEPENDENCY_FAILURE`; nothing is
+   *   written.
+   */
+  updateContact(write: {
+    change: ContactChange;
+    newCompany: NewCompanyRow | null;
+    existingCompanyId: string | null;
+    leftCompanyId: string | null;
+    envelope: MutationEnvelope;
+  }): Promise<void>;
 }
 
 /**
@@ -550,6 +618,167 @@ export class CrmService implements ContactsPort {
       contact: row,
       newCompany,
       existingCompanyId: newCompany === null ? (company?.id ?? null) : null,
+      envelope: mutation.envelope(contact, audit, now)
+    });
+    return contact;
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async updateContact(
+    actor: ActorContext,
+    id: string,
+    input: UpdateContactInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ): Promise<Contact> {
+    const caller = validateActor(actor);
+    const contactId = validateId(id, caller.requestId);
+    const fields = validate(UpdateContactInputSchema, input, caller.requestId);
+    const version = validate(VersionSchema, expectedVersion, caller.requestId);
+    const key = validateIdempotencyKey(meta?.idempotencyKey, caller.requestId);
+    await this.authorizer.require(caller, 'crm.write');
+
+    const mutation = await IdempotentMutation.begin(
+      'crm.updateContact',
+      caller,
+      { idempotencyKey: key },
+      { contactId, fields, version },
+      this.runtime
+    );
+    const replayed = await mutation.replay<Contact>(this.repository);
+    if (replayed !== undefined) {
+      return replayed;
+    }
+    const current = await this.repository.getContact(contactId);
+    if (current === null) {
+      throw serviceError('NOT_FOUND', 'Contact not found.', { requestId: caller.requestId });
+    }
+    if (current.version !== version) {
+      throw serviceError(
+        'VERSION_MISMATCH',
+        'The contact was changed by someone else. Reload it and try again.',
+        { requestId: caller.requestId }
+      );
+    }
+
+    const now = this.runtime.now();
+    const at = now.toISOString();
+    let company = current.company;
+    let newCompany: NewCompanyRow | null = null;
+    let existingCompanyId: string | null = null;
+    if (fields.companyId !== undefined) {
+      if (fields.companyId === null) {
+        company = null;
+      } else if (fields.companyId !== current.company?.id) {
+        const existing = await this.repository.getCompany(fields.companyId);
+        if (existing === null) {
+          throw serviceError('VALIDATION_FAILED', 'The selected company does not exist.', {
+            requestId: caller.requestId,
+            fields: { companyId: 'The selected company does not exist.' }
+          });
+        }
+        company = { id: existing.id, name: existing.name };
+        existingCompanyId = existing.id;
+      }
+    } else if (fields.companyName !== undefined) {
+      const found = await this.repository.findCompanyByName(companyNameKey(fields.companyName));
+      if (found === null) {
+        newCompany = {
+          id: this.runtime.newId(),
+          name: fields.companyName,
+          address: null,
+          stockSymbol: null,
+          companiesHouseUrl: null,
+          createdBy: caller.userId,
+          createdAt: at
+        };
+        company = { id: newCompany.id, name: newCompany.name };
+      } else {
+        company = found;
+        existingCompanyId = found.id === current.company?.id ? null : found.id;
+      }
+    }
+
+    const firstName = fields.firstName === undefined ? current.firstName : fields.firstName;
+    const lastName = fields.lastName === undefined ? current.lastName : fields.lastName;
+    if (firstName === null && lastName === null && company === null) {
+      // The same rule as create, checked against the merged record rather than the request.
+      throw serviceError('VALIDATION_FAILED', 'Enter a name or a company.', {
+        requestId: caller.requestId,
+        fields: { firstName: 'Enter a name or a company.' }
+      });
+    }
+    const change: ContactChange = {
+      id: contactId,
+      expectedVersion: version,
+      firstName,
+      lastName,
+      displayName: contactDisplayName(firstName, lastName, company?.name ?? null),
+      email: fields.email === undefined ? current.email : fields.email,
+      phone: fields.phone === undefined ? current.phone : fields.phone,
+      jobTitle: fields.jobTitle === undefined ? current.jobTitle : fields.jobTitle,
+      companyId: company?.id ?? null,
+      updatedAt: at
+    };
+    const contact: Contact = {
+      ...current,
+      firstName: change.firstName,
+      lastName: change.lastName,
+      displayName: change.displayName,
+      email: change.email,
+      phone: change.phone,
+      jobTitle: change.jobTitle,
+      company,
+      version: current.version + 1,
+      updatedAt: at
+    };
+
+    const leftCompanyId =
+      current.company !== null && current.company.id !== change.companyId
+        ? current.company.id
+        : null;
+    const audit: AuditEntry[] = [];
+    if (newCompany !== null) {
+      audit.push(
+        mutation.audit('crm', 'company', newCompany.id, 'created', { via: 'contact' }, at)
+      );
+    }
+    audit.push(
+      mutation.audit(
+        'crm',
+        'contact',
+        contactId,
+        'updated',
+        {
+          fields: Object.keys(fields).sort().join(','),
+          companyId: change.companyId,
+          version: contact.version
+        },
+        at
+      )
+    );
+    if (leftCompanyId !== null) {
+      const left = await this.repository.getCompany(leftCompanyId);
+      if (left?.primaryContact?.id === contactId) {
+        audit.push(
+          mutation.audit(
+            'crm',
+            'company',
+            leftCompanyId,
+            'updated',
+            { fields: 'primaryContactId', version: left.version + 1 },
+            at
+          )
+        );
+      }
+    }
+    await this.repository.updateContact({
+      change,
+      newCompany,
+      existingCompanyId,
+      leftCompanyId,
       envelope: mutation.envelope(contact, audit, now)
     });
     return contact;

@@ -31,7 +31,8 @@ import {
 import type {
   CreateCompanyInput,
   CreateContactInput,
-  UpdateCompanyInput
+  UpdateCompanyInput,
+  UpdateContactInput
 } from '../shared/api/crm.ts';
 import type { CreateNoteInput, UpdateNoteInput } from '../shared/api/notes.ts';
 import type {
@@ -247,6 +248,21 @@ export class CrmRpc extends RpcTarget implements Enveloped<CrmPort> {
   createCompany(actor: ActorContext, input: CreateCompanyInput, meta: MutationMeta) {
     return envelope(this.logger, 'crm.createCompany', requestIdOf(actor), () =>
       this.service.createCompany(actor, input, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  updateContact(
+    actor: ActorContext,
+    id: string,
+    input: UpdateContactInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ) {
+    return envelope(this.logger, 'crm.updateContact', requestIdOf(actor), () =>
+      this.service.updateContact(actor, id, input, expectedVersion, meta)
     );
   }
 

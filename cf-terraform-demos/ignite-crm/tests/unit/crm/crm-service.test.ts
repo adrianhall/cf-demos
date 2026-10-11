@@ -336,6 +336,248 @@ describe('updateCompany', () => {
   });
 });
 
+describe('updateContact', () => {
+  it('edits names and details, recomputes the display name, and audits the changed fields', async () => {
+    const { service, actor, store } = setup();
+    const contact = await service.crm.createContact(
+      actor,
+      contactInput({ firstName: 'Ada', email: 'ada@example.com', companyName: 'Engines' }),
+      { idempotencyKey: 'uc-create-key-1' }
+    );
+    const updated = await service.crm.updateContact(
+      actor,
+      contact.id,
+      { lastName: 'Lovelace', email: ' ADA@ENGINES.EXAMPLE ', phone: '', jobTitle: 'CTO' },
+      1,
+      { idempotencyKey: 'uc-key-0001' }
+    );
+    expect(updated).toMatchObject({
+      displayName: 'Ada Lovelace',
+      email: 'ada@engines.example',
+      phone: null,
+      jobTitle: 'CTO',
+      company: contact.company,
+      version: 2
+    });
+    expect((await service.crm.getContact(actor, contact.id)).contact).toEqual(updated);
+    expect(store.audit.at(-1)).toMatchObject({ action: 'updated' });
+    expect(store.count('contacts', "display_name = 'Ada Lovelace'")).toBe(1);
+  });
+
+  it('moves between companies by name, reusing or creating one, and detaches', async () => {
+    const { service, actor, store } = setup();
+    const ada = await service.crm.createContact(
+      actor,
+      contactInput({ firstName: 'Ada', companyName: 'Engines' }),
+      { idempotencyKey: 'mv-key-0001' }
+    );
+    await service.crm.createCompany(
+      actor,
+      { name: 'Looms', address: null, stockSymbol: null, companiesHouseUrl: null },
+      { idempotencyKey: 'mv-key-0002' }
+    );
+    const reused = await service.crm.updateContact(actor, ada.id, { companyName: 'looms' }, 1, {
+      idempotencyKey: 'mv-key-0003'
+    });
+    expect(reused.company?.name).toBe('Looms');
+    const created = await service.crm.updateContact(
+      actor,
+      ada.id,
+      { companyName: 'Analytical Co' },
+      2,
+      { idempotencyKey: 'mv-key-0004' }
+    );
+    expect(created.company?.name).toBe('Analytical Co');
+    expect(store.count('companies')).toBe(3);
+    const detached = await service.crm.updateContact(actor, ada.id, { companyId: null }, 3, {
+      idempotencyKey: 'mv-key-0005'
+    });
+    expect(detached.company).toBeNull();
+    // Choosing an existing company by id works too; an unknown id is a field error.
+    const back = await service.crm.updateContact(
+      actor,
+      ada.id,
+      { companyId: reused.company!.id },
+      4,
+      { idempotencyKey: 'mv-key-0006' }
+    );
+    expect(back.company?.name).toBe('Looms');
+    expect(
+      (
+        await failure(
+          service.crm.updateContact(actor, ada.id, { companyId: crypto.randomUUID() }, 5, {
+            idempotencyKey: 'mv-key-0007'
+          })
+        )
+      ).fields
+    ).toHaveProperty('companyId');
+    // Re-choosing the current company by name is a no-op move.
+    const same = await service.crm.updateContact(actor, ada.id, { companyName: 'LOOMS' }, 5, {
+      idempotencyKey: 'mv-key-0008'
+    });
+    expect(same.company?.id).toBe(reused.company!.id);
+  });
+
+  it('keeps a company-only lead named after its company, and refuses removing every name', async () => {
+    const { service, actor } = setup();
+    const lead = await service.crm.createContact(actor, contactInput({ companyName: 'Lead Co' }), {
+      idempotencyKey: 'nm-key-0001'
+    });
+    expect(lead.displayName).toBe('Lead Co');
+    const error = await failure(
+      service.crm.updateContact(actor, lead.id, { companyId: null }, 1, {
+        idempotencyKey: 'nm-key-0002'
+      })
+    );
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(error.fields).toHaveProperty('firstName');
+    const renamed = await service.crm.updateContact(
+      actor,
+      lead.id,
+      { companyName: 'Renamed Lead Co' },
+      1,
+      { idempotencyKey: 'nm-key-0003' }
+    );
+    expect(renamed.displayName).toBe('Renamed Lead Co');
+  });
+
+  it('clears the old company’s primary contact when its primary contact moves away', async () => {
+    const { service, actor } = setup();
+    const ada = await service.crm.createContact(
+      actor,
+      contactInput({ firstName: 'Ada', companyName: 'Primary Co' }),
+      { idempotencyKey: 'pc-key-0001' }
+    );
+    const companyId = ada.company!.id;
+    await service.crm.updateCompany(actor, companyId, { primaryContactId: ada.id }, 1, {
+      idempotencyKey: 'pc-key-0002'
+    });
+    await service.crm.updateContact(actor, ada.id, { companyName: 'Elsewhere' }, 1, {
+      idempotencyKey: 'pc-key-0003'
+    });
+    const { company } = await service.crm.getCompany(actor, companyId);
+    expect(company).toMatchObject({ primaryContact: null, version: 3 });
+  });
+
+  it('keeps a primary contact someone else chose between our read and commit', async () => {
+    const { service, actor, store } = setup();
+    const ada = await service.crm.createContact(
+      actor,
+      contactInput({ firstName: 'Ada', companyName: 'Race Co' }),
+      { idempotencyKey: 'rc-key-0001' }
+    );
+    const grace = await service.crm.createContact(
+      actor,
+      contactInput({ firstName: 'Grace', companyId: ada.company!.id }),
+      { idempotencyKey: 'rc-key-0002' }
+    );
+    const companyId = ada.company!.id;
+    await service.crm.updateCompany(actor, companyId, { primaryContactId: ada.id }, 1, {
+      idempotencyKey: 'rc-key-0003'
+    });
+    store.beforeNextCommit((db) => {
+      db.prepare('UPDATE companies SET primary_contact_id = ? WHERE id = ?').run(
+        grace.id,
+        companyId
+      );
+    });
+    await service.crm.updateContact(actor, ada.id, { companyId: null }, 1, {
+      idempotencyKey: 'rc-key-0004'
+    });
+    expect((await service.crm.getCompany(actor, companyId)).company.primaryContact?.id).toBe(
+      grace.id
+    );
+  });
+
+  it('reports absent contacts, stale versions, a version lost at commit, and empty edits', async () => {
+    const { service, actor, store } = setup();
+    expect(
+      (
+        await failure(
+          service.crm.updateContact(actor, crypto.randomUUID(), { phone: '1' }, 1, {
+            idempotencyKey: 'uce-key-0001'
+          })
+        )
+      ).code
+    ).toBe('NOT_FOUND');
+    const contact = await service.crm.createContact(actor, contactInput({ firstName: 'V' }), {
+      idempotencyKey: 'uce-key-0002'
+    });
+    expect(
+      (
+        await failure(
+          service.crm.updateContact(actor, contact.id, { phone: '1' }, 2, {
+            idempotencyKey: 'uce-key-0003'
+          })
+        )
+      ).code
+    ).toBe('VERSION_MISMATCH');
+    expect(
+      (
+        await failure(
+          service.crm.updateContact(actor, contact.id, {}, 1, { idempotencyKey: 'uce-key-0004' })
+        )
+      ).code
+    ).toBe('VALIDATION_FAILED');
+    expect(
+      (
+        await failure(
+          service.crm.updateContact(
+            actor,
+            contact.id,
+            { companyId: null, companyName: 'Both' },
+            1,
+            { idempotencyKey: 'uce-key-0005' }
+          )
+        )
+      ).fields
+    ).toHaveProperty('companyName');
+    store.beforeNextCommit((db) => {
+      db.prepare("UPDATE contacts SET version = 9, phone = 'theirs' WHERE id = ?").run(contact.id);
+    });
+    expect(
+      (
+        await failure(
+          service.crm.updateContact(actor, contact.id, { phone: 'mine' }, 1, {
+            idempotencyKey: 'uce-key-0006'
+          })
+        )
+      ).code
+    ).toBe('VERSION_MISMATCH');
+    expect(store.count('contacts', "id = ? AND phone = 'theirs'", contact.id)).toBe(1);
+    // A replay with the same key returns the original result.
+    const once = await service.crm.updateContact(actor, contact.id, { jobTitle: 'Eng' }, 9, {
+      idempotencyKey: 'uce-key-0007'
+    });
+    expect(
+      await service.crm.updateContact(actor, contact.id, { jobTitle: 'Eng' }, 9, {
+        idempotencyKey: 'uce-key-0007'
+      })
+    ).toEqual(once);
+  });
+
+  it('requires crm.write', async () => {
+    const { service, actor, store } = setup();
+    const contact = await service.crm.createContact(actor, contactInput({ firstName: 'W' }), {
+      idempotencyKey: 'ucw-key-0001'
+    });
+    const reader = {
+      ...actor,
+      email: 'reader@example.com',
+      userId: store.addUser('reader@example.com', 'read-only')
+    };
+    expect(
+      (
+        await failure(
+          service.crm.updateContact(reader, contact.id, { phone: '1' }, 1, {
+            idempotencyKey: 'ucw-key-0002'
+          })
+        )
+      ).code
+    ).toBe('FORBIDDEN');
+  });
+});
+
 describe('authorization', () => {
   it('denies writes to read-only users with the request id', async () => {
     const { service, store } = setup();

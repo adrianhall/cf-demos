@@ -405,6 +405,60 @@ export const UpdateCompanyInputSchema = v.pipe(
 export type UpdateCompanyInput = v.InferOutput<typeof UpdateCompanyInputSchema>;
 
 /**
+ * Request body for updating a contact. Omitted fields are unchanged; `null` clears a field.
+ *
+ * The company follows the create rules: `companyId` attaches an existing company, `companyName`
+ * reuses a company with that name (case-insensitively) or creates one, and `companyId: null`
+ * detaches the contact. The two are mutually exclusive. Whether the contact still has a name or a
+ * company after the change depends on the stored record, so the Data Worker checks that rule.
+ */
+export const UpdateContactInputSchema = v.pipe(
+  v.strictObject({
+    /**
+     * New given name.
+     */
+    firstName: v.optional(optionalText('First name', 100)),
+    /**
+     * New family name.
+     */
+    lastName: v.optional(optionalText('Last name', 100)),
+    /**
+     * New e-mail address.
+     */
+    email: v.optional(OptionalEmailSchema),
+    /**
+     * New telephone number.
+     */
+    phone: v.optional(optionalText('Phone', 40)),
+    /**
+     * New job title.
+     */
+    jobTitle: v.optional(optionalText('Job title', 100)),
+    /**
+     * Existing company to move to, or `null` to detach.
+     */
+    companyId: v.optional(v.nullable(IdSchema)),
+    /**
+     * Company name to reuse or create.
+     */
+    companyName: v.optional(requiredText('Company name', 200))
+  }),
+  v.check((input) => Object.keys(input).length > 0, 'Provide at least one field to change.'),
+  v.forward(
+    v.check(
+      (input) => input.companyId === undefined || input.companyName === undefined,
+      'Choose an existing company or enter a new company name, not both.'
+    ),
+    ['companyName']
+  )
+);
+
+/**
+ * A validated update-contact request.
+ */
+export type UpdateContactInput = v.InferOutput<typeof UpdateContactInputSchema>;
+
+/**
  * Query string for listing or searching contacts and companies.
  *
  * Values arrive as strings from the URL, so `limit` is parsed from text.

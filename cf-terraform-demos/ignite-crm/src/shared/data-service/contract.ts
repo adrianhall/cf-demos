@@ -26,6 +26,7 @@ import type {
   CreateContactInput,
   Dashboard,
   UpdateCompanyInput,
+  UpdateContactInput,
   UserRef
 } from '../api/crm.ts';
 import type { CompanyDetail, ContactDetail } from '../api/customer.ts';
@@ -398,6 +399,23 @@ export interface ContactsPort {
   createContact(
     actor: ActorContext,
     input: CreateContactInput,
+    meta: MutationMeta
+  ): Promise<Contact>;
+  /**
+   * Update a contact if it is still at the expected version. Moving the contact away from a company
+   * whose primary contact it was clears that company's primary contact in the same write.
+   *
+   * @param actor The caller.
+   * @param id Contact identifier.
+   * @param input Fields to change.
+   * @param expectedVersion Version the caller last read.
+   * @param meta Idempotency metadata.
+   */
+  updateContact(
+    actor: ActorContext,
+    id: string,
+    input: UpdateContactInput,
+    expectedVersion: number,
     meta: MutationMeta
   ): Promise<Contact>;
   /**

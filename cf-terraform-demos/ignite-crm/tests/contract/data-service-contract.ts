@@ -256,6 +256,52 @@ export function dataServiceContractTests(
       ).toBe('VERSION_MISMATCH');
     });
 
+    it('edits a contact, moving it to a new company and clearing the old primary contact', async () => {
+      const sales = await actor('contract-sales@example.com');
+      const contact = await harness.service.crm.createContact(
+        sales,
+        {
+          firstName: 'Editable',
+          lastName: null,
+          email: null,
+          phone: null,
+          jobTitle: null,
+          companyId: null,
+          companyName: 'Old Co'
+        },
+        { idempotencyKey: 'contract-ce-create' }
+      );
+      const oldCompanyId = contact.company?.id ?? '';
+      await harness.service.crm.updateCompany(
+        sales,
+        oldCompanyId,
+        { primaryContactId: contact.id },
+        1,
+        { idempotencyKey: 'contract-ce-primary' }
+      );
+      const updated = await harness.service.crm.updateContact(
+        sales,
+        contact.id,
+        { lastName: 'Person', companyName: 'New Co' },
+        1,
+        { idempotencyKey: 'contract-ce-1' }
+      );
+      expect(updated).toMatchObject({
+        displayName: 'Editable Person',
+        company: { name: 'New Co' },
+        version: 2
+      });
+      const { company: old } = await harness.service.crm.getCompany(sales, oldCompanyId);
+      expect(old.primaryContact).toBeNull();
+      expect(
+        await codeOf(
+          harness.service.crm.updateContact(sales, contact.id, { phone: '1' }, 1, {
+            idempotencyKey: 'contract-ce-2'
+          })
+        )
+      ).toBe('VERSION_MISMATCH');
+    });
+
     it('sets a primary contact only from the company’s own contacts', async () => {
       const sales = await actor('contract-sales@example.com');
       const contact = await harness.service.crm.createContact(

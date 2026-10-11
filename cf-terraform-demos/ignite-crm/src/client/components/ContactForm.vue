@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * Accessible create-contact form.
+ * Accessible create- and edit-contact form. With a `contact` prop it edits that record (the draft
+ * starts from its values and the submit button says "Save contact"); without one it creates.
  *
  * Collects a draft and emits it; the parent submits. Server field errors passed in through
  * `fieldErrors` appear on the matching inputs, and a summary alert receives focus so keyboard and
@@ -10,38 +11,17 @@
  * @fires cancel When the user cancels.
  */
 import { nextTick, reactive, ref, watch } from 'vue';
+import type { Contact } from '../../shared/api/crm.ts';
+import { type ContactDraft, contactDraftFrom } from '../services/crm-draft.ts';
 
-/**
- * Editable form fields.
- */
-export interface ContactDraft {
-  /**
-   * Given name.
-   */
-  firstName: string;
-  /**
-   * Family name.
-   */
-  lastName: string;
-  /**
-   * E-mail.
-   */
-  email: string;
-  /**
-   * Telephone.
-   */
-  phone: string;
-  /**
-   * Job title.
-   */
-  jobTitle: string;
-  /**
-   * Company name to reuse or create.
-   */
-  companyName: string;
-}
+export type { ContactDraft } from '../services/crm-draft.ts';
 
 const props = defineProps<{
+  /**
+   * The contact to edit; omit to create a new one. Read once when the form mounts, so a reload
+   * underneath an open editor never discards the user's draft.
+   */
+  contact?: Contact | null;
   /**
    * Whether a submission is in flight.
    */
@@ -67,14 +47,11 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
-const draft = reactive<ContactDraft>({
-  firstName: '',
-  lastName: '',
-  email: '',
-  phone: '',
-  jobTitle: '',
-  companyName: ''
-});
+const draft = reactive<ContactDraft>(
+  props.contact
+    ? contactDraftFrom(props.contact)
+    : { firstName: '', lastName: '', email: '', phone: '', jobTitle: '', companyName: '' }
+);
 const localError = ref<string | null>(null);
 const summary = ref<HTMLElement | null>(null);
 
@@ -175,7 +152,11 @@ watch(
           v-model="draft.companyName"
           label="Company"
           autocomplete="organization"
-          hint="An existing company with this name is reused; otherwise one is created."
+          :hint="
+            contact
+              ? 'Change to move this contact: an existing company with this name is reused; otherwise one is created. Clear to remove the company.'
+              : 'An existing company with this name is reused; otherwise one is created.'
+          "
           persistent-hint
           :error-messages="errorsFor('companyName')"
         />
@@ -183,7 +164,9 @@ watch(
     </v-row>
     <div class="d-flex justify-end ga-2 mt-4">
       <v-btn variant="text" :disabled="submitting" @click="emit('cancel')">Cancel</v-btn>
-      <v-btn type="submit" color="primary" :loading="submitting">Create contact</v-btn>
+      <v-btn type="submit" color="primary" :loading="submitting">{{
+        contact ? 'Save contact' : 'Create contact'
+      }}</v-btn>
     </div>
   </v-form>
 </template>

@@ -14,6 +14,7 @@ import type {
 } from '../../../shared/api/crm.ts';
 import type {
   CompanyChange,
+  ContactChange,
   CrmRepository,
   ListCriteria,
   NewCompanyRow,
@@ -450,6 +451,67 @@ export class D1CrmRepository extends D1IdempotencyReader implements CrmRepositor
         )
       );
       tx.requireChanged('VERSION_MISMATCH');
+      writeEnvelope(tx, write.envelope);
+      return Promise.resolve();
+    });
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async updateContact(write: {
+    change: ContactChange;
+    newCompany: NewCompanyRow | null;
+    existingCompanyId: string | null;
+    leftCompanyId: string | null;
+    envelope: MutationEnvelope;
+  }): Promise<void> {
+    const { change } = write;
+    await this.port.transaction((tx) => {
+      if (write.newCompany !== null) {
+        insertCompanyRow(tx.write.bind(tx), write.newCompany);
+      }
+      if (write.existingCompanyId !== null) {
+        tx.requireRow(
+          sql(
+            'SELECT count(*) FROM companies WHERE id = ? AND deleted_at IS NULL',
+            write.existingCompanyId
+          ),
+          'NOT_FOUND'
+        );
+      }
+      tx.write(
+        sql(
+          `UPDATE contacts
+              SET first_name = ?, last_name = ?, display_name = ?, email = ?, phone = ?,
+                  job_title = ?, company_id = ?, version = version + 1, updated_at = ?
+            WHERE id = ? AND version = ? AND deleted_at IS NULL`,
+          change.firstName,
+          change.lastName,
+          change.displayName,
+          change.email,
+          change.phone,
+          change.jobTitle,
+          change.companyId,
+          change.updatedAt,
+          change.id,
+          change.expectedVersion
+        )
+      );
+      tx.requireChanged('VERSION_MISMATCH');
+      if (write.leftCompanyId !== null) {
+        // Conditional, not guarded: if someone already chose another primary contact, keep it.
+        tx.write(
+          sql(
+            `UPDATE companies
+                SET primary_contact_id = NULL, version = version + 1, updated_at = ?
+              WHERE id = ? AND primary_contact_id = ?`,
+            change.updatedAt,
+            write.leftCompanyId,
+            change.id
+          )
+        );
+      }
       writeEnvelope(tx, write.envelope);
       return Promise.resolve();
     });

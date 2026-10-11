@@ -17,7 +17,8 @@ import {
   CreateContactInputSchema,
   DashboardSchema,
   ListQuerySchema,
-  UpdateCompanyInputSchema
+  UpdateCompanyInputSchema,
+  UpdateContactInputSchema
 } from '../../../shared/api/crm.ts';
 import { CompanyDetailSchema, ContactDetailSchema } from '../../../shared/api/customer.ts';
 import { CompanyOverviewSchema, ContactOverviewSchema } from '../../../shared/api/overview.ts';
@@ -159,6 +160,25 @@ export function crmRoutes(): Hono<ApiEnv> {
     );
     context.header('ETag', `"${detail.contact.version}"`);
     return context.json(detail);
+  });
+
+  router.patch('/contacts/:id', jsonBodyLimit(), async (context) => {
+    const id = pathId(context);
+    const meta = mutationMeta(context);
+    const version = expectedVersion(context);
+    const input = parseRequest(
+      UpdateContactInputSchema,
+      await readJsonBody(context.req.raw),
+      context.get('requestId'),
+      'body'
+    );
+    const actor = await actorOf(context);
+    const contact = checkResponse(
+      ContactSchema,
+      await context.get('data').crm.updateContact(actor, id, input, version, meta)
+    );
+    context.header('ETag', `"${contact.version}"`);
+    return context.json(contact);
   });
 
   router.get('/contacts/:id/overview', async (context) => {

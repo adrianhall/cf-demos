@@ -2,7 +2,7 @@
 /**
  * One contact's customer overview: details, next action, deals, delivery projects, calls and
  * meetings, linked notes, a merged timeline, and history, with actions to create a deal for this
- * contact and to log an activity with them.
+ * contact, to log an activity with them, and to edit the contact's details.
  *
  * The page makes one composite request (`GET /contacts/:id/overview`). If only the notes section
  * could not be loaded, the server says so explicitly and the Notes card shows that warning with a
@@ -10,11 +10,12 @@
  */
 import { computed, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { mdiCalendarPlus, mdiPlus } from '@mdi/js';
-import type { UserRef } from '../../shared/api/crm.ts';
+import { mdiCalendarPlus, mdiPencil, mdiPlus } from '@mdi/js';
+import type { Contact, UserRef } from '../../shared/api/crm.ts';
 import type { CreateActivityInput, Pipeline } from '../../shared/api/sales.ts';
 import ActivityForm from '../components/ActivityForm.vue';
 import ActivityList from '../components/ActivityList.vue';
+import ContactForm from '../components/ContactForm.vue';
 import CustomerTimeline from '../components/CustomerTimeline.vue';
 import DealForm from '../components/DealForm.vue';
 import DealList from '../components/DealList.vue';
@@ -29,6 +30,7 @@ import { useReturnFocus } from '../composables/useReturnFocus.ts';
 import { useSession } from '../composables/useSession.ts';
 import { useSubmission } from '../composables/useSubmission.ts';
 import { api } from '../services/api-client.ts';
+import { type ContactDraft, toUpdateContactInput } from '../services/crm-draft.ts';
 import { type DealFormValue, toCreateDealInput } from '../services/deal-draft.ts';
 
 const props = defineProps<{
@@ -65,6 +67,62 @@ watch(
   () => void detail.load(),
   { immediate: true }
 );
+
+const editing = ref(false);
+useReturnFocus(editing);
+/**
+ * The contact as it was when the editor opened: the base the user's edits are measured against, so
+ * after a conflict and "Load latest version" an untouched field keeps the other person's value.
+ */
+const baseContact = shallowRef<Contact | null>(null);
+const editor = useSubmission({ forbidden: 'Your role does not allow changing contacts.' });
+const noChanges = ref(false);
+
+/**
+ * Open the contact editor.
+ */
+function openEdit(): void {
+  editor.reset();
+  noChanges.value = false;
+  baseContact.value = contact.value;
+  editing.value = true;
+}
+
+/**
+ * Save only the changed fields against the newest loaded version.
+ *
+ * @param draft The form value.
+ */
+async function saveContact(draft: ContactDraft): Promise<void> {
+  const current = contact.value;
+  const base = baseContact.value ?? current;
+  if (current === null || base === null) {
+    return;
+  }
+  const changes = toUpdateContactInput(base, draft);
+  if (changes === null) {
+    noChanges.value = true;
+    editing.value = false;
+    return;
+  }
+  const updated = await editor.run((key) =>
+    api.updateContact(current.id, changes, current.version, key)
+  );
+  if (updated !== undefined) {
+    editing.value = false;
+    await detail.load();
+  }
+}
+
+/**
+ * Load the latest version underneath the open editor, keeping the user's draft.
+ */
+async function reloadLatest(): Promise<void> {
+  await detail.load();
+  editor.conflict.value = false;
+  editor.formError.value =
+    'The latest version is loaded. Your edits are still in the form; review them and save again.';
+}
 
 const pipeline = shallowRef<Pipeline | null>(null);
 const assignees = shallowRef<UserRef[]>([]);
@@ -143,6 +201,7 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
       <div class="d-flex flex-wrap align-center ga-2 mb-1">
         <h1 id="contact-title" class="text-h4 flex-grow-1">{{ contact.displayName }}</h1>
         <template v-if="can('crm.write')">
+          <v-btn variant="tonal" :prepend-icon="mdiPencil" @click="openEdit">Edit contact</v-btn>
           <v-btn variant="tonal" :prepend-icon="mdiCalendarPlus" @click="openLog"
             >Log activity</v-btn
           >
@@ -150,6 +209,16 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
         </template>
       </div>
       <p class="text-medium-emphasis mb-4">{{ contact.jobTitle ?? 'No job title' }}</p>
+      <v-alert
+        v-if="noChanges"
+        type="info"
+        variant="tonal"
+        density="compact"
+        class="mb-4"
+        closable
+        @click:close="noChanges = false"
+        >Nothing changed, so nothing was saved.</v-alert
+      >
       <v-row>
         <v-col cols="12" md="7">
           <NextActionCard
@@ -214,6 +283,35 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
           </v-card>
         </v-col>
       </v-row>
+
+      <v-dialog v-model="editing" max-width="720" aria-labelledby="contact-form-title" persistent>
+        <v-card>
+          <v-card-title><h2 id="contact-form-title" class="text-h6">Edit contact</h2></v-card-title>
+          <v-card-text>
+            <v-alert
+              v-if="editor.conflict.value"
+              type="warning"
+              variant="tonal"
+              class="mb-4"
+              data-testid="conflict"
+            >
+              Someone else changed this contact after you opened it. Your edits are kept below.
+              <template #append>
+                <v-btn variant="text" @click="reloadLatest">Load latest version</v-btn>
+              </template>
+            </v-alert>
+            <ContactForm
+              v-if="editing"
+              :contact="baseContact"
+              :submitting="editor.submitting.value"
+              :field-errors="editor.fieldErrors.value"
+              :form-error="editor.conflict.value ? null : editor.formError.value"
+              @submit="saveContact"
+              @cancel="editing = false"
+            />
+          </v-card-text>
+        </v-card>
+      </v-dialog>
 
       <v-dialog v-model="creating" max-width="760" aria-labelledby="deal-form-title">
         <v-card>

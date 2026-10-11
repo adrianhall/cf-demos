@@ -19,6 +19,8 @@ export function crmModule(contacts: ContactsPort, sales: SalesPort): CrmPort {
     listContacts: (actor, options) => contacts.listContacts(actor, options),
     getContact: (actor, id) => contacts.getContact(actor, id),
     createContact: (actor, input, meta) => contacts.createContact(actor, input, meta),
+    updateContact: (actor, id, input, version, meta) =>
+      contacts.updateContact(actor, id, input, version, meta),
     listCompanies: (actor, options) => contacts.listCompanies(actor, options),
     getCompany: (actor, id) => contacts.getCompany(actor, id),
     createCompany: (actor, input, meta) => contacts.createCompany(actor, input, meta),

@@ -554,6 +554,22 @@ seam a later MCP module would call, with the same RBAC.
   MCP, OAuth, Durable Object, R2, or Queue dependency exists; Vuetify is the only component or CSS
   framework, and its registration is checked against the templates.
 
+## Follow-on pass 1
+
+Items from the first follow-on pass in
+[`03-follow-ons.md`](../../specs/ignite-crm/03-follow-ons.md), one commit each.
+
+- **Contact and company editing.** `PATCH /api/v1/contacts/:id` (new) and the existing
+  `PATCH /api/v1/companies/:id` back **Edit contact** and **Edit company** dialogs for `crm.write`
+  users; the Data Worker enforces the permission. Each save sends only the fields that changed
+  (`src/client/services/crm-draft.ts`), with `If-Match` and an idempotency key. A validation error
+  or a version conflict keeps the draft, and **Load latest version** lets the user save again
+  without reverting fields someone else changed. A contact's company is edited by name, exactly as
+  at creation: the same name (any case) is no change, another name reuses or creates that company,
+  and a blank name detaches. The merged record must still have a name or a company. When a company's
+  primary contact moves away, the same D1 batch clears that primary contact — unless someone already
+  chose another one, which the conditional SQL keeps.
+
 ## Known limitations (first release)
 
 - Notes cannot yet be deleted, task-list checkboxes are read-only (edit the Markdown to tick one),
@@ -565,9 +581,6 @@ seam a later MCP module would call, with the same RBAC.
   exposure.
 - Unfixed review items (mostly helper placement and typing polish) are listed in
   [`03-follow-ons.md`](../../specs/ignite-crm/03-follow-ons.md).
-- Contact/company editing and the personal profile/menu are recorded in
-  `specs/ignite-crm/03-follow-ons.md`; this phase adds project/task editing alongside deal editing.
-  The broader live client-side validation and phone-number normalization remain follow-ons.
 - The first-release contact action is one open ASAP or dated action per contact. More elaborate
   waiting/queued follow-ups and drag-and-drop ordering are not part of this review increment; the
   pipeline board uses a keyboard-first stage menu instead.

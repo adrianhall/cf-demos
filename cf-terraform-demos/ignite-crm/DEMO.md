@@ -46,7 +46,8 @@ menu button on mobile; all major routes are also keyboard reachable.
    name. The new contact opens with its next action, deals, projects, activities, notes, and a
    merged timeline. Follow the company link to its overview and back. Locally, open Priya Shah at
    `/contacts/00000000-0000-4000-8000-0000000000b1` and Northwind Traders to inspect populated
-   views. Contact and company **editing** is deliberately outside this release.
+   views. Use **Edit contact** or **Edit company** to change details; changing a contact's company
+   name moves it (reusing or creating that company), and a stale edit keeps your draft.
 3. **Sales.** On a contact, choose **New deal**, enter a title and amount, and save. Open **Deals**
    to see the board and list views; the board's **Move** menu changes the stage with the keyboard
    (no drag/drop). Log a call or meeting from the deal or contact page; multi-contact activities
@@ -127,6 +128,6 @@ in-app smoke test.
 The release SPA entry chunk is about **428.5 kB** (139.5 kB gzip), down from 735.8 kB before the
 Phase 6 split. Notes' `marked`/`dompurify` renderer is a separate ~75.0 kB chunk fetched on demand.
 See `README.md` for Worker sizes, architecture, lifecycle ownership, security choices, and
-trade-offs. Remaining follow-ons include CSV export, contact/company editing, pipeline drill-down
-links and quarterly reports, rate limiting/FTS before wider exposure, and several review-only
-refactors recorded in [`03-follow-ons.md`](../../specs/ignite-crm/03-follow-ons.md).
+trade-offs. Remaining follow-ons include CSV export, pipeline drill-down links and quarterly
+reports, rate limiting/FTS before wider exposure, and several review-only refactors recorded in
+[`03-follow-ons.md`](../../specs/ignite-crm/03-follow-ons.md).

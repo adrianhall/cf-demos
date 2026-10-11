@@ -238,6 +238,48 @@ describe('contacts and companies', () => {
     expect(await stale.json()).toMatchObject({ code: 'VERSION_MISMATCH' });
   });
 
+  it('updates a contact with If-Match, refusing a read-only user and a stale version', async () => {
+    const { call } = setup();
+    const created = (await (
+      await call('/api/v1/contacts', {
+        as: 'sales@example.com',
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'http-contact-e1' },
+        json: { firstName: 'Ada' }
+      })
+    ).json()) as { id: string };
+    const updated = await call(`/api/v1/contacts/${created.id}`, {
+      as: 'sales@example.com',
+      method: 'PATCH',
+      headers: { 'Idempotency-Key': 'http-contact-e2', 'If-Match': '"1"' },
+      json: { lastName: 'Lovelace' }
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.headers.get('ETag')).toBe('"2"');
+    expect(await updated.json()).toMatchObject({ displayName: 'Ada Lovelace' });
+    const stale = await call(`/api/v1/contacts/${created.id}`, {
+      as: 'sales@example.com',
+      method: 'PATCH',
+      headers: { 'Idempotency-Key': 'http-contact-e3', 'If-Match': '"1"' },
+      json: { phone: '1' }
+    });
+    expect(stale.status).toBe(409);
+    const forbidden = await call(`/api/v1/contacts/${created.id}`, {
+      as: 'reader@example.com',
+      method: 'PATCH',
+      headers: { 'Idempotency-Key': 'http-contact-e4', 'If-Match': '"2"' },
+      json: { phone: '1' }
+    });
+    expect(forbidden.status).toBe(403);
+    const invalid = await call(`/api/v1/contacts/${created.id}`, {
+      as: 'sales@example.com',
+      method: 'PATCH',
+      headers: { 'Idempotency-Key': 'http-contact-e5', 'If-Match': '"2"' },
+      json: { email: 'ahall@cloudflarecom', ownerId: crypto.randomUUID() }
+    });
+    expect(invalid.status).toBe(422);
+  });
+
   it('requires Idempotency-Key (428) and If-Match (428), and validates both (422)', async () => {
     const { call } = setup();
     expect(

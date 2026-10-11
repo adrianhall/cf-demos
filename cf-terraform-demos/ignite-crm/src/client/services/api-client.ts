@@ -10,10 +10,13 @@ import { AuditPageSchema, type AuditListQuery } from '../../shared/api/audit.ts'
 import { DisplayConfigurationSchema } from '../../shared/api/configuration.ts';
 import {
   CompanyPageSchema,
+  CompanySchema,
   type CreateContactInput,
   ContactPageSchema,
   ContactSchema,
-  DashboardSchema
+  DashboardSchema,
+  type UpdateCompanyInput,
+  type UpdateContactInput
 } from '../../shared/api/crm.ts';
 import { UserRefSchema } from '../../shared/api/crm.ts';
 import { CompanyDetailSchema, ContactDetailSchema } from '../../shared/api/customer.ts';
@@ -420,6 +423,45 @@ export class ApiClient {
       method: 'POST',
       body: input,
       headers: { 'Idempotency-Key': idempotencyKey }
+    });
+  }
+
+  /**
+   * Update a contact against the version last read.
+   *
+   * @param id Contact id.
+   * @param input Changed fields only.
+   * @param version Version the user started editing from (`If-Match`).
+   * @param idempotencyKey Key for this user intent.
+   * @returns The updated contact.
+   * @throws {ApiError} `validation` with field messages, `conflict` when the contact changed
+   *   meanwhile, `forbidden` without `crm.write`, or another failure kind.
+   */
+  updateContact(id: string, input: UpdateContactInput, version: number, idempotencyKey: string) {
+    return this.request(`/api/v1/contacts/${encodeURIComponent(id)}`, ContactSchema, {
+      method: 'PATCH',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey, 'If-Match': `"${version}"` }
+    });
+  }
+
+  /**
+   * Update a company against the version last read.
+   *
+   * @param id Company id.
+   * @param input Changed fields only.
+   * @param version Version the user started editing from (`If-Match`).
+   * @param idempotencyKey Key for this user intent.
+   * @returns The updated company.
+   * @throws {ApiError} `validation` with field messages, `conflict` when the company changed
+   *   meanwhile or the new name is taken, `forbidden` without `crm.write`, or another failure
+   *   kind.
+   */
+  updateCompany(id: string, input: UpdateCompanyInput, version: number, idempotencyKey: string) {
+    return this.request(`/api/v1/companies/${encodeURIComponent(id)}`, CompanySchema, {
+      method: 'PATCH',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey, 'If-Match': `"${version}"` }
     });
   }
 
