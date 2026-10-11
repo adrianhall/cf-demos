@@ -25,11 +25,10 @@ import {
   NoteSearchResultSchema,
   UpdateNoteInputSchema
 } from '../../../shared/api/notes.ts';
-import { IdSchema } from '../../../shared/common/ids.ts';
 import { DEFAULT_PAGE_SIZE } from '../../../shared/common/paging.ts';
-import { actorOf, type ApiContext, type ApiEnv } from '../context.ts';
+import { actorOf, type ApiEnv } from '../context.ts';
+import { expectedVersion, mutationMeta, pathId } from '../preconditions.ts';
 import { checkResponse, parseRequest } from '../problems.ts';
-import { expectedVersion, mutationMeta } from './crm.ts';
 
 /**
  * Largest note request body. The Markdown limit is 64 KiB of UTF-8, but JSON can escape one control
@@ -37,17 +36,6 @@ import { expectedVersion, mutationMeta } from './crm.ts';
  * Worker enforces the actual 64 KiB Markdown limit.
  */
 export const NOTE_BODY_LIMIT_BYTES = 512 * 1024;
-
-/**
- * Parse an `:id` path parameter.
- *
- * @param context Request context.
- * @returns The identifier.
- * @throws {ProblemDetailsError} `422` when it is not a lowercase UUID.
- */
-function pathId(context: ApiContext): string {
-  return parseRequest(IdSchema, context.req.param('id'), context.get('requestId'), 'path');
-}
 
 /**
  * Build the notes router mounted at `/api/v1`.

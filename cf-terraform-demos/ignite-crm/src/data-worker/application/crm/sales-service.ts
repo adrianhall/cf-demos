@@ -65,9 +65,9 @@ import {
   IdempotentMutation,
   type MutationEnvelope
 } from '../shared/mutations.ts';
+import { decodeCursor, encodeCursor, type ListCriteria } from '../shared/paging.ts';
 import type { Runtime } from '../shared/runtime.ts';
 import { validate, validateActor, validateId, validateIdempotencyKey } from '../shared/validate.ts';
-import { decodeCursor, encodeCursor, type ListCriteria } from './crm-service.ts';
 
 /**
  * Most rows the action stream returns.

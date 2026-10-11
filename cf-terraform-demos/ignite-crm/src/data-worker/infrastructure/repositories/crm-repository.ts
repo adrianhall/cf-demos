@@ -16,11 +16,11 @@ import type {
   CompanyChange,
   ContactChange,
   CrmRepository,
-  ListCriteria,
   NewCompanyRow,
   NewContactRow
 } from '../../application/crm/crm-service.ts';
 import type { MutationEnvelope } from '../../application/shared/mutations.ts';
+import type { ListCriteria } from '../../application/shared/paging.ts';
 import { likeContains } from '../../domain/crm/contacts.ts';
 import { type D1Port, sql, type SqlStatement } from '../d1/d1-port.ts';
 import { D1IdempotencyReader, writeEnvelope } from './envelope.ts';

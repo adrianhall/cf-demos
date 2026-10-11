@@ -16,7 +16,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { createDataClient, type DataRpc } from '../../src/application-worker/data-client.ts';
-import { encodeCursor } from '../../src/data-worker/application/crm/crm-service.ts';
+import { encodeCursor } from '../../src/data-worker/application/shared/paging.ts';
 import { isServiceError, serviceError } from '../../src/shared/common/errors.ts';
 import type { ActorContext } from '../../src/shared/data-service/contract.ts';
 import { createFakeDataService, testRuntime } from '../fakes/fake-data-service.ts';

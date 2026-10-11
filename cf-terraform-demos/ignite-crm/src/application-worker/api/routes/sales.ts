@@ -23,22 +23,10 @@ import {
   SetNextActionInputSchema,
   UpdateDealInputSchema
 } from '../../../shared/api/sales.ts';
-import { IdSchema } from '../../../shared/common/ids.ts';
 import { DEFAULT_PAGE_SIZE } from '../../../shared/common/paging.ts';
 import { actorOf, type ApiContext, type ApiEnv } from '../context.ts';
+import { expectedVersion, mutationMeta, pathId } from '../preconditions.ts';
 import { checkResponse, parseRequest } from '../problems.ts';
-import { expectedVersion, mutationMeta } from './crm.ts';
-
-/**
- * Parse an `:id` path parameter.
- *
- * @param context Request context.
- * @returns The identifier.
- * @throws {ProblemDetailsError} `422` when it is not a lowercase UUID.
- */
-function pathId(context: ApiContext): string {
-  return parseRequest(IdSchema, context.req.param('id'), context.get('requestId'), 'path');
-}
 
 /**
  * Read an optional `If-Match` header for an upsert: present means "replace this version", absent

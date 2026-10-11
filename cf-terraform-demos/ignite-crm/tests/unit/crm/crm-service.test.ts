@@ -4,13 +4,10 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  decodeCursor,
-  encodeCursor
-} from '../../../src/data-worker/application/crm/crm-service.ts';
-import {
   canonicalJson,
   IDEMPOTENCY_RETENTION_MS
 } from '../../../src/data-worker/application/shared/mutations.ts';
+import { decodeCursor, encodeCursor } from '../../../src/data-worker/application/shared/paging.ts';
 import { contactDisplayName, likeContains } from '../../../src/data-worker/domain/crm/contacts.ts';
 import type { ActorContext } from '../../../src/shared/data-service/contract.ts';
 import { createFakeDataService, testRuntime } from '../../fakes/fake-data-service.ts';

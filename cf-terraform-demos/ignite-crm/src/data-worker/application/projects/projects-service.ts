@@ -63,13 +63,13 @@ import {
   needsManage
 } from '../../domain/projects/delivery.ts';
 import { sumTaskCounts } from '../../domain/reports/reports.ts';
-import { decodeCursor, encodeCursor, type ListCriteria } from '../crm/crm-service.ts';
 import type { Authorizer } from '../permissions/permissions-service.ts';
 import {
   type IdempotencyRepository,
   IdempotentMutation,
   type MutationEnvelope
 } from '../shared/mutations.ts';
+import { decodeCursor, encodeCursor, type ListCriteria } from '../shared/paging.ts';
 import type { Runtime } from '../shared/runtime.ts';
 import { validate, validateActor, validateId, validateIdempotencyKey } from '../shared/validate.ts';
 

@@ -5,8 +5,6 @@
  */
 
 import { Hono } from 'hono';
-import * as v from 'valibot';
-import { preconditionRequired } from '@adrianhall/cloudflare-toolkit/errors';
 import { jsonBodyLimit, readJsonBody } from '@demos/worker-common';
 import {
   CompanyPageSchema,
@@ -22,61 +20,12 @@ import {
 } from '../../../shared/api/crm.ts';
 import { CompanyDetailSchema, ContactDetailSchema } from '../../../shared/api/customer.ts';
 import { CompanyOverviewSchema, ContactOverviewSchema } from '../../../shared/api/overview.ts';
-import { IdSchema } from '../../../shared/common/ids.ts';
 import { DEFAULT_PAGE_SIZE } from '../../../shared/common/paging.ts';
-import type { ListOptions, MutationMeta } from '../../../shared/data-service/contract.ts';
-import { IdempotencyKeySchema } from '../../../shared/validation/fields.ts';
+import type { ListOptions } from '../../../shared/data-service/contract.ts';
 import { companyOverview, contactOverview } from '../../overview/customer-overview.ts';
 import { actorOf, type ApiContext, type ApiEnv } from '../context.ts';
+import { expectedVersion, mutationMeta, pathId } from '../preconditions.ts';
 import { checkResponse, parseRequest } from '../problems.ts';
-
-/**
- * Schema for an `If-Match` header carrying a weak or strong numeric version ETag.
- */
-const IfMatchSchema = v.pipe(
-  v.string(),
-  v.regex(/^(?:W\/)?"\d{1,9}"$/u, 'If-Match must be a version ETag such as "3".'),
-  v.transform((value) => Number(value.replace(/^W\//u, '').replaceAll('"', ''))),
-  v.minValue(1)
-);
-
-/**
- * Read the mandatory `Idempotency-Key` header.
- *
- * @param context Request context.
- * @returns Mutation metadata.
- * @throws {ProblemDetailsError} `428` when absent, `422` when malformed.
- */
-export function mutationMeta(context: ApiContext): MutationMeta {
-  const header = context.req.header('Idempotency-Key');
-  if (header === undefined) {
-    throw preconditionRequired({
-      detail: 'Mutations require an Idempotency-Key header.',
-      extensions: { requestId: context.get('requestId') }
-    });
-  }
-  return {
-    idempotencyKey: parseRequest(IdempotencyKeySchema, header, context.get('requestId'), 'query')
-  };
-}
-
-/**
- * Read the mandatory `If-Match` header.
- *
- * @param context Request context.
- * @returns The expected version.
- * @throws {ProblemDetailsError} `428` when absent, `422` when malformed.
- */
-export function expectedVersion(context: ApiContext): number {
-  const header = context.req.header('If-Match');
-  if (header === undefined) {
-    throw preconditionRequired({
-      detail: 'Updates require an If-Match header with the version you last read.',
-      extensions: { requestId: context.get('requestId') }
-    });
-  }
-  return parseRequest(IfMatchSchema, header, context.get('requestId'), 'query');
-}
 
 /**
  * Parse list query parameters.
@@ -97,17 +46,6 @@ function listOptions(context: ApiContext): ListOptions {
     ...(query.q === undefined ? {} : { q: query.q }),
     ...(query.cursor === undefined ? {} : { cursor: query.cursor })
   };
-}
-
-/**
- * Parse an `:id` path parameter.
- *
- * @param context Request context.
- * @returns The identifier.
- * @throws {ProblemDetailsError} `422` when it is not a lowercase UUID.
- */
-function pathId(context: ApiContext): string {
-  return parseRequest(IdSchema, context.req.param('id'), context.get('requestId'), 'path');
 }
 
 /**

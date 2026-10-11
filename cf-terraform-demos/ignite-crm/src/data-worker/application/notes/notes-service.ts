@@ -60,7 +60,6 @@ import {
   parseSnippet,
   sortLinks
 } from '../../domain/notes/notes.ts';
-import { decodeCursor, encodeCursor } from '../crm/crm-service.ts';
 import type { Authorizer } from '../permissions/permissions-service.ts';
 import {
   type IdempotencyRepository,
@@ -68,6 +67,7 @@ import {
   type MutationEnvelope,
   requestHash
 } from '../shared/mutations.ts';
+import { decodeCursor, encodeCursor } from '../shared/paging.ts';
 import type { Runtime } from '../shared/runtime.ts';
 import { validate, validateActor, validateId, validateIdempotencyKey } from '../shared/validate.ts';
 

@@ -49,6 +49,7 @@ import {
   IdempotentMutation,
   type MutationEnvelope
 } from '../shared/mutations.ts';
+import { decodeCursor, encodeCursor, type ListCriteria } from '../shared/paging.ts';
 import type { Runtime } from '../shared/runtime.ts';
 import { validate, validateActor, validateId, validateIdempotencyKey } from '../shared/validate.ts';
 import type { SalesRepository } from './sales-service.ts';
@@ -203,24 +204,6 @@ export interface CompanyChange {
 }
 
 /**
- * A page request after validation.
- */
-export interface ListCriteria {
-  /**
-   * Lower-cased search term, if any.
-   */
-  readonly q: string | null;
-  /**
-   * Page size.
-   */
-  readonly limit: number;
-  /**
-   * Decoded keyset position.
-   */
-  readonly after: { readonly key: string; readonly id: string } | null;
-}
-
-/**
  * Storage port for the CRM module.
  */
 export interface CrmRepository extends IdempotencyRepository {
@@ -360,52 +343,6 @@ const HISTORY_LIMIT = 20;
  * Maximum contacts listed on a company detail page.
  */
 const COMPANY_CONTACT_LIMIT = 100;
-
-/**
- * Encode a keyset position as an opaque cursor.
- *
- * @param key Sort key of the last row.
- * @param id Identifier of the last row.
- * @returns A base64url cursor.
- */
-export function encodeCursor(key: string, id: string): string {
-  const bytes = new TextEncoder().encode(JSON.stringify([key, id]));
-  let binary = '';
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary).replace(/\+/gu, '-').replace(/\//gu, '_').replace(/=+$/u, '');
-}
-
-/**
- * Decode a cursor produced by {@link encodeCursor}.
- *
- * @param cursor The cursor.
- * @param requestId Request identifier for the error.
- * @returns The keyset position.
- * @throws {Error} A `VALIDATION_FAILED` service error when the cursor was not produced here.
- */
-export function decodeCursor(cursor: string, requestId: string): { key: string; id: string } {
-  try {
-    const binary = atob(cursor.replace(/-/gu, '+').replace(/_/gu, '/'));
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
-    if (
-      Array.isArray(parsed)
-      && parsed.length === 2
-      && typeof parsed[0] === 'string'
-      && typeof parsed[1] === 'string'
-    ) {
-      return { key: parsed[0], id: parsed[1] };
-    }
-  } catch {
-    // Fall through to the validation error below.
-  }
-  throw serviceError('VALIDATION_FAILED', 'The cursor is invalid.', {
-    requestId,
-    fields: { cursor: 'The cursor is invalid.' }
-  });
-}
 
 /**
  * Schema for list options crossing RPC.

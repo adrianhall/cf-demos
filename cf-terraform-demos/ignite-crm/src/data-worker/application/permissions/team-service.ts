@@ -44,12 +44,12 @@ import type {
 } from '../../../shared/data-service/contract.ts';
 import { type Role, ROLE_LABELS, ROLES } from '../../../shared/permissions.ts';
 import { SearchTermSchema, VersionSchema } from '../../../shared/validation/fields.ts';
-import { decodeCursor, encodeCursor } from '../crm/crm-service.ts';
 import {
   type IdempotencyRepository,
   IdempotentMutation,
   type MutationEnvelope
 } from '../shared/mutations.ts';
+import { decodeCursor, encodeCursor } from '../shared/paging.ts';
 import type { Runtime } from '../shared/runtime.ts';
 import { validate, validateActor, validateId, validateIdempotencyKey } from '../shared/validate.ts';
 import type { Authorizer } from './permissions-service.ts';

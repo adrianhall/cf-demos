@@ -15,7 +15,6 @@ import type {
   DealDetail,
   Pipeline
 } from '../../../shared/api/sales.ts';
-import type { ListCriteria } from '../../application/crm/crm-service.ts';
 import type {
   ActionCandidate,
   ContactLink,
@@ -25,6 +24,7 @@ import type {
   SalesRepository
 } from '../../application/crm/sales-service.ts';
 import type { MutationEnvelope } from '../../application/shared/mutations.ts';
+import type { ListCriteria } from '../../application/shared/paging.ts';
 import { likeContains } from '../../domain/crm/contacts.ts';
 import { type D1Port, type D1TransactionPort, sql, type SqlValue } from '../d1/d1-port.ts';
 import { D1IdempotencyReader, writeEnvelope } from './envelope.ts';
