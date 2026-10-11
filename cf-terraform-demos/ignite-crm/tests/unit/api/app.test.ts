@@ -261,7 +261,7 @@ describe('contacts and companies', () => {
       as: 'sales@example.com',
       method: 'PATCH',
       headers: { 'Idempotency-Key': 'http-contact-e3', 'If-Match': '"1"' },
-      json: { phone: '1' }
+      json: { phone: '020 7946 0000' }
     });
     expect(stale.status).toBe(409);
     const forbidden = await call(`/api/v1/contacts/${created.id}`, {

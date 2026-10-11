@@ -261,8 +261,10 @@ describe('editing a contact', () => {
     await settle();
     // Only the phone was sent, so the other person's job title survives.
     const { contact } = await fake.service.crm.getContact(fake.sales, fake.ada.id);
-    expect(contact).toMatchObject({ phone: '020 7946 0000', jobTitle: 'Director', version: 3 });
+    expect(contact).toMatchObject({ phone: '+442079460000', jobTitle: 'Director', version: 3 });
     expect(wrapper.text()).toContain('Director');
+    // Stored as E.164, shown in the installation's national format.
+    expect(wrapper.text()).toContain('020 7946 0000');
   });
 });
 

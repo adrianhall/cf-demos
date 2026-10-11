@@ -13,6 +13,7 @@ import { useRouter } from 'vue-router';
 import { mdiCalendarPlus, mdiPencil, mdiPlus } from '@mdi/js';
 import type { Contact, UserRef } from '../../shared/api/crm.ts';
 import type { CreateActivityInput, Pipeline } from '../../shared/api/sales.ts';
+import { displayPhone } from '../../shared/phone.ts';
 import ActivityForm from '../components/ActivityForm.vue';
 import ActivityList from '../components/ActivityList.vue';
 import ContactForm from '../components/ContactForm.vue';
@@ -42,7 +43,7 @@ const props = defineProps<{
 
 const router = useRouter();
 const format = useFormat();
-const { can, session } = useSession();
+const { can, session, configuration } = useSession();
 const overview = useResource((signal) => api.contactOverview(props.id, signal));
 const detail = {
   ...overview,
@@ -51,6 +52,12 @@ const detail = {
 const contact = computed(() => detail.data.value?.contact ?? null);
 const notesWarning = computed(
   () => overview.data.value?.warnings.find((warning) => warning.section === 'notes') ?? null
+);
+/**
+ * The contact's phone in a readable format; legacy free-text values are shown unchanged.
+ */
+const phoneText = computed(() =>
+  displayPhone(contact.value?.phone ?? null, configuration.value?.region ?? 'GB')
 );
 const picked = computed(() =>
   contact.value === null
@@ -263,7 +270,7 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
                 </template>
               </v-list-item>
               <v-list-item title="E-mail" :subtitle="contact.email ?? '—'" />
-              <v-list-item title="Phone" :subtitle="contact.phone ?? '—'" />
+              <v-list-item title="Phone" :subtitle="phoneText ?? '—'" />
               <v-list-item title="Owner" :subtitle="contact.owner.displayName" />
               <v-list-item title="Created" :subtitle="format.dateTime(contact.createdAt)" />
             </v-list>

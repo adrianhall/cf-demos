@@ -6,6 +6,7 @@
  */
 
 import * as v from 'valibot';
+import { configuration } from '../../../configuration.ts';
 import {
   type Company,
   type CompanySummary,
@@ -37,6 +38,7 @@ import type {
   ListOptions,
   MutationMeta
 } from '../../../shared/data-service/contract.ts';
+import { normalizePhone } from '../../../shared/phone.ts';
 import { SearchTermSchema, VersionSchema } from '../../../shared/validation/fields.ts';
 import { companyNameKey, contactDisplayName } from '../../domain/crm/contacts.ts';
 import type { Authorizer } from '../permissions/permissions-service.ts';
@@ -584,7 +586,7 @@ export class CrmService implements ContactsPort {
       lastName: fields.lastName,
       displayName: contactDisplayName(fields.firstName, fields.lastName, company?.name ?? null),
       email: fields.email,
-      phone: fields.phone,
+      phone: this.phoneForWrite(fields.phone, caller.requestId),
       jobTitle: fields.jobTitle,
       companyId: company?.id ?? null,
       ownerId: caller.userId,
@@ -717,7 +719,10 @@ export class CrmService implements ContactsPort {
       lastName,
       displayName: contactDisplayName(firstName, lastName, company?.name ?? null),
       email: fields.email === undefined ? current.email : fields.email,
-      phone: fields.phone === undefined ? current.phone : fields.phone,
+      phone:
+        fields.phone === undefined
+          ? current.phone
+          : this.phoneForWrite(fields.phone, caller.requestId),
       jobTitle: fields.jobTitle === undefined ? current.jobTitle : fields.jobTitle,
       companyId: company?.id ?? null,
       updatedAt: at
@@ -996,6 +1001,25 @@ export class CrmService implements ContactsPort {
    * @param actor The caller.
    * @returns The reference.
    */
+  /**
+   * Normalize a new phone input; do not reinterpret an unchanged legacy value.
+   *
+   * @param value The submitted phone field.
+   * @param requestId Identifier for the field error.
+   * @returns E.164 or `null`.
+   * @throws {Error} `VALIDATION_FAILED` when the number cannot be parsed or is invalid.
+   */
+  private phoneForWrite(value: string | null, requestId: string): string | null {
+    try {
+      return normalizePhone(value, configuration.region);
+    } catch {
+      throw serviceError('VALIDATION_FAILED', 'The request contains invalid fields.', {
+        requestId,
+        fields: { phone: 'Enter a valid phone number, including an area code.' }
+      });
+    }
+  }
+
   private async ownerRef(actor: ActorContext): Promise<{ id: string; displayName: string }> {
     const contactOwner = await this.repository.userRef(actor.userId);
     return contactOwner ?? { id: actor.userId, displayName: actor.email };

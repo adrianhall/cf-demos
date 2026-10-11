@@ -58,4 +58,26 @@ describe('shared-schema browser validation', () => {
     expect(wrapper.emitted('submit')).toHaveLength(1);
     wrapper.unmount();
   });
+
+  it('checks the phone with the shared parser on blur, then live while invalid', async () => {
+    const wrapper = mount(ContactForm, {
+      attachTo: document.body,
+      global: { plugins: [createAppVuetify()] }
+    });
+    const fields = wrapper.findAll('input');
+    await fields[0]!.setValue('Ada');
+    await fields[3]!.setValue('12345');
+    expect(wrapper.text()).not.toContain('Enter a valid phone number');
+    await fields[3]!.trigger('blur');
+    await settle();
+    expect(wrapper.text()).toContain('Enter a valid phone number, including an area code.');
+    await wrapper.get('form').trigger('submit');
+    expect(wrapper.emitted('submit')).toBeUndefined();
+    await fields[3]!.setValue('07523 185547');
+    await settle();
+    expect(wrapper.text()).not.toContain('Enter a valid phone number');
+    await wrapper.get('form').trigger('submit');
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({ phone: '07523 185547' });
+    wrapper.unmount();
+  });
 });

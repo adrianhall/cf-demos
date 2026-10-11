@@ -538,7 +538,7 @@ describe('updateContact', () => {
     expect(
       (
         await failure(
-          service.crm.updateContact(actor, contact.id, { phone: 'mine' }, 1, {
+          service.crm.updateContact(actor, contact.id, { phone: '020 7946 0000' }, 1, {
             idempotencyKey: 'uce-key-0006'
           })
         )
@@ -554,6 +554,33 @@ describe('updateContact', () => {
         idempotencyKey: 'uce-key-0007'
       })
     ).toEqual(once);
+  });
+
+  it('normalizes phones to E.164, refuses invalid ones, and keeps an untouched legacy value', async () => {
+    const { service, actor, store } = setup();
+    const created = await service.crm.createContact(
+      actor,
+      contactInput({ firstName: 'Tel', phone: '07523 185547' }),
+      { idempotencyKey: 'ph-key-0001' }
+    );
+    expect(created.phone).toBe('+447523185547');
+    const bad = await failure(
+      service.crm.createContact(actor, contactInput({ firstName: 'Bad', phone: '12345' }), {
+        idempotencyKey: 'ph-key-0002'
+      })
+    );
+    expect(bad.code).toBe('VALIDATION_FAILED');
+    expect(bad.fields).toEqual({ phone: 'Enter a valid phone number, including an area code.' });
+    // A value stored before normalization is kept when another field changes.
+    store.exec("UPDATE contacts SET phone = 'ask reception' WHERE id = ?", created.id);
+    const edited = await service.crm.updateContact(actor, created.id, { jobTitle: 'Ops' }, 1, {
+      idempotencyKey: 'ph-key-0003'
+    });
+    expect(edited.phone).toBe('ask reception');
+    const cleared = await service.crm.updateContact(actor, created.id, { phone: null }, 2, {
+      idempotencyKey: 'ph-key-0004'
+    });
+    expect(cleared.phone).toBeNull();
   });
 
   it('requires crm.write', async () => {

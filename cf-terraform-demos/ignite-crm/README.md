@@ -582,6 +582,20 @@ Items from the first follow-on pass in
   any remaining errors and does not send an invalid request. Browser validation is only a usability
   aid — neither Worker trusts it.
 
+- **Phone numbers.** `src/shared/phone.ts` (on `libphonenumber-js` 1.13.15, the `/min` metadata
+  entry point in both the SPA and the Data Worker) parses a newly entered number with the
+  installation region (`GB`) as the default country. New writes must be valid and are stored in
+  E.164 (`07523 185547` → `+447523185547`); invalid numbers and extensions are refused with a 422
+  field error, and the browser shows the same message on blur and before submit. Pages show local
+  numbers in national format and foreign ones internationally. **Existing values are not
+  rewritten:** a pre-existing free-text phone is shown unchanged, and is only normalized when
+  someone edits that field (the edit form sends phone only when it changed). No backfill migration
+  is shipped, because D1 SQL cannot run the parser and release-one data is small; a reviewed,
+  dry-run backfill (keeping the original text) is the path if older data needs converting. Upgrading
+  the library is a data change: its number metadata decides validity. The metadata costs about 42 kB
+  gzip in the Data Worker (65 → 108 kB) and lives in the lazily loaded contact chunks of the SPA
+  (the entry chunk grew by under 2 kB gzip).
+
 ## Known limitations (first release)
 
 - Notes cannot yet be deleted, task-list checkboxes are read-only (edit the Markdown to tick one),

@@ -295,7 +295,7 @@ export function dataServiceContractTests(
       expect(old.primaryContact).toBeNull();
       expect(
         await codeOf(
-          harness.service.crm.updateContact(sales, contact.id, { phone: '1' }, 1, {
+          harness.service.crm.updateContact(sales, contact.id, { phone: '020 7946 0000' }, 1, {
             idempotencyKey: 'contract-ce-2'
           })
         )

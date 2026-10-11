@@ -12,7 +12,9 @@
  */
 import { nextTick, reactive, ref, watch } from 'vue';
 import { CreateContactInputSchema, type Contact } from '../../shared/api/crm.ts';
+import { normalizePhone } from '../../shared/phone.ts';
 import { useFieldValidation } from '../composables/useFieldValidation.ts';
+import { useSession } from '../composables/useSession.ts';
 import { type ContactDraft, contactDraftFrom } from '../services/crm-draft.ts';
 
 export type { ContactDraft } from '../services/crm-draft.ts';
@@ -48,12 +50,33 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
+const { configuration } = useSession();
 const draft = reactive<ContactDraft>(
   props.contact
     ? contactDraftFrom(props.contact)
     : { firstName: '', lastName: '', email: '', phone: '', jobTitle: '', companyName: '' }
 );
 const localError = ref<string | null>(null);
+const phoneError = ref<string | null>(null);
+/**
+ * Check the phone after blur and after each subsequent change to an invalid number.
+ */
+function checkPhone(): boolean {
+  try {
+    normalizePhone(draft.phone, configuration.value?.region ?? 'GB');
+    phoneError.value = null;
+    return true;
+  } catch {
+    phoneError.value = 'Enter a valid phone number, including an area code.';
+    return false;
+  }
+}
+watch(
+  () => draft.phone,
+  () => {
+    if (phoneError.value !== null) checkPhone();
+  }
+);
 const validation = useFieldValidation(CreateContactInputSchema, () => ({ ...draft }));
 const summary = ref<HTMLElement | null>(null);
 
@@ -64,7 +87,10 @@ const summary = ref<HTMLElement | null>(null);
  * @returns Messages for Vuetify's `error-messages`.
  */
 function errorsFor(field: keyof ContactDraft): string[] {
-  const message = validation.errors.value[field] ?? props.fieldErrors?.[field];
+  const message =
+    (field === 'phone' ? phoneError.value : null)
+    ?? validation.errors.value[field]
+    ?? props.fieldErrors?.[field];
   return message === undefined ? [] : [message];
 }
 
@@ -75,9 +101,11 @@ function onSubmit(): void {
   const hasName = [draft.firstName, draft.lastName, draft.companyName].some(
     (value) => value.trim() !== ''
   );
-  if (!validation.submit() || !hasName) {
-    if (hasName) localError.value = 'Please correct the highlighted fields.';
-    localError.value = 'Enter a name or a company.';
+  const phoneValid = checkPhone();
+  if (!validation.submit() || !hasName || !phoneValid) {
+    localError.value = hasName
+      ? 'Please correct the highlighted fields.'
+      : 'Enter a name or a company.';
     void nextTick(() => summary.value?.focus());
     return;
   }
@@ -139,7 +167,10 @@ watch(
       <v-col cols="12" sm="6">
         <v-text-field
           v-model="draft.phone"
-          @blur="validation.blur('phone')"
+          @blur="
+            validation.blur('phone');
+            checkPhone();
+          "
           label="Phone"
           type="tel"
           autocomplete="tel"
