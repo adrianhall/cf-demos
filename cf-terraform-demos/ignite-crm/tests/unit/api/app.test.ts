@@ -312,16 +312,29 @@ describe('contacts and companies', () => {
         })
       ).status
     ).toBe(428);
-    expect(
-      (
-        await call(`/api/v1/companies/${id}`, {
-          as: 'sales@example.com',
-          method: 'PATCH',
-          headers: { 'Idempotency-Key': 'patch-key-1', 'If-Match': 'v1' },
-          json: { address: 'x' }
-        })
-      ).status
-    ).toBe(422);
+    const badIfMatch = await call(`/api/v1/companies/${id}`, {
+      as: 'sales@example.com',
+      method: 'PATCH',
+      headers: { 'Idempotency-Key': 'patch-key-1', 'If-Match': 'v1' },
+      json: { address: 'x' }
+    });
+    expect(badIfMatch.status).toBe(422);
+    // Header problems name the header, not the query string.
+    expect(await badIfMatch.json()).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      detail: 'The If-Match header is invalid.',
+      fields: { 'If-Match': 'If-Match must be a version ETag such as "3".' }
+    });
+    const badKey = await call('/api/v1/contacts', {
+      as: 'sales@example.com',
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'bad key!' },
+      json: { firstName: 'A' }
+    });
+    expect(await badKey.json()).toMatchObject({
+      detail: 'The Idempotency-Key header is invalid.',
+      fields: { 'Idempotency-Key': 'Idempotency-Key contains unsupported characters.' }
+    });
   });
 
   it('maps validation failures to 422 with field messages', async () => {

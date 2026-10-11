@@ -54,6 +54,8 @@ export function mapServiceError(error: Error): ProblemDetailsInput | undefined {
  * @param value Untrusted input.
  * @param requestId Request identifier for the problem.
  * @param where Which part of the request was invalid (for the message).
+ * @param field For a single scalar value such as a header, the name its messages are filed under
+ *   (for example `Idempotency-Key`); object inputs name their own fields.
  * @returns The parsed value.
  * @throws {ProblemDetailsError} `422` with per-field messages.
  */
@@ -61,20 +63,28 @@ export function parseRequest<TSchema extends v.GenericSchema>(
   schema: TSchema,
   value: unknown,
   requestId: string,
-  where: 'body' | 'query' | 'path'
+  where: 'body' | 'query' | 'path' | 'header',
+  field?: string
 ): v.InferOutput<TSchema> {
   const result = v.safeParse(schema, value);
   if (result.success) {
     return result.output;
   }
+  const fields = issueFields(result.issues);
   throw problemDetails({
     status: 422,
-    detail: `The request ${where} contains invalid fields.`,
+    detail:
+      where === 'header'
+        ? `The ${field ?? 'request'} header is invalid.`
+        : `The request ${where} contains invalid fields.`,
     extensions: {
       code: 'VALIDATION_FAILED',
       requestId,
       retryable: false,
-      fields: issueFields(result.issues)
+      fields:
+        field === undefined
+          ? fields
+          : { [field]: Object.values(fields)[0] ?? `${field} is invalid.` }
     }
   });
 }

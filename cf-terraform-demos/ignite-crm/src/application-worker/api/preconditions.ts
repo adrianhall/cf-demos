@@ -39,7 +39,13 @@ export function mutationMeta(context: ApiContext): MutationMeta {
     });
   }
   return {
-    idempotencyKey: parseRequest(IdempotencyKeySchema, header, context.get('requestId'), 'query')
+    idempotencyKey: parseRequest(
+      IdempotencyKeySchema,
+      header,
+      context.get('requestId'),
+      'header',
+      'Idempotency-Key'
+    )
   };
 }
 
@@ -58,7 +64,7 @@ export function expectedVersion(context: ApiContext): number {
       extensions: { requestId: context.get('requestId') }
     });
   }
-  return parseRequest(IfMatchSchema, header, context.get('requestId'), 'query');
+  return parseRequest(IfMatchSchema, header, context.get('requestId'), 'header', 'If-Match');
 }
 
 /**
