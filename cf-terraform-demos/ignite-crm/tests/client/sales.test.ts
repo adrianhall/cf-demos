@@ -663,6 +663,60 @@ describe('next actions and the action stream', () => {
     expect(wrapper.find('[aria-label="Pipeline summary"]').text()).toContain('£2,500.00');
   });
 
+  it('links each pipeline-panel row to a deals list whose rows match the panel count', async () => {
+    const fake = await seeded();
+    const { stages } = await fake.service.crm.getPipeline(fake.sales);
+    const make = async (title: string, stageId: string, status?: 'won' | 'lost') => {
+      const deal = await fake.service.crm.createDeal(
+        fake.sales,
+        {
+          title,
+          primaryContactId: fake.ada.id,
+          stageId,
+          amountMinor: 1000,
+          statusLine: null,
+          nextActionText: null,
+          nextActionDate: null,
+          expectedCloseDate: null
+        },
+        { idempotencyKey: `seed-drill-${title.replace(' ', '-')}` }
+      );
+      if (status !== undefined) {
+        await fake.service.crm.updateDeal(fake.sales, deal.id, { status }, 1, {
+          idempotencyKey: `seed-close-${title.replace(' ', '-')}`
+        });
+      }
+    };
+    await make('Lead one', stages[0]!.id);
+    await make('Lead two', stages[0]!.id);
+    await make('Qualified one', stages[1]!.id);
+    await make('Won one', stages[1]!.id, 'won');
+    await make('Lost one', stages[0]!.id, 'lost');
+    useApi('sales@example.com', fake);
+    const { wrapper, router } = await mountWithApp(App);
+    const panel = () => wrapper.get('[aria-label="Pipeline summary"]');
+    const cases: [string, number][] = [
+      [`Show open deals in ${stages[0]!.label}`, 2],
+      [`Show open deals in ${stages[1]!.label}`, 1],
+      ['Show all open deals', 3],
+      ['Show won deals', 1],
+      ['Show lost deals', 1]
+    ];
+    for (const [label, expected] of cases) {
+      await router.push('/');
+      await settle();
+      const link = panel().get(`a[aria-label="${label}"]`);
+      // The panel's count for that row is in the next cell.
+      expect(link.element.closest('tr')!.querySelector('td')!.textContent?.trim()).toBe(
+        String(expected)
+      );
+      await router.push(link.attributes('href')!);
+      await settle();
+      expect(router.currentRoute.value.query.view).toBe('list');
+      expect(wrapper.findAll('tbody tr'), label).toHaveLength(expected);
+    }
+  });
+
   it('explains a next action that changed before completion', async () => {
     const fake = await seeded();
     await fake.service.crm.setContactNextAction(

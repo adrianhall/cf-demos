@@ -602,6 +602,11 @@ Items from the first follow-on pass in
   returning an empty page. Migration `0006_deal_stage_filter.sql` adds
   `deals_stage_list (stage_id, lower(title), id)`, so a filtered page follows the same keyset order.
 
+- **Pipeline drill-down.** Every row label in the dashboard's Pipeline panel is a link, named for
+  screen readers ("Show open deals in Qualified"), to the Deals table filtered to that row: a stage
+  to its open deals, Won/Lost to that outcome, and the total to all open deals. A test follows each
+  link and checks that the filtered list has as many rows as the panel counts.
+
 ## Known limitations (first release)
 
 - Notes cannot yet be deleted, task-list checkboxes are read-only (edit the Markdown to tick one),

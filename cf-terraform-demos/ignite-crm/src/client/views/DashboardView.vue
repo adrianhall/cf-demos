@@ -2,7 +2,9 @@
 /**
  * Dashboard: headline counts, the signed-in user's most urgent follow-ups, the pipeline summary
  * (for roles with `report.read`), and recently changed contacts. Each section loads independently,
- * so a failing report does not hide the user's worklist.
+ * so a failing report does not hide the user's worklist. Every pipeline row label links to the
+ * Deals table filtered to exactly that row (stage rows to open deals in the stage, Won/Lost to that
+ * outcome, the total to every open deal), so a count can always be checked against its deals.
  */
 import { computed, onMounted } from 'vue';
 import ActionStreamRow from '../components/ActionStreamRow.vue';
@@ -22,6 +24,19 @@ const format = useFormat();
 const dashboard = useResource((signal) => api.dashboard(signal));
 const actions = useResource((signal) => api.actionStream(signal));
 const summary = useResource((signal) => api.pipelineReport({}, signal));
+/**
+ * The Deals table filtered to one pipeline-panel row.
+ *
+ * @param filter Outcome and, for a stage row, the stage id.
+ * @returns A route location.
+ */
+function dealsList(filter: { status: 'pending' | 'won' | 'lost'; stage?: string }) {
+  return {
+    name: 'deals',
+    query: { view: 'list', status: filter.status, ...(filter.stage ? { stage: filter.stage } : {}) }
+  };
+}
+
 const topActions = computed(() => actions.data.value?.items.slice(0, DASHBOARD_ACTIONS) ?? []);
 
 onMounted(() => {
@@ -112,12 +127,24 @@ onMounted(() => {
               </thead>
               <tbody>
                 <tr v-for="row in summary.data.value.stages" :key="row.stage.id">
-                  <th scope="row" class="font-weight-regular">{{ row.stage.label }}</th>
+                  <th scope="row" class="font-weight-regular">
+                    <router-link
+                      :to="dealsList({ status: 'pending', stage: row.stage.id })"
+                      :aria-label="`Show open deals in ${row.stage.label}`"
+                      >{{ row.stage.label }}</router-link
+                    >
+                  </th>
                   <td class="text-right">{{ format.count(row.count) }}</td>
                   <td class="text-right">{{ format.money(row.amountMinor) }}</td>
                 </tr>
                 <tr>
-                  <th scope="row">Open total</th>
+                  <th scope="row">
+                    <router-link
+                      :to="dealsList({ status: 'pending' })"
+                      aria-label="Show all open deals"
+                      >Open total</router-link
+                    >
+                  </th>
                   <td class="text-right font-weight-bold">
                     {{ format.count(summary.data.value.open.count) }}
                   </td>
@@ -126,12 +153,20 @@ onMounted(() => {
                   </td>
                 </tr>
                 <tr>
-                  <th scope="row" class="font-weight-regular">Won</th>
+                  <th scope="row" class="font-weight-regular">
+                    <router-link :to="dealsList({ status: 'won' })" aria-label="Show won deals"
+                      >Won</router-link
+                    >
+                  </th>
                   <td class="text-right">{{ format.count(summary.data.value.won.count) }}</td>
                   <td class="text-right">{{ format.money(summary.data.value.won.amountMinor) }}</td>
                 </tr>
                 <tr>
-                  <th scope="row" class="font-weight-regular">Lost</th>
+                  <th scope="row" class="font-weight-regular">
+                    <router-link :to="dealsList({ status: 'lost' })" aria-label="Show lost deals"
+                      >Lost</router-link
+                    >
+                  </th>
                   <td class="text-right">{{ format.count(summary.data.value.lost.count) }}</td>
                   <td class="text-right">
                     {{ format.money(summary.data.value.lost.amountMinor) }}
