@@ -40,9 +40,10 @@ menu button on mobile; all major routes are also keyboard reachable.
 
 1. **Dashboard and identity.** Confirm the signed-in name and role in the app bar. Open its account
    menu for **Your account** (verified e-mail, roles, and capabilities) or **Sign out**; an owner
-   manages profile details through Team. The dashboard shows counts, your next actions, an open
-   pipeline by stage, and recently updated contacts. The **Reports** link opens the filterable
-   version. On a fresh production database the counts are zero, not seeded examples.
+   manages profile details through Team. The dashboard shows counts, your next actions, a **Pipeline
+   summary** by stage (each row links to the matching filtered Deals table; **Pipeline total** is
+   the value of all open deals), and recently updated contacts. The **Reports** link opens the
+   filterable version. On a fresh production database the counts are zero, not seeded examples.
 2. **Contact and company.** Open **Contacts → New contact** and enter a first name and a new company
    name. The new contact opens with its next action, deals, projects, activities, notes, and a
    merged timeline. Follow the company link to its overview and back. Locally, open Priya Shah at
@@ -129,6 +130,6 @@ in-app smoke test.
 The release SPA entry chunk is about **428.5 kB** (139.5 kB gzip), down from 735.8 kB before the
 Phase 6 split. Notes' `marked`/`dompurify` renderer is a separate ~75.0 kB chunk fetched on demand.
 See `README.md` for Worker sizes, architecture, lifecycle ownership, security choices, and
-trade-offs. Remaining follow-ons include CSV export, pipeline drill-down links and quarterly
-reports, rate limiting/FTS before wider exposure, and several review-only refactors recorded in
+trade-offs. Remaining follow-ons include CSV export, rate limiting/FTS before wider exposure, and
+several review-only refactors recorded in
 [`03-follow-ons.md`](../../specs/ignite-crm/03-follow-ons.md).

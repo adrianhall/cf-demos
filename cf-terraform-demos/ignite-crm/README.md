@@ -607,6 +607,10 @@ Items from the first follow-on pass in
   to its open deals, Won/Lost to that outcome, and the total to all open deals. A test follows each
   link and checks that the filtered list has as many rows as the panel counts.
 
+- **"Pipeline total".** The dashboard panel's heading is now **Pipeline summary** and its open-deals
+  row is **Pipeline total**, the usual sales term, so heading and row never read as a duplicate. The
+  table takes its accessible name from the heading (`aria-labelledby`).
+
 ## Known limitations (first release)
 
 - Notes cannot yet be deleted, task-list checkboxes are read-only (edit the Markdown to tick one),

@@ -108,7 +108,7 @@ onMounted(() => {
       <v-col v-if="can('report.read')" cols="12" md="5">
         <v-card>
           <v-card-title class="d-flex align-center">
-            <h2 class="text-h6 flex-grow-1">Pipeline</h2>
+            <h2 id="pipeline-summary-title" class="text-h6 flex-grow-1">Pipeline summary</h2>
             <v-btn variant="text" :to="{ name: 'reports' }">Reports</v-btn>
           </v-card-title>
           <ResourceState
@@ -117,7 +117,12 @@ onMounted(() => {
             skeleton="table"
             @retry="summary.load"
           >
-            <v-table v-if="summary.data.value" density="compact" aria-label="Pipeline summary">
+            <v-table
+              v-if="summary.data.value"
+              density="compact"
+              aria-labelledby="pipeline-summary-title"
+              data-testid="pipeline-summary"
+            >
               <thead>
                 <tr>
                   <th scope="col">Stage</th>
@@ -142,7 +147,7 @@ onMounted(() => {
                     <router-link
                       :to="dealsList({ status: 'pending' })"
                       aria-label="Show all open deals"
-                      >Open total</router-link
+                      >Pipeline total</router-link
                     >
                   </th>
                   <td class="text-right font-weight-bold">

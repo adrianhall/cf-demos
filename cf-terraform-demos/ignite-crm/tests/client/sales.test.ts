@@ -660,7 +660,14 @@ describe('next actions and the action stream', () => {
     useApi('sales@example.com', fake);
     const { wrapper } = await mountWithApp(App);
     expect(wrapper.text()).toContain('Chase signature');
-    expect(wrapper.find('[aria-label="Pipeline summary"]').text()).toContain('£2,500.00');
+    const panel = wrapper.get('[data-testid="pipeline-summary"]');
+    expect(panel.text()).toContain('£2,500.00');
+    // The total row says "Pipeline total"; the heading is "Pipeline summary", so the two never
+    // read as a duplicate, and the table takes its accessible name from that heading.
+    expect(panel.text()).toContain('Pipeline total');
+    expect(panel.text()).not.toContain('Open total');
+    const heading = document.getElementById(panel.get('table').attributes('aria-labelledby')!);
+    expect(heading?.textContent).toBe('Pipeline summary');
   });
 
   it('links each pipeline-panel row to a deals list whose rows match the panel count', async () => {
@@ -694,7 +701,7 @@ describe('next actions and the action stream', () => {
     await make('Lost one', stages[0]!.id, 'lost');
     useApi('sales@example.com', fake);
     const { wrapper, router } = await mountWithApp(App);
-    const panel = () => wrapper.get('[aria-label="Pipeline summary"]');
+    const panel = () => wrapper.get('[data-testid="pipeline-summary"]');
     const cases: [string, number][] = [
       [`Show open deals in ${stages[0]!.label}`, 2],
       [`Show open deals in ${stages[1]!.label}`, 1],
