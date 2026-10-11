@@ -118,8 +118,7 @@ describe('contacts', () => {
 
   it('pages with Load more', async () => {
     const fake = await seeded();
-    const salesId =
-      [...fake.store.users.values()].find((user) => user.email === 'sales@example.com')?.id ?? '';
+    const salesId = fake.store.userId('sales@example.com');
     for (let i = 0; i < 26; i++) {
       await fake.service.crm.createContact(
         { email: 'sales@example.com', userId: salesId, requestId: 'seed', channel: 'api' },
@@ -176,8 +175,7 @@ describe('companies', () => {
   it('searches and pages companies', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fake = await seeded();
-    const salesId =
-      [...fake.store.users.values()].find((user) => user.email === 'sales@example.com')?.id ?? '';
+    const salesId = fake.store.userId('sales@example.com');
     for (let i = 0; i < 25; i++) {
       await fake.service.crm.createCompany(
         { email: 'sales@example.com', userId: salesId, requestId: 'seed', channel: 'api' },
@@ -215,10 +213,7 @@ describe('denied and failed actions', () => {
     // The session says sales, but the server has since demoted the user: the API is authoritative.
     useApi('sales@example.com', fake);
     const { wrapper } = await mountWithApp(App, { route: '/contacts' });
-    const sales = [...fake.store.users.values()].find((user) => user.email === 'sales@example.com');
-    if (sales) {
-      sales.roles = ['read-only'];
-    }
+    fake.store.setRoles(fake.store.userId('sales@example.com'), ['read-only']);
     await wrapper
       .findAll('button')
       .find((button) => button.text().includes('New contact'))

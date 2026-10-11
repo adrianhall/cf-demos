@@ -57,6 +57,34 @@ items to review at the end. Each entry names the phase that made it.
   companies/addresses. `ADMIN_EMAIL` in production is the root `.env` value, not a committed
   identity; the committed local placeholder is `owner@example.com`.
 
+- **Phase 2 — fixed pipeline.** One migration-seeded sales pipeline has Lead, Qualified, Proposal,
+  and Negotiation stages. Stage editing remains outside release-one UI. Won/lost deals retain their
+  last stage for history; closing stamps `closedAt` and clears their next action.
+- **Phase 2 — ownership and visibility.** Sales records are installation-wide for `crm.read` users;
+  ownership determines the actor's action stream, not row-level secrecy. `crm.assign` is granted
+  only to owner/manager and is required for any explicit owner assignment on a deal. A contact's
+  one open next action is assigned to the user who sets it, including on replacement.
+- **Phase 2 — next-action model.** One open action per contact (rather than many queued follow-ups)
+  drives the first-release worklist; its due date is optional (`null` means ASAP). There is no
+  waiting/queued state or manual ordering in this release. Open actions are replaced using an
+  expected version and completed actions remain in history. Newly entered due dates may not be in
+  the past; existing actions naturally become overdue. The action stream is capped at 100 rows,
+  sorted ASAP, by date, contact before deal on a tie, then by id. "Today" is the installation's
+  `Europe/London` calendar date, not the browser's or UTC's.
+- **Phase 2 — activity validation.** A call/meeting needs at least one and at most 20 distinct,
+  active contacts. External participants need not work for the linked company. A company and deal
+  on the same activity must agree when the deal has a company. At most five minutes of future clock
+  skew is accepted; the activity is history, not a scheduled event. Customer timelines cap deals
+  and activities at 50 rows each and retain deleted contacts as tombstones in past activities.
+- **Phase 2 — currency and idempotency.** Amounts are non-negative integer minor units in the
+  installation currency (GBP), capped at £10 billion to stay in JavaScript's exact-integer range.
+  The SPA reuses an idempotency key only for an unchanged retry whose outcome is unknown (network
+  failure or 503); corrected validation failures and conflicts begin a new intent.
+- **Phase 2 — in-memory test port.** The fake Data Worker now composes the production services and
+  SQL repositories over Node's in-memory SQLite. It runs committed migrations and mirrors D1's
+  atomic batch/guard semantics. This replaces the hand-maintained in-memory business model and
+  lets contract tests run against both SQLite and real Workers RPC+D1.
+
 ## Follow-on items
 
 - **CRM record editing — not scheduled in Phases 2–7.** Add contact editing and company editing

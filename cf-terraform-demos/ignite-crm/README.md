@@ -134,8 +134,9 @@ the local seed (`migrations/seed/9001_local_seed.sql`) — never in a deployed d
 | `delivery@example.com` | Delivery contributor             |
 | `readonly@example.com` | Read-only                        |
 
-The local seed is shaped as a migration in its own directory because `cf d1 query` has no local
-mode; the repository migration helper applies it with `--local` only.
+The local seed (`9001_local_seed.sql` for users/contacts and `9002_local_sales_seed.sql` for sales
+records) is shaped as a migration in its own directory because `cf d1 query` has no local mode; the
+repository migration helper applies it with `--local` only.
 
 ## Tests and coverage
 
@@ -169,10 +170,66 @@ AA-compliant `*-strong` tones for text and focus, plus `*-container` fills. Phas
 component exceptions: `ResourceState`, `ContactForm`, and `HistoryList` are compositions of Vuetify
 primitives.
 
-## Known limitations (Phase 1)
+## Phase 2: sales workflow
 
-- Deals, activities, projects, notes, administration, audit viewer, and reports arrive in later
-  phases.
+The migration `migrations/data/0002_sales.sql` adds the fixed four-stage pipeline, deals,
+activities/links, and contact next actions. `migrations/seed/9002_local_sales_seed.sql` adds sample
+deals, a two-contact meeting, and follow-ups only to **local** development; it is never applied to a
+deployed database. A contact can be the primary contact for a deal without becoming the company's
+primary contact. A call or meeting belongs to every linked contact, its optional company and its
+optional deal; history is discoverable from each context. Timelines are bounded (50 deals and 50
+activities per record) and use a fixed number of D1 queries, not an RPC per row.
+
+The Data Worker owns every sales rule and validates every link again inside a guarded atomic D1
+batch. Mutations write business rows, audit metadata, and idempotency results together. Deals carry
+a fixed `pending|won|lost` outcome for reporting and a separate, human-only status line; amounts are
+integer pence. An update needs `If-Match: "<version>"`, a mutation needs `Idempotency-Key`, and a
+409 preserves the editor's draft. Any explicit deal owner assignment needs `crm.assign` (owner or
+manager), even if the owner is unchanged; ordinary `crm.write` is not enough.
+
+The Action Stream merges the signed-in user's open contact next actions and pending deals with next
+actions, ordered ASAP → overdue → today → upcoming using the installation's time zone. A contact has
+at most one open action; a completed action stays in history. Reports show bounded pipeline totals
+by stage and outcome, guarded by `report.read`. The SPA exposes `/actions`, `/deals`, and
+`/deals/:id` alongside the contact/company timelines. The sales journey is: open a contact → New
+deal → set a dated next action → log a meeting with two contacts → open either contact, its company,
+or the deal to find the meeting → open Action stream to chase the work.
+
+The SPA uses only Vuetify primitives. Two reusable compositions are the exceptions Vuetify does not
+directly supply: `ActionStreamRow` (`VListItem` + urgency chip, contact/deal links, optional Done
+action) and `PipelineBoard` (responsive `VRow`/`VCard` columns with a keyboard-operable stage menu
+instead of drag-and-drop). Both have their own DOM tests. The multi-contact picker adds a labelled
+search field and explicit keyboard-operable Add buttons to Vuetify's chips and autocomplete. The
+fake Data Worker for unit/client tests runs the **production** repositories and services over an
+in-memory SQLite port with the committed migrations; the shared contract suite also runs against
+real Workers RPC+D1.
+
+### Phase 2 API additions
+
+| Route                                                   | Purpose                                                 |
+| ------------------------------------------------------- | ------------------------------------------------------- |
+| `GET /api/v1/pipeline`, `GET /api/v1/assignees`         | Pipeline stages and active users                        |
+| `GET/POST /api/v1/deals`, `GET/PATCH /api/v1/deals/:id` | Search, create, read, and versioned edit                |
+| `POST /api/v1/activities`                               | Log a multi-linked call or meeting                      |
+| `PUT /api/v1/contacts/:id/next-action`                  | Create or versioned replace (omit `If-Match` to create) |
+| `POST /api/v1/contacts/:id/next-action/complete`        | Versioned completion                                    |
+| `GET /api/v1/action-stream`                             | Signed-in actor's prioritized worklist                  |
+| `GET /api/v1/reports/pipeline`                          | Bounded stage/outcome totals                            |
+
+All reads require verified Access identity and the Data Worker's authorization. The routes parse
+shared Valibot schemas before RPC and check response schemas afterwards; every HTTP failure uses RFC
+9457 problem details.
+
+## Known limitations (Phases 1–2)
+
+- Projects/tasks, notes, team administration, the audit viewer, and delivery reports arrive in later
+  phases. Pipeline reporting and the sales workflow are available now.
+- Contact/company editing and the personal profile/menu are recorded in
+  `specs/ignite-crm/03-follow-ons.md`; this phase adds deal editing only. The broader live
+  client-side validation and phone-number normalization remain follow-ons.
+- The first-release contact action is one open ASAP or dated action per contact. More elaborate
+  waiting/queued follow-ups and drag-and-drop ordering are not part of this review increment; the
+  pipeline board uses a keyboard-first stage menu instead.
 - `/mcp` is reserved but has no handler in release one.
 - SFC templates are not type-checked: there is no `vue-tsc` compatible with TypeScript 7 (the same
   constraint as the sibling demos). Script logic is covered by DOM tests.

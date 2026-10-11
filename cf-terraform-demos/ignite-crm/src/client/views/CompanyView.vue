@@ -1,8 +1,11 @@
 <script setup lang="ts">
 /**
- * One company: details, primary contact, contacts, and history.
+ * One company's customer timeline: details, primary contact, contacts, deals, every call and
+ * meeting involving the company or its people, and history.
  */
 import { watch } from 'vue';
+import ActivityList from '../components/ActivityList.vue';
+import DealList from '../components/DealList.vue';
 import HistoryList from '../components/HistoryList.vue';
 import ResourceState from '../components/ResourceState.vue';
 import { useResource } from '../composables/useResource.ts';
@@ -84,8 +87,19 @@ watch(
               />
             </v-list>
           </v-card>
+          <v-card class="mt-4">
+            <v-card-title><h2 class="text-h6">Calls and meetings</h2></v-card-title>
+            <ActivityList :activities="detail.data.value.activities" />
+          </v-card>
         </v-col>
         <v-col cols="12" md="5">
+          <v-card class="mb-4">
+            <v-card-title><h2 class="text-h6">Deals</h2></v-card-title>
+            <DealList
+              :deals="detail.data.value.deals"
+              empty-text="No deals with this company yet."
+            />
+          </v-card>
           <v-card>
             <v-card-title><h2 class="text-h6">History</h2></v-card-title>
             <HistoryList :entries="detail.data.value.history" />

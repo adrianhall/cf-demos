@@ -305,6 +305,144 @@ export function dataServiceContractTests(
       ).toBe('VALIDATION_FAILED');
     });
 
+    it('runs the sales loop: deal, next actions, multi-linked meeting, stream, report', async () => {
+      const sales = await actor('contract-sales@example.com');
+      const person = (firstName: string, key: string) =>
+        harness.service.crm.createContact(
+          sales,
+          {
+            firstName,
+            lastName: null,
+            email: null,
+            phone: null,
+            jobTitle: null,
+            companyId: null,
+            companyName: 'Sales Loop Co'
+          },
+          { idempotencyKey: key }
+        );
+      const first = await person('Loop One', 'contract-s-c1');
+      const second = await person('Loop Two', 'contract-s-c2');
+      const pipeline = await harness.service.crm.getPipeline(sales);
+      expect(pipeline.stages).toHaveLength(4);
+
+      // A next-action date far in the future keeps this suite independent of the real clock.
+      const deal = await harness.service.crm.createDeal(
+        sales,
+        {
+          title: 'Loop deal',
+          primaryContactId: first.id,
+          amountMinor: 4200,
+          statusLine: null,
+          nextActionText: 'Send proposal',
+          nextActionDate: '2099-01-01',
+          expectedCloseDate: null
+        },
+        { idempotencyKey: 'contract-s-deal' }
+      );
+      expect(deal).toMatchObject({ status: 'pending', company: { id: first.company?.id } });
+
+      const meeting = await harness.service.crm.createActivity(
+        sales,
+        {
+          type: 'meeting',
+          subject: 'Loop meeting',
+          summary: null,
+          occurredAt: '2026-01-01T10:00:00.000Z',
+          durationMinutes: null,
+          contactIds: [first.id, second.id],
+          companyId: first.company?.id ?? null,
+          dealId: deal.id
+        },
+        { idempotencyKey: 'contract-s-activity' }
+      );
+      for (const contact of [first, second]) {
+        const detail = await harness.service.crm.getContact(sales, contact.id);
+        expect(detail.activities.map((item) => item.id)).toContain(meeting.id);
+      }
+      expect((await harness.service.crm.getDeal(sales, deal.id)).activities[0]?.id).toBe(
+        meeting.id
+      );
+      expect(
+        (await harness.service.crm.getCompany(sales, first.company?.id ?? '')).deals.map(
+          (item) => item.id
+        )
+      ).toEqual([deal.id]);
+
+      await harness.service.crm.setContactNextAction(
+        sales,
+        second.id,
+        { text: 'Chase Loop Two', dueDate: null },
+        null,
+        { idempotencyKey: 'contract-s-next' }
+      );
+      const stream = await harness.service.crm.actionStream(sales);
+      expect(stream.items.map((item) => [item.kind, item.text])).toEqual([
+        ['contact', 'Chase Loop Two'],
+        ['deal', 'Send proposal']
+      ]);
+
+      const won = await harness.service.crm.updateDeal(sales, deal.id, { status: 'won' }, 1, {
+        idempotencyKey: 'contract-s-won'
+      });
+      expect(won).toMatchObject({ status: 'won', nextActionText: null, version: 2 });
+      expect(
+        await codeOf(
+          harness.service.crm.updateDeal(sales, deal.id, { title: 'Stale' }, 1, {
+            idempotencyKey: 'contract-s-stale'
+          })
+        )
+      ).toBe('VERSION_MISMATCH');
+
+      const report = await harness.service.crm.pipelineSummary(sales);
+      expect(report.won.count).toBeGreaterThanOrEqual(1);
+      expect(report.won.amountMinor).toBeGreaterThanOrEqual(4200);
+    });
+
+    it('denies sales writes to a read-only user and rejects an invalid activity atomically', async () => {
+      const reader = await actor('contract-reader@example.com');
+      const sales = await actor('contract-sales@example.com');
+      const page = await harness.service.crm.listContacts(sales, { q: 'loop one', limit: 1 });
+      const contactId = page.items[0]?.id ?? '';
+      expect(
+        await codeOf(
+          harness.service.crm.createDeal(
+            reader,
+            {
+              title: 'Denied',
+              primaryContactId: contactId,
+              amountMinor: 0,
+              statusLine: null,
+              nextActionText: null,
+              nextActionDate: null,
+              expectedCloseDate: null
+            },
+            { idempotencyKey: 'contract-s-denied' }
+          )
+        )
+      ).toBe('FORBIDDEN');
+      expect(
+        await codeOf(
+          harness.service.crm.createActivity(
+            sales,
+            {
+              type: 'call',
+              subject: 'Ghost',
+              summary: null,
+              occurredAt: '2026-01-01T10:00:00.000Z',
+              durationMinutes: null,
+              contactIds: [contactId, crypto.randomUUID()],
+              companyId: null,
+              dealId: null
+            },
+            { idempotencyKey: 'contract-s-ghost' }
+          )
+        )
+      ).toBe('VALIDATION_FAILED');
+      const detail = await harness.service.crm.getContact(sales, contactId);
+      expect(detail.activities.some((item) => item.subject === 'Ghost')).toBe(false);
+    });
+
     it('reports dashboard counts', async () => {
       const reader = await actor('contract-reader@example.com');
       const dashboard = await harness.service.crm.dashboard(reader);

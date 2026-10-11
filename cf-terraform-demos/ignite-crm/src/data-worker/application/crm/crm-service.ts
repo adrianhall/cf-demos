@@ -1,17 +1,15 @@
 /**
- * @file CRM module use cases for companies and contacts. Each operation follows the same order:
- *   validate input → authorize → (mutations) replay check → domain rules → one atomic repository
- *   write including audit and idempotency rows. Repositories receive fully formed rows; they make
- *   no business decisions.
+ * @file CRM module use cases for companies and contacts, including their customer timelines. Each
+ *   operation follows the same order: validate input → authorize → (mutations) replay check →
+ *   domain rules → one atomic repository write including audit and idempotency rows. Repositories
+ *   receive fully formed rows; they make no business decisions.
  */
 
 import * as v from 'valibot';
 import {
   type Company,
-  type CompanyDetail,
   type CompanySummary,
   type Contact,
-  type ContactDetail,
   type ContactSummary,
   type CreateCompanyInput,
   CreateCompanyInputSchema,
@@ -22,11 +20,17 @@ import {
   type UpdateCompanyInput,
   UpdateCompanyInputSchema
 } from '../../../shared/api/crm.ts';
+import {
+  type CompanyDetail,
+  type ContactDetail,
+  TIMELINE_ACTIVITY_LIMIT,
+  TIMELINE_DEAL_LIMIT
+} from '../../../shared/api/customer.ts';
 import { serviceError } from '../../../shared/common/errors.ts';
 import { DEFAULT_PAGE_SIZE, type Page, PageRequestSchema } from '../../../shared/common/paging.ts';
 import type {
   ActorContext,
-  CrmPort,
+  ContactsPort,
   ListOptions,
   MutationMeta
 } from '../../../shared/data-service/contract.ts';
@@ -41,6 +45,7 @@ import {
 } from '../shared/mutations.ts';
 import type { Runtime } from '../shared/runtime.ts';
 import { validate, validateActor, validateId, validateIdempotencyKey } from '../shared/validate.ts';
+import type { SalesRepository } from './sales-service.ts';
 
 /**
  * A company row to insert.
@@ -339,18 +344,28 @@ const ListOptionsSchema = v.strictObject({
 });
 
 /**
- * CRM application service.
+ * The sales reads a customer timeline needs.
  */
-export class CrmService implements CrmPort {
+export type TimelineReader = Pick<
+  SalesRepository,
+  'contactDeals' | 'companyDeals' | 'activitiesFor' | 'contactNextAction'
+>;
+
+/**
+ * Contacts and companies application service.
+ */
+export class CrmService implements ContactsPort {
   /**
    * @param repository Storage port.
    * @param authorizer Permissions capability.
    * @param runtime Clock and id source.
+   * @param timeline Sales reads for the customer timeline.
    */
   constructor(
     private readonly repository: CrmRepository,
     private readonly authorizer: Authorizer,
-    private readonly runtime: Runtime
+    private readonly runtime: Runtime,
+    private readonly timeline: TimelineReader
   ) {}
 
   /**
@@ -397,7 +412,14 @@ export class CrmService implements CrmPort {
     if (contact === null) {
       throw serviceError('NOT_FOUND', 'Contact not found.', { requestId: caller.requestId });
     }
-    return { contact, history: await this.repository.history('contact', contactId, HISTORY_LIMIT) };
+    // A fixed set of parallel, bounded reads: never one call per related record.
+    const [nextAction, deals, activities, history] = await Promise.all([
+      this.timeline.contactNextAction(contactId),
+      this.timeline.contactDeals(contactId, TIMELINE_DEAL_LIMIT),
+      this.timeline.activitiesFor({ type: 'contact', id: contactId }, TIMELINE_ACTIVITY_LIMIT),
+      this.repository.history('contact', contactId, HISTORY_LIMIT)
+    ]);
+    return { contact, nextAction, deals, activities, history };
   }
 
   /**
@@ -411,11 +433,13 @@ export class CrmService implements CrmPort {
     if (company === null) {
       throw serviceError('NOT_FOUND', 'Company not found.', { requestId: caller.requestId });
     }
-    const [contacts, history] = await Promise.all([
+    const [contacts, deals, activities, history] = await Promise.all([
       this.repository.companyContacts(companyId, COMPANY_CONTACT_LIMIT),
+      this.timeline.companyDeals(companyId, TIMELINE_DEAL_LIMIT),
+      this.timeline.activitiesFor({ type: 'company', id: companyId }, TIMELINE_ACTIVITY_LIMIT),
       this.repository.history('company', companyId, HISTORY_LIMIT)
     ]);
-    return { company, contacts, history };
+    return { company, contacts, deals, activities, history };
   }
 
   /**

@@ -19,6 +19,7 @@ export const PERMISSIONS = [
   'crm.read',
   'crm.write',
   'crm.delete',
+  'crm.assign',
   'deal.convert',
   'project.read',
   'project.write',
@@ -71,7 +72,9 @@ export const ROLE_LABELS: Readonly<Record<Role, string>> = {
 const READ_ALL: readonly Permission[] = ['crm.read', 'project.read', 'note.read', 'report.read'];
 
 /**
- * The seeded role→permission matrix (see `microservice-experiment/01a-permissions-spec.md` §3.2).
+ * The seeded role→permission matrix (see `microservice-experiment/01a-permissions-spec.md` §3.2),
+ * plus `crm.assign` (added by `migrations/data/0002_sales.sql`): assigning a deal to someone other
+ * than yourself is the manager/owner "reassign coverage" story, not an ordinary sales write.
  */
 export const SEED_ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
   'owner': [...PERMISSIONS],
@@ -80,6 +83,7 @@ export const SEED_ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>
     ...READ_ALL,
     'crm.write',
     'crm.delete',
+    'crm.assign',
     'deal.convert',
     'project.write',
     'project.manage',

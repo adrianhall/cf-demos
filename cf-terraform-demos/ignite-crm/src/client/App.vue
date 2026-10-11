@@ -7,7 +7,14 @@ import { useDisplay } from 'vuetify';
  * main landmark. Focus moves to the main region's first heading after each route change, so
  * keyboard and screen-reader users land on the new page's content.
  */
-import { mdiAccountMultiple, mdiDomain, mdiMenu, mdiViewDashboard } from '@mdi/js';
+import {
+  mdiAccountMultiple,
+  mdiBriefcase,
+  mdiDomain,
+  mdiFormatListChecks,
+  mdiMenu,
+  mdiViewDashboard
+} from '@mdi/js';
 import { useSession } from './composables/useSession.ts';
 
 const { session, state, error, roleLabel, load } = useSession();
@@ -18,6 +25,8 @@ const main = ref<{ $el: HTMLElement } | null>(null);
 
 const navigation = [
   { title: 'Dashboard', icon: mdiViewDashboard, to: { name: 'dashboard' } },
+  { title: 'Action stream', icon: mdiFormatListChecks, to: { name: 'actions' } },
+  { title: 'Deals', icon: mdiBriefcase, to: { name: 'deals' } },
   { title: 'Contacts', icon: mdiAccountMultiple, to: { name: 'contacts' } },
   { title: 'Companies', icon: mdiDomain, to: { name: 'companies' } }
 ] as const;

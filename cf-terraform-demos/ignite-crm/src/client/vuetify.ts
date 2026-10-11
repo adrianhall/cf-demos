@@ -13,11 +13,15 @@ import {
   VAppBar,
   VAppBarNavIcon,
   VAppBarTitle,
+  VAutocomplete,
   VBreadcrumbs,
   VBtn,
+  VBtnToggle,
   VCard,
   VCardText,
   VCardTitle,
+  VCheckbox,
+  VChip,
   VCol,
   VContainer,
   VDialog,
@@ -28,11 +32,15 @@ import {
   VListItemSubtitle,
   VListItemTitle,
   VMain,
+  VMenu,
   VNavigationDrawer,
   VProgressLinear,
   VRow,
+  VSelect,
   VSkeletonLoader,
-  VTextField
+  VTable,
+  VTextField,
+  VTextarea
 } from 'vuetify/components';
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg';
 
@@ -122,11 +130,15 @@ export const components = {
   VAppBar,
   VAppBarNavIcon,
   VAppBarTitle,
+  VAutocomplete,
   VBreadcrumbs,
   VBtn,
+  VBtnToggle,
   VCard,
   VCardText,
   VCardTitle,
+  VCheckbox,
+  VChip,
   VCol,
   VContainer,
   VDialog,
@@ -137,11 +149,15 @@ export const components = {
   VListItemSubtitle,
   VListItemTitle,
   VMain,
+  VMenu,
   VNavigationDrawer,
   VProgressLinear,
   VRow,
+  VSelect,
   VSkeletonLoader,
-  VTextField
+  VTable,
+  VTextField,
+  VTextarea
 };
 
 /**
@@ -163,6 +179,10 @@ export function createAppVuetify(): ReturnType<typeof createVuetify> {
       // Brand colour as text or a focus ring uses the `*-strong` tone (see the theme notes above).
       VTextField: { variant: 'outlined', density: 'comfortable', color: 'primary-strong' },
       VListItem: { color: 'primary-strong' },
+      VSelect: { variant: 'outlined', density: 'comfortable', color: 'primary-strong' },
+      VAutocomplete: { variant: 'outlined', density: 'comfortable', color: 'primary-strong' },
+      VTextarea: { variant: 'outlined', density: 'comfortable', color: 'primary-strong' },
+      VCheckbox: { color: 'primary-strong' },
       VBtn: { rounded: 'lg' },
       VCard: { rounded: 'lg' }
     }

@@ -9,11 +9,14 @@ import {
   type RouterHistory,
   type RouteRecordRaw
 } from 'vue-router';
+import ActionStreamView from '../views/ActionStreamView.vue';
 import CompaniesView from '../views/CompaniesView.vue';
 import CompanyView from '../views/CompanyView.vue';
 import ContactsView from '../views/ContactsView.vue';
 import ContactView from '../views/ContactView.vue';
 import DashboardView from '../views/DashboardView.vue';
+import DealsView from '../views/DealsView.vue';
+import DealView from '../views/DealView.vue';
 import NotFoundView from '../views/NotFoundView.vue';
 
 /**
@@ -21,6 +24,20 @@ import NotFoundView from '../views/NotFoundView.vue';
  */
 export const routes: RouteRecordRaw[] = [
   { path: '/', name: 'dashboard', component: DashboardView, meta: { title: 'Dashboard' } },
+  {
+    path: '/actions',
+    name: 'actions',
+    component: ActionStreamView,
+    meta: { title: 'Action stream' }
+  },
+  { path: '/deals', name: 'deals', component: DealsView, meta: { title: 'Deals' } },
+  {
+    path: '/deals/:id',
+    name: 'deal',
+    component: DealView,
+    props: true,
+    meta: { title: 'Deal' }
+  },
   { path: '/contacts', name: 'contacts', component: ContactsView, meta: { title: 'Contacts' } },
   {
     path: '/contacts/:id',

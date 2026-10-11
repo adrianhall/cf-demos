@@ -78,7 +78,7 @@ describe('PermissionsService through the data service', () => {
     expect(store.audit.filter((event) => event.action === 'provisioned')).toHaveLength(1);
     // A second resolution does not provision again.
     await service.resolveActor('boss@example.com', 'r2');
-    expect(store.users.size).toBe(1);
+    expect(store.count('users')).toBe(1);
   });
 
   it('refuses suspended users everywhere', async () => {
@@ -144,9 +144,11 @@ describe('PermissionsService through the data service', () => {
   it('passes non-dependency service errors through unchanged', async () => {
     const { service, store } = createFakeDataService();
     // A user that vanishes between provisioning and lookup surfaces as FORBIDDEN, not a dependency failure.
-    const original = store.users.set.bind(store.users);
-    store.users.set = () => store.users;
+    store.afterNextCommit((db) => {
+      db.exec('PRAGMA foreign_keys = OFF');
+      db.exec("DELETE FROM users WHERE email = 'ghost@example.com'");
+      db.exec('PRAGMA foreign_keys = ON');
+    });
     expect((await codeOf(service.resolveActor('ghost@example.com', 'r'))).code).toBe('FORBIDDEN');
-    store.users.set = original;
   });
 });

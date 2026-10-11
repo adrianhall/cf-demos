@@ -19,7 +19,7 @@ describe('health and configuration', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       status: 'ok',
-      data: { status: 'ok', migration: '0001_foundation.sql' }
+      data: { status: 'ok', migration: '0002_sales.sql' }
     });
     expect(response.headers.get('X-Request-Id')).toMatch(/^[0-9a-f-]{36}$/u);
   });
@@ -220,6 +220,105 @@ describe('contact and company journey', () => {
     });
     expect(response.status).toBe(404);
     expect(await response.json()).toMatchObject({ code: 'NOT_FOUND' });
+  });
+});
+
+describe('sales journey', () => {
+  it('creates a deal, logs a two-person meeting, and surfaces it everywhere — across real RPC', async () => {
+    const person = async (firstName: string, key: string) =>
+      (await (
+        await api('/api/v1/contacts', {
+          as: 'sales@example.com',
+          method: 'POST',
+          headers: { 'Idempotency-Key': key },
+          json: { firstName, companyName: 'Journey Ltd' }
+        })
+      ).json()) as { id: string; company: { id: string } };
+    const first = await person('Journey One', 'journey-sales-c1');
+    const second = await person('Journey Two', 'journey-sales-c2');
+
+    const created = await api('/api/v1/deals', {
+      as: 'sales@example.com',
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'journey-sales-deal' },
+      json: {
+        title: 'Journey renewal',
+        primaryContactId: first.id,
+        amountMinor: 990000,
+        nextActionText: 'Send contract',
+        nextActionDate: '2099-01-01'
+      }
+    });
+    expect(created.status).toBe(201);
+    const deal = (await created.json()) as { id: string };
+
+    const meeting = await api('/api/v1/activities', {
+      as: 'sales@example.com',
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'journey-sales-meeting' },
+      json: {
+        type: 'meeting',
+        subject: 'Renewal review',
+        occurredAt: new Date(Date.now() - 60_000).toISOString(),
+        contactIds: [first.id, second.id],
+        companyId: first.company.id,
+        dealId: deal.id
+      }
+    });
+    expect(meeting.status).toBe(201);
+    const { id: meetingId } = (await meeting.json()) as { id: string };
+
+    for (const path of [
+      `/api/v1/contacts/${first.id}`,
+      `/api/v1/contacts/${second.id}`,
+      `/api/v1/companies/${first.company.id}`,
+      `/api/v1/deals/${deal.id}`
+    ]) {
+      const detail = (await (await api(path, { as: 'readonly@example.com' })).json()) as {
+        activities: { id: string }[];
+      };
+      expect(
+        detail.activities.map((item) => item.id),
+        path
+      ).toContain(meetingId);
+    }
+
+    const stream = (await (
+      await api('/api/v1/action-stream', { as: 'sales@example.com' })
+    ).json()) as { items: { kind: string; text: string }[] };
+    expect(stream.items).toContainEqual(
+      expect.objectContaining({ kind: 'deal', text: 'Send contract' })
+    );
+
+    const report = await api('/api/v1/reports/pipeline', { as: 'readonly@example.com' });
+    expect(((await report.json()) as { open: { amountMinor: number } }).open.amountMinor).toBe(
+      990000
+    );
+  });
+
+  it('rejects a meeting with a missing contact and writes nothing', async () => {
+    const before = await env.DATA_DB.prepare('SELECT count(*) AS n FROM activities').first<{
+      n: number;
+    }>();
+    const page = (await (
+      await api('/api/v1/contacts?q=journey%20one', { as: 'sales@example.com' })
+    ).json()) as { items: { id: string }[] };
+    const response = await api('/api/v1/activities', {
+      as: 'sales@example.com',
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'journey-sales-bad' },
+      json: {
+        type: 'call',
+        subject: 'Ghost call',
+        occurredAt: new Date(Date.now() - 60_000).toISOString(),
+        contactIds: [page.items[0]?.id, crypto.randomUUID()]
+      }
+    });
+    expect(response.status).toBe(422);
+    const after = await env.DATA_DB.prepare('SELECT count(*) AS n FROM activities').first<{
+      n: number;
+    }>();
+    expect(after?.n).toBe(before?.n);
   });
 });
 

@@ -8,15 +8,30 @@
 import * as v from 'valibot';
 import { DisplayConfigurationSchema } from '../../shared/api/configuration.ts';
 import {
-  CompanyDetailSchema,
   CompanyPageSchema,
   type CreateContactInput,
-  ContactDetailSchema,
   ContactPageSchema,
   ContactSchema,
   DashboardSchema
 } from '../../shared/api/crm.ts';
+import { UserRefSchema } from '../../shared/api/crm.ts';
+import { CompanyDetailSchema, ContactDetailSchema } from '../../shared/api/customer.ts';
 import { type Problem, ProblemSchema } from '../../shared/api/problems.ts';
+import {
+  ActionStreamSchema,
+  ActivitySchema,
+  ContactNextActionSchema,
+  type CreateActivityInput,
+  type CreateDealInput,
+  DealDetailSchema,
+  DealPageSchema,
+  DealSchema,
+  type DealStatus,
+  PipelineSchema,
+  PipelineSummarySchema,
+  type SetNextActionInput,
+  type UpdateDealInput
+} from '../../shared/api/sales.ts';
 import { SessionSchema } from '../../shared/api/session.ts';
 
 /**
@@ -115,7 +130,7 @@ interface RequestOptions {
   /**
    * HTTP method.
    */
-  readonly method?: 'GET' | 'POST' | 'PATCH';
+  readonly method?: 'GET' | 'POST' | 'PATCH' | 'PUT';
   /**
    * JSON body.
    */
@@ -313,6 +328,197 @@ export class ApiClient {
       body: input,
       headers: { 'Idempotency-Key': idempotencyKey }
     });
+  }
+
+  /**
+   * The sales pipeline.
+   *
+   * @param signal Cancellation.
+   * @returns The pipeline and its stages.
+   * @throws {ApiError} On failure.
+   */
+  pipeline(signal?: AbortSignal) {
+    return this.request('/api/v1/pipeline', PipelineSchema, signal === undefined ? {} : { signal });
+  }
+
+  /**
+   * Users a deal may be assigned to.
+   *
+   * @param signal Cancellation.
+   * @returns User references.
+   * @throws {ApiError} On failure.
+   */
+  assignees(signal?: AbortSignal) {
+    return this.request(
+      '/api/v1/assignees',
+      v.array(UserRefSchema),
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * List or search deals.
+   *
+   * @param query Search term, status filter, page size, and cursor.
+   * @param signal Cancellation.
+   * @returns One page.
+   * @throws {ApiError} On failure.
+   */
+  deals(
+    query: { q?: string; status?: DealStatus; limit?: number; cursor?: string },
+    signal?: AbortSignal
+  ) {
+    return this.request(
+      `/api/v1/deals${toQuery({ ...query, limit: query.limit?.toString() })}`,
+      DealPageSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * One deal with its activities and history.
+   *
+   * @param id Deal id.
+   * @param signal Cancellation.
+   * @returns The detail.
+   * @throws {ApiError} On failure.
+   */
+  deal(id: string, signal?: AbortSignal) {
+    return this.request(
+      `/api/v1/deals/${encodeURIComponent(id)}`,
+      DealDetailSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * Create a deal.
+   *
+   * @param input Deal fields.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The created deal.
+   * @throws {ApiError} On failure.
+   */
+  createDeal(input: Partial<CreateDealInput>, idempotencyKey: string) {
+    return this.request('/api/v1/deals', DealSchema, {
+      method: 'POST',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey }
+    });
+  }
+
+  /**
+   * Update a deal.
+   *
+   * @param id Deal id.
+   * @param input Fields to change.
+   * @param version Version last read; a stale one fails with a `conflict` error.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The updated deal.
+   * @throws {ApiError} On failure.
+   */
+  updateDeal(id: string, input: UpdateDealInput, version: number, idempotencyKey: string) {
+    return this.request(`/api/v1/deals/${encodeURIComponent(id)}`, DealSchema, {
+      method: 'PATCH',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey, 'If-Match': `"${version}"` }
+    });
+  }
+
+  /**
+   * Log a call or meeting.
+   *
+   * @param input Activity fields.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The activity.
+   * @throws {ApiError} On failure.
+   */
+  createActivity(input: CreateActivityInput, idempotencyKey: string) {
+    return this.request('/api/v1/activities', ActivitySchema, {
+      method: 'POST',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey }
+    });
+  }
+
+  /**
+   * Set or replace a contact's next action.
+   *
+   * @param contactId Contact id.
+   * @param input The action.
+   * @param version Version of the action being replaced, or `null` to create one.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The action.
+   * @throws {ApiError} On failure.
+   */
+  setNextAction(
+    contactId: string,
+    input: SetNextActionInput,
+    version: number | null,
+    idempotencyKey: string
+  ) {
+    return this.request(
+      `/api/v1/contacts/${encodeURIComponent(contactId)}/next-action`,
+      ContactNextActionSchema,
+      {
+        method: 'PUT',
+        body: input,
+        headers: {
+          'Idempotency-Key': idempotencyKey,
+          ...(version === null ? {} : { 'If-Match': `"${version}"` })
+        }
+      }
+    );
+  }
+
+  /**
+   * Mark a contact's next action done.
+   *
+   * @param contactId Contact id.
+   * @param version Version of the open action.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The completed action.
+   * @throws {ApiError} On failure.
+   */
+  completeNextAction(contactId: string, version: number, idempotencyKey: string) {
+    return this.request(
+      `/api/v1/contacts/${encodeURIComponent(contactId)}/next-action/complete`,
+      ContactNextActionSchema,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey, 'If-Match': `"${version}"` }
+      }
+    );
+  }
+
+  /**
+   * The signed-in user's prioritized follow-ups.
+   *
+   * @param signal Cancellation.
+   * @returns The action stream.
+   * @throws {ApiError} On failure.
+   */
+  actionStream(signal?: AbortSignal) {
+    return this.request(
+      '/api/v1/action-stream',
+      ActionStreamSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * Pipeline totals by stage and outcome.
+   *
+   * @param signal Cancellation.
+   * @returns The summary.
+   * @throws {ApiError} On failure.
+   */
+  pipelineSummary(signal?: AbortSignal) {
+    return this.request(
+      '/api/v1/reports/pipeline',
+      PipelineSummarySchema,
+      signal === undefined ? {} : { signal }
+    );
   }
 }
 

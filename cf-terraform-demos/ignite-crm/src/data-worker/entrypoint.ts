@@ -33,6 +33,12 @@ import type {
   CreateContactInput,
   UpdateCompanyInput
 } from '../shared/api/crm.ts';
+import type {
+  CreateActivityInput,
+  CreateDealInput,
+  SetNextActionInput,
+  UpdateDealInput
+} from '../shared/api/sales.ts';
 import { isServiceError, serviceError, type ServiceErrorValue } from '../shared/common/errors.ts';
 import type {
   ActorContext,
@@ -40,6 +46,7 @@ import type {
   AuthorizationRequest,
   CrmPort,
   DataHealth,
+  DealListOptions,
   DataService,
   Enveloped,
   ListOptions,
@@ -240,6 +247,121 @@ export class CrmRpc extends RpcTarget implements Enveloped<CrmPort> {
   ) {
     return envelope(this.logger, 'crm.updateCompany', requestIdOf(actor), () =>
       this.service.updateCompany(actor, id, input, expectedVersion, meta)
+    );
+  }
+  /**
+   * @inheritdoc
+   */
+  getPipeline(actor: ActorContext) {
+    return envelope(this.logger, 'crm.getPipeline', requestIdOf(actor), () =>
+      this.service.getPipeline(actor)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  listAssignees(actor: ActorContext) {
+    return envelope(this.logger, 'crm.listAssignees', requestIdOf(actor), () =>
+      this.service.listAssignees(actor)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  listDeals(actor: ActorContext, options: DealListOptions) {
+    return envelope(this.logger, 'crm.listDeals', requestIdOf(actor), () =>
+      this.service.listDeals(actor, options)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  getDeal(actor: ActorContext, id: string) {
+    return envelope(this.logger, 'crm.getDeal', requestIdOf(actor), () =>
+      this.service.getDeal(actor, id)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  createDeal(actor: ActorContext, input: CreateDealInput, meta: MutationMeta) {
+    return envelope(this.logger, 'crm.createDeal', requestIdOf(actor), () =>
+      this.service.createDeal(actor, input, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  updateDeal(
+    actor: ActorContext,
+    id: string,
+    input: UpdateDealInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ) {
+    return envelope(this.logger, 'crm.updateDeal', requestIdOf(actor), () =>
+      this.service.updateDeal(actor, id, input, expectedVersion, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  createActivity(actor: ActorContext, input: CreateActivityInput, meta: MutationMeta) {
+    return envelope(this.logger, 'crm.createActivity', requestIdOf(actor), () =>
+      this.service.createActivity(actor, input, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  setContactNextAction(
+    actor: ActorContext,
+    contactId: string,
+    input: SetNextActionInput,
+    expectedVersion: number | null,
+    meta: MutationMeta
+  ) {
+    return envelope(this.logger, 'crm.setContactNextAction', requestIdOf(actor), () =>
+      this.service.setContactNextAction(actor, contactId, input, expectedVersion, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  completeContactNextAction(
+    actor: ActorContext,
+    contactId: string,
+    expectedVersion: number,
+    meta: MutationMeta
+  ) {
+    return envelope(this.logger, 'crm.completeContactNextAction', requestIdOf(actor), () =>
+      this.service.completeContactNextAction(actor, contactId, expectedVersion, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  actionStream(actor: ActorContext) {
+    return envelope(this.logger, 'crm.actionStream', requestIdOf(actor), () =>
+      this.service.actionStream(actor)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  pipelineSummary(actor: ActorContext) {
+    return envelope(this.logger, 'crm.pipelineSummary', requestIdOf(actor), () =>
+      this.service.pipelineSummary(actor)
     );
   }
 }

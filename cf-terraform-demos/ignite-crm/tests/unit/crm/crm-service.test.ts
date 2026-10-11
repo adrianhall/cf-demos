@@ -173,15 +173,12 @@ describe('createContact', () => {
     runtime.set(
       new Date(Date.parse('2026-10-01T09:00:00.000Z') + IDEMPOTENCY_RETENTION_MS + 60_000)
     );
-    // The stale record is ignored, so the retry is a new create; the store's own key check then
-    // reports the clash, proving the replay lookup did not short-circuit it.
-    const error = await failure(
-      service.crm.createContact(actor, contactInput({ firstName: 'Old' }), {
-        idempotencyKey: 'expire-0001'
-      })
-    );
-    expect(error.code).toBe('CONFLICT');
-    expect(store.contacts.has(first.id)).toBe(true);
+    // The stale record is ignored and purged in the same write set, so the retry is a new create.
+    const second = await service.crm.createContact(actor, contactInput({ firstName: 'Old' }), {
+      idempotencyKey: 'expire-0001'
+    });
+    expect(second.id).not.toBe(first.id);
+    expect(store.count('contacts', "first_name = 'Old'")).toBe(2);
   });
 });
 
@@ -319,15 +316,11 @@ describe('updateCompany', () => {
       ).code
     ).toBe('VALIDATION_FAILED');
     // Simulate a concurrent writer committing between the version read and our commit.
-    const stored = store.companies.get(company.id);
-    const original = store.companies.get.bind(store.companies);
-    let reads = 0;
-    store.companies.get = (key: string) => {
-      const value = original(key);
-      return value !== undefined && key === company.id && ++reads > 1
-        ? { ...value, version: 7 }
-        : value;
-    };
+    store.beforeNextCommit((db) => {
+      db.prepare("UPDATE companies SET version = 7, address = 'theirs' WHERE id = ?").run(
+        company.id
+      );
+    });
     expect(
       (
         await failure(
@@ -337,8 +330,9 @@ describe('updateCompany', () => {
         )
       ).code
     ).toBe('VERSION_MISMATCH');
-    store.companies.get = original;
-    expect(store.companies.get(company.id)).toEqual(stored);
+    // Their change stands; ours (and its audit and idempotency rows) rolled back.
+    expect(store.count('companies', "id = ? AND address = 'theirs'", company.id)).toBe(1);
+    expect(store.count('idempotency_records', "idempotency_key = 'race-0003'")).toBe(0);
   });
 });
 
@@ -360,6 +354,6 @@ describe('authorization', () => {
       )
     );
     expect(error).toMatchObject({ code: 'FORBIDDEN', requestId: 'req-ro' });
-    expect(store.companies.size).toBe(0);
+    expect(store.count('companies')).toBe(0);
   });
 });

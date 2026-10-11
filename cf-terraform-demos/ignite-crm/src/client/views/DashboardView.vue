@@ -1,19 +1,36 @@
 <script setup lang="ts">
 /**
- * Dashboard: headline counts and the most recently changed contacts.
+ * Dashboard: headline counts, the signed-in user's most urgent follow-ups, the pipeline summary
+ * (for roles with `report.read`), and recently changed contacts. Each section loads independently,
+ * so a failing report does not hide the user's worklist.
  */
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
+import ActionStreamRow from '../components/ActionStreamRow.vue';
 import ResourceState from '../components/ResourceState.vue';
 import { useFormat } from '../composables/useFormat.ts';
 import { useResource } from '../composables/useResource.ts';
 import { useSession } from '../composables/useSession.ts';
 import { api } from '../services/api-client.ts';
 
-const { session, roleLabel } = useSession();
+/**
+ * Follow-ups shown on the dashboard before "See all".
+ */
+const DASHBOARD_ACTIONS = 5;
+
+const { session, roleLabel, can } = useSession();
 const format = useFormat();
 const dashboard = useResource((signal) => api.dashboard(signal));
+const actions = useResource((signal) => api.actionStream(signal));
+const summary = useResource((signal) => api.pipelineSummary(signal));
+const topActions = computed(() => actions.data.value?.items.slice(0, DASHBOARD_ACTIONS) ?? []);
 
-onMounted(() => void dashboard.load());
+onMounted(() => {
+  void dashboard.load();
+  void actions.load();
+  if (can('report.read')) {
+    void summary.load();
+  }
+});
 </script>
 
 <template>
@@ -46,22 +63,102 @@ onMounted(() => void dashboard.load());
           </v-card>
         </v-col>
       </v-row>
-      <v-card class="mt-6">
-        <v-card-title><h2 class="text-h6">Recently updated contacts</h2></v-card-title>
-        <v-list>
-          <v-list-item
-            v-for="contact in dashboard.data.value?.recentContacts ?? []"
-            :key="contact.id"
-            :to="{ name: 'contact', params: { id: contact.id } }"
-            :title="contact.displayName"
-            :subtitle="`${contact.companyName ?? 'No company'} · ${format.dateTime(contact.updatedAt)}`"
-          />
-          <v-list-item
-            v-if="(dashboard.data.value?.recentContacts.length ?? 0) === 0"
-            title="No contacts yet."
-          />
-        </v-list>
-      </v-card>
     </ResourceState>
+
+    <v-row class="mt-2">
+      <v-col cols="12" md="7">
+        <v-card>
+          <v-card-title class="d-flex align-center">
+            <h2 class="text-h6 flex-grow-1">Your next actions</h2>
+            <v-btn variant="text" :to="{ name: 'actions' }">See all</v-btn>
+          </v-card-title>
+          <ResourceState
+            :state="actions.state.value"
+            :error="actions.error.value"
+            :empty="topActions.length === 0"
+            empty-title="Nothing to chase"
+            empty-text="Next actions you set on contacts and deals appear here."
+            @retry="actions.load"
+          >
+            <v-list aria-label="Your next actions">
+              <ActionStreamRow
+                v-for="item in topActions"
+                :key="`${item.kind}-${item.id}`"
+                :item="item"
+              />
+            </v-list>
+          </ResourceState>
+        </v-card>
+      </v-col>
+      <v-col v-if="can('report.read')" cols="12" md="5">
+        <v-card>
+          <v-card-title class="d-flex align-center">
+            <h2 class="text-h6 flex-grow-1">Pipeline</h2>
+            <v-btn variant="text" :to="{ name: 'deals' }">Open board</v-btn>
+          </v-card-title>
+          <ResourceState
+            :state="summary.state.value"
+            :error="summary.error.value"
+            skeleton="table"
+            @retry="summary.load"
+          >
+            <v-table v-if="summary.data.value" density="compact" aria-label="Pipeline summary">
+              <thead>
+                <tr>
+                  <th scope="col">Stage</th>
+                  <th scope="col" class="text-right">Deals</th>
+                  <th scope="col" class="text-right">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in summary.data.value.stages" :key="row.stage.id">
+                  <th scope="row" class="font-weight-regular">{{ row.stage.label }}</th>
+                  <td class="text-right">{{ format.count(row.count) }}</td>
+                  <td class="text-right">{{ format.money(row.amountMinor) }}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Open total</th>
+                  <td class="text-right font-weight-bold">
+                    {{ format.count(summary.data.value.open.count) }}
+                  </td>
+                  <td class="text-right font-weight-bold">
+                    {{ format.money(summary.data.value.open.amountMinor) }}
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row" class="font-weight-regular">Won</th>
+                  <td class="text-right">{{ format.count(summary.data.value.won.count) }}</td>
+                  <td class="text-right">{{ format.money(summary.data.value.won.amountMinor) }}</td>
+                </tr>
+                <tr>
+                  <th scope="row" class="font-weight-regular">Lost</th>
+                  <td class="text-right">{{ format.count(summary.data.value.lost.count) }}</td>
+                  <td class="text-right">
+                    {{ format.money(summary.data.value.lost.amountMinor) }}
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
+          </ResourceState>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <v-card class="mt-6">
+      <v-card-title><h2 class="text-h6">Recently updated contacts</h2></v-card-title>
+      <v-list>
+        <v-list-item
+          v-for="contact in dashboard.data.value?.recentContacts ?? []"
+          :key="contact.id"
+          :to="{ name: 'contact', params: { id: contact.id } }"
+          :title="contact.displayName"
+          :subtitle="`${contact.companyName ?? 'No company'} · ${format.dateTime(contact.updatedAt)}`"
+        />
+        <v-list-item
+          v-if="(dashboard.data.value?.recentContacts.length ?? 0) === 0"
+          title="No contacts yet."
+        />
+      </v-list>
+    </v-card>
   </section>
 </template>

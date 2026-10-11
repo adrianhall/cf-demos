@@ -9,10 +9,8 @@ import * as v from 'valibot';
 import { preconditionRequired } from '@adrianhall/cloudflare-toolkit/errors';
 import { jsonBodyLimit, readJsonBody } from '@demos/worker-common';
 import {
-  CompanyDetailSchema,
   CompanyPageSchema,
   CompanySchema,
-  ContactDetailSchema,
   ContactPageSchema,
   ContactSchema,
   CreateCompanyInputSchema,
@@ -21,6 +19,7 @@ import {
   ListQuerySchema,
   UpdateCompanyInputSchema
 } from '../../../shared/api/crm.ts';
+import { CompanyDetailSchema, ContactDetailSchema } from '../../../shared/api/customer.ts';
 import { IdSchema } from '../../../shared/common/ids.ts';
 import { DEFAULT_PAGE_SIZE } from '../../../shared/common/paging.ts';
 import type { ListOptions, MutationMeta } from '../../../shared/data-service/contract.ts';

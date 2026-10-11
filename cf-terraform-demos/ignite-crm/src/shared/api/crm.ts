@@ -222,29 +222,6 @@ export const CompanySchema = v.strictObject({
 export type Company = v.InferOutput<typeof CompanySchema>;
 
 /**
- * A company with its contacts and recent history.
- */
-export const CompanyDetailSchema = v.strictObject({
-  /**
-   * The company.
-   */
-  company: CompanySchema,
-  /**
-   * Active contacts at the company (at most 100, by name).
-   */
-  contacts: v.array(ContactSummarySchema),
-  /**
-   * Most recent history entries, newest first.
-   */
-  history: v.array(HistoryEntrySchema)
-});
-
-/**
- * A company detail projection.
- */
-export type CompanyDetail = v.InferOutput<typeof CompanyDetailSchema>;
-
-/**
  * A full contact record.
  */
 export const ContactSchema = v.strictObject({
@@ -302,25 +279,6 @@ export const ContactSchema = v.strictObject({
  * A contact.
  */
 export type Contact = v.InferOutput<typeof ContactSchema>;
-
-/**
- * A contact with its recent history.
- */
-export const ContactDetailSchema = v.strictObject({
-  /**
-   * The contact.
-   */
-  contact: ContactSchema,
-  /**
-   * Most recent history entries, newest first.
-   */
-  history: v.array(HistoryEntrySchema)
-});
-
-/**
- * A contact detail projection.
- */
-export type ContactDetail = v.InferOutput<typeof ContactDetailSchema>;
 
 /**
  * Request body for creating a contact.

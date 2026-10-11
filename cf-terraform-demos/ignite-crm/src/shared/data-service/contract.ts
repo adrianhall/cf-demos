@@ -18,16 +18,30 @@
 
 import type {
   Company,
-  CompanyDetail,
   CompanySummary,
   Contact,
-  ContactDetail,
   ContactSummary,
   CreateCompanyInput,
   CreateContactInput,
   Dashboard,
-  UpdateCompanyInput
+  UpdateCompanyInput,
+  UserRef
 } from '../api/crm.ts';
+import type { CompanyDetail, ContactDetail } from '../api/customer.ts';
+import type {
+  ActionStream,
+  Activity,
+  ContactNextAction,
+  CreateActivityInput,
+  CreateDealInput,
+  Deal,
+  DealDetail,
+  DealStatus,
+  Pipeline,
+  PipelineSummary,
+  SetNextActionInput,
+  UpdateDealInput
+} from '../api/sales.ts';
 import type { Session } from '../api/session.ts';
 import type { ServiceErrorValue } from '../common/errors.ts';
 import type { Page } from '../common/paging.ts';
@@ -188,9 +202,130 @@ export interface ListOptions {
 }
 
 /**
- * CRM module operations.
+ * Deal list options passed to the Data Worker after API validation.
  */
-export interface CrmPort {
+export interface DealListOptions extends ListOptions {
+  /**
+   * Restrict to one outcome.
+   */
+  readonly status?: DealStatus;
+}
+
+/**
+ * Sales operations of the CRM module: pipeline, deals, activities, next actions, and reports.
+ */
+export interface SalesPort {
+  /**
+   * The sales pipeline and its stages.
+   *
+   * @param actor The caller.
+   */
+  getPipeline(actor: ActorContext): Promise<Pipeline>;
+  /**
+   * Active users a deal may be assigned to.
+   *
+   * @param actor The caller.
+   */
+  listAssignees(actor: ActorContext): Promise<UserRef[]>;
+  /**
+   * List or search deals by title, company, or primary contact, ordered by title.
+   *
+   * @param actor The caller.
+   * @param options Search, status filter, and paging.
+   */
+  listDeals(actor: ActorContext, options: DealListOptions): Promise<Page<Deal>>;
+  /**
+   * Read one deal with its activities and history.
+   *
+   * @param actor The caller.
+   * @param id Deal identifier.
+   */
+  getDeal(actor: ActorContext, id: string): Promise<DealDetail>;
+  /**
+   * Create a deal.
+   *
+   * @param actor The caller.
+   * @param input Validated deal fields.
+   * @param meta Idempotency metadata.
+   */
+  createDeal(actor: ActorContext, input: CreateDealInput, meta: MutationMeta): Promise<Deal>;
+  /**
+   * Update a deal if it is still at the expected version.
+   *
+   * @param actor The caller.
+   * @param id Deal identifier.
+   * @param input Fields to change.
+   * @param expectedVersion Version the caller last read.
+   * @param meta Idempotency metadata.
+   */
+  updateDeal(
+    actor: ActorContext,
+    id: string,
+    input: UpdateDealInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ): Promise<Deal>;
+  /**
+   * Log a call or meeting linked to contacts and optionally a company and deal, atomically.
+   *
+   * @param actor The caller, who becomes the author.
+   * @param input Validated activity fields.
+   * @param meta Idempotency metadata.
+   */
+  createActivity(
+    actor: ActorContext,
+    input: CreateActivityInput,
+    meta: MutationMeta
+  ): Promise<Activity>;
+  /**
+   * Set or replace a contact's one open next action, assigned to the caller.
+   *
+   * @param actor The caller.
+   * @param contactId Contact identifier.
+   * @param input The action.
+   * @param expectedVersion Version of the open action being replaced, or `null` when the caller
+   *   believes there is none.
+   * @param meta Idempotency metadata.
+   */
+  setContactNextAction(
+    actor: ActorContext,
+    contactId: string,
+    input: SetNextActionInput,
+    expectedVersion: number | null,
+    meta: MutationMeta
+  ): Promise<ContactNextAction>;
+  /**
+   * Mark a contact's open next action done.
+   *
+   * @param actor The caller.
+   * @param contactId Contact identifier.
+   * @param expectedVersion Version of the open action.
+   * @param meta Idempotency metadata.
+   */
+  completeContactNextAction(
+    actor: ActorContext,
+    contactId: string,
+    expectedVersion: number,
+    meta: MutationMeta
+  ): Promise<ContactNextAction>;
+  /**
+   * The caller's prioritized contact and deal next actions.
+   *
+   * @param actor The caller.
+   */
+  actionStream(actor: ActorContext): Promise<ActionStream>;
+  /**
+   * Pipeline totals by stage and outcome.
+   *
+   * @param actor The caller.
+   */
+  pipelineSummary(actor: ActorContext): Promise<PipelineSummary>;
+}
+
+/**
+ * Contact and company operations of the CRM module.
+ */
+export interface ContactsPort {
   /**
    * Headline counts and recent contacts.
    *
@@ -205,7 +340,7 @@ export interface CrmPort {
    */
   listContacts(actor: ActorContext, options: ListOptions): Promise<Page<ContactSummary>>;
   /**
-   * Read one active contact and its history.
+   * Read one active contact's customer timeline: deals, activities, next action, and history.
    *
    * @param actor The caller.
    * @param id Contact identifier.
@@ -231,7 +366,7 @@ export interface CrmPort {
    */
   listCompanies(actor: ActorContext, options: ListOptions): Promise<Page<CompanySummary>>;
   /**
-   * Read one active company with its contacts and history.
+   * Read one active company's customer timeline: contacts, deals, activities, and history.
    *
    * @param actor The caller.
    * @param id Company identifier.
@@ -266,6 +401,11 @@ export interface CrmPort {
     meta: MutationMeta
   ): Promise<Company>;
 }
+
+/**
+ * CRM module operations: contacts and companies plus the sales workflow, behind one module group.
+ */
+export interface CrmPort extends ContactsPort, SalesPort {}
 
 /**
  * Permissions module operations beyond actor resolution and authorization.
