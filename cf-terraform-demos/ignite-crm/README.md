@@ -141,7 +141,7 @@ Run from this directory after `pnpm install` at the repository root.
 
 | Command         | What it does                                                                                                                  |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm start`    | `migrate:local` → `seed:local` → `cf dev --persist-to .cloudflare/state`                                                      |
+| `pnpm start`    | `migrate:local` → `seed:local` → `cf dev` (`vite.config.ts` persists to `.cloudflare/state`)                                  |
 | `pnpm check`    | Types for both Workers, `tsc` (app + Workers-runtime tests), Oxfmt, type-aware Oxlint, Terraform init/validate/fmt, dev build |
 | `pnpm fix`      | Regenerate types, Oxfmt write, Oxlint `--fix`, `terraform fmt`                                                                |
 | `pnpm test`     | All Vitest projects **with Istanbul coverage** (80% gate on all metrics), then the offline Playwright journeys                |
