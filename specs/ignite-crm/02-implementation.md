@@ -403,7 +403,15 @@ that a reviewer can use end-to-end.
    component, and confirm Vuetify registration still lists only components the SPA uses.
 5. Add bundle-size recording with `check:bundles`; record actual SPA/Application/Data build sizes in
    project documentation or CI artifact. Do not create free-tier account-limit assertions.
-6. Complete README documentation: prerequisites; local setup; local development identities; test and
+6. Split the Markdown libraries (`marked` and `dompurify`) out of the main SPA chunk into their own
+   bundle(s), loaded only when a view first renders or composes Markdown (the note page, the
+   composer preview, and context note feeds), so the initial SPA load no longer carries them and the
+   build's 500 kB chunk warning is resolved rather than suppressed. Use a dynamic `import()` behind
+   `src/client/services/markdown.ts` (or an equivalent Vite/Rolldown chunking rule), keep that
+   module the single Markdown-to-HTML boundary, and show an accessible loading state while the chunk
+   loads. Record the before/after chunk sizes with `check:bundles`, and keep the Markdown safety
+   tests passing against the lazily loaded renderer.
+7. Complete README documentation: prerequisites; local setup; local development identities; test and
    coverage policy; architecture; D1/transaction trade-off; deploy/teardown; configuration; security
    model; MCP deferral; the Vuetify component-library decision with each custom-component exception
    and its justification; and known intentional scope limits.

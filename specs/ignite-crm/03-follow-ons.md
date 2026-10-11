@@ -34,25 +34,25 @@ items to review at the end. Each entry names the phase that made it.
   against real D1.
 - **Phase 1 — local seed.** `cf d1 query` has no local mode, so the local-only sample data is a
   separate migration stream (`migrations/seed/9001_local_seed.sql`) applied by the repository's
-  migration helper with `--local`. It is never applied remotely. The health report excludes it
-  from the schema migration version.
+  migration helper with `--local`. It is never applied remotely. The health report excludes it from
+  the schema migration version.
 - **Phase 1 — TypeScript SFC checking.** TypeScript 7 is pinned by the sibling demos and no
   compatible `vue-tsc` is installed. `tsc` checks all `.ts` script modules (including both Workers)
   and DOM tests exercise the Vue SFCs; template expressions are not statically checked yet.
-- **Phase 1 — Companies House link.** Only official `https://find-and-update.company-information.service.gov.uk/company/…`
-  URLs are accepted, rather than arbitrary external URLs, because this field represents an
-  official company registration.
-- **Phase 1 — contact-create concurrency.** The case-insensitive unique company-name index makes
-  two concurrent first-contact creates for the same new company race safely: one succeeds; the
-  other receives 409 and can retry with the now-existing company. There is no automatic retry
-  inside a write transaction.
+- **Phase 1 — Companies House link.** Only official
+  `https://find-and-update.company-information.service.gov.uk/company/…` URLs are accepted, rather
+  than arbitrary external URLs, because this field represents an official company registration.
+- **Phase 1 — contact-create concurrency.** The case-insensitive unique company-name index makes two
+  concurrent first-contact creates for the same new company race safely: one succeeds; the other
+  receives 409 and can retry with the now-existing company. There is no automatic retry inside a
+  write transaction.
 - **Phase 1 — date formatting.** The installation date-format vocabulary is `short|medium|long`
   (Intl `dateStyle`) and the UK default is `medium`. No user-specific overrides in release one.
-- **Phase 1 — UI theme.** The Vuetify light and dark themes use Cloudflare orange `#FC7C1E`
-  as primary and `#5A73F4` as secondary, both with dark `on-*` text, because white text falls
-  below AA. Where a brand colour becomes text (tonal cards, active navigation, focused fields), the
-  themes supply AA-compliant `primary-strong`/`secondary-strong` tones: darker shades in light
-  mode and lighter tints in dark mode. The browser follows the system preference.
+- **Phase 1 — UI theme.** The Vuetify light and dark themes use Cloudflare orange `#FC7C1E` as
+  primary and `#5A73F4` as secondary, both with dark `on-*` text, because white text falls below AA.
+  Where a brand colour becomes text (tonal cards, active navigation, focused fields), the themes
+  supply AA-compliant `primary-strong`/`secondary-strong` tones: darker shades in light mode and
+  lighter tints in dark mode. The browser follows the system preference.
 - **Phase 1 — local development.** Local sample data uses `.example` e-mails and fictional
   companies/addresses. `ADMIN_EMAIL` in production is the root `.env` value, not a committed
   identity; the committed local placeholder is `owner@example.com`.
@@ -62,8 +62,8 @@ items to review at the end. Each entry names the phase that made it.
   last stage for history; closing stamps `closedAt` and clears their next action.
 - **Phase 2 — ownership and visibility.** Sales records are installation-wide for `crm.read` users;
   ownership determines the actor's action stream, not row-level secrecy. `crm.assign` is granted
-  only to owner/manager and is required for any explicit owner assignment on a deal. A contact's
-  one open next action is assigned to the user who sets it, including on replacement.
+  only to owner/manager and is required for any explicit owner assignment on a deal. A contact's one
+  open next action is assigned to the user who sets it, including on replacement.
 - **Phase 2 — next-action model.** One open action per contact (rather than many queued follow-ups)
   drives the first-release worklist; its due date is optional (`null` means ASAP). There is no
   waiting/queued state or manual ordering in this release. Open actions are replaced using an
@@ -72,80 +72,80 @@ items to review at the end. Each entry names the phase that made it.
   sorted ASAP, by date, contact before deal on a tie, then by id. "Today" is the installation's
   `Europe/London` calendar date, not the browser's or UTC's.
 - **Phase 2 — activity validation.** A call/meeting needs at least one and at most 20 distinct,
-  active contacts. External participants need not work for the linked company. A company and deal
-  on the same activity must agree when the deal has a company. At most five minutes of future clock
-  skew is accepted; the activity is history, not a scheduled event. Customer timelines cap deals
-  and activities at 50 rows each and retain deleted contacts as tombstones in past activities.
+  active contacts. External participants need not work for the linked company. A company and deal on
+  the same activity must agree when the deal has a company. At most five minutes of future clock
+  skew is accepted; the activity is history, not a scheduled event. Customer timelines cap deals and
+  activities at 50 rows each and retain deleted contacts as tombstones in past activities.
 - **Phase 2 — currency and idempotency.** Amounts are non-negative integer minor units in the
   installation currency (GBP), capped at £10 billion to stay in JavaScript's exact-integer range.
   The SPA reuses an idempotency key only for an unchanged retry whose outcome is unknown (network
   failure or 503); corrected validation failures and conflicts begin a new intent.
 - **Phase 2 — in-memory test port.** The fake Data Worker now composes the production services and
   SQL repositories over Node's in-memory SQLite. It runs committed migrations and mirrors D1's
-  atomic batch/guard semantics. This replaces the hand-maintained in-memory business model and
-  lets contract tests run against both SQLite and real Workers RPC+D1.
+  atomic batch/guard semantics. This replaces the hand-maintained in-memory business model and lets
+  contract tests run against both SQLite and real Workers RPC+D1.
 
 - **Phase 3 — conversion.** The shared D1 database makes conversion one atomic batch: a won,
   unconverted deal becomes one project, conversion record, versioned deal back-link, audit events,
-  and idempotency result, or none of them. There is no pending/saga state or recovery endpoint.
-  A converted deal must remain won; reopening it would invalidate its delivery source. A retry with
+  and idempotency result, or none of them. There is no pending/saga state or recovery endpoint. A
+  converted deal must remain won; reopening it would invalidate its delivery source. A retry with
   the same idempotency key returns the original result, while a fresh conversion request is a 409.
-  Project name defaults to the deal title, and lead defaults to the converting user; the company
-  and contact come only from the deal. The linked project's customer context is a conversion-time
+  Project name defaults to the deal title, and lead defaults to the converting user; the company and
+  contact come only from the deal. The linked project's customer context is a conversion-time
   snapshot and is not silently changed by later deal edits.
 - **Phase 3 — project/task scope.** Projects are created from won deals only in this increment;
   standalone creation is a later story. Projects have `active|on_hold|completed|archived` states;
   only managers/owners (`project.manage`) may archive, unarchive, or change the lead. Archived
   projects stay visible but accept no task changes. Delivery users may create, edit, assign, and
   progress tasks (`project.write`); sales users may convert but not manage tasks. A task has the
-  fixed `todo|in_progress|in_review|done` workflow and
-  `no_priority|low|medium|high|urgent` priority, with a sparse position per column. Changing
-  status appends to the target column, stamps `completedAt` on done and clears it on reopening.
-  There is no drag/drop: the keyboard-operable status menu is the primary control.
+  fixed `todo|in_progress|in_review|done` workflow and `no_priority|low|medium|high|urgent`
+  priority, with a sparse position per column. Changing status appends to the target column, stamps
+  `completedAt` on done and clears it on reopening. There is no drag/drop: the keyboard-operable
+  status menu is the primary control.
 - **Phase 3 — personal work.** My Work shows up to 100 open tasks assigned to the actor in
-  non-archived projects, dated tasks first (overdue, then future), higher priority on the same
-  date, undated tasks last. Newly entered due and target dates cannot be in the past; existing
-  dates naturally become overdue. Project detail caps its board at 200 tasks and customer
-  timelines at 50 projects per customer. Task creation, editing, and project status edits use
-  idempotency keys and versioned updates; a version conflict keeps the user's draft.
+  non-archived projects, dated tasks first (overdue, then future), higher priority on the same date,
+  undated tasks last. Newly entered due and target dates cannot be in the past; existing dates
+  naturally become overdue. Project detail caps its board at 200 tasks and customer timelines at 50
+  projects per customer. Task creation, editing, and project status edits use idempotency keys and
+  versioned updates; a version conflict keeps the user's draft.
 
-- **Phase 3 — Mark won/lost (review feedback).** Stage and outcome stay separate fields, but
-  closing a deal is now an explicit **Mark won/lost** dialog rather than a field hidden in the deal
-  editor. "Won" with the (default-checked) conversion option is a single atomic Data Worker
-  transaction (`convertDeal` with `markWon`), so a failed conversion never leaves a won-but-
-  unconverted deal; the deal is closed exactly as a manual win would (close time stamped, next
-  action and expected close date cleared). The option is disabled for "Lost" and for roles without
-  `deal.convert`; a lost deal cannot be won-and-converted in one step (reopen it first).
+- **Phase 3 — Mark won/lost (review feedback).** Stage and outcome stay separate fields, but closing
+  a deal is now an explicit **Mark won/lost** dialog rather than a field hidden in the deal editor.
+  "Won" with the (default-checked) conversion option is a single atomic Data Worker transaction
+  (`convertDeal` with `markWon`), so a failed conversion never leaves a won-but- unconverted deal;
+  the deal is closed exactly as a manual win would (close time stamped, next action and expected
+  close date cleared). The option is disabled for "Lost" and for roles without `deal.convert`; a
+  lost deal cannot be won-and-converted in one step (reopen it first).
 
 - **Phase 4 — link visibility.** Release one has installation-wide visibility per permission, so
   "the actor can see the target" means the target exists, is not deleted, and the actor holds the
   read permission for its type (`crm.read` for contacts, companies, and deals; `project.read` for
   projects). Linking a type the actor cannot read is `FORBIDDEN`; an absent or deleted target is
-  `VALIDATION_FAILED` naming `links.<index>`. Only *newly added* targets are validated on update:
+  `VALIDATION_FAILED` naming `links.<index>`. Only _newly added_ targets are validated on update:
   kept links stay even if their record was deleted since (links are history).
-- **Phase 4 — link limits and duplicates.** A note has 1–20 links. Duplicates are refused with
-  the duplicate's index rather than merged, because a client sending one record twice has a bug.
-  Links are stored and hashed in canonical (type, id) order, so the order a user picks records in
-  does not change the idempotency hash; they are displayed by type, then label.
-- **Phase 4 — edit rule.** Authors edit their own notes; editing another's needs `note.manage`
-  (01d §6, open question 4 kept as decided). There is no note deletion in this increment; the
-  schema has `deleted_at`, and deleted notes are excluded from reads, feeds, and the FTS index.
+- **Phase 4 — link limits and duplicates.** A note has 1–20 links. Duplicates are refused with the
+  duplicate's index rather than merged, because a client sending one record twice has a bug. Links
+  are stored and hashed in canonical (type, id) order, so the order a user picks records in does not
+  change the idempotency hash; they are displayed by type, then label.
+- **Phase 4 — edit rule.** Authors edit their own notes; editing another's needs `note.manage` (01d
+  §6, open question 4 kept as decided). There is no note deletion in this increment; the schema has
+  `deleted_at`, and deleted notes are excluded from reads, feeds, and the FTS index.
 - **Phase 4 — task-list checkboxes are read-only.** 01d open question 5 proposed interactive
   checkboxes as an optimistic note update. They render disabled in this increment so the rendered
   view never mutates; ticking one is an edit of the Markdown. Interactive ticking can be added later
   as an ordinary versioned `updateNote`.
-- **Phase 4 — search transport and syntax.** Search is `POST /notes/search` with a JSON body so
-  the text stays out of URLs, history, `Referer`, and logs; the SPA likewise does not reflect it in
-  the address bar (unlike the other list pages). Text is tokenized into at most 8 quoted prefix
-  terms, ANDed; there is no phrase, OR, or exclusion syntax. Diacritics fold
+- **Phase 4 — search transport and syntax.** Search is `POST /notes/search` with a JSON body so the
+  text stays out of URLs, history, `Referer`, and logs; the SPA likewise does not reflect it in the
+  address bar (unlike the other list pages). Text is tokenized into at most 8 quoted prefix terms,
+  ANDed; there is no phrase, OR, or exclusion syntax. Diacritics fold
   (`unicode61 remove_diacritics 2`). Title matches weigh 5× body matches in BM25.
 - **Phase 4 — Markdown subset.** HTML is disabled (shown as text, not stripped); images render as
   alt text so a shared note never fetches remote content; links are limited to `http:`, `https:`,
   `mailto:`, and relative URLs. Headings shift down two levels so a note never adds an `h1`/`h2`.
   `marked` and `dompurify` were added (exact pins, already used by `cf-terraform-demos/playground`).
 - **Phase 4 — request size.** Note create/update accept up to 512 KiB of JSON because escaping can
-  grow 64 KiB of Markdown (up to 6× for control bytes); the Data Worker enforces the real 64 KiB UTF-8 limit, and the D1 schema
-  checks it again.
+  grow 64 KiB of Markdown (up to 6× for control bytes); the Data Worker enforces the real 64 KiB
+  UTF-8 limit, and the D1 schema checks it again.
 - **Phase 4 — context feeds.** Each record page's Notes card loads independently and pages with
   "Show more notes" (25 at a time). A feed failure is shown inside the card; the record stays
   usable. Notes are not added to the contact/company/deal/project RPC projections, so those
@@ -153,10 +153,10 @@ items to review at the end. Each entry names the phase that made it.
 
 ## Follow-on items
 
-- **CRM record editing — not scheduled in Phases 2–7.** Add contact editing and company editing
-  to the SPA, with the corresponding contact update service/API contract (company update exists in
-  the Data Worker and API but has no UI). Preserve drafts on validation and version conflicts, and
-  enforce `crm.write` in the Data Worker. Phase 2 schedules a *deal* editor and expanded
+- **CRM record editing — not scheduled in Phases 2–7.** Add contact editing and company editing to
+  the SPA, with the corresponding contact update service/API contract (company update exists in the
+  Data Worker and API but has no UI). Preserve drafts on validation and version conflicts, and
+  enforce `crm.write` in the Data Worker. Phase 2 schedules a _deal_ editor and expanded
   contact/company detail projections, not contact/company editors; Phase 6's general UI refinement
   does not explicitly cover these forms.
 - **Signed-in user menu and details — not scheduled in Phases 2–7.** Give the top-right identity a
@@ -164,10 +164,10 @@ items to review at the end. Each entry names the phase that made it.
   details). The Phase 5 team directory and role-assignment UI do not explicitly provide a personal
   details page or an account menu. Decide which profile fields, if any, a user can edit before
   adding that page.
-- **Client-side field validation — not scheduled in Phases 2–7.** Validate structured fields in
-  the SPA while the user types, as well as before submission, for usability and defence in depth.
-  For example, the create-contact form currently sends `ahall@cloudflarecom` and shows the error
-  only after the server's 422. Reuse the shared Valibot schemas (or rules derived from them) so the
+- **Client-side field validation — not scheduled in Phases 2–7.** Validate structured fields in the
+  SPA while the user types, as well as before submission, for usability and defence in depth. For
+  example, the create-contact form currently sends `ahall@cloudflarecom` and shows the error only
+  after the server's 422. Reuse the shared Valibot schemas (or rules derived from them) so the
   browser and server cannot disagree; the Application Worker and Data Worker must keep validating,
   because client checks can be bypassed. Show errors accessibly without nagging before the user has
   finished a field (for example, validate on blur, then live once a field is invalid), and block
@@ -179,6 +179,25 @@ items to review at the end. Each entry names the phase that made it.
   international format. This needs a deliberate dependency choice (such as `libphonenumber-js`)
   shared by client and server, a decision on rejecting versus accepting-and-flagging numbers that
   cannot be parsed, and a migration or backfill plan for existing free-text values.
+- **Deals list stage filter — not scheduled in Phases 2–7.** The Deals page's list (table) view
+  filters by search text and outcome (`pending|won|lost`) only. Add a **Stage** filter alongside
+  them, populated from the pipeline's fixed stages, combinable with search and outcome, and kept in
+  the URL (`?view=list&stage=<id>`) like the existing filters. It needs a `stageId` option on the
+  deals list contract (`DealListOptions`, the `GET /api/v1/deals` query schema, and the repository
+  query), validated against the pipeline's stages in the Data Worker, with an indexed query that
+  keeps the keyset paging order.
+- **Drill-down from the dashboard pipeline panel — not scheduled in Phases 2–7.** Each row of the
+  dashboard's Pipeline panel should link to the Deals page's table view filtered to that row: a
+  stage row to open (`pending`) deals in that stage (`/deals?view=list&status=pending&stage=<id>`),
+  the Won and Lost rows to that outcome (`?view=list&status=won|lost`), and the total row to all
+  open deals (`?view=list&status=pending`). Depends on the stage filter above. Make each row label a
+  real link (keyboard-reachable, with an accessible name such as "Show deals in Qualified"), and
+  test that the filtered list's counts agree with the panel.
+- **Rename "Open total" to "Pipeline" — not scheduled in Phases 2–7.** In the dashboard's Pipeline
+  panel, relabel the open-deals total row from "Open total" to "Pipeline", the usual sales term for
+  the value of open opportunities. Because the panel heading is also "Pipeline", review the heading
+  at the same time (for example "Pipeline summary") so the row label and heading do not read as a
+  duplicate to screen-reader users; update the DOM tests that assert the label.
 
 - **Phase 1 — check script writes ignored artifacts.** The implementation plan requires generated
   type freshness for both Workers and dry Vite builds inside `pnpm check`; `cf workers types` and
@@ -191,7 +210,7 @@ items to review at the end. Each entry names the phase that made it.
 - **Phase 1 — RFC 9457 consistency.** The Data Worker has no public HTTP surface; if a future
   transport is added, preserve the envelope/error mapping and re-run the shared contract suite.
 - **Phase 1 — local seed bookkeeping.** The local-only seed shares `d1_migrations` with the data
-  stream. If a later migration helper supports a separate local seed ledger, migrate the seed out
-  of `d1_migrations`; the health query already excludes it.
+  stream. If a later migration helper supports a separate local seed ledger, migrate the seed out of
+  `d1_migrations`; the health query already excludes it.
 - **Phase 1 — deferred UI.** Deals/activities, projects/tasks, notes, team administration, audit
   viewer, and reports are in Phases 2–6. No active MCP handler is introduced in release one.
