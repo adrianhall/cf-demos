@@ -48,14 +48,43 @@ items to review at the end. Each entry names the phase that made it.
   inside a write transaction.
 - **Phase 1 — date formatting.** The installation date-format vocabulary is `short|medium|long`
   (Intl `dateStyle`) and the UK default is `medium`. No user-specific overrides in release one.
-- **Phase 1 — UI theme.** Ignite uses a warm red/brown Vuetify light/dark theme; the browser follows
-  the system preference. A brand identity was not specified, so colours are chosen for AA contrast
-  rather than for an external brand.
+- **Phase 1 — UI theme.** The Vuetify light and dark themes use Cloudflare orange `#FC7C1E`
+  as primary and `#5A73F4` as secondary, both with dark `on-*` text, because white text falls
+  below AA. Where a brand colour becomes text (tonal cards, active navigation, focused fields), the
+  themes supply AA-compliant `primary-strong`/`secondary-strong` tones: darker shades in light
+  mode and lighter tints in dark mode. The browser follows the system preference.
 - **Phase 1 — local development.** Local sample data uses `.example` e-mails and fictional
   companies/addresses. `ADMIN_EMAIL` in production is the root `.env` value, not a committed
   identity; the committed local placeholder is `owner@example.com`.
 
 ## Follow-on items
+
+- **CRM record editing — not scheduled in Phases 2–7.** Add contact editing and company editing
+  to the SPA, with the corresponding contact update service/API contract (company update exists in
+  the Data Worker and API but has no UI). Preserve drafts on validation and version conflicts, and
+  enforce `crm.write` in the Data Worker. Phase 2 schedules a *deal* editor and expanded
+  contact/company detail projections, not contact/company editors; Phase 6's general UI refinement
+  does not explicitly cover these forms.
+- **Signed-in user menu and details — not scheduled in Phases 2–7.** Give the top-right identity a
+  deliberate treatment (for example, role icon/chip and a menu linking to the signed-in user's
+  details). The Phase 5 team directory and role-assignment UI do not explicitly provide a personal
+  details page or an account menu. Decide which profile fields, if any, a user can edit before
+  adding that page.
+- **Client-side field validation — not scheduled in Phases 2–7.** Validate structured fields in
+  the SPA while the user types, as well as before submission, for usability and defence in depth.
+  For example, the create-contact form currently sends `ahall@cloudflarecom` and shows the error
+  only after the server's 422. Reuse the shared Valibot schemas (or rules derived from them) so the
+  browser and server cannot disagree; the Application Worker and Data Worker must keep validating,
+  because client checks can be bypassed. Show errors accessibly without nagging before the user has
+  finished a field (for example, validate on blur, then live once a field is invalid), and block
+  submission while known errors remain.
+- **Phone-number validation and normalization — not scheduled in Phases 2–7.** Phone is currently
+  free text (trimmed, at most 40 characters). Validate phone numbers while the user types and on
+  submit, and normalize them to E.164 for storage/search (for example, `07523 185547` with the
+  installation's `GB` region becomes `+447523185547`), displaying them in a readable national or
+  international format. This needs a deliberate dependency choice (such as `libphonenumber-js`)
+  shared by client and server, a decision on rejecting versus accepting-and-flagging numbers that
+  cannot be parsed, and a migration or backfill plan for existing free-text values.
 
 - **Phase 1 — check script writes ignored artifacts.** The implementation plan requires generated
   type freshness for both Workers and dry Vite builds inside `pnpm check`; `cf workers types` and

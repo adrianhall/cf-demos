@@ -30,7 +30,7 @@ onMounted(() => void dashboard.load());
     >
       <v-row>
         <v-col cols="12" sm="6">
-          <v-card :to="{ name: 'contacts' }" variant="tonal" color="primary">
+          <v-card :to="{ name: 'contacts' }" variant="tonal" color="primary-strong">
             <v-card-text>
               <div class="text-h3">{{ format.count(dashboard.data.value?.contacts ?? 0) }}</div>
               <div class="text-subtitle-1">Contacts</div>
@@ -38,7 +38,7 @@ onMounted(() => void dashboard.load());
           </v-card>
         </v-col>
         <v-col cols="12" sm="6">
-          <v-card :to="{ name: 'companies' }" variant="tonal" color="secondary">
+          <v-card :to="{ name: 'companies' }" variant="tonal" color="secondary-strong">
             <v-card-text>
               <div class="text-h3">{{ format.count(dashboard.data.value?.companies ?? 0) }}</div>
               <div class="text-subtitle-1">Companies</div>

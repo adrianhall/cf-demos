@@ -163,9 +163,11 @@ receives only the display DTO from `GET /api/v1/configuration`.
 ## Vuetify component library
 
 The SPA is built entirely from Vuetify. Components are registered by name in
-`src/client/vuetify.ts`, with one light/dark theme as the single source of colour and density. Phase
-1 adds no custom component exceptions: `ResourceState`, `ContactForm`, and `HistoryList` are
-compositions of Vuetify primitives.
+`src/client/vuetify.ts`, with one light/dark theme as the single source of colour and density. The
+palette is built on Cloudflare orange `#FC7C1E` (primary) and `#5A73F4` (secondary). Each has
+AA-compliant `*-strong` tones for text and focus, plus `*-container` fills. Phase 1 adds no custom
+component exceptions: `ResourceState`, `ContactForm`, and `HistoryList` are compositions of Vuetify
+primitives.
 
 ## Known limitations (Phase 1)
 
