@@ -629,6 +629,7 @@ export class SalesService implements SalesPort {
       currency: this.settings.currencyCode,
       expectedCloseDate: fields.expectedCloseDate,
       closedAt: null,
+      project: null,
       version: 1,
       createdAt: at,
       updatedAt: at
@@ -695,6 +696,13 @@ export class SalesService implements SalesPort {
         'The deal was changed by someone else. Reload it and try again.',
         { requestId: caller.requestId }
       );
+    }
+    // A converted deal is the immutable source of delivery work. Reopening or losing it would
+    // leave an active project whose source no longer satisfies the conversion invariant.
+    if (current.project !== null && fields.status !== undefined && fields.status !== 'won') {
+      throw serviceError('CONFLICT', 'A converted deal must remain won.', {
+        requestId: caller.requestId
+      });
     }
     let owner = current.owner;
     if (fields.ownerId !== undefined && fields.ownerId !== current.owner.id) {

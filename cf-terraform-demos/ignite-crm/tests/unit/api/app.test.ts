@@ -133,7 +133,7 @@ describe('session, health, configuration', () => {
     const { call } = setup();
     expect(await (await call('/api/v1/health', { as: 'reader@example.com' })).json()).toEqual({
       status: 'ok',
-      data: { status: 'ok', migration: '0002_sales.sql' }
+      data: { status: 'ok', migration: '0003_projects.sql' }
     });
     expect(
       await (await call('/api/v1/configuration', { as: 'reader@example.com' })).json()

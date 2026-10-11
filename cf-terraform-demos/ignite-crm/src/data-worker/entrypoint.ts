@@ -3,12 +3,12 @@
  *
  *   ## Shape of the contract
  *
- *   The grouped contract (`health`, `resolveActor`, `resolveUser`, `authorize`, plus `crm.*` and
- *   `permissions.*`) is exposed through **one** `WorkerEntrypoint` behind the one `DATA_SERVICE`
- *   binding. Module groups are methods returning an `RpcTarget` (`env.DATA_SERVICE.crm()`), not
- *   getters: Workers RPC does not let a caller invoke a method on a getter-returned target in one
- *   pipelined call, whereas a method call pipelines (`await env.DATA_SERVICE.crm().getContact(...)`
- *   is one round trip).
+ *   The grouped contract (`health`, `resolveActor`, `resolveUser`, `authorize`, plus `crm.*`,
+ *   `projects.*`, and `permissions.*`) is exposed through **one** `WorkerEntrypoint` behind the one
+ *   `DATA_SERVICE` binding. Module groups are methods returning an `RpcTarget`
+ *   (`env.DATA_SERVICE.crm()`), not getters: Workers RPC does not let a caller invoke a method on a
+ *   getter-returned target in one pipelined call, whereas a method call pipelines (`await
+ *   env.DATA_SERVICE.crm().getContact(...)` is one round trip).
  *
  *   ## Errors as values
  *
@@ -34,6 +34,12 @@ import type {
   UpdateCompanyInput
 } from '../shared/api/crm.ts';
 import type {
+  ConvertDealRequest,
+  CreateTaskInput,
+  UpdateProjectInput,
+  UpdateTaskInput
+} from '../shared/api/projects.ts';
+import type {
   CreateActivityInput,
   CreateDealInput,
   SetNextActionInput,
@@ -52,6 +58,8 @@ import type {
   ListOptions,
   MutationMeta,
   PermissionsPort,
+  ProjectListOptions,
+  ProjectsPort,
   ResolvedActor,
   ResolvedUser,
   RpcResult
@@ -367,6 +375,103 @@ export class CrmRpc extends RpcTarget implements Enveloped<CrmPort> {
 }
 
 /**
+ * Projects module RPC target.
+ */
+export class ProjectsRpc extends RpcTarget implements Enveloped<ProjectsPort> {
+  /**
+   * @param service The composed Projects service.
+   * @param logger Structured logger.
+   */
+  constructor(
+    private readonly service: ProjectsPort,
+    private readonly logger: Logger
+  ) {
+    super();
+  }
+
+  /**
+   * @inheritdoc
+   */
+  listProjects(actor: ActorContext, options: ProjectListOptions) {
+    return envelope(this.logger, 'projects.listProjects', requestIdOf(actor), () =>
+      this.service.listProjects(actor, options)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  getProject(actor: ActorContext, id: string) {
+    return envelope(this.logger, 'projects.getProject', requestIdOf(actor), () =>
+      this.service.getProject(actor, id)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  convertDeal(
+    actor: ActorContext,
+    dealId: string,
+    input: ConvertDealRequest,
+    expectedVersion: number,
+    meta: MutationMeta
+  ) {
+    return envelope(this.logger, 'projects.convertDeal', requestIdOf(actor), () =>
+      this.service.convertDeal(actor, dealId, input, expectedVersion, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  updateProject(
+    actor: ActorContext,
+    id: string,
+    input: UpdateProjectInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ) {
+    return envelope(this.logger, 'projects.updateProject', requestIdOf(actor), () =>
+      this.service.updateProject(actor, id, input, expectedVersion, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  createTask(actor: ActorContext, projectId: string, input: CreateTaskInput, meta: MutationMeta) {
+    return envelope(this.logger, 'projects.createTask', requestIdOf(actor), () =>
+      this.service.createTask(actor, projectId, input, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  updateTask(
+    actor: ActorContext,
+    id: string,
+    input: UpdateTaskInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ) {
+    return envelope(this.logger, 'projects.updateTask', requestIdOf(actor), () =>
+      this.service.updateTask(actor, id, input, expectedVersion, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  myWork(actor: ActorContext) {
+    return envelope(this.logger, 'projects.myWork', requestIdOf(actor), () =>
+      this.service.myWork(actor)
+    );
+  }
+}
+
+/**
  * Permissions module RPC target.
  */
 export class PermissionsRpc extends RpcTarget implements Enveloped<PermissionsPort> {
@@ -469,6 +574,15 @@ export class DataEntrypoint extends WorkerEntrypoint<DataBindings> {
    */
   crm(): CrmRpc {
     return new CrmRpc(this.#service().crm, this.#logger());
+  }
+
+  /**
+   * The Projects module.
+   *
+   * @returns The Projects RPC target.
+   */
+  projects(): ProjectsRpc {
+    return new ProjectsRpc(this.#service().projects, this.#logger());
   }
 
   /**

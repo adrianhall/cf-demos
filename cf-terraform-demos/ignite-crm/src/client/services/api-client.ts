@@ -18,6 +18,18 @@ import { UserRefSchema } from '../../shared/api/crm.ts';
 import { CompanyDetailSchema, ContactDetailSchema } from '../../shared/api/customer.ts';
 import { type Problem, ProblemSchema } from '../../shared/api/problems.ts';
 import {
+  type ConvertDealRequest,
+  type CreateTaskInput,
+  MyWorkSchema,
+  ProjectDetailSchema,
+  ProjectPageSchema,
+  ProjectSchema,
+  type ProjectStatus,
+  TaskSchema,
+  type UpdateProjectInput,
+  type UpdateTaskInput
+} from '../../shared/api/projects.ts';
+import {
   ActionStreamSchema,
   ActivitySchema,
   ContactNextActionSchema,
@@ -504,6 +516,123 @@ export class ApiClient {
       ActionStreamSchema,
       signal === undefined ? {} : { signal }
     );
+  }
+
+  /**
+   * Convert a won deal into a linked project.
+   *
+   * @param dealId Deal id.
+   * @param input Optional name, lead, and target date.
+   * @param version Deal version last read; a stale one fails with a `conflict` error.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The new project.
+   * @throws {ApiError} On failure (`conflict` when already converted or no longer won).
+   */
+  convertDeal(dealId: string, input: ConvertDealRequest, version: number, idempotencyKey: string) {
+    return this.request(`/api/v1/deals/${encodeURIComponent(dealId)}/convert`, ProjectSchema, {
+      method: 'POST',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey, 'If-Match': `"${version}"` }
+    });
+  }
+
+  /**
+   * List or search projects.
+   *
+   * @param query Search term, status filter, page size, and cursor.
+   * @param signal Cancellation.
+   * @returns One page.
+   * @throws {ApiError} On failure.
+   */
+  projects(
+    query: { q?: string; status?: ProjectStatus; limit?: number; cursor?: string },
+    signal?: AbortSignal
+  ) {
+    return this.request(
+      `/api/v1/projects${toQuery({ ...query, limit: query.limit?.toString() })}`,
+      ProjectPageSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * One project with its tasks and history.
+   *
+   * @param id Project id.
+   * @param signal Cancellation.
+   * @returns The detail.
+   * @throws {ApiError} On failure.
+   */
+  project(id: string, signal?: AbortSignal) {
+    return this.request(
+      `/api/v1/projects/${encodeURIComponent(id)}`,
+      ProjectDetailSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * Update a project.
+   *
+   * @param id Project id.
+   * @param input Fields to change.
+   * @param version Version last read.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The updated project.
+   * @throws {ApiError} On failure.
+   */
+  updateProject(id: string, input: UpdateProjectInput, version: number, idempotencyKey: string) {
+    return this.request(`/api/v1/projects/${encodeURIComponent(id)}`, ProjectSchema, {
+      method: 'PATCH',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey, 'If-Match': `"${version}"` }
+    });
+  }
+
+  /**
+   * Add a task to a project.
+   *
+   * @param projectId Project id.
+   * @param input Task fields.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The task.
+   * @throws {ApiError} On failure.
+   */
+  createTask(projectId: string, input: Partial<CreateTaskInput>, idempotencyKey: string) {
+    return this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/tasks`, TaskSchema, {
+      method: 'POST',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey }
+    });
+  }
+
+  /**
+   * Update (or move) a task.
+   *
+   * @param id Task id.
+   * @param input Fields to change.
+   * @param version Version last read.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The updated task.
+   * @throws {ApiError} On failure.
+   */
+  updateTask(id: string, input: UpdateTaskInput, version: number, idempotencyKey: string) {
+    return this.request(`/api/v1/tasks/${encodeURIComponent(id)}`, TaskSchema, {
+      method: 'PATCH',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey, 'If-Match': `"${version}"` }
+    });
+  }
+
+  /**
+   * The signed-in user's open assigned tasks.
+   *
+   * @param signal Cancellation.
+   * @returns The worklist.
+   * @throws {ApiError} On failure.
+   */
+  myWork(signal?: AbortSignal) {
+    return this.request('/api/v1/my-work', MyWorkSchema, signal === undefined ? {} : { signal });
   }
 
   /**

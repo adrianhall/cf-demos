@@ -10,6 +10,7 @@ beforeAll(async () => {
   await migrate();
   await seedUser('sales@example.com', 'sales');
   await seedUser('readonly@example.com', 'read-only');
+  await seedUser('delivery@example.com', 'delivery');
   await seedUser('suspended@example.com', 'sales', 'suspended');
 });
 
@@ -19,7 +20,7 @@ describe('health and configuration', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       status: 'ok',
-      data: { status: 'ok', migration: '0002_sales.sql' }
+      data: { status: 'ok', migration: '0003_projects.sql' }
     });
     expect(response.headers.get('X-Request-Id')).toMatch(/^[0-9a-f-]{36}$/u);
   });
@@ -319,6 +320,87 @@ describe('sales journey', () => {
       n: number;
     }>();
     expect(after?.n).toBe(before?.n);
+  });
+});
+
+describe('delivery journey', () => {
+  it('wins a deal, converts it once across real RPC, and runs a task on the board and worklist', async () => {
+    const contact = (await (
+      await api('/api/v1/contacts', {
+        as: 'sales@example.com',
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'journey-delivery-contact' },
+        json: { firstName: 'Delivery', lastName: 'Journey', companyName: 'Delivery Ltd' }
+      })
+    ).json()) as { id: string; company: { id: string } };
+    const deal = (await (
+      await api('/api/v1/deals', {
+        as: 'sales@example.com',
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'journey-delivery-deal' },
+        json: { title: 'Delivery deal', primaryContactId: contact.id }
+      })
+    ).json()) as { id: string };
+    const won = await api(`/api/v1/deals/${deal.id}`, {
+      as: 'sales@example.com',
+      method: 'PATCH',
+      headers: { 'Idempotency-Key': 'journey-delivery-won', 'If-Match': '"1"' },
+      json: { status: 'won' }
+    });
+    expect(won.status).toBe(200);
+
+    const converted = await api(`/api/v1/deals/${deal.id}/convert`, {
+      as: 'sales@example.com',
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'journey-delivery-convert', 'If-Match': '"2"' },
+      json: { name: 'Delivery project' }
+    });
+    expect(converted.status).toBe(201);
+    const project = (await converted.json()) as { id: string };
+    const again = await api(`/api/v1/deals/${deal.id}/convert`, {
+      as: 'sales@example.com',
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'journey-delivery-again', 'If-Match': '"3"' }
+    });
+    expect(again.status).toBe(409);
+    expect(
+      await env.DATA_DB.prepare('SELECT count(*) AS n FROM projects WHERE source_deal_id = ?')
+        .bind(deal.id)
+        .first<{ n: number }>()
+    ).toEqual({ n: 1 });
+
+    const delivery = (await (
+      await api('/api/v1/session', { as: 'delivery@example.com' })
+    ).json()) as { user: { id: string } };
+    const task = (await (
+      await api(`/api/v1/projects/${project.id}/tasks`, {
+        as: 'delivery@example.com',
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'journey-delivery-task' },
+        json: { title: 'Kickoff call', priority: 'urgent', assigneeId: delivery.user.id }
+      })
+    ).json()) as { id: string };
+    const moved = await api(`/api/v1/tasks/${task.id}`, {
+      as: 'delivery@example.com',
+      method: 'PATCH',
+      headers: { 'Idempotency-Key': 'journey-delivery-move', 'If-Match': '"1"' },
+      json: { status: 'in_review' }
+    });
+    expect(moved.status).toBe(200);
+    const work = (await (await api('/api/v1/my-work', { as: 'delivery@example.com' })).json()) as {
+      items: { id: string; status: string }[];
+    };
+    expect(work.items).toContainEqual(
+      expect.objectContaining({ id: task.id, status: 'in_review' })
+    );
+    const company = (await (
+      await api(`/api/v1/companies/${contact.company.id}`, { as: 'readonly@example.com' })
+    ).json()) as {
+      deals: { id: string; project: { id: string } | null }[];
+      projects: { id: string }[];
+    };
+    expect(company.projects.map((item) => item.id)).toEqual([project.id]);
+    expect(company.deals[0]?.project?.id).toBe(project.id);
   });
 });
 

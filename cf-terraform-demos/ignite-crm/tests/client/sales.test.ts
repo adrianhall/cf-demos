@@ -205,7 +205,8 @@ describe('deal editing', () => {
     submit();
     await settle();
     expect(wrapper.text()).toContain('My careful note');
-    expect(wrapper.get('h1').text()).toBe('Conflicted');
+    // The other user's title change survives: the save sent only the field this user edited.
+    expect(wrapper.get('h1').text()).toBe('Theirs');
   });
 
   it('closes a deal as won, which clears the next action', async () => {

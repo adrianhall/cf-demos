@@ -180,6 +180,24 @@ export class FakeStore {
   }
 
   /**
+   * Make the next write set fail at statement `index` (see {@link SqliteD1Port.failNextWriteAt}).
+   *
+   * @param index 0-based statement index.
+   */
+  failNextWriteAt(index: number): void {
+    this.port.failNextWriteAt(index);
+  }
+
+  /**
+   * Statements in the most recent write set.
+   *
+   * @returns The count.
+   */
+  get lastWriteSetSize(): number {
+    return this.port.lastWriteSetSize;
+  }
+
+  /**
    * Run `hook` just after the next write set commits.
    *
    * @param hook The hook.

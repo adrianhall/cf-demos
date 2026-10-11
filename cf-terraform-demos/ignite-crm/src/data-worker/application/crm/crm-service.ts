@@ -24,7 +24,8 @@ import {
   type CompanyDetail,
   type ContactDetail,
   TIMELINE_ACTIVITY_LIMIT,
-  TIMELINE_DEAL_LIMIT
+  TIMELINE_DEAL_LIMIT,
+  TIMELINE_PROJECT_LIMIT
 } from '../../../shared/api/customer.ts';
 import { serviceError } from '../../../shared/common/errors.ts';
 import { DEFAULT_PAGE_SIZE, type Page, PageRequestSchema } from '../../../shared/common/paging.ts';
@@ -37,6 +38,7 @@ import type {
 import { SearchTermSchema, VersionSchema } from '../../../shared/validation/fields.ts';
 import { companyNameKey, contactDisplayName } from '../../domain/crm/contacts.ts';
 import type { Authorizer } from '../permissions/permissions-service.ts';
+import type { ProjectsRepository } from '../projects/projects-service.ts';
 import {
   type AuditEntry,
   type IdempotencyRepository,
@@ -352,6 +354,14 @@ export type TimelineReader = Pick<
 >;
 
 /**
+ * The delivery reads a customer timeline needs.
+ */
+export type DeliveryTimelineReader = Pick<
+  ProjectsRepository,
+  'contactProjects' | 'companyProjects'
+>;
+
+/**
  * Contacts and companies application service.
  */
 export class CrmService implements ContactsPort {
@@ -360,12 +370,14 @@ export class CrmService implements ContactsPort {
    * @param authorizer Permissions capability.
    * @param runtime Clock and id source.
    * @param timeline Sales reads for the customer timeline.
+   * @param delivery Delivery-project reads for the customer timeline.
    */
   constructor(
     private readonly repository: CrmRepository,
     private readonly authorizer: Authorizer,
     private readonly runtime: Runtime,
-    private readonly timeline: TimelineReader
+    private readonly timeline: TimelineReader,
+    private readonly delivery: DeliveryTimelineReader
   ) {}
 
   /**
@@ -413,13 +425,14 @@ export class CrmService implements ContactsPort {
       throw serviceError('NOT_FOUND', 'Contact not found.', { requestId: caller.requestId });
     }
     // A fixed set of parallel, bounded reads: never one call per related record.
-    const [nextAction, deals, activities, history] = await Promise.all([
+    const [nextAction, deals, projects, activities, history] = await Promise.all([
       this.timeline.contactNextAction(contactId),
       this.timeline.contactDeals(contactId, TIMELINE_DEAL_LIMIT),
+      this.delivery.contactProjects(contactId, TIMELINE_PROJECT_LIMIT),
       this.timeline.activitiesFor({ type: 'contact', id: contactId }, TIMELINE_ACTIVITY_LIMIT),
       this.repository.history('contact', contactId, HISTORY_LIMIT)
     ]);
-    return { contact, nextAction, deals, activities, history };
+    return { contact, nextAction, deals, projects, activities, history };
   }
 
   /**
@@ -433,13 +446,14 @@ export class CrmService implements ContactsPort {
     if (company === null) {
       throw serviceError('NOT_FOUND', 'Company not found.', { requestId: caller.requestId });
     }
-    const [contacts, deals, activities, history] = await Promise.all([
+    const [contacts, deals, projects, activities, history] = await Promise.all([
       this.repository.companyContacts(companyId, COMPANY_CONTACT_LIMIT),
       this.timeline.companyDeals(companyId, TIMELINE_DEAL_LIMIT),
+      this.delivery.companyProjects(companyId, TIMELINE_PROJECT_LIMIT),
       this.timeline.activitiesFor({ type: 'company', id: companyId }, TIMELINE_ACTIVITY_LIMIT),
       this.repository.history('company', companyId, HISTORY_LIMIT)
     ]);
-    return { company, contacts, deals, activities, history };
+    return { company, contacts, deals, projects, activities, history };
   }
 
   /**

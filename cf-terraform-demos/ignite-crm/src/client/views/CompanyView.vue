@@ -1,12 +1,13 @@
 <script setup lang="ts">
 /**
- * One company's customer timeline: details, primary contact, contacts, deals, every call and
- * meeting involving the company or its people, and history.
+ * One company's customer timeline: details, primary contact, contacts, deals, delivery projects,
+ * every call and meeting involving the company or its people, and history.
  */
 import { watch } from 'vue';
 import ActivityList from '../components/ActivityList.vue';
 import DealList from '../components/DealList.vue';
 import HistoryList from '../components/HistoryList.vue';
+import ProjectList from '../components/ProjectList.vue';
 import ResourceState from '../components/ResourceState.vue';
 import { useResource } from '../composables/useResource.ts';
 import { api } from '../services/api-client.ts';
@@ -98,6 +99,13 @@ watch(
             <DealList
               :deals="detail.data.value.deals"
               empty-text="No deals with this company yet."
+            />
+          </v-card>
+          <v-card class="mb-4">
+            <v-card-title><h2 class="text-h6">Projects</h2></v-card-title>
+            <ProjectList
+              :projects="detail.data.value.projects"
+              empty-text="No delivery projects for this company yet."
             />
           </v-card>
           <v-card>

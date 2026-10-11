@@ -147,10 +147,10 @@ repository migration helper applies it with `--local` only.
 | `contract`    | Node           | Shared Data Worker contract suite against the in-memory fake                                              |
 | `integration` | workerd (30 s) | Same contract suite against the real `DataEntrypoint` over RPC + D1, D1 port guards, full system journeys |
 
-The fake Data Worker (`tests/fakes`) composes the **real** application services with in-memory
-repositories, and passes the same contract suite as the real one. In the integration project the
-Application Worker reaches `DataEntrypoint` through a genuine service binding, so values cross a
-real RPC serialization boundary.
+The fake Data Worker (`tests/fakes`) composes the **real** application services and SQL repositories
+with an in-memory SQLite port, and passes the same contract suite as the real one. In the
+integration project the Application Worker reaches `DataEntrypoint` through a genuine service
+binding, so values cross a real RPC serialization boundary.
 
 Istanbul measures every file under `src/**/*.{ts,vue}`; only tests and declaration files are
 excluded. The report is written to `coverage/`.
@@ -166,9 +166,9 @@ receives only the display DTO from `GET /api/v1/configuration`.
 The SPA is built entirely from Vuetify. Components are registered by name in
 `src/client/vuetify.ts`, with one light/dark theme as the single source of colour and density. The
 palette is built on Cloudflare orange `#FC7C1E` (primary) and `#5A73F4` (secondary). Each has
-AA-compliant `*-strong` tones for text and focus, plus `*-container` fills. Phase 1 adds no custom
-component exceptions: `ResourceState`, `ContactForm`, and `HistoryList` are compositions of Vuetify
-primitives.
+AA-compliant `*-strong` tones for text and focus, plus `*-container` fills. The custom
+board/worklist compositions are documented under their respective phases below; `ResourceState`,
+`ContactForm`, and `HistoryList` compose Vuetify primitives.
 
 ## Phase 2: sales workflow
 
@@ -220,13 +220,57 @@ All reads require verified Access identity and the Data Worker's authorization. 
 shared Valibot schemas before RPC and check response schemas afterwards; every HTTP failure uses RFC
 9457 problem details.
 
-## Known limitations (Phases 1–2)
+## Phase 3: delivery workflow
 
-- Projects/tasks, notes, team administration, the audit viewer, and delivery reports arrive in later
-  phases. Pipeline reporting and the sales workflow are available now.
+`migrations/data/0003_projects.sql` adds projects, tasks, conversion records, and the deal's project
+back-link. `migrations/seed/9003_local_delivery_seed.sql` adds one already-converted project with
+tasks and another won deal ready for review **only in local development**. To see the increment:
+sign in as Sales, open the won Contoso analytics rollout deal, choose **Convert to project**, and
+confirm. The result opens the linked project; the deal, contact, and company pages also show the
+delivery link. Sign in as Delivery to add and progress tasks on the project and see assigned tasks
+under **My work**. Read-only users see those records but no mutation controls.
+
+The Data Worker converts a won deal in **one D1 batch**: it checks the deal's version and status,
+inserts the project and a completed conversion record, links the deal, writes audit events and the
+idempotency result, and commits. Any failed guard or storage statement rolls all of it back; there
+is no pending/saga state or retry-link endpoint. The unit suite injects a failure at every statement
+of the write set, and a Workers-runtime test proves the same rollback on real D1. Conversion uses
+`deal.convert` (Sales, Manager, Owner) and needs `If-Match: "<deal version>"` plus
+`Idempotency-Key`; a second conversion returns 409. The converted deal must remain won.
+
+Project/task reads require `project.read` (all seeded roles). Task and ordinary project edits need
+`project.write` (Delivery, Manager, Owner). Archiving/unarchiving a project or changing its lead
+also requires `project.manage` (Manager, Owner); archived projects stay readable but no tasks can be
+changed. Tasks have fixed `todo|in_progress|in_review|done` statuses and
+`no_priority|low|medium|high|urgent` priorities. Completing a task stamps its completion instant;
+reopening clears it. The project board and `/my-work` show overdue dates relative to the
+installation time zone. All task/project updates use `If-Match` and preserve the editor's draft on
+409; after reloading, untouched fields keep the other person's changes.
+
+The reusable `TaskBoard` is the Phase 3 Vuetify exception: Vuetify has no kanban board. It composes
+responsive `VRow`/`VCard` columns, `VChip` priorities, and a keyboard-operable `VMenu` for status
+changes. A task table is available alongside it. There is no drag/drop path with an inaccessible
+alternative; the menu is the primary interaction. It has its own DOM tests. `TaskForm`,
+`ProjectList`, and My Work compose standard Vuetify primitives.
+
+### Phase 3 API additions
+
+| Route                                                        | Purpose                                               |
+| ------------------------------------------------------------ | ----------------------------------------------------- |
+| `POST /api/v1/deals/:id/convert`                             | Atomic conversion of a won deal to a linked project   |
+| `GET /api/v1/projects`, `GET/PATCH /api/v1/projects/:id`     | Search, read with tasks/history, and versioned edit   |
+| `POST /api/v1/projects/:id/tasks`, `PATCH /api/v1/tasks/:id` | Create and versioned update/move tasks                |
+| `GET /api/v1/my-work`                                        | Signed-in actor's open assigned tasks across projects |
+
+## Known limitations (Phases 1–3)
+
+- Notes, team administration, the audit viewer, and delivery reports arrive in later phases.
+  Standalone project creation, task deletion, and drag/drop are not part of the Phase 3 increment;
+  projects are created from won deals. Pipeline reporting and the sales/delivery workflows are
+  available now.
 - Contact/company editing and the personal profile/menu are recorded in
-  `specs/ignite-crm/03-follow-ons.md`; this phase adds deal editing only. The broader live
-  client-side validation and phone-number normalization remain follow-ons.
+  `specs/ignite-crm/03-follow-ons.md`; this phase adds project/task editing alongside deal editing.
+  The broader live client-side validation and phone-number normalization remain follow-ons.
 - The first-release contact action is one open ASAP or dated action per contact. More elaborate
   waiting/queued follow-ups and drag-and-drop ordering are not part of this review increment; the
   pipeline board uses a keyboard-first stage menu instead.

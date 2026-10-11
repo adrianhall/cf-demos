@@ -85,6 +85,30 @@ items to review at the end. Each entry names the phase that made it.
   atomic batch/guard semantics. This replaces the hand-maintained in-memory business model and
   lets contract tests run against both SQLite and real Workers RPC+D1.
 
+- **Phase 3 — conversion.** The shared D1 database makes conversion one atomic batch: a won,
+  unconverted deal becomes one project, conversion record, versioned deal back-link, audit events,
+  and idempotency result, or none of them. There is no pending/saga state or recovery endpoint.
+  A converted deal must remain won; reopening it would invalidate its delivery source. A retry with
+  the same idempotency key returns the original result, while a fresh conversion request is a 409.
+  Project name defaults to the deal title, and lead defaults to the converting user; the company
+  and contact come only from the deal. The linked project's customer context is a conversion-time
+  snapshot and is not silently changed by later deal edits.
+- **Phase 3 — project/task scope.** Projects are created from won deals only in this increment;
+  standalone creation is a later story. Projects have `active|on_hold|completed|archived` states;
+  only managers/owners (`project.manage`) may archive, unarchive, or change the lead. Archived
+  projects stay visible but accept no task changes. Delivery users may create, edit, assign, and
+  progress tasks (`project.write`); sales users may convert but not manage tasks. A task has the
+  fixed `todo|in_progress|in_review|done` workflow and
+  `no_priority|low|medium|high|urgent` priority, with a sparse position per column. Changing
+  status appends to the target column, stamps `completedAt` on done and clears it on reopening.
+  There is no drag/drop: the keyboard-operable status menu is the primary control.
+- **Phase 3 — personal work.** My Work shows up to 100 open tasks assigned to the actor in
+  non-archived projects, dated tasks first (overdue, then future), higher priority on the same
+  date, undated tasks last. Newly entered due and target dates cannot be in the past; existing
+  dates naturally become overdue. Project detail caps its board at 200 tasks and customer
+  timelines at 50 projects per customer. Task creation, editing, and project status edits use
+  idempotency keys and versioned updates; a version conflict keeps the user's draft.
+
 ## Follow-on items
 
 - **CRM record editing — not scheduled in Phases 2–7.** Add contact editing and company editing

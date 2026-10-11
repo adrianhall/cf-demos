@@ -5,9 +5,10 @@
  * with the user's draft intact and offers to load the latest version.
  */
 import { computed, ref, shallowRef, watch } from 'vue';
-import { mdiCalendarPlus, mdiPencil } from '@mdi/js';
+import { useRouter } from 'vue-router';
+import { mdiCalendarPlus, mdiPencil, mdiRocketLaunch } from '@mdi/js';
 import type { UserRef } from '../../shared/api/crm.ts';
-import type { CreateActivityInput, Pipeline } from '../../shared/api/sales.ts';
+import type { CreateActivityInput, Deal, Pipeline } from '../../shared/api/sales.ts';
 import ActivityForm from '../components/ActivityForm.vue';
 import ActivityList from '../components/ActivityList.vue';
 import DealForm from '../components/DealForm.vue';
@@ -29,7 +30,8 @@ const props = defineProps<{
 }>();
 
 const format = useFormat();
-const { can } = useSession();
+const router = useRouter();
+const { can, session } = useSession();
 const detail = useResource((signal) => api.deal(props.id, signal));
 const deal = computed(() => detail.data.value?.deal ?? null);
 
@@ -42,6 +44,10 @@ watch(
 const pipeline = shallowRef<Pipeline | null>(null);
 const assignees = shallowRef<UserRef[]>([]);
 const editing = ref(false);
+/**
+ * The deal as it was when the editor opened: the base the user's edits are measured against.
+ */
+const baseDeal = shallowRef<Deal | null>(null);
 const editor = useSubmission({ forbidden: 'Your role does not allow changing deals.' });
 const noChanges = ref(false);
 
@@ -57,20 +63,26 @@ async function openEdit(): Promise<void> {
   ]);
   pipeline.value = loadedPipeline;
   assignees.value = loadedAssignees;
+  baseDeal.value = deal.value;
   editing.value = true;
 }
 
 /**
- * Save only the fields that changed, against the version the user loaded.
+ * Save only the fields the user changed.
+ *
+ * Changes are measured against the deal _as the editor opened_ ({@link baseDeal}) and sent with the
+ * newest loaded version, so after a conflict and "Load latest version" an untouched field keeps the
+ * other person's value rather than being reverted by the stale draft.
  *
  * @param value The form value.
  */
 async function save(value: DealFormValue): Promise<void> {
   const current = deal.value;
-  if (current === null) {
+  const base = baseDeal.value ?? current;
+  if (current === null || base === null) {
     return;
   }
-  const changes = toUpdateDealInput(current, value);
+  const changes = toUpdateDealInput(base, value);
   if (changes === null) {
     noChanges.value = true;
     editing.value = false;
@@ -89,13 +101,69 @@ async function save(value: DealFormValue): Promise<void> {
  * Load the latest version underneath the open editor, keeping the user's draft.
  *
  * The form was created from the old version and keeps its own draft; only the version the next save
- * is compared against moves forward.
+ * is checked against moves forward. Edits are still measured against {@link baseDeal}.
  */
 async function reloadLatest(): Promise<void> {
   await detail.load();
   editor.conflict.value = false;
   editor.formError.value =
     'The latest version is loaded. Your edits are still in the form; review them and save again.';
+}
+
+const converting = ref(false);
+const converter = useSubmission({ forbidden: 'Your role does not allow converting deals.' });
+const conversion = ref({ name: '', leadId: '', targetDate: '' });
+const canConvert = computed(
+  () => can('deal.convert') && deal.value?.status === 'won' && deal.value.project === null
+);
+
+/**
+ * Open the conversion confirmation with defaults from the deal.
+ */
+async function openConvert(): Promise<void> {
+  converter.reset();
+  conversion.value = {
+    name: deal.value?.title ?? '',
+    leadId: session.value?.user.id ?? '',
+    targetDate: ''
+  };
+  if (assignees.value.length === 0) {
+    assignees.value = await api.assignees().catch(() => []);
+  }
+  converting.value = true;
+}
+
+/**
+ * Convert the deal into one linked project, then open the project.
+ *
+ * The server does everything in one transaction; on success there is nothing pending to show. A
+ * conflict (converted by someone else, reopened, or edited) reloads the deal so the page reflects
+ * what actually happened.
+ */
+async function convert(): Promise<void> {
+  const current = deal.value;
+  if (current === null) {
+    return;
+  }
+  const project = await converter.run((key) =>
+    api.convertDeal(
+      current.id,
+      {
+        ...(conversion.value.name.trim() === '' ? {} : { name: conversion.value.name }),
+        ...(conversion.value.leadId === '' ? {} : { leadId: conversion.value.leadId }),
+        targetDate: conversion.value.targetDate === '' ? null : conversion.value.targetDate
+      },
+      current.version,
+      key
+    )
+  );
+  if (project !== undefined) {
+    converting.value = false;
+    await router.push({ name: 'project', params: { id: project.id } });
+  } else if (converter.conflict.value || converter.alreadyApplied.value) {
+    // Stale version, or converted/reopened by someone else: show the deal as it now is.
+    await detail.load();
+  }
 }
 
 const logging = ref(false);
@@ -138,6 +206,13 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
       />
       <div class="d-flex flex-wrap align-center ga-2 mb-1">
         <h1 id="deal-title" class="text-h4 flex-grow-1">{{ deal.title }}</h1>
+        <v-btn
+          v-if="canConvert"
+          color="secondary"
+          :prepend-icon="mdiRocketLaunch"
+          @click="openConvert"
+          >Convert to project</v-btn
+        >
         <template v-if="can('crm.write')">
           <v-btn variant="tonal" :prepend-icon="mdiCalendarPlus" @click="openLog"
             >Log activity</v-btn
@@ -149,6 +224,20 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
         <DealStatusChip :deal="deal" />
         <span class="text-h6">{{ format.money(deal.amountMinor) }}</span>
       </p>
+      <v-alert
+        v-if="deal.project"
+        type="success"
+        variant="tonal"
+        density="compact"
+        class="mb-4"
+        data-testid="converted"
+      >
+        Converted into the delivery project
+        <router-link :to="{ name: 'project', params: { id: deal.project.id } }">{{
+          deal.project.name
+        }}</router-link
+        >.
+      </v-alert>
       <v-alert
         v-if="noChanges"
         type="info"
@@ -242,6 +331,75 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
               @submit="save"
               @cancel="editing = false"
             />
+          </v-card-text>
+        </v-card>
+      </v-dialog>
+
+      <v-dialog v-model="converting" max-width="560" aria-labelledby="convert-title">
+        <v-card>
+          <v-card-title
+            ><h2 id="convert-title" class="text-h6">Convert to project</h2></v-card-title
+          >
+          <v-card-text>
+            <p class="mb-4">
+              This creates one delivery project linked to this deal, its company, and its primary
+              contact. It happens all at once: either the project is created and linked, or nothing
+              changes. A deal can be converted only once.
+            </p>
+            <v-alert
+              v-if="converter.formError.value"
+              type="error"
+              variant="tonal"
+              role="alert"
+              class="mb-4"
+              data-testid="convert-error"
+              >{{
+                converter.conflict.value
+                  ? 'This deal changed after you opened it. It has been reloaded; review it and convert again.'
+                  : converter.formError.value
+              }}</v-alert
+            >
+            <v-form novalidate aria-label="Conversion options" @submit.prevent="convert">
+              <v-text-field
+                v-model="conversion.name"
+                label="Project name"
+                counter="200"
+                :error-messages="
+                  converter.fieldErrors.value.name ? [converter.fieldErrors.value.name] : []
+                "
+              />
+              <v-select
+                v-model="conversion.leadId"
+                :items="assignees"
+                item-title="displayName"
+                item-value="id"
+                label="Delivery lead"
+                :error-messages="
+                  converter.fieldErrors.value.leadId ? [converter.fieldErrors.value.leadId] : []
+                "
+              />
+              <v-text-field
+                v-model="conversion.targetDate"
+                label="Target date"
+                type="date"
+                :error-messages="
+                  converter.fieldErrors.value.targetDate
+                    ? [converter.fieldErrors.value.targetDate]
+                    : []
+                "
+              />
+              <div class="d-flex justify-end ga-2 mt-2">
+                <v-btn
+                  variant="text"
+                  :disabled="converter.submitting.value"
+                  @click="converting = false"
+                  >Cancel</v-btn
+                >
+                <v-btn type="submit" color="primary" :loading="converter.submitting.value"
+                  >Create project</v-btn
+                >
+              </div>
+            </v-form>
           </v-card-text>
         </v-card>
       </v-dialog>

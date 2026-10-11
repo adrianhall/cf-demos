@@ -11,10 +11,12 @@ import { crmModule } from './application/crm/crm-module.ts';
 import { CrmService } from './application/crm/crm-service.ts';
 import { SalesService } from './application/crm/sales-service.ts';
 import { PermissionsService } from './application/permissions/permissions-service.ts';
+import { ProjectsService } from './application/projects/projects-service.ts';
 import { type Runtime, systemRuntime } from './application/shared/runtime.ts';
 import { D1Adapter, type D1Port, sql } from './infrastructure/d1/d1-port.ts';
 import { D1CrmRepository } from './infrastructure/repositories/crm-repository.ts';
 import { D1PermissionsRepository } from './infrastructure/repositories/permissions-repository.ts';
+import { D1ProjectsRepository } from './infrastructure/repositories/projects-repository.ts';
 import { D1SalesRepository } from './infrastructure/repositories/sales-repository.ts';
 
 /**
@@ -82,19 +84,30 @@ export function compose(bindings: DataBindings, runtime: Runtime = systemRuntime
 export function composeWithPort(db: D1Port, adminEmail: string, runtime: Runtime): DataService {
   const permissions = new PermissionsService(new D1PermissionsRepository(db), adminEmail, runtime);
   const salesRepository = new D1SalesRepository(db);
+  const projectsRepository = new D1ProjectsRepository(db);
   const crm = crmModule(
-    new CrmService(new D1CrmRepository(db), permissions, runtime, salesRepository),
+    new CrmService(
+      new D1CrmRepository(db),
+      permissions,
+      runtime,
+      salesRepository,
+      projectsRepository
+    ),
     new SalesService(salesRepository, permissions, runtime, {
       timezone: configuration.timezone,
       currencyCode: configuration.currencyCode
     })
   );
+  const projects = new ProjectsService(projectsRepository, permissions, runtime, {
+    timezone: configuration.timezone
+  });
   return {
     health: () => health(db),
     resolveActor: (email, requestId) => permissions.resolveActor(email, requestId),
     resolveUser: (userId) => permissions.resolveUser(userId),
     authorize: (request) => permissions.authorize(request),
     crm,
+    projects,
     permissions
   };
 }

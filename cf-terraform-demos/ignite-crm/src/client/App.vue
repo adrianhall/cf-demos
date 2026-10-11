@@ -10,10 +10,12 @@ import { useDisplay } from 'vuetify';
 import {
   mdiAccountMultiple,
   mdiBriefcase,
+  mdiCheckboxMarkedCircleOutline,
   mdiDomain,
   mdiFormatListChecks,
   mdiMenu,
-  mdiViewDashboard
+  mdiViewDashboard,
+  mdiViewColumn
 } from '@mdi/js';
 import { useSession } from './composables/useSession.ts';
 
@@ -27,6 +29,8 @@ const navigation = [
   { title: 'Dashboard', icon: mdiViewDashboard, to: { name: 'dashboard' } },
   { title: 'Action stream', icon: mdiFormatListChecks, to: { name: 'actions' } },
   { title: 'Deals', icon: mdiBriefcase, to: { name: 'deals' } },
+  { title: 'Projects', icon: mdiViewColumn, to: { name: 'projects' } },
+  { title: 'My work', icon: mdiCheckboxMarkedCircleOutline, to: { name: 'my-work' } },
   { title: 'Contacts', icon: mdiAccountMultiple, to: { name: 'contacts' } },
   { title: 'Companies', icon: mdiDomain, to: { name: 'companies' } }
 ] as const;

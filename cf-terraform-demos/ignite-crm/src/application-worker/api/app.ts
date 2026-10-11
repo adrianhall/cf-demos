@@ -21,6 +21,7 @@ import { actorOf, type ApiEnv } from './context.ts';
 import { jsonOnly, requestId, sameOrigin } from './middleware/protections.ts';
 import { checkResponse, mapServiceError } from './problems.ts';
 import { crmRoutes } from './routes/crm.ts';
+import { projectsRoutes } from './routes/projects.ts';
 import { salesRoutes } from './routes/sales.ts';
 
 /**
@@ -81,6 +82,7 @@ export function createApiApp(options: ApiAppOptions): Hono<ApiEnv> {
 
   app.route('/api/v1', crmRoutes());
   app.route('/api/v1', salesRoutes());
+  app.route('/api/v1', projectsRoutes());
 
   app.onError(
     problemDetailsErrorHandler({ includeStack: options.includeStack, mapError: mapServiceError })

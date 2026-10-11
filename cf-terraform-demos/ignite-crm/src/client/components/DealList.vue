@@ -33,6 +33,7 @@ const format = useFormat();
       </v-list-item-title>
       <v-list-item-subtitle class="text-wrap">
         <DealStatusChip :deal="deal" />
+        <template v-if="deal.project">Converted to {{ deal.project.name }} · </template>
         <template v-if="deal.nextActionText">
           Next: {{ deal.nextActionText }} ({{ format.date(deal.nextActionDate ?? '') }})
         </template>

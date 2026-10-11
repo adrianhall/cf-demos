@@ -76,6 +76,14 @@ export class SqliteD1Port implements D1Port {
    * One-shot hooks run after the next write set commits.
    */
   private readonly after: CommitHook[] = [];
+  /**
+   * One-shot fault: the 0-based statement index at which the next write set fails.
+   */
+  private failAt: number | null = null;
+  /**
+   * Number of statements in the most recent write set (committed or not).
+   */
+  lastWriteSetSize = 0;
 
   /**
    * @param db The database (defaults to a freshly migrated one).
@@ -98,6 +106,16 @@ export class SqliteD1Port implements D1Port {
    */
   afterNextCommit(hook: CommitHook): void {
     this.after.push(hook);
+  }
+
+  /**
+   * Make the next write set fail when it reaches statement `index`, as if D1 failed mid-batch. The
+   * statements before it have already run inside the transaction, so this proves they roll back.
+   *
+   * @param index 0-based statement index.
+   */
+  failNextWriteAt(index: number): void {
+    this.failAt = index;
   }
 
   /**
@@ -163,9 +181,15 @@ export class SqliteD1Port implements D1Port {
     for (const hook of this.before.splice(0)) {
       hook(this.db);
     }
+    this.lastWriteSetSize = queued.length;
+    const failAt = this.failAt;
+    this.failAt = null;
     this.db.exec('BEGIN');
     try {
-      for (const statement of queued) {
+      for (const [index, statement] of queued.entries()) {
+        if (index === failAt) {
+          throw new Error('D1_ERROR: injected storage failure');
+        }
         this.db.prepare(statement.sql).run(...statement.params);
       }
       this.db.exec('COMMIT');

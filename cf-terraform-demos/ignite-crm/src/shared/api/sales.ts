@@ -231,6 +231,11 @@ export const DealSchema = v.strictObject({
    */
   closedAt: v.nullable(TimestampSchema),
   /**
+   * The delivery project this won deal was converted into, once converted (Phase 3). Declared
+   * inline rather than importing `projects.ts`, which itself depends on this module.
+   */
+  project: v.nullable(v.strictObject({ id: IdSchema, name: v.string() })),
+  /**
    * Optimistic-concurrency version.
    */
   version: v.pipe(v.number(), v.integer(), v.minValue(1)),

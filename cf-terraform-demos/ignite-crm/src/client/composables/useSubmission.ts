@@ -49,6 +49,11 @@ export interface UseSubmission {
    */
   readonly conflict: Ref<boolean>;
   /**
+   * Whether the last attempt was refused as a state conflict (`CONFLICT`), e.g. the deal was
+   * already converted: retrying would not help, but reloading shows why.
+   */
+  readonly alreadyApplied: Ref<boolean>;
+  /**
    * Clear errors and start a new intent (call when opening a dialog).
    */
   reset(): void;
@@ -72,6 +77,7 @@ export function useSubmission(messages: SubmissionMessages): UseSubmission {
   const fieldErrors = shallowRef<Record<string, string>>({});
   const formError = ref<string | null>(null);
   const conflict = ref(false);
+  const alreadyApplied = ref(false);
   let key = newIdempotencyKey();
 
   /**
@@ -81,6 +87,7 @@ export function useSubmission(messages: SubmissionMessages): UseSubmission {
     fieldErrors.value = {};
     formError.value = null;
     conflict.value = false;
+    alreadyApplied.value = false;
     key = newIdempotencyKey();
   }
 
@@ -95,6 +102,7 @@ export function useSubmission(messages: SubmissionMessages): UseSubmission {
     fieldErrors.value = {};
     formError.value = null;
     conflict.value = false;
+    alreadyApplied.value = false;
     try {
       const result = await action(key);
       key = newIdempotencyKey();
@@ -108,6 +116,7 @@ export function useSubmission(messages: SubmissionMessages): UseSubmission {
       }
       fieldErrors.value = { ...error.fields };
       conflict.value = error.kind === 'conflict' && error.problem?.code === 'VERSION_MISMATCH';
+      alreadyApplied.value = error.kind === 'conflict' && error.problem?.code === 'CONFLICT';
       formError.value =
         error.kind === 'forbidden'
           ? messages.forbidden
@@ -121,5 +130,5 @@ export function useSubmission(messages: SubmissionMessages): UseSubmission {
     }
   }
 
-  return { submitting, fieldErrors, formError, conflict, reset, run };
+  return { submitting, fieldErrors, formError, conflict, alreadyApplied, reset, run };
 }

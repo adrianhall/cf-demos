@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * One contact's customer timeline: details, next action, deals, calls and meetings, and history,
- * with actions to create a deal for this contact and to log an activity with them.
+ * One contact's customer timeline: details, next action, deals, delivery projects, calls and
+ * meetings, and history, with actions to create a deal for this contact and to log an activity with
+ * them.
  */
 import { computed, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -14,6 +15,7 @@ import DealForm from '../components/DealForm.vue';
 import DealList from '../components/DealList.vue';
 import HistoryList from '../components/HistoryList.vue';
 import NextActionCard from '../components/NextActionCard.vue';
+import ProjectList from '../components/ProjectList.vue';
 import ResourceState from '../components/ResourceState.vue';
 import { useFormat } from '../composables/useFormat.ts';
 import { useResource } from '../composables/useResource.ts';
@@ -146,6 +148,13 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
             <DealList
               :deals="detail.data.value.deals"
               empty-text="No deals with this contact yet."
+            />
+          </v-card>
+          <v-card class="mb-4">
+            <v-card-title><h2 class="text-h6">Projects</h2></v-card-title>
+            <ProjectList
+              :projects="detail.data.value.projects"
+              empty-text="No delivery projects for this contact yet."
             />
           </v-card>
           <v-card>

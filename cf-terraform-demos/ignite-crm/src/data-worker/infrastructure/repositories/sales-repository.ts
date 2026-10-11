@@ -55,6 +55,8 @@ interface DealProjectionRow {
   currency: string;
   expected_close_date: string | null;
   closed_at: string | null;
+  project_id: string | null;
+  project_name: string | null;
   version: number;
   created_at: string;
   updated_at: string;
@@ -72,14 +74,15 @@ const DEAL_SELECT = `
          ct.id AS contact_id, ct.display_name AS contact_name,
          u.id AS owner_id, u.display_name AS owner_name,
          d.status_line, d.next_action_text, d.next_action_date, d.amount_minor, d.currency,
-         d.expected_close_date, d.closed_at, d.version, d.created_at, d.updated_at,
-         lower(d.title) AS sort_key
+         d.expected_close_date, d.closed_at, pr.id AS project_id, pr.name AS project_name,
+         d.version, d.created_at, d.updated_at, lower(d.title) AS sort_key
     FROM deals d
     JOIN pipeline_stages s ON s.id = d.stage_id
     JOIN pipelines p ON p.id = d.pipeline_id
     JOIN contacts ct ON ct.id = d.primary_contact_id
     JOIN users u ON u.id = d.owner_id
     LEFT JOIN companies co ON co.id = d.company_id AND co.deleted_at IS NULL
+    LEFT JOIN projects pr ON pr.id = d.project_id
    WHERE d.deleted_at IS NULL`;
 
 /**
@@ -113,6 +116,10 @@ function toDeal(row: DealProjectionRow): Deal {
     currency: row.currency,
     expectedCloseDate: row.expected_close_date,
     closedAt: row.closed_at,
+    project:
+      row.project_id !== null && row.project_name !== null
+        ? { id: row.project_id, name: row.project_name }
+        : null,
     version: row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -667,7 +674,8 @@ export class D1SalesRepository extends D1IdempotencyReader implements SalesRepos
                   status = ?, status_line = ?, next_action_text = ?, next_action_date = ?,
                   amount_minor = ?, expected_close_date = ?, closed_at = ?,
                   version = version + 1, updated_at = ?
-            WHERE id = ? AND version = ? AND deleted_at IS NULL`,
+            WHERE id = ? AND version = ? AND deleted_at IS NULL
+              AND (project_id IS NULL OR ? = 'won')`,
           deal.title,
           deal.companyId,
           deal.primaryContactId,
@@ -682,7 +690,8 @@ export class D1SalesRepository extends D1IdempotencyReader implements SalesRepos
           deal.closedAt,
           write.at,
           deal.id,
-          write.expectedVersion
+          write.expectedVersion,
+          deal.status
         )
       );
       tx.requireChanged('VERSION_MISMATCH');

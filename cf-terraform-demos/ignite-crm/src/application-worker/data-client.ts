@@ -15,6 +15,7 @@ import type {
   DataService,
   Enveloped,
   PermissionsPort,
+  ProjectsPort,
   RpcResult
 } from '../shared/data-service/contract.ts';
 
@@ -47,6 +48,10 @@ export interface DataRpc {
    * The CRM module target.
    */
   crm(): Enveloped<CrmPort>;
+  /**
+   * The Projects module target.
+   */
+  projects(): Enveloped<ProjectsPort>;
   /**
    * The Permissions module target.
    */
@@ -177,6 +182,7 @@ export function createDataClient(rpc: DataRpc, options: DataClientOptions = {}):
     resolveUser: (userId) => unwrap(() => rpc.resolveUser(userId), timeoutMs, onError),
     authorize: (request) => unwrap(() => rpc.authorize(request), timeoutMs, onError),
     crm: unwrapPort<CrmPort>(() => rpc.crm(), timeoutMs, onError),
+    projects: unwrapPort<ProjectsPort>(() => rpc.projects(), timeoutMs, onError),
     permissions: unwrapPort<PermissionsPort>(() => rpc.permissions(), timeoutMs, onError)
   };
 }

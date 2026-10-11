@@ -443,6 +443,123 @@ export function dataServiceContractTests(
       expect(detail.activities.some((item) => item.subject === 'Ghost')).toBe(false);
     });
 
+    it('converts a won deal into one linked project atomically, then runs a task to done', async () => {
+      const sales = await actor('contract-sales@example.com');
+      const contact = await harness.service.crm.createContact(
+        sales,
+        {
+          firstName: 'Convert',
+          lastName: 'Me',
+          email: null,
+          phone: null,
+          jobTitle: null,
+          companyId: null,
+          companyName: 'Conversion Co'
+        },
+        { idempotencyKey: 'contract-dl-contact' }
+      );
+      const deal = await harness.service.crm.createDeal(
+        sales,
+        {
+          title: 'Conversion deal',
+          primaryContactId: contact.id,
+          amountMinor: 100,
+          statusLine: null,
+          nextActionText: null,
+          nextActionDate: null,
+          expectedCloseDate: null
+        },
+        { idempotencyKey: 'contract-dl-deal' }
+      );
+      // A pending deal is not convertible.
+      expect(
+        await codeOf(
+          harness.service.projects.convertDeal(sales, deal.id, {}, 1, {
+            idempotencyKey: 'contract-dl-early'
+          })
+        )
+      ).toBe('CONFLICT');
+      const won = await harness.service.crm.updateDeal(sales, deal.id, { status: 'won' }, 1, {
+        idempotencyKey: 'contract-dl-won'
+      });
+      expect(
+        await codeOf(
+          harness.service.projects.convertDeal(sales, deal.id, {}, 1, {
+            idempotencyKey: 'contract-dl-stale'
+          })
+        )
+      ).toBe('VERSION_MISMATCH');
+      const project = await harness.service.projects.convertDeal(sales, deal.id, {}, won.version, {
+        idempotencyKey: 'contract-dl-convert'
+      });
+      expect(project).toMatchObject({
+        sourceDeal: { id: deal.id },
+        company: { id: contact.company?.id },
+        primaryContact: { id: contact.id },
+        status: 'active'
+      });
+      expect((await harness.service.crm.getDeal(sales, deal.id)).deal.project?.id).toBe(project.id);
+      expect(
+        await codeOf(
+          harness.service.projects.convertDeal(sales, deal.id, {}, won.version + 1, {
+            idempotencyKey: 'contract-dl-twice'
+          })
+        )
+      ).toBe('CONFLICT');
+      // A sales user may convert but not run delivery work; a delivery user may.
+      expect(
+        await codeOf(
+          harness.service.projects.createTask(
+            sales,
+            project.id,
+            {
+              title: 'Nope',
+              description: null,
+              status: 'todo',
+              priority: 'low',
+              assigneeId: null,
+              dueDate: null
+            },
+            { idempotencyKey: 'contract-dl-sales-task' }
+          )
+        )
+      ).toBe('FORBIDDEN');
+      await harness.addUser('contract-delivery@example.com', 'delivery');
+      const delivery = await actor('contract-delivery@example.com');
+      const task = await harness.service.projects.createTask(
+        delivery,
+        project.id,
+        {
+          title: 'Kickoff',
+          description: null,
+          status: 'todo',
+          priority: 'high',
+          assigneeId: delivery.userId,
+          dueDate: null
+        },
+        { idempotencyKey: 'contract-dl-task' }
+      );
+      expect((await harness.service.projects.myWork(delivery)).items.map((t) => t.id)).toContain(
+        task.id
+      );
+      const done = await harness.service.projects.updateTask(
+        delivery,
+        task.id,
+        { status: 'done' },
+        1,
+        { idempotencyKey: 'contract-dl-done' }
+      );
+      expect(done.completedAt).not.toBeNull();
+      const detail = await harness.service.projects.getProject(sales, project.id);
+      expect(detail.project.taskCounts.done).toBe(1);
+      expect((await harness.service.projects.myWork(delivery)).items).toEqual([]);
+      expect(
+        (await harness.service.crm.getCompany(sales, contact.company?.id ?? '')).projects.map(
+          (item) => item.id
+        )
+      ).toEqual([project.id]);
+    });
+
     it('reports dashboard counts', async () => {
       const reader = await actor('contract-reader@example.com');
       const dashboard = await harness.service.crm.dashboard(reader);

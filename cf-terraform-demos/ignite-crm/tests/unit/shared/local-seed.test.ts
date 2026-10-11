@@ -22,7 +22,16 @@ it('applies every local seed file to the migrated schema, twice', () => {
   const count = (table: string) =>
     (db.prepare(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n;
   expect(count('users')).toBe(5);
-  expect(count('deals')).toBe(4);
+  expect(count('deals')).toBe(5);
+  expect(count('projects')).toBe(1);
+  expect(count('tasks')).toBe(4);
+  expect(
+    (
+      db.prepare('SELECT count(*) AS n FROM deals WHERE project_id IS NOT NULL').get() as {
+        n: number;
+      }
+    ).n
+  ).toBe(1);
   expect(count('activity_contacts')).toBe(3);
   expect(count('follow_ups')).toBe(2);
 });

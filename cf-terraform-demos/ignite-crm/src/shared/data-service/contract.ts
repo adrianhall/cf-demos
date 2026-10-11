@@ -29,6 +29,17 @@ import type {
 } from '../api/crm.ts';
 import type { CompanyDetail, ContactDetail } from '../api/customer.ts';
 import type {
+  ConvertDealRequest,
+  CreateTaskInput,
+  MyWork,
+  Project,
+  ProjectDetail,
+  ProjectStatus,
+  Task,
+  UpdateProjectInput,
+  UpdateTaskInput
+} from '../api/projects.ts';
+import type {
   ActionStream,
   Activity,
   ContactNextAction,
@@ -408,6 +419,106 @@ export interface ContactsPort {
 export interface CrmPort extends ContactsPort, SalesPort {}
 
 /**
+ * Project list options passed to the Data Worker after API validation.
+ */
+export interface ProjectListOptions extends ListOptions {
+  /**
+   * Restrict to one lifecycle state.
+   */
+  readonly status?: ProjectStatus;
+}
+
+/**
+ * Projects module operations: won-deal conversion, projects, tasks, and the personal worklist.
+ */
+export interface ProjectsPort {
+  /**
+   * List or search projects by project, company, or contact name, ordered by name.
+   *
+   * @param actor The caller.
+   * @param options Search, status filter, and paging.
+   */
+  listProjects(actor: ActorContext, options: ProjectListOptions): Promise<Page<Project>>;
+  /**
+   * Read one project with its tasks (board order) and history.
+   *
+   * @param actor The caller.
+   * @param id Project identifier.
+   */
+  getProject(actor: ActorContext, id: string): Promise<ProjectDetail>;
+  /**
+   * Convert a won, unconverted deal into a linked project in one atomic write: the project, the
+   * conversion record, the deal's back-link, audit, and the idempotency result commit together.
+   *
+   * @param actor The caller (needs `deal.convert`).
+   * @param dealId Deal identifier.
+   * @param input Optional name, lead, and target date.
+   * @param expectedVersion Deal version the caller last read.
+   * @param meta Idempotency metadata.
+   */
+  convertDeal(
+    actor: ActorContext,
+    dealId: string,
+    input: ConvertDealRequest,
+    expectedVersion: number,
+    meta: MutationMeta
+  ): Promise<Project>;
+  /**
+   * Update a project if it is still at the expected version.
+   *
+   * @param actor The caller.
+   * @param id Project identifier.
+   * @param input Fields to change.
+   * @param expectedVersion Version the caller last read.
+   * @param meta Idempotency metadata.
+   */
+  updateProject(
+    actor: ActorContext,
+    id: string,
+    input: UpdateProjectInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ): Promise<Project>;
+  /**
+   * Add a task to the end of its status column.
+   *
+   * @param actor The caller.
+   * @param projectId Project identifier.
+   * @param input Task fields.
+   * @param meta Idempotency metadata.
+   */
+  createTask(
+    actor: ActorContext,
+    projectId: string,
+    input: CreateTaskInput,
+    meta: MutationMeta
+  ): Promise<Task>;
+  /**
+   * Update a task if it is still at the expected version. A status change moves the task to the end
+   * of its new column (the keyboard-first board operation).
+   *
+   * @param actor The caller.
+   * @param id Task identifier.
+   * @param input Fields to change.
+   * @param expectedVersion Version the caller last read.
+   * @param meta Idempotency metadata.
+   */
+  updateTask(
+    actor: ActorContext,
+    id: string,
+    input: UpdateTaskInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ): Promise<Task>;
+  /**
+   * The caller's open assigned tasks across projects.
+   *
+   * @param actor The caller.
+   */
+  myWork(actor: ActorContext): Promise<MyWork>;
+}
+
+/**
  * Permissions module operations beyond actor resolution and authorization.
  */
 export interface PermissionsPort {
@@ -450,6 +561,10 @@ export interface DataService {
    * CRM module.
    */
   readonly crm: CrmPort;
+  /**
+   * Projects module.
+   */
+  readonly projects: ProjectsPort;
   /**
    * Permissions module.
    */
