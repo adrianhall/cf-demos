@@ -522,6 +522,10 @@ describe('project status', () => {
       .find((candidate) => candidate.props('label') === 'Project status') as VueWrapper;
     select.vm.$emit('update:modelValue', 'archived');
     await settle();
+    // Archiving asks first; nothing is saved until it is confirmed.
+    expect(document.body.textContent).toContain('Archive Engine renewal?');
+    button('Archive project').click();
+    await settle();
     expect(first.wrapper.text()).toContain('Only managers and owners can archive or unarchive');
     first.wrapper.unmount();
     document.body.innerHTML = '';
@@ -532,7 +536,23 @@ describe('project status', () => {
     const managerSelect = second.wrapper
       .findAllComponents({ name: 'VSelect' })
       .find((candidate) => candidate.props('label') === 'Project status') as VueWrapper;
+    // Cancelling the confirmation leaves the project as it was.
     managerSelect.vm.$emit('update:modelValue', 'archived');
+    await settle();
+    const cancel = [
+      ...document.body.querySelectorAll<HTMLButtonElement>('.v-overlay--active button')
+    ].find((candidate) => candidate.textContent?.trim() === 'Cancel')!;
+    cancel.click();
+    await settle();
+    expect(
+      (await fake.service.projects.getProject(fake.delivery, fake.project.id)).project.status
+    ).toBe('active');
+    expect(second.wrapper.text()).not.toContain('This project is archived and read-only.');
+    // The select still shows the stored status, not the cancelled choice.
+    expect(managerSelect.text()).toContain('Active');
+    managerSelect.vm.$emit('update:modelValue', 'archived');
+    await settle();
+    button('Archive project').click();
     await settle();
     expect(second.wrapper.text()).toContain('This project is archived and read-only.');
     expect(

@@ -174,14 +174,22 @@ const statusError = ref<string | null>(null);
 
 /**
  * Change the project status (archive/unarchive needs `project.manage`; the server decides).
+ * Archiving makes the project read-only, so it is confirmed first (WCAG 3.2.2: a select must not
+ * cause a significant change of context on its own); every other status saves immediately.
  *
  * @param status The new status.
+ * @param confirmed Whether the user has already confirmed archiving.
  */
-async function setStatus(status: ProjectStatus): Promise<void> {
+async function setStatus(status: ProjectStatus, confirmed = false): Promise<void> {
   const current = project.value;
   if (current === null || status === current.status) {
     return;
   }
+  if (status === 'archived' && !confirmed) {
+    confirmingArchive.value = true;
+    return;
+  }
+  confirmingArchive.value = false;
   statusSaving.value = true;
   statusError.value = null;
   try {
@@ -199,6 +207,12 @@ async function setStatus(status: ProjectStatus): Promise<void> {
     await detail.load();
   }
 }
+
+/**
+ * Whether the archive confirmation is open.
+ */
+const confirmingArchive = ref(false);
+useReturnFocus(confirmingArchive);
 
 const statusItems = computed(() =>
   (Object.keys(PROJECT_STATUS_VIEW) as ProjectStatus[]).map((value) => ({
@@ -373,7 +387,7 @@ const statusItems = computed(() =>
                 label="Project status"
                 :loading="statusSaving"
                 :error-messages="statusError ? [statusError] : []"
-                hint="Saves as soon as you choose. Archiving makes the project read-only and needs a manager or owner."
+                hint="Saves as soon as you choose; archiving asks you to confirm first. Archiving makes the project read-only and needs a manager or owner."
                 persistent-hint
                 @update:model-value="setStatus"
               />
@@ -392,6 +406,28 @@ const statusItems = computed(() =>
           </v-card>
         </v-col>
       </v-row>
+
+      <v-dialog v-model="confirmingArchive" max-width="440" aria-labelledby="archive-title">
+        <v-card>
+          <v-card-title>
+            <h2 id="archive-title" class="text-h6">Archive {{ project.name }}?</h2>
+          </v-card-title>
+          <v-card-text>
+            The project becomes read-only: no task can be added, edited, or moved until a manager or
+            owner sets it back to another status.
+          </v-card-text>
+          <v-card-actions class="justify-end">
+            <v-btn variant="text" @click="confirmingArchive = false">Cancel</v-btn>
+            <v-btn
+              color="error"
+              variant="flat"
+              :loading="statusSaving"
+              @click="setStatus('archived', true)"
+              >Archive project</v-btn
+            >
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
 
       <v-dialog v-model="editing" max-width="680" aria-labelledby="task-form-title" persistent>
         <v-card>
