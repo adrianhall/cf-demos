@@ -29,6 +29,15 @@ import type {
 } from '../api/crm.ts';
 import type { CompanyDetail, ContactDetail } from '../api/customer.ts';
 import type {
+  CreateNoteInput,
+  Note,
+  NoteDetail,
+  NoteLinkType,
+  NoteSearchResult,
+  NoteSummary,
+  UpdateNoteInput
+} from '../api/notes.ts';
+import type {
   ConvertDealRequest,
   CreateTaskInput,
   MyWork,
@@ -519,6 +528,84 @@ export interface ProjectsPort {
 }
 
 /**
+ * Note list options passed to the Data Worker after API validation.
+ */
+export interface NoteListOptions {
+  /**
+   * Restrict to notes linked to a record of this type; requires `linkId`.
+   */
+  readonly linkType?: NoteLinkType;
+  /**
+   * Restrict to notes linked to this record; requires `linkType`.
+   */
+  readonly linkId?: string;
+  /**
+   * Page size, 1–100.
+   */
+  readonly limit: number;
+  /**
+   * Cursor from the previous page.
+   */
+  readonly cursor?: string;
+}
+
+/**
+ * Notes module operations: multi-linked Markdown notes, linked-record feeds, and search.
+ */
+export interface NotesPort {
+  /**
+   * List notes, most recently updated first, optionally only those linked to one record (the
+   * context feed on a contact, company, deal, or project page).
+   *
+   * @param actor The caller (needs `note.read`).
+   * @param options Optional linked record and paging.
+   */
+  listNotes(actor: ActorContext, options: NoteListOptions): Promise<Page<NoteSummary>>;
+  /**
+   * Read one note with its links and history.
+   *
+   * @param actor The caller (needs `note.read`).
+   * @param id Note identifier.
+   */
+  getNote(actor: ActorContext, id: string): Promise<NoteDetail>;
+  /**
+   * Full-text search over note titles and bodies, best match first, at most 50 hits. The text is
+   * tokenized into safe prefix terms; it is never used as an FTS expression.
+   *
+   * @param actor The caller (needs `note.read`).
+   * @param text Search text, 2–200 characters.
+   */
+  searchNotes(actor: ActorContext, text: string): Promise<NoteSearchResult>;
+  /**
+   * Create a note linked to one or more records, atomically: the note, every link, audit, and the
+   * idempotency result commit together.
+   *
+   * @param actor The caller, who becomes the author (needs `note.write` and read access to each
+   *   linked record type).
+   * @param input Title, Markdown body, and links.
+   * @param meta Idempotency metadata.
+   */
+  createNote(actor: ActorContext, input: CreateNoteInput, meta: MutationMeta): Promise<Note>;
+  /**
+   * Update a note's text and/or replace its link set if it is still at the expected version. An
+   * author may edit their own note; editing another's needs `note.manage`.
+   *
+   * @param actor The caller.
+   * @param id Note identifier.
+   * @param input Fields to change; `links` replaces the whole set.
+   * @param expectedVersion Version the caller last read.
+   * @param meta Idempotency metadata.
+   */
+  updateNote(
+    actor: ActorContext,
+    id: string,
+    input: UpdateNoteInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ): Promise<Note>;
+}
+
+/**
  * Permissions module operations beyond actor resolution and authorization.
  */
 export interface PermissionsPort {
@@ -565,6 +652,10 @@ export interface DataService {
    * Projects module.
    */
   readonly projects: ProjectsPort;
+  /**
+   * Notes module.
+   */
+  readonly notes: NotesPort;
   /**
    * Permissions module.
    */

@@ -20,7 +20,7 @@ describe('health and configuration', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       status: 'ok',
-      data: { status: 'ok', migration: '0003_projects.sql' }
+      data: { status: 'ok', migration: '0004_notes.sql' }
     });
     expect(response.headers.get('X-Request-Id')).toMatch(/^[0-9a-f-]{36}$/u);
   });

@@ -14,6 +14,7 @@ import type {
   CrmPort,
   DataService,
   Enveloped,
+  NotesPort,
   PermissionsPort,
   ProjectsPort,
   RpcResult
@@ -52,6 +53,10 @@ export interface DataRpc {
    * The Projects module target.
    */
   projects(): Enveloped<ProjectsPort>;
+  /**
+   * The Notes module target.
+   */
+  notes(): Enveloped<NotesPort>;
   /**
    * The Permissions module target.
    */
@@ -183,6 +188,7 @@ export function createDataClient(rpc: DataRpc, options: DataClientOptions = {}):
     authorize: (request) => unwrap(() => rpc.authorize(request), timeoutMs, onError),
     crm: unwrapPort<CrmPort>(() => rpc.crm(), timeoutMs, onError),
     projects: unwrapPort<ProjectsPort>(() => rpc.projects(), timeoutMs, onError),
+    notes: unwrapPort<NotesPort>(() => rpc.notes(), timeoutMs, onError),
     permissions: unwrapPort<PermissionsPort>(() => rpc.permissions(), timeoutMs, onError)
   };
 }

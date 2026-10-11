@@ -16,6 +16,15 @@ import {
 } from '../../shared/api/crm.ts';
 import { UserRefSchema } from '../../shared/api/crm.ts';
 import { CompanyDetailSchema, ContactDetailSchema } from '../../shared/api/customer.ts';
+import {
+  type CreateNoteInput,
+  NoteDetailSchema,
+  type NoteLinkType,
+  NotePageSchema,
+  NoteSchema,
+  NoteSearchResultSchema,
+  type UpdateNoteInput
+} from '../../shared/api/notes.ts';
 import { type Problem, ProblemSchema } from '../../shared/api/problems.ts';
 import {
   type ConvertDealRequest,
@@ -633,6 +642,92 @@ export class ApiClient {
    */
   myWork(signal?: AbortSignal) {
     return this.request('/api/v1/my-work', MyWorkSchema, signal === undefined ? {} : { signal });
+  }
+
+  /**
+   * List notes, newest first, optionally only those linked to one record.
+   *
+   * @param query Linked record and cursor.
+   * @param signal Cancellation.
+   * @returns One page.
+   * @throws {ApiError} On failure.
+   */
+  notes(
+    query: { linkType?: NoteLinkType; linkId?: string; cursor?: string },
+    signal?: AbortSignal
+  ) {
+    return this.request(
+      `/api/v1/notes${toQuery(query)}`,
+      NotePageSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * One note with its links and history.
+   *
+   * @param id Note id.
+   * @param signal Cancellation.
+   * @returns The detail.
+   * @throws {ApiError} On failure.
+   */
+  note(id: string, signal?: AbortSignal) {
+    return this.request(
+      `/api/v1/notes/${encodeURIComponent(id)}`,
+      NoteDetailSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * Full-text search. The text travels in a POST body, never the URL, so it stays out of history
+   * and logs.
+   *
+   * @param q Search text (2–200 characters).
+   * @param signal Cancellation.
+   * @returns At most 50 hits, best first.
+   * @throws {ApiError} On failure.
+   */
+  searchNotes(q: string, signal?: AbortSignal) {
+    return this.request('/api/v1/notes/search', NoteSearchResultSchema, {
+      method: 'POST',
+      body: { q },
+      ...(signal === undefined ? {} : { signal })
+    });
+  }
+
+  /**
+   * Create a note linked to one or more records.
+   *
+   * @param input Title, Markdown, and links.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The note.
+   * @throws {ApiError} On failure.
+   */
+  createNote(input: CreateNoteInput, idempotencyKey: string) {
+    return this.request('/api/v1/notes', NoteSchema, {
+      method: 'POST',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey }
+    });
+  }
+
+  /**
+   * Update a note's text and/or replace its links.
+   *
+   * @param id Note id.
+   * @param input Fields to change.
+   * @param version Version last read.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The updated note.
+   * @throws {ApiError} On failure.
+   */
+  updateNote(id: string, input: UpdateNoteInput, version: number, idempotencyKey: string) {
+    return this.request(`/api/v1/notes/${encodeURIComponent(id)}`, NoteSchema, {
+      method: 'PATCH',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey, 'If-Match': `"${version}"` }
+    });
   }
 
   /**

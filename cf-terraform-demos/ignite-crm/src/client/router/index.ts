@@ -18,6 +18,8 @@ import DashboardView from '../views/DashboardView.vue';
 import DealsView from '../views/DealsView.vue';
 import DealView from '../views/DealView.vue';
 import MyWorkView from '../views/MyWorkView.vue';
+import NotesView from '../views/NotesView.vue';
+import NoteView from '../views/NoteView.vue';
 import NotFoundView from '../views/NotFoundView.vue';
 import ProjectsView from '../views/ProjectsView.vue';
 import ProjectView from '../views/ProjectView.vue';
@@ -50,6 +52,14 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: 'Project' }
   },
   { path: '/my-work', name: 'my-work', component: MyWorkView, meta: { title: 'My work' } },
+  { path: '/notes', name: 'notes', component: NotesView, meta: { title: 'Notes' } },
+  {
+    path: '/notes/:id',
+    name: 'note',
+    component: NoteView,
+    props: true,
+    meta: { title: 'Note' }
+  },
   { path: '/contacts', name: 'contacts', component: ContactsView, meta: { title: 'Contacts' } },
   {
     path: '/contacts/:id',

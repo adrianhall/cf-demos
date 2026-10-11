@@ -271,12 +271,91 @@ alternative; the menu is the primary interaction. It has its own DOM tests. `Tas
 | `POST /api/v1/projects/:id/tasks`, `PATCH /api/v1/tasks/:id` | Create and versioned update/move tasks                |
 | `GET /api/v1/my-work`                                        | Signed-in actor's open assigned tasks across projects |
 
-## Known limitations (Phases 1–3)
+## Phase 4: multi-linked notes and search
 
-- Notes, team administration, the audit viewer, and delivery reports arrive in later phases.
-  Standalone project creation, task deletion, and drag/drop are not part of the Phase 3 increment;
-  projects are created from won deals. Pipeline reporting and the sales/delivery workflows are
-  available now.
+`migrations/data/0004_notes.sql` adds `notes`, the typed `note_links` join table, and an FTS5
+external-content index (`notes_fts`) maintained by triggers.
+`migrations/seed/9004_local_notes_seed.sql` adds two sample notes **only in local development**. To
+see the increment: open the Northwind onboarding workshop project (or either Northwind contact,
+Northwind Traders, or the onboarding deal) and find **Onboarding workshop planning** in its
+**Notes** card — the same note on all five pages. Choose **Notes** in the navigation and search for
+`workshop`. To write one, choose **New note** on any record page: the note starts linked to that
+record, and the link chooser adds contacts, companies, deals, and projects.
+
+A note is one canonical Markdown document with **one or more** typed links; it is not a CRM activity
+and has no single parent. The Data Worker validates every new link target against the same snapshot,
+then writes the note, all of its links, the audit event, and the idempotency result in one D1 batch.
+A commit-time guard re-checks that each new target still exists, so a record deleted between
+validation and commit rolls the whole note back. The FTS triggers run inside that batch, so a
+rolled-back note is never searchable. The unit suite fails the write set at every statement; a
+Workers-runtime test proves the same rollback, and the FTS triggers, on real D1.
+
+- **Rules.** Title 1–200 characters; body 1 byte–64 KiB of UTF-8 after newline normalization; 1–20
+  links; duplicate links are refused with the duplicate's index (`links.2`). A link whose target is
+  later deleted is kept and shown as a tombstone ("Project · deleted"); re-adding a deleted record
+  is refused.
+- **Permissions.** `note.read` reads, lists, and searches (every seeded role). `note.write` creates
+  notes (Sales, Delivery, Manager, Owner) and also needs read access to each linked record type
+  (`crm.read`, or `project.read` for projects). An author edits their own notes; editing another
+  user's note needs `note.manage` (Manager, Owner).
+- **Search.** `POST /api/v1/notes/search` with `{ "q": "…" }` (2–200 characters). Search text is
+  note content in all but name, so it travels in a body rather than the URL — it stays out of
+  browser history, `Referer` headers, and request logs, and the SPA does not put it in the address
+  bar either. The text is split into letter/digit tokens, each becomes a quoted prefix term, and the
+  terms are ANDed; no client FTS syntax ever reaches `MATCH`. Diacritics fold (`cafe` finds `café`).
+  Results are ranked by BM25 (title matches weigh 5×), then most recently updated, capped at 50,
+  with a `truncated` flag. Snippets are returned as plain-text runs and highlighted with `<mark>` by
+  ordinary text interpolation. Linked-record feeds (`GET /api/v1/notes?linkType=&linkId=`) use the
+  reverse link index, not FTS.
+- **Audit.** Audit rows hold a SHA-256 digest of the body, link counts, and added/removed link ids —
+  never the note text or customer names.
+- **Markdown.** Raw Markdown is stored; HTML is never stored. The SPA renders headings, emphasis,
+  strikethrough, lists, read-only task-list checkboxes, block quotes, code, tables, and links.
+  **HTML is disabled**: tags are shown as text. Images render as their alt text (no remote fetches
+  from a shared note). A link renders only for `http:`, `https:`, `mailto:`, or a relative URL, and
+  external links open with `rel="noopener noreferrer nofollow"`. `src/client/services/markdown.ts`
+  is the one place Markdown becomes HTML; its output also passes through a strict DOMPurify
+  allowlist, so a parser bug cannot become script injection. `MarkdownView` is the SPA's only
+  `v-html`.
+- **Partial failure.** Each record page loads its Notes card independently; if the feed fails, the
+  card shows a retryable warning and the record itself stays usable.
+
+Phase 4 adds three reviewed Vuetify exceptions, each in `src/client/components` with its own DOM
+tests and no API calls of its own:
+
+- `RecordLinkChooser` — Vuetify has no chooser across several record types (`VAutocomplete` mixes
+  result kinds in one list with no way to say which kind to look for). It composes a `VSelect` for
+  the type, a `VTextField` search, a `VList` of results with labelled **Add** buttons, and closable
+  `VChip`s whose close buttons are labelled ("Remove Northwind Traders"). Enter in the search adds
+  the first result. The parent performs searches through its `search` event.
+- `MarkdownComposer` — a `VTextarea` (labels, counter, errors, and focus are Vuetify's own) with a
+  `VBtnToggle` Write/Preview switch and a UTF-8 byte counter against the 64 KiB limit.
+- `MarkdownView` — sanitised, read-only Markdown in Vuetify typography and theme tokens, exposed as
+  a labelled region.
+
+`NoteForm`, `NoteList`, `NotesCard`, and the Notes and Note pages compose standard Vuetify
+primitives. Two runtime dependencies are added for rendering, pinned exactly and already used by a
+sibling demo: `marked` (parser) and `dompurify` (sanitiser).
+
+### Phase 4 API additions
+
+| Route                                              | Purpose                                                         |
+| -------------------------------------------------- | --------------------------------------------------------------- |
+| `GET /api/v1/notes`                                | Newest-first notes; `linkType` + `linkId` for one record's feed |
+| `POST /api/v1/notes/search`                        | Bounded full-text search (`{ q }` body; read-only, no key)      |
+| `POST /api/v1/notes`                               | Atomic create with all links (`Idempotency-Key`)                |
+| `GET /api/v1/notes/:id`, `PATCH /api/v1/notes/:id` | Read with history; versioned text edit and/or link replacement  |
+
+Note bodies may be up to 512 KiB on the wire (JSON escaping can grow 64 KiB of text); every other
+JSON endpoint keeps the 8 KiB default.
+
+## Known limitations (Phases 1–4)
+
+- Team administration, the audit viewer, and delivery reports arrive in later phases. Notes cannot
+  yet be deleted, task-list checkboxes are read-only (edit the Markdown to tick one), and
+  note-to-note links are not part of release one. Standalone project creation, task deletion, and
+  drag/drop are not part of the Phase 3 increment; projects are created from won deals. Pipeline
+  reporting and the sales/delivery workflows are available now.
 - Contact/company editing and the personal profile/menu are recorded in
   `specs/ignite-crm/03-follow-ons.md`; this phase adds project/task editing alongside deal editing.
   The broader live client-side validation and phone-number normalization remain follow-ons.

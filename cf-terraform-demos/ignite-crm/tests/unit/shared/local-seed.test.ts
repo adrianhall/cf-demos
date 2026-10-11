@@ -34,4 +34,15 @@ it('applies every local seed file to the migrated schema, twice', () => {
   ).toBe(1);
   expect(count('activity_contacts')).toBe(3);
   expect(count('follow_ups')).toBe(2);
+  expect(count('notes')).toBe(2);
+  expect(count('note_links')).toBe(7);
+  // The FTS triggers indexed the seeded notes exactly once despite the second run.
+  expect(count('notes_fts_docsize')).toBe(2);
+  expect(
+    (
+      db
+        .prepare('SELECT count(*) AS n FROM notes_fts WHERE notes_fts MATCH \'"workshop"*\'')
+        .get() as { n: number }
+    ).n
+  ).toBe(1);
 });

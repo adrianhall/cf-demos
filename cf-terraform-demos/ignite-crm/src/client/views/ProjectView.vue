@@ -12,6 +12,7 @@ import { mdiPencil, mdiPlus } from '@mdi/js';
 import type { UserRef } from '../../shared/api/crm.ts';
 import type { ProjectStatus, Task, TaskStatus } from '../../shared/api/projects.ts';
 import HistoryList from '../components/HistoryList.vue';
+import NotesCard from '../components/NotesCard.vue';
 import ResourceState from '../components/ResourceState.vue';
 import TaskBoard from '../components/TaskBoard.vue';
 import TaskForm from '../components/TaskForm.vue';
@@ -368,6 +369,13 @@ const statusItems = computed(() =>
               />
             </v-card-text>
           </v-card>
+          <NotesCard
+            :record="{
+              type: 'project',
+              id: detail.data.value.project.id,
+              label: detail.data.value.project.name
+            }"
+          />
           <v-card>
             <v-card-title><h2 class="text-h6">History</h2></v-card-title>
             <HistoryList :entries="detail.data.value.history" />

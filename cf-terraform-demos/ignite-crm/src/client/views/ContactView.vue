@@ -15,6 +15,7 @@ import DealForm from '../components/DealForm.vue';
 import DealList from '../components/DealList.vue';
 import HistoryList from '../components/HistoryList.vue';
 import NextActionCard from '../components/NextActionCard.vue';
+import NotesCard from '../components/NotesCard.vue';
 import ProjectList from '../components/ProjectList.vue';
 import ResourceState from '../components/ResourceState.vue';
 import { useFormat } from '../composables/useFormat.ts';
@@ -183,6 +184,7 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
               <v-list-item title="Created" :subtitle="format.dateTime(contact.createdAt)" />
             </v-list>
           </v-card>
+          <NotesCard :record="{ type: 'contact', id: contact.id, label: contact.displayName }" />
           <v-card>
             <v-card-title><h2 class="text-h6">History</h2></v-card-title>
             <HistoryList :entries="detail.data.value.history" />

@@ -10,11 +10,13 @@ import type { DataHealth, DataService } from '../shared/data-service/contract.ts
 import { crmModule } from './application/crm/crm-module.ts';
 import { CrmService } from './application/crm/crm-service.ts';
 import { SalesService } from './application/crm/sales-service.ts';
+import { NotesService } from './application/notes/notes-service.ts';
 import { PermissionsService } from './application/permissions/permissions-service.ts';
 import { ProjectsService } from './application/projects/projects-service.ts';
 import { type Runtime, systemRuntime } from './application/shared/runtime.ts';
 import { D1Adapter, type D1Port, sql } from './infrastructure/d1/d1-port.ts';
 import { D1CrmRepository } from './infrastructure/repositories/crm-repository.ts';
+import { D1NotesRepository } from './infrastructure/repositories/notes-repository.ts';
 import { D1PermissionsRepository } from './infrastructure/repositories/permissions-repository.ts';
 import { D1ProjectsRepository } from './infrastructure/repositories/projects-repository.ts';
 import { D1SalesRepository } from './infrastructure/repositories/sales-repository.ts';
@@ -101,6 +103,7 @@ export function composeWithPort(db: D1Port, adminEmail: string, runtime: Runtime
   const projects = new ProjectsService(projectsRepository, permissions, runtime, {
     timezone: configuration.timezone
   });
+  const notes = new NotesService(new D1NotesRepository(db), permissions, runtime);
   return {
     health: () => health(db),
     resolveActor: (email, requestId) => permissions.resolveActor(email, requestId),
@@ -108,6 +111,7 @@ export function composeWithPort(db: D1Port, adminEmail: string, runtime: Runtime
     authorize: (request) => permissions.authorize(request),
     crm,
     projects,
+    notes,
     permissions
   };
 }

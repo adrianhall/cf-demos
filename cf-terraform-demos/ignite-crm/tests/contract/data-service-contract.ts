@@ -560,6 +560,107 @@ export function dataServiceContractTests(
       ).toEqual([project.id]);
     });
 
+    it('creates one multi-linked note, finds it by search and from each record, and edits it', async () => {
+      const sales = await actor('contract-sales@example.com');
+      const reader = await actor('contract-reader@example.com');
+      const contact = await harness.service.crm.createContact(
+        sales,
+        {
+          firstName: 'Noted',
+          lastName: 'Person',
+          email: null,
+          phone: null,
+          jobTitle: null,
+          companyId: null,
+          companyName: 'Notes Co'
+        },
+        { idempotencyKey: 'contract-note-contact' }
+      );
+      const companyId = contact.company?.id ?? '';
+      const links = [
+        { type: 'contact' as const, id: contact.id },
+        { type: 'company' as const, id: companyId }
+      ];
+      // No links, and a missing target, are refused before anything is written.
+      expect(
+        await codeOf(
+          harness.service.notes.createNote(
+            sales,
+            { title: 'Empty', markdown: 'Body', links: [] },
+            { idempotencyKey: 'contract-note-empty' }
+          )
+        )
+      ).toBe('VALIDATION_FAILED');
+      expect(
+        await codeOf(
+          harness.service.notes.createNote(
+            sales,
+            {
+              title: 'Missing',
+              markdown: 'Body',
+              links: [{ type: 'deal', id: '00000000-0000-4000-8000-00000000fffe' }]
+            },
+            { idempotencyKey: 'contract-note-missing' }
+          )
+        )
+      ).toBe('VALIDATION_FAILED');
+      expect(
+        await codeOf(
+          harness.service.notes.createNote(
+            reader,
+            { title: 'Reader', markdown: 'Body', links },
+            { idempotencyKey: 'contract-note-reader' }
+          )
+        )
+      ).toBe('FORBIDDEN');
+
+      const note = await harness.service.notes.createNote(
+        sales,
+        { title: 'Quarterly zephyr review', markdown: 'Discussed the **zephyr** rollout.', links },
+        { idempotencyKey: 'contract-note-create' }
+      );
+      expect(note.links.map((link) => [link.type, link.available])).toEqual([
+        ['contact', true],
+        ['company', true]
+      ]);
+      for (const link of links) {
+        const feed = await harness.service.notes.listNotes(reader, {
+          linkType: link.type,
+          linkId: link.id,
+          limit: 10
+        });
+        expect(feed.items.map((item) => item.id)).toEqual([note.id]);
+      }
+      const hits = await harness.service.notes.searchNotes(reader, 'zeph');
+      expect(hits.items.map((hit) => hit.note.id)).toEqual([note.id]);
+      expect(hits.items[0]?.snippet.some((segment) => segment.match)).toBe(true);
+      expect(await codeOf(harness.service.notes.searchNotes(reader, 'z'))).toBe(
+        'VALIDATION_FAILED'
+      );
+
+      const updated = await harness.service.notes.updateNote(
+        sales,
+        note.id,
+        { markdown: 'Now about the mistral rollout.', links: [links[0]!] },
+        1,
+        { idempotencyKey: 'contract-note-update' }
+      );
+      expect(updated).toMatchObject({ version: 2, links: [{ type: 'contact' }] });
+      expect((await harness.service.notes.searchNotes(reader, 'mistral')).items).toHaveLength(1);
+      expect(
+        (await harness.service.notes.searchNotes(reader, 'zephyr rollout discussed')).items
+      ).toHaveLength(0);
+      expect(
+        await codeOf(
+          harness.service.notes.updateNote(sales, note.id, { title: 'Stale' }, 1, {
+            idempotencyKey: 'contract-note-stale'
+          })
+        )
+      ).toBe('VERSION_MISMATCH');
+      const detail = await harness.service.notes.getNote(reader, note.id);
+      expect(detail.history.map((entry) => entry.action)).toEqual(['updated', 'created']);
+    });
+
     it('reports dashboard counts', async () => {
       const reader = await actor('contract-reader@example.com');
       const dashboard = await harness.service.crm.dashboard(reader);

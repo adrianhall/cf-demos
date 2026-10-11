@@ -117,6 +117,40 @@ items to review at the end. Each entry names the phase that made it.
   action and expected close date cleared). The option is disabled for "Lost" and for roles without
   `deal.convert`; a lost deal cannot be won-and-converted in one step (reopen it first).
 
+- **Phase 4 — link visibility.** Release one has installation-wide visibility per permission, so
+  "the actor can see the target" means the target exists, is not deleted, and the actor holds the
+  read permission for its type (`crm.read` for contacts, companies, and deals; `project.read` for
+  projects). Linking a type the actor cannot read is `FORBIDDEN`; an absent or deleted target is
+  `VALIDATION_FAILED` naming `links.<index>`. Only *newly added* targets are validated on update:
+  kept links stay even if their record was deleted since (links are history).
+- **Phase 4 — link limits and duplicates.** A note has 1–20 links. Duplicates are refused with
+  the duplicate's index rather than merged, because a client sending one record twice has a bug.
+  Links are stored and hashed in canonical (type, id) order, so the order a user picks records in
+  does not change the idempotency hash; they are displayed by type, then label.
+- **Phase 4 — edit rule.** Authors edit their own notes; editing another's needs `note.manage`
+  (01d §6, open question 4 kept as decided). There is no note deletion in this increment; the
+  schema has `deleted_at`, and deleted notes are excluded from reads, feeds, and the FTS index.
+- **Phase 4 — task-list checkboxes are read-only.** 01d open question 5 proposed interactive
+  checkboxes as an optimistic note update. They render disabled in this increment so the rendered
+  view never mutates; ticking one is an edit of the Markdown. Interactive ticking can be added later
+  as an ordinary versioned `updateNote`.
+- **Phase 4 — search transport and syntax.** Search is `POST /notes/search` with a JSON body so
+  the text stays out of URLs, history, `Referer`, and logs; the SPA likewise does not reflect it in
+  the address bar (unlike the other list pages). Text is tokenized into at most 8 quoted prefix
+  terms, ANDed; there is no phrase, OR, or exclusion syntax. Diacritics fold
+  (`unicode61 remove_diacritics 2`). Title matches weigh 5× body matches in BM25.
+- **Phase 4 — Markdown subset.** HTML is disabled (shown as text, not stripped); images render as
+  alt text so a shared note never fetches remote content; links are limited to `http:`, `https:`,
+  `mailto:`, and relative URLs. Headings shift down two levels so a note never adds an `h1`/`h2`.
+  `marked` and `dompurify` were added (exact pins, already used by `cf-terraform-demos/playground`).
+- **Phase 4 — request size.** Note create/update accept up to 512 KiB of JSON because escaping can
+  grow 64 KiB of Markdown (up to 6× for control bytes); the Data Worker enforces the real 64 KiB UTF-8 limit, and the D1 schema
+  checks it again.
+- **Phase 4 — context feeds.** Each record page's Notes card loads independently and pages with
+  "Show more notes" (25 at a time). A feed failure is shown inside the card; the record stays
+  usable. Notes are not added to the contact/company/deal/project RPC projections, so those
+  projections' query budgets are unchanged.
+
 ## Follow-on items
 
 - **CRM record editing — not scheduled in Phases 2–7.** Add contact editing and company editing

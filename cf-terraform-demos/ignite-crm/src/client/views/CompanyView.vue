@@ -7,6 +7,7 @@ import { watch } from 'vue';
 import ActivityList from '../components/ActivityList.vue';
 import DealList from '../components/DealList.vue';
 import HistoryList from '../components/HistoryList.vue';
+import NotesCard from '../components/NotesCard.vue';
 import ProjectList from '../components/ProjectList.vue';
 import ResourceState from '../components/ResourceState.vue';
 import { useResource } from '../composables/useResource.ts';
@@ -108,6 +109,13 @@ watch(
               empty-text="No delivery projects for this company yet."
             />
           </v-card>
+          <NotesCard
+            :record="{
+              type: 'company',
+              id: detail.data.value.company.id,
+              label: detail.data.value.company.name
+            }"
+          />
           <v-card>
             <v-card-title><h2 class="text-h6">History</h2></v-card-title>
             <HistoryList :entries="detail.data.value.history" />

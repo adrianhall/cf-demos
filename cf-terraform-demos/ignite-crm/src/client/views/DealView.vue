@@ -15,6 +15,7 @@ import ActivityList from '../components/ActivityList.vue';
 import DealForm from '../components/DealForm.vue';
 import DealStatusChip from '../components/DealStatusChip.vue';
 import HistoryList from '../components/HistoryList.vue';
+import NotesCard from '../components/NotesCard.vue';
 import ResourceState from '../components/ResourceState.vue';
 import { useFormat } from '../composables/useFormat.ts';
 import { useResource } from '../composables/useResource.ts';
@@ -359,6 +360,13 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
           </v-card>
         </v-col>
         <v-col cols="12" md="5">
+          <NotesCard
+            :record="{
+              type: 'deal',
+              id: detail.data.value.deal.id,
+              label: detail.data.value.deal.title
+            }"
+          />
           <v-card>
             <v-card-title><h2 class="text-h6">History</h2></v-card-title>
             <HistoryList :entries="detail.data.value.history" />

@@ -14,6 +14,7 @@ import {
   mdiDomain,
   mdiFormatListChecks,
   mdiMenu,
+  mdiNoteTextOutline,
   mdiViewDashboard,
   mdiViewColumn
 } from '@mdi/js';
@@ -31,6 +32,7 @@ const navigation = [
   { title: 'Deals', icon: mdiBriefcase, to: { name: 'deals' } },
   { title: 'Projects', icon: mdiViewColumn, to: { name: 'projects' } },
   { title: 'My work', icon: mdiCheckboxMarkedCircleOutline, to: { name: 'my-work' } },
+  { title: 'Notes', icon: mdiNoteTextOutline, to: { name: 'notes' } },
   { title: 'Contacts', icon: mdiAccountMultiple, to: { name: 'contacts' } },
   { title: 'Companies', icon: mdiDomain, to: { name: 'companies' } }
 ] as const;

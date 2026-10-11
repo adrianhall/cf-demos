@@ -4,8 +4,8 @@
  *   ## Shape of the contract
  *
  *   The grouped contract (`health`, `resolveActor`, `resolveUser`, `authorize`, plus `crm.*`,
- *   `projects.*`, and `permissions.*`) is exposed through **one** `WorkerEntrypoint` behind the one
- *   `DATA_SERVICE` binding. Module groups are methods returning an `RpcTarget`
+ *   `projects.*`, `notes.*`, and `permissions.*`) is exposed through **one** `WorkerEntrypoint`
+ *   behind the one `DATA_SERVICE` binding. Module groups are methods returning an `RpcTarget`
  *   (`env.DATA_SERVICE.crm()`), not getters: Workers RPC does not let a caller invoke a method on a
  *   getter-returned target in one pipelined call, whereas a method call pipelines (`await
  *   env.DATA_SERVICE.crm().getContact(...)` is one round trip).
@@ -33,6 +33,7 @@ import type {
   CreateContactInput,
   UpdateCompanyInput
 } from '../shared/api/crm.ts';
+import type { CreateNoteInput, UpdateNoteInput } from '../shared/api/notes.ts';
 import type {
   ConvertDealRequest,
   CreateTaskInput,
@@ -57,6 +58,8 @@ import type {
   Enveloped,
   ListOptions,
   MutationMeta,
+  NoteListOptions,
+  NotesPort,
   PermissionsPort,
   ProjectListOptions,
   ProjectsPort,
@@ -472,6 +475,76 @@ export class ProjectsRpc extends RpcTarget implements Enveloped<ProjectsPort> {
 }
 
 /**
+ * Notes module RPC target.
+ *
+ * Search text is passed to the service but never logged: the envelope records only the operation,
+ * outcome, and duration.
+ */
+export class NotesRpc extends RpcTarget implements Enveloped<NotesPort> {
+  /**
+   * @param service The composed Notes service.
+   * @param logger Structured logger.
+   */
+  constructor(
+    private readonly service: NotesPort,
+    private readonly logger: Logger
+  ) {
+    super();
+  }
+
+  /**
+   * @inheritdoc
+   */
+  listNotes(actor: ActorContext, options: NoteListOptions) {
+    return envelope(this.logger, 'notes.listNotes', requestIdOf(actor), () =>
+      this.service.listNotes(actor, options)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  getNote(actor: ActorContext, id: string) {
+    return envelope(this.logger, 'notes.getNote', requestIdOf(actor), () =>
+      this.service.getNote(actor, id)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  searchNotes(actor: ActorContext, text: string) {
+    return envelope(this.logger, 'notes.searchNotes', requestIdOf(actor), () =>
+      this.service.searchNotes(actor, text)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  createNote(actor: ActorContext, input: CreateNoteInput, meta: MutationMeta) {
+    return envelope(this.logger, 'notes.createNote', requestIdOf(actor), () =>
+      this.service.createNote(actor, input, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  updateNote(
+    actor: ActorContext,
+    id: string,
+    input: UpdateNoteInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ) {
+    return envelope(this.logger, 'notes.updateNote', requestIdOf(actor), () =>
+      this.service.updateNote(actor, id, input, expectedVersion, meta)
+    );
+  }
+}
+
+/**
  * Permissions module RPC target.
  */
 export class PermissionsRpc extends RpcTarget implements Enveloped<PermissionsPort> {
@@ -583,6 +656,15 @@ export class DataEntrypoint extends WorkerEntrypoint<DataBindings> {
    */
   projects(): ProjectsRpc {
     return new ProjectsRpc(this.#service().projects, this.#logger());
+  }
+
+  /**
+   * The Notes module.
+   *
+   * @returns The Notes RPC target.
+   */
+  notes(): NotesRpc {
+    return new NotesRpc(this.#service().notes, this.#logger());
   }
 
   /**
