@@ -346,4 +346,19 @@ describe.each(['light', 'dark'] as const)('reusable components in the %s theme',
     expect(wrapper.find('[aria-label^="Add "]').exists()).toBe(false);
     wrapper.unmount();
   });
+
+  it('ContactPicker cancels a pending search when it unmounts', async () => {
+    const fetch = vi.fn(() => Promise.resolve(Response.json({ items: [], nextCursor: null })));
+    vi.stubGlobal('fetch', fetch);
+    const wrapper = await mountIn(
+      () => h(ContactPicker, { label: 'Primary contact', modelValue: null }),
+      theme
+    );
+    const before = fetch.mock.calls.length;
+    // Type, then close the picker inside the 250 ms debounce window.
+    await wrapper.get('input[type="search"]').setValue('ad');
+    wrapper.unmount();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(fetch.mock.calls.length).toBe(before);
+  });
 });

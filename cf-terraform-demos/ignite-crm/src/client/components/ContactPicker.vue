@@ -7,7 +7,7 @@
  * debounced server-side search. In `multiple` mode the selection is shown as closable chips, and
  * the chosen contacts stay listed even when they are not in the current search results.
  */
-import { computed, ref, shallowRef, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { api } from '../services/api-client.ts';
 import type { PickedContact } from '../services/deal-draft.ts';
 
@@ -37,6 +37,10 @@ const loading = ref(false);
 let debounce: ReturnType<typeof setTimeout> | undefined;
 let generation = 0;
 
+/**
+ * The autocomplete's options: the current selection first (so chips always have an option to show),
+ * then search results that are not already selected.
+ */
 const items = computed(() => {
   const selected = Array.isArray(model.value) ? model.value : model.value ? [model.value] : [];
   const seen = new Set(selected.map((item) => item.id));
@@ -44,10 +48,8 @@ const items = computed(() => {
 });
 
 /**
- * Select a search result using a native button, even when the autocomplete menu is closed. This
- * keeps selection available to keyboard and touch users while asynchronous results arrive.
- *
- * @param contact The selected contact.
+ * Search results offered with an explicit Add button: those not already selected that still match
+ * the current text (a slower response for an older term is filtered by the live text).
  */
 const availableResults = computed(() => {
   const selected = Array.isArray(model.value) ? model.value : model.value ? [model.value] : [];
@@ -122,6 +124,13 @@ watch(
   },
   { immediate: true }
 );
+
+// A pending search must not run (and write state) after the picker is gone, for example when the
+// dialog holding it closes within the debounce window.
+onBeforeUnmount(() => {
+  clearTimeout(debounce);
+  generation++;
+});
 </script>
 
 <template>
