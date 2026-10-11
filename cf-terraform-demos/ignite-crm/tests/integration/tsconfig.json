@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/vitest-plugin/types", "vite/client"]
+  },
+  "include": ["./**/*.ts", "../../src", "../../.cloudflare/types/index.d.ts"]
+}

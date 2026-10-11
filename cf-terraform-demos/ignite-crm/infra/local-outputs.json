@@ -1,0 +1,52 @@
+{
+  "access_aud": {
+    "sensitive": false,
+    "type": "string",
+    "value": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "admin_email": {
+    "sensitive": false,
+    "type": "string",
+    "value": "owner@example.com"
+  },
+  "application_hostname": {
+    "sensitive": false,
+    "type": "string",
+    "value": "ignite-crm.localhost"
+  },
+  "application_worker_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "ignite-crm-application-local"
+  },
+  "cloudflare_team_domain": {
+    "sensitive": false,
+    "type": "string",
+    "value": "local.cloudflareaccess.com"
+  },
+  "d1_database_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "00000000-0000-4000-8000-0000000000c1"
+  },
+  "data_d1_database_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "00000000-0000-4000-8000-0000000000c1"
+  },
+  "data_d1_database_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "ignite-crm-data-local"
+  },
+  "data_worker_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "ignite-crm-data-local"
+  },
+  "environment": {
+    "sensitive": false,
+    "type": "string",
+    "value": "development"
+  }
+}

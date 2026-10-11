@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "useDefineForClassFields": true,
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["@cloudflare/vitest-plugin/types", "node", "vite/client"]
+  },
+  "include": [
+    "src",
+    "tests/unit",
+    "tests/client",
+    "tests/contract",
+    "tests/fakes",
+    "tests/fixtures",
+    "scripts",
+    "infra/outputs.ts",
+    "data/cloudflare.config.ts",
+    "data/worker-settings.ts",
+    "cloudflare.config.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "oxlint.config.ts",
+    ".cloudflare/types/index.d.ts"
+  ]
+}
