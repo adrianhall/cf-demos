@@ -11,7 +11,13 @@
  */
 import { nextTick, reactive, ref, watch } from 'vue';
 import type { UserRef } from '../../shared/api/crm.ts';
-import { TASK_PRIORITIES, TASK_STATUSES, type Task } from '../../shared/api/projects.ts';
+import {
+  CreateTaskInputSchema,
+  TASK_PRIORITIES,
+  TASK_STATUSES,
+  type Task
+} from '../../shared/api/projects.ts';
+import { useFieldValidation } from '../composables/useFieldValidation.ts';
 import type { TaskFormValue } from '../services/task-draft.ts';
 import { TASK_PRIORITY_VIEW, TASK_STATUS_LABELS } from './taskLabels.ts';
 
@@ -58,6 +64,7 @@ const draft = reactive<TaskFormValue>({
   dueDate: props.task?.dueDate ?? ''
 });
 const localErrors = ref<Record<string, string>>({});
+const validation = useFieldValidation(CreateTaskInputSchema, () => ({ ...draft }));
 const summary = ref<HTMLElement | null>(null);
 
 const statusItems = TASK_STATUSES.map((value) => ({ title: TASK_STATUS_LABELS[value], value }));
@@ -73,7 +80,8 @@ const priorityItems = TASK_PRIORITIES.map((value) => ({
  * @returns Messages for Vuetify's `error-messages`.
  */
 function errorsFor(field: string): string[] {
-  const message = localErrors.value[field] ?? props.fieldErrors?.[field];
+  const message =
+    validation.errors.value[field] ?? localErrors.value[field] ?? props.fieldErrors?.[field];
   return message === undefined ? [] : [message];
 }
 
@@ -82,6 +90,10 @@ function errorsFor(field: string): string[] {
  */
 function onSubmit(): void {
   localErrors.value = draft.title.trim() === '' ? { title: 'Title is required.' } : {};
+  if (!validation.submit()) {
+    void nextTick(() => summary.value?.focus());
+    return;
+  }
   if (Object.keys(localErrors.value).length > 0) {
     void nextTick(() => summary.value?.focus());
     return;
@@ -103,7 +115,11 @@ watch(
 <template>
   <v-form novalidate aria-labelledby="task-form-title" @submit.prevent="onSubmit">
     <div
-      v-if="formError || Object.keys(localErrors).length > 0"
+      v-if="
+        formError
+        || Object.keys(localErrors).length > 0
+        || Object.keys(validation.errors.value).length > 0
+      "
       ref="summary"
       tabindex="-1"
       class="mb-4"
@@ -117,6 +133,7 @@ watch(
       <v-col cols="12">
         <v-text-field
           v-model="draft.title"
+          @blur="validation.blur('title')"
           label="Title"
           required
           counter="200"
@@ -152,6 +169,7 @@ watch(
       <v-col cols="12" sm="6">
         <v-text-field
           v-model="draft.dueDate"
+          @blur="validation.blur('dueDate')"
           label="Due date"
           type="date"
           :error-messages="errorsFor('dueDate')"
@@ -160,6 +178,7 @@ watch(
       <v-col cols="12">
         <v-textarea
           v-model="draft.description"
+          @blur="validation.blur('description')"
           label="Description"
           rows="3"
           auto-grow

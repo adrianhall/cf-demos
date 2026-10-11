@@ -15,11 +15,13 @@
  */
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import {
+  CreateNoteInputSchema,
   NOTE_MARKDOWN_MAX_BYTES,
   type Note,
   type NoteLinkType,
   utf8Length
 } from '../../shared/api/notes.ts';
+import { useFieldValidation } from '../composables/useFieldValidation.ts';
 import type { LinkOption, NoteFormValue } from '../services/note-draft.ts';
 import MarkdownComposer from './MarkdownComposer.vue';
 import RecordLinkChooser from './RecordLinkChooser.vue';
@@ -82,6 +84,11 @@ const draft = reactive<NoteFormValue>({
     : [...(props.initialLinks ?? [])]
 });
 const localErrors = ref<Record<string, string>>({});
+const validation = useFieldValidation(CreateNoteInputSchema, () => ({
+  title: draft.title,
+  markdown: draft.markdown,
+  links: draft.links.map(({ type, id }) => ({ type, id }))
+}));
 const summary = ref<HTMLElement | null>(null);
 
 /**
@@ -91,7 +98,8 @@ const summary = ref<HTMLElement | null>(null);
  * @returns Messages for Vuetify's `error-messages`.
  */
 function errorsFor(field: string): string[] {
-  const message = localErrors.value[field] ?? props.fieldErrors?.[field];
+  const message =
+    validation.errors.value[field] ?? localErrors.value[field] ?? props.fieldErrors?.[field];
   return message === undefined ? [] : [message];
 }
 
@@ -126,7 +134,7 @@ function onSubmit(): void {
     errors.links = 'Link the note to at least one record.';
   }
   localErrors.value = errors;
-  if (Object.keys(errors).length > 0) {
+  if (!validation.submit() || Object.keys(errors).length > 0) {
     void nextTick(() => summary.value?.focus());
     return;
   }
@@ -160,6 +168,7 @@ watch(
       v-if="
         formError
         || Object.keys(localErrors).length > 0
+        || Object.keys(validation.errors.value).length > 0
         || Object.keys(fieldErrors ?? {}).length > 0
       "
       ref="summary"
@@ -173,6 +182,7 @@ watch(
     </div>
     <v-text-field
       v-model="draft.title"
+      @blur="validation.blur('title')"
       label="Title"
       required
       counter="200"
@@ -182,6 +192,7 @@ watch(
     />
     <MarkdownComposer
       v-model="draft.markdown"
+      @blur="validation.blur('markdown')"
       label="Body"
       required
       :disabled="submitting"

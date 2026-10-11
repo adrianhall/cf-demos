@@ -15,7 +15,13 @@
  */
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import type { UserRef } from '../../shared/api/crm.ts';
-import type { Deal, DealStatus, Stage } from '../../shared/api/sales.ts';
+import {
+  CreateDealInputSchema,
+  type Deal,
+  type DealStatus,
+  type Stage
+} from '../../shared/api/sales.ts';
+import { useFieldValidation } from '../composables/useFieldValidation.ts';
 import { useSession } from '../composables/useSession.ts';
 import type { DealFormValue, PickedContact } from '../services/deal-draft.ts';
 import ContactPicker from './ContactPicker.vue';
@@ -83,6 +89,17 @@ const draft = reactive({
   ownerId: props.deal?.owner.id ?? session.value?.user.id ?? ''
 });
 const localErrors = ref<Record<string, string>>({});
+const validation = useFieldValidation(CreateDealInputSchema, () => ({
+  title: draft.title,
+  primaryContactId: draft.contact?.id ?? '',
+  stageId: draft.stageId,
+  amountMinor: parseAmount(draft.amount),
+  statusLine: draft.statusLine,
+  nextActionText: closed.value ? '' : draft.nextActionText,
+  nextActionDate: closed.value ? '' : draft.nextActionDate,
+  expectedCloseDate: draft.expectedCloseDate,
+  ...(draft.ownerId !== '' ? { ownerId: draft.ownerId } : {})
+}));
 const summary = ref<HTMLElement | null>(null);
 
 const statusItems = [
@@ -92,7 +109,11 @@ const statusItems = [
 ];
 const closed = computed(() => draft.status !== 'pending');
 const canAssign = computed(() => can('crm.assign'));
-const messages = computed(() => ({ ...props.fieldErrors, ...localErrors.value }));
+const messages = computed(() => ({
+  ...props.fieldErrors,
+  ...validation.errors.value,
+  ...localErrors.value
+}));
 const hiddenErrors = computed(() =>
   Object.entries(messages.value)
     .filter(([field]) => !VISIBLE_FIELDS.has(field))
@@ -164,7 +185,12 @@ function onSubmit(): void {
     errors.nextActionDate = 'A next action needs both a description and a date.';
   }
   localErrors.value = errors;
-  if (Object.keys(errors).length > 0 || draft.contact === null || amountMinor === null) {
+  if (
+    !validation.submit()
+    || Object.keys(errors).length > 0
+    || draft.contact === null
+    || amountMinor === null
+  ) {
     void nextTick(() => summary.value?.focus());
     return;
   }
@@ -197,7 +223,7 @@ watch(
 <template>
   <v-form novalidate aria-labelledby="deal-form-title" @submit.prevent="onSubmit">
     <div
-      v-if="formError || Object.keys(localErrors).length > 0 || hiddenErrors.length > 0"
+      v-if="formError || Object.keys(messages).length > 0 || hiddenErrors.length > 0"
       ref="summary"
       tabindex="-1"
       class="mb-4"
@@ -212,6 +238,7 @@ watch(
       <v-col cols="12">
         <v-text-field
           v-model="draft.title"
+          @blur="validation.blur('title')"
           label="Title"
           required
           :error-messages="errorsFor('title')"
@@ -252,6 +279,7 @@ watch(
       <v-col cols="12" sm="4">
         <v-text-field
           v-model="draft.amount"
+          @blur="validation.blur('amountMinor')"
           label="Amount (£)"
           inputmode="decimal"
           :error-messages="errorsFor('amountMinor')"
@@ -260,6 +288,7 @@ watch(
       <v-col cols="12">
         <v-text-field
           v-model="draft.statusLine"
+          @blur="validation.blur('statusLine')"
           label="Status line"
           hint="Free text for people, e.g. “Waiting for contract sign”. Not used for reporting."
           persistent-hint
@@ -271,6 +300,7 @@ watch(
         <v-col cols="12" sm="8">
           <v-text-field
             v-model="draft.nextActionText"
+            @blur="validation.blur('nextActionText')"
             label="Next action"
             counter="140"
             :error-messages="errorsFor('nextActionText')"
@@ -279,6 +309,7 @@ watch(
         <v-col cols="12" sm="4">
           <v-text-field
             v-model="draft.nextActionDate"
+            @blur="validation.blur('nextActionDate')"
             label="Next action date"
             type="date"
             :error-messages="errorsFor('nextActionDate')"
@@ -293,6 +324,7 @@ watch(
       <v-col cols="12" sm="6">
         <v-text-field
           v-model="draft.expectedCloseDate"
+          @blur="validation.blur('expectedCloseDate')"
           label="Expected close date"
           type="date"
           :error-messages="errorsFor('expectedCloseDate')"

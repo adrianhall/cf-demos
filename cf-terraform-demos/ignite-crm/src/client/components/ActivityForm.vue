@@ -12,7 +12,8 @@
  * @fires cancel When the user cancels.
  */
 import { nextTick, reactive, ref, watch } from 'vue';
-import type { CreateActivityInput } from '../../shared/api/sales.ts';
+import { CreateActivityInputSchema, type CreateActivityInput } from '../../shared/api/sales.ts';
+import { useFieldValidation } from '../composables/useFieldValidation.ts';
 import type { PickedContact } from '../services/deal-draft.ts';
 import ContactPicker from './ContactPicker.vue';
 
@@ -83,6 +84,18 @@ const draft = reactive({
   dealId: props.initialDealId ?? null
 });
 const localErrors = ref<Record<string, string>>({});
+const validation = useFieldValidation(CreateActivityInputSchema, () => ({
+  type: draft.type,
+  subject: draft.subject,
+  summary: draft.summary,
+  occurredAt: Number.isNaN(new Date(draft.occurredAt).getTime())
+    ? ''
+    : new Date(draft.occurredAt).toISOString(),
+  durationMinutes: draft.duration.trim() === '' ? null : Number(draft.duration),
+  contactIds: draft.contacts.map(({ id }) => id),
+  companyId: draft.companyId,
+  dealId: draft.dealId
+}));
 const summary = ref<HTMLElement | null>(null);
 
 /**
@@ -92,7 +105,8 @@ const summary = ref<HTMLElement | null>(null);
  * @returns Messages for Vuetify's `error-messages`.
  */
 function errorsFor(field: string): string[] {
-  const message = localErrors.value[field] ?? props.fieldErrors?.[field];
+  const message =
+    localErrors.value[field] ?? validation.errors.value[field] ?? props.fieldErrors?.[field];
   return message === undefined ? [] : [message];
 }
 
@@ -116,7 +130,7 @@ function onSubmit(): void {
     errors.durationMinutes = 'Duration must be 1–1440 whole minutes.';
   }
   localErrors.value = errors;
-  if (Object.keys(errors).length > 0) {
+  if (!validation.submit() || Object.keys(errors).length > 0) {
     void nextTick(() => summary.value?.focus());
     return;
   }
@@ -146,7 +160,11 @@ watch(
 <template>
   <v-form novalidate aria-labelledby="activity-form-title" @submit.prevent="onSubmit">
     <div
-      v-if="formError || Object.keys(localErrors).length > 0"
+      v-if="
+        formError
+        || Object.keys(localErrors).length > 0
+        || Object.keys(validation.errors.value).length > 0
+      "
       ref="summary"
       tabindex="-1"
       class="mb-4"
@@ -170,6 +188,7 @@ watch(
       <v-col cols="12" sm="8">
         <v-text-field
           v-model="draft.subject"
+          @blur="validation.blur('subject')"
           label="Subject"
           required
           :error-messages="errorsFor('subject')"
@@ -206,6 +225,7 @@ watch(
       <v-col cols="12" sm="8">
         <v-text-field
           v-model="draft.occurredAt"
+          @blur="validation.blur('occurredAt')"
           label="When"
           type="datetime-local"
           :error-messages="errorsFor('occurredAt')"
@@ -214,6 +234,7 @@ watch(
       <v-col cols="12" sm="4">
         <v-text-field
           v-model="draft.duration"
+          @blur="validation.blur('durationMinutes')"
           label="Duration (minutes)"
           inputmode="numeric"
           :error-messages="errorsFor('durationMinutes')"
@@ -222,6 +243,7 @@ watch(
       <v-col cols="12">
         <v-textarea
           v-model="draft.summary"
+          @blur="validation.blur('summary')"
           label="Summary"
           rows="3"
           auto-grow

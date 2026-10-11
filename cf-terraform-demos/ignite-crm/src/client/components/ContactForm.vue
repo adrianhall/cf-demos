@@ -11,7 +11,8 @@
  * @fires cancel When the user cancels.
  */
 import { nextTick, reactive, ref, watch } from 'vue';
-import type { Contact } from '../../shared/api/crm.ts';
+import { CreateContactInputSchema, type Contact } from '../../shared/api/crm.ts';
+import { useFieldValidation } from '../composables/useFieldValidation.ts';
 import { type ContactDraft, contactDraftFrom } from '../services/crm-draft.ts';
 
 export type { ContactDraft } from '../services/crm-draft.ts';
@@ -53,6 +54,7 @@ const draft = reactive<ContactDraft>(
     : { firstName: '', lastName: '', email: '', phone: '', jobTitle: '', companyName: '' }
 );
 const localError = ref<string | null>(null);
+const validation = useFieldValidation(CreateContactInputSchema, () => ({ ...draft }));
 const summary = ref<HTMLElement | null>(null);
 
 /**
@@ -62,7 +64,7 @@ const summary = ref<HTMLElement | null>(null);
  * @returns Messages for Vuetify's `error-messages`.
  */
 function errorsFor(field: keyof ContactDraft): string[] {
-  const message = props.fieldErrors?.[field];
+  const message = validation.errors.value[field] ?? props.fieldErrors?.[field];
   return message === undefined ? [] : [message];
 }
 
@@ -73,7 +75,8 @@ function onSubmit(): void {
   const hasName = [draft.firstName, draft.lastName, draft.companyName].some(
     (value) => value.trim() !== ''
   );
-  if (!hasName) {
+  if (!validation.submit() || !hasName) {
+    if (hasName) localError.value = 'Please correct the highlighted fields.';
     localError.value = 'Enter a name or a company.';
     void nextTick(() => summary.value?.focus());
     return;
@@ -108,6 +111,7 @@ watch(
       <v-col cols="12" sm="6">
         <v-text-field
           v-model="draft.firstName"
+          @blur="validation.blur('firstName')"
           label="First name"
           autocomplete="given-name"
           :error-messages="errorsFor('firstName')"
@@ -116,6 +120,7 @@ watch(
       <v-col cols="12" sm="6">
         <v-text-field
           v-model="draft.lastName"
+          @blur="validation.blur('lastName')"
           label="Last name"
           autocomplete="family-name"
           :error-messages="errorsFor('lastName')"
@@ -124,6 +129,7 @@ watch(
       <v-col cols="12" sm="6">
         <v-text-field
           v-model="draft.email"
+          @blur="validation.blur('email')"
           label="E-mail"
           type="email"
           autocomplete="email"
@@ -133,6 +139,7 @@ watch(
       <v-col cols="12" sm="6">
         <v-text-field
           v-model="draft.phone"
+          @blur="validation.blur('phone')"
           label="Phone"
           type="tel"
           autocomplete="tel"
@@ -142,6 +149,7 @@ watch(
       <v-col cols="12" sm="6">
         <v-text-field
           v-model="draft.jobTitle"
+          @blur="validation.blur('jobTitle')"
           label="Job title"
           autocomplete="organization-title"
           :error-messages="errorsFor('jobTitle')"
@@ -150,6 +158,7 @@ watch(
       <v-col cols="12" sm="6">
         <v-text-field
           v-model="draft.companyName"
+          @blur="validation.blur('companyName')"
           label="Company"
           autocomplete="organization"
           :hint="

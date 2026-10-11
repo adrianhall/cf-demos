@@ -13,8 +13,14 @@
  * @fires cancel When the user cancels.
  */
 import { computed, nextTick, reactive, ref, watch } from 'vue';
-import type { RoleDefinition, TeamMember } from '../../shared/api/team.ts';
+import {
+  InviteUserInputSchema,
+  SetUserRolesInputSchema,
+  type RoleDefinition,
+  type TeamMember
+} from '../../shared/api/team.ts';
 import type { Role } from '../../shared/permissions.ts';
+import { useFieldValidation } from '../composables/useFieldValidation.ts';
 import type { TeamMemberFormValue } from '../services/team-draft.ts';
 
 const props = defineProps<{
@@ -70,6 +76,10 @@ const draft = reactive<TeamMemberFormValue>({
 const localErrors = ref<Record<string, string>>({});
 const summary = ref<HTMLElement | null>(null);
 const inviting = computed(() => !props.member);
+const validation = useFieldValidation(
+  inviting.value ? InviteUserInputSchema : SetUserRolesInputSchema,
+  () => (inviting.value ? { ...draft, email: draft.email.trim() } : { roles: draft.roles })
+);
 
 /**
  * Messages for one field, local first.
@@ -78,7 +88,8 @@ const inviting = computed(() => !props.member);
  * @returns Messages for Vuetify's `error-messages`.
  */
 function errorsFor(field: string): string[] {
-  const message = localErrors.value[field] ?? props.fieldErrors?.[field];
+  const message =
+    localErrors.value[field] ?? validation.errors.value[field] ?? props.fieldErrors?.[field];
   return message === undefined ? [] : [message];
 }
 
@@ -99,7 +110,7 @@ function onSubmit(): void {
     errors.roles = 'Choose at least one role.';
   }
   localErrors.value = errors;
-  if (Object.keys(errors).length > 0) {
+  if (!validation.submit() || Object.keys(errors).length > 0) {
     void nextTick(() => summary.value?.focus());
     return;
   }
@@ -123,6 +134,7 @@ watch(
       v-if="
         formError
         || Object.keys(localErrors).length > 0
+        || Object.keys(validation.errors.value).length > 0
         || Object.keys(fieldErrors ?? {}).length > 0
       "
       ref="summary"
@@ -137,6 +149,7 @@ watch(
     <template v-if="inviting">
       <v-text-field
         v-model="draft.email"
+        @blur="validation.blur('email')"
         label="Access e-mail"
         required
         type="email"
@@ -149,6 +162,7 @@ watch(
       />
       <v-text-field
         v-model="draft.displayName"
+        @blur="validation.blur('displayName')"
         label="Display name"
         required
         counter="100"

@@ -576,6 +576,12 @@ Items from the first follow-on pass in
   comes from Access and an owner manages display names and roles on the Team page. No profile
   mutation API or separate source of truth was introduced.
 
+- **Shared-schema browser validation.** Contact, company, deal, activity, task, note, and team forms
+  validate structured fields through the same Valibot request schemas that the Application and Data
+  Workers enforce. Errors appear on blur, then update as the user corrects the field; submit reveals
+  any remaining errors and does not send an invalid request. Browser validation is only a usability
+  aid — neither Worker trusts it.
+
 ## Known limitations (first release)
 
 - Notes cannot yet be deleted, task-list checkboxes are read-only (edit the Markdown to tick one),

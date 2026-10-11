@@ -11,7 +11,12 @@
  * @fires cancel When the user cancels.
  */
 import { computed, nextTick, reactive, ref, watch } from 'vue';
-import type { Company, ContactSummary } from '../../shared/api/crm.ts';
+import {
+  CreateCompanyInputSchema,
+  type Company,
+  type ContactSummary
+} from '../../shared/api/crm.ts';
+import { useFieldValidation } from '../composables/useFieldValidation.ts';
 import { type CompanyDraft, companyDraftFrom } from '../services/crm-draft.ts';
 
 const props = defineProps<{
@@ -50,6 +55,12 @@ const emit = defineEmits<{
 
 const draft = reactive<CompanyDraft>(companyDraftFrom(props.company));
 const localError = ref<string | null>(null);
+const validation = useFieldValidation(CreateCompanyInputSchema, () => ({
+  name: draft.name,
+  address: draft.address,
+  stockSymbol: draft.stockSymbol,
+  companiesHouseUrl: draft.companiesHouseUrl
+}));
 const summary = ref<HTMLElement | null>(null);
 
 /**
@@ -67,7 +78,7 @@ const contactItems = computed(() => [
  * @returns Messages for Vuetify's `error-messages`.
  */
 function errorsFor(field: keyof CompanyDraft): string[] {
-  const message = props.fieldErrors?.[field];
+  const message = validation.errors.value[field] ?? props.fieldErrors?.[field];
   return message === undefined ? [] : [message];
 }
 
@@ -75,8 +86,8 @@ function errorsFor(field: keyof CompanyDraft): string[] {
  * Check the required name locally, then emit the draft.
  */
 function onSubmit(): void {
-  if (draft.name.trim() === '') {
-    localError.value = 'Company name is required.';
+  if (!validation.submit()) {
+    localError.value = validation.errors.value.name ?? 'Please correct the highlighted fields.';
     void nextTick(() => summary.value?.focus());
     return;
   }
@@ -110,6 +121,7 @@ watch(
       <v-col cols="12">
         <v-text-field
           v-model="draft.name"
+          @blur="validation.blur('name')"
           label="Company name"
           required
           autocomplete="organization"
@@ -119,6 +131,7 @@ watch(
       <v-col cols="12">
         <v-textarea
           v-model="draft.address"
+          @blur="validation.blur('address')"
           label="Address"
           rows="3"
           auto-grow
@@ -129,6 +142,7 @@ watch(
       <v-col cols="12" sm="6">
         <v-text-field
           v-model="draft.stockSymbol"
+          @blur="validation.blur('stockSymbol')"
           label="Stock symbol"
           :error-messages="errorsFor('stockSymbol')"
         />
@@ -144,6 +158,7 @@ watch(
       <v-col cols="12">
         <v-text-field
           v-model="draft.companiesHouseUrl"
+          @blur="validation.blur('companiesHouseUrl')"
           label="Companies House link"
           type="url"
           hint="A find-and-update.company-information.service.gov.uk company page."
