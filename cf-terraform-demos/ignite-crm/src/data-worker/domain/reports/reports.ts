@@ -110,3 +110,24 @@ export function sumTaskCounts(rows: readonly TaskCounts[]): TaskCounts {
     { todo: 0, in_progress: 0, in_review: 0, done: 0 }
   );
 }
+
+/**
+ * The calendar quarter containing a date: January–March, April–June, July–September, or
+ * October–December. Quarters are calendar quarters in release one (no fiscal-year setting).
+ *
+ * @param today `YYYY-MM-DD`, already in the installation's time zone.
+ * @returns The quarter's first and last dates (inclusive) and a label such as `Q4 2026`.
+ */
+export function calendarQuarter(today: string): { from: string; to: string; label: string } {
+  const year = Number(today.slice(0, 4));
+  const quarter = Math.floor((Number(today.slice(5, 7)) - 1) / 3);
+  const firstMonth = quarter * 3 + 1;
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  // Day 0 of the month after the quarter is its last day.
+  const lastDay = new Date(Date.UTC(year, firstMonth + 2, 0)).getUTCDate();
+  return {
+    from: `${year}-${pad(firstMonth)}-01`,
+    to: `${year}-${pad(firstMonth + 2)}-${pad(lastDay)}`,
+    label: `Q${quarter + 1} ${year}`
+  };
+}

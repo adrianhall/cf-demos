@@ -679,7 +679,25 @@ export const PipelineSummarySchema = v.strictObject({
   /**
    * Lost deals.
    */
-  lost: TotalSchema
+  lost: TotalSchema,
+  /**
+   * Open deals expected to close in the current calendar quarter (installation time zone).
+   */
+  thisQuarter: v.strictObject({
+    /**
+     * The quarter, for example `Q4 2026`.
+     */
+    label: v.string(),
+    /**
+     * First day of the quarter.
+     */
+    from: DateOnlySchema,
+    /**
+     * Last day of the quarter (inclusive).
+     */
+    to: DateOnlySchema,
+    ...TotalSchema.entries
+  })
 });
 
 /**

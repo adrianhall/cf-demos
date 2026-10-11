@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  calendarQuarter,
   closedWindow,
   nextDate,
   openTasks,
@@ -120,6 +121,67 @@ describe('report time-zone helpers', () => {
     ]);
     expect(counts).toEqual({ todo: 2, in_progress: 2, in_review: 3, done: 5 });
     expect(openTasks(counts)).toBe(7);
+  });
+});
+
+describe('calendarQuarter', () => {
+  it('maps every month to its calendar quarter, including leap-year February', () => {
+    expect(calendarQuarter('2026-01-01')).toEqual({
+      from: '2026-01-01',
+      to: '2026-03-31',
+      label: 'Q1 2026'
+    });
+    expect(calendarQuarter('2028-02-29')).toMatchObject({ from: '2028-01-01', to: '2028-03-31' });
+    expect(calendarQuarter('2026-06-30')).toEqual({
+      from: '2026-04-01',
+      to: '2026-06-30',
+      label: 'Q2 2026'
+    });
+    expect(calendarQuarter('2026-07-01')).toMatchObject({ to: '2026-09-30', label: 'Q3 2026' });
+    expect(calendarQuarter('2026-12-31')).toEqual({
+      from: '2026-10-01',
+      to: '2026-12-31',
+      label: 'Q4 2026'
+    });
+  });
+});
+
+describe('pipeline this quarter', () => {
+  it('counts open deals expected to close in the local quarter, honouring the owner filter', async () => {
+    const { service, store, runtime, actor, deal } = await world();
+    const inQuarter = await deal('sales', 100, 'In Q4');
+    const lastDay = await deal('manager', 200, 'Last day of Q4');
+    const nextQuarter = await deal('sales', 400, 'Q1 next year');
+    // Undated: no expected close date, so never in a quarter.
+    await deal('sales', 800, 'No expected close');
+    const won = await deal('sales', 1600, 'Won in Q4');
+    for (const [row, date] of [
+      [inQuarter, '2026-10-20'],
+      [lastDay, '2026-12-31'],
+      [nextQuarter, '2027-01-01'],
+      [won, '2026-11-01']
+    ] as const) {
+      store.exec('UPDATE deals SET expected_close_date = ? WHERE id = ?', date, row.id);
+    }
+    await service.crm.updateDeal(actor('sales'), won.id, { status: 'won' }, 1, key());
+
+    const summary = await service.crm.pipelineSummary(actor('read-only'));
+    expect(summary.thisQuarter).toEqual({
+      label: 'Q4 2026',
+      from: '2026-10-01',
+      to: '2026-12-31',
+      count: 2,
+      amountMinor: 300
+    });
+    const mine = await service.crm.pipelineReport(actor('manager'), {
+      ownerId: actor('manager').userId
+    });
+    expect(mine.thisQuarter).toMatchObject({ count: 1, amountMinor: 200 });
+
+    // The quarter follows the installation's calendar, not UTC: 23:30 UTC on 30 June is already
+    // 00:30 on 1 July in London (British Summer Time), so it is Q3 there.
+    runtime.set(new Date('2026-06-30T23:30:00.000Z'));
+    expect((await service.crm.pipelineSummary(actor('owner'))).thisQuarter.label).toBe('Q3 2026');
   });
 });
 

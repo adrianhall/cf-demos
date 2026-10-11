@@ -54,7 +54,7 @@ import {
   lifecycleViolations,
   urgencyOf
 } from '../../domain/crm/sales.ts';
-import { closedWindow } from '../../domain/reports/reports.ts';
+import { calendarQuarter, closedWindow } from '../../domain/reports/reports.ts';
 import type { Authorizer } from '../permissions/permissions-service.ts';
 import {
   type IdempotencyRepository,
@@ -370,6 +370,19 @@ export interface SalesRepository extends IdempotencyRepository {
     won: { count: number; amountMinor: number };
     lost: { count: number; amountMinor: number };
   }>;
+  /**
+   * Totals of open deals whose expected close date falls in an inclusive date range.
+   *
+   * @param pipelineId Pipeline id.
+   * @param range First and last expected close dates (inclusive, `YYYY-MM-DD`).
+   * @param ownerId Restrict to one owner, or `null` for everyone.
+   * @returns Count and summed value.
+   */
+  expectedToClose(
+    pipelineId: string,
+    range: { readonly from: string; readonly to: string },
+    ownerId: string | null
+  ): Promise<{ count: number; amountMinor: number }>;
   /**
    * Recent history for an entity.
    *
@@ -1142,7 +1155,11 @@ export class SalesService implements SalesPort {
     const caller = validateActor(actor);
     await this.authorizer.require(caller, 'report.read');
     const pipeline = await this.requirePipeline(caller.requestId);
-    return this.summarise(pipeline, await this.repository.pipelineTotals(pipeline.id));
+    return this.summarise(
+      pipeline,
+      await this.repository.pipelineTotals(pipeline.id),
+      await this.quarterTotals(pipeline.id, null)
+    );
   }
 
   /**
@@ -1171,7 +1188,7 @@ export class SalesService implements SalesPort {
       closedBefore: window.before
     });
     return {
-      ...this.summarise(pipeline, totals),
+      ...this.summarise(pipeline, totals, await this.quarterTotals(pipeline.id, owner?.id ?? null)),
       filter: {
         owner,
         closedFrom: parsed.closedFrom ?? null,
@@ -1185,11 +1202,13 @@ export class SalesService implements SalesPort {
    *
    * @param pipeline The pipeline.
    * @param totals Totals from the repository.
+   * @param thisQuarter Open deals expected to close this quarter.
    * @returns The summary.
    */
   private summarise(
     pipeline: Pipeline,
-    totals: Awaited<ReturnType<SalesRepository['pipelineTotals']>>
+    totals: Awaited<ReturnType<SalesRepository['pipelineTotals']>>,
+    thisQuarter: PipelineSummary['thisQuarter']
   ): PipelineSummary {
     const stages = pipeline.stages.map((stage) => ({
       stage,
@@ -1207,8 +1226,26 @@ export class SalesService implements SalesPort {
         { count: 0, amountMinor: 0 }
       ),
       won: totals.won,
-      lost: totals.lost
+      lost: totals.lost,
+      thisQuarter
     };
+  }
+
+  /**
+   * Open deals expected to close in the current calendar quarter. "Current" is today's date in the
+   * installation's time zone, so the quarter turns at local midnight, not UTC midnight.
+   *
+   * @param pipelineId Pipeline id.
+   * @param ownerId Restrict to one owner, or `null` for everyone.
+   * @returns The quarter and its totals.
+   */
+  private async quarterTotals(
+    pipelineId: string,
+    ownerId: string | null
+  ): Promise<PipelineSummary['thisQuarter']> {
+    const quarter = calendarQuarter(calendarDate(this.runtime.now(), this.settings.timezone));
+    const totals = await this.repository.expectedToClose(pipelineId, quarter, ownerId);
+    return { ...quarter, ...totals };
   }
 
   /**

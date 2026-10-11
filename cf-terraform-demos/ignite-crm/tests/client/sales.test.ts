@@ -653,7 +653,7 @@ describe('next actions and the action stream', () => {
         statusLine: null,
         nextActionText: 'Chase signature',
         nextActionDate: '2026-10-11',
-        expectedCloseDate: null
+        expectedCloseDate: '2026-12-15'
       },
       { idempotencyKey: 'seed-dash-key' }
     );
@@ -668,6 +668,13 @@ describe('next actions and the action stream', () => {
     expect(panel.text()).not.toContain('Open total');
     const heading = document.getElementById(panel.get('table').attributes('aria-labelledby')!);
     expect(heading?.textContent).toBe('Pipeline summary');
+    const quarter = panel.get('[data-testid="pipeline-this-quarter"]').text();
+    expect(quarter).toContain('Pipeline this qtr');
+    expect(quarter).toMatch(/Q\d 20\d\d: open deals expected to close/u);
+    // The fake's clock decides the quarter, so compare with what the service reports.
+    const expected = (await fake.service.crm.pipelineSummary(fake.sales)).thisQuarter;
+    expect(quarter).toContain(expected.label);
+    expect(quarter).toContain(String(expected.count));
   });
 
   it('links each pipeline-panel row to a deals list whose rows match the panel count', async () => {

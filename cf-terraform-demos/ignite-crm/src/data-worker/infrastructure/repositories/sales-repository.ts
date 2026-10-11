@@ -617,6 +617,32 @@ export class D1SalesRepository extends D1IdempotencyReader implements SalesRepos
   /**
    * @inheritdoc
    */
+  async expectedToClose(
+    pipelineId: string,
+    range: { readonly from: string; readonly to: string },
+    ownerId: string | null
+  ): Promise<{ count: number; amountMinor: number }> {
+    // `YYYY-MM-DD` strings compare correctly as text; NULL dates never fall inside the range.
+    const row = await this.port.readOne<{ count: number; amount: number }>(
+      sql(
+        `SELECT count(*) AS count, coalesce(sum(amount_minor), 0) AS amount
+           FROM deals
+          WHERE pipeline_id = ? AND deleted_at IS NULL AND status = 'pending'
+            AND expected_close_date BETWEEN ? AND ?
+            AND (? IS NULL OR owner_id = ?)`,
+        pipelineId,
+        range.from,
+        range.to,
+        ownerId,
+        ownerId
+      )
+    );
+    return { count: row?.count ?? 0, amountMinor: row?.amount ?? 0 };
+  }
+
+  /**
+   * @inheritdoc
+   */
   async history(
     entityType: string,
     entityId: string,

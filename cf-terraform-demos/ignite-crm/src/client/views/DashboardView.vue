@@ -157,6 +157,22 @@ onMounted(() => {
                     {{ format.money(summary.data.value.open.amountMinor) }}
                   </td>
                 </tr>
+                <tr data-testid="pipeline-this-quarter">
+                  <th scope="row" class="font-weight-regular">
+                    Pipeline this qtr
+                    <span class="text-caption text-medium-emphasis d-block">
+                      {{ summary.data.value.thisQuarter.label }}: open deals expected to close
+                      {{ format.date(summary.data.value.thisQuarter.from) }} –
+                      {{ format.date(summary.data.value.thisQuarter.to) }}
+                    </span>
+                  </th>
+                  <td class="text-right">
+                    {{ format.count(summary.data.value.thisQuarter.count) }}
+                  </td>
+                  <td class="text-right">
+                    {{ format.money(summary.data.value.thisQuarter.amountMinor) }}
+                  </td>
+                </tr>
                 <tr>
                   <th scope="row" class="font-weight-regular">
                     <router-link :to="dealsList({ status: 'won' })" aria-label="Show won deals"

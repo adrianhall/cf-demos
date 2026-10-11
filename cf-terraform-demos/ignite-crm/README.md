@@ -611,6 +611,13 @@ Items from the first follow-on pass in
   row is **Pipeline total**, the usual sales term, so heading and row never read as a duplicate. The
   table takes its accessible name from the heading (`aria-labelledby`).
 
+- **Pipeline this quarter.** Below Pipeline total, the dashboard shows **Pipeline this qtr**: the
+  count and value of open deals whose expected close date falls in the current calendar quarter.
+  "Current" is today in the installation's time zone, so the quarter turns at local midnight, and
+  the quarter and dates are shown under the label. It is part of `GET /api/v1/reports/pipeline`
+  (`thisQuarter`) and follows that report's owner filter. Quarters are calendar quarters; there is
+  no fiscal-year setting in this release.
+
 ## Known limitations (first release)
 
 - Notes cannot yet be deleted, task-list checkboxes are read-only (edit the Markdown to tick one),
