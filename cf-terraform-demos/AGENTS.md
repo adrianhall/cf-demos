@@ -87,6 +87,13 @@ A typical Terraform-backed `cf` demo exposes these individually runnable steps:
 }
 ```
 
+- `cf d1 migrations apply` is currently flaky immediately after Terraform creates a D1 database
+  (observed: a 403 / code 7403 on the D1 query endpoint even though the same credentials can list
+  and query the database moments later). This is under review with the product team. If a remote
+  migration fails right after provisioning, wait 30 seconds and retry only the migration step (for
+  example `pnpm migrate:remote`, then continue with `pnpm deploy:worker`). Do **not** re-run
+  Terraform or re-provision, and do not retry more than three times; investigate any other failure
+  rather than retrying it.
 - `postdeploy:infra:apply` should write `terraform -chdir=infra output -json` to the ignored
   `infra/outputs.json` file.
 - `pnpm deploy` must provision infrastructure before building and uploading code.
