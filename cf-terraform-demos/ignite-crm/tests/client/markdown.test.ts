@@ -1,6 +1,8 @@
 /**
  * @file The Markdown rendering boundary: the supported subset renders, while raw HTML, unsafe URL
- *   protocols, and dangerous attributes never reach the DOM.
+ *   protocols, and dangerous attributes never reach the DOM. Every assertion goes through the
+ *   public, lazily loading `renderMarkdown` in `services/markdown.ts`, so the safety rules are
+ *   proven against the code path the SPA actually uses after the bundle split.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -10,17 +12,17 @@ import { renderMarkdown } from '../../src/client/services/markdown.ts';
  * Render into a detached element for DOM assertions.
  *
  * @param source Markdown.
- * @returns The container.
+ * @returns Once rendered, the container.
  */
-function render(source: string): HTMLElement {
+async function render(source: string): Promise<HTMLElement> {
   const element = document.createElement('div');
-  element.innerHTML = renderMarkdown(source);
+  element.innerHTML = await renderMarkdown(source);
   return element;
 }
 
 describe('renderMarkdown', () => {
-  it('renders headings, emphasis, lists, task lists, code, and safe links', () => {
-    const element = render(
+  it('renders headings, emphasis, lists, task lists, code, and safe links', async () => {
+    const element = await render(
       [
         '# Agenda',
         '',
@@ -63,8 +65,8 @@ describe('renderMarkdown', () => {
     expect(anchors[2]?.hasAttribute('target')).toBe(false);
   });
 
-  it('shows raw HTML as text instead of rendering it', () => {
-    const element = render(
+  it('shows raw HTML as text instead of rendering it', async () => {
+    const element = await render(
       '<script>alert(1)</script>\n\n<img src=x onerror="alert(2)">\n\nok <b>b</b>'
     );
     expect(element.querySelector('script, img, b')).toBeNull();
@@ -72,8 +74,8 @@ describe('renderMarkdown', () => {
     expect(element.textContent).toContain('<b>b</b>');
   });
 
-  it('drops javascript:, data:, file:, and obfuscated unsafe links but keeps their text', () => {
-    const element = render(
+  it('drops javascript:, data:, file:, and obfuscated unsafe links but keeps their text', async () => {
+    const element = await render(
       [
         '[a](javascript:alert(1))',
         '[b](JaVaScRiPt:alert(1))',

@@ -188,14 +188,24 @@ describe('MarkdownComposer', () => {
 });
 
 describe('MarkdownView', () => {
-  it('renders sanitised Markdown inside a labelled region', () => {
-    const wrapper = mount(MarkdownView, {
-      props: { source: '**Hi** [x](javascript:alert(1))', label: 'Kick-off (note body)' },
-      global: { plugins: [createAppVuetify()] }
-    });
-    const region = wrapper.get('[role="region"]');
+  it('shows a busy skeleton, then renders sanitised Markdown inside a labelled region', async () => {
+    const source = ref('**Hi** [x](javascript:alert(1))');
+    const wrapper = mount(
+      { render: () => h(MarkdownView, { source: source.value, label: 'Kick-off (note body)' }) },
+      { global: { plugins: [createAppVuetify()] } }
+    );
+    // The renderer chunk has not resolved yet on the first synchronous render.
+    expect(wrapper.get('[data-testid="markdown-loading"]').attributes('aria-busy')).toBe('true');
+    await settle();
+    const region = wrapper.get('[data-testid="markdown-view"]');
+    expect(region.attributes('role')).toBe('region');
     expect(region.attributes('aria-label')).toBe('Kick-off (note body)');
     expect(region.find('strong').text()).toBe('Hi');
     expect(region.find('a').exists()).toBe(false);
+
+    // A new source re-renders without going back to the skeleton.
+    source.value = '_updated_';
+    await settle();
+    expect(wrapper.get('[data-testid="markdown-view"] em').text()).toBe('updated');
   });
 });

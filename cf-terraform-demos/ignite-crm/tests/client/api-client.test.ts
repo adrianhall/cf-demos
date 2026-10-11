@@ -82,6 +82,25 @@ describe('ApiClient', () => {
     ]);
   });
 
+  it('builds report and overview URLs and rejects malformed report and overview bodies', async () => {
+    const { client, calls } = canned(200, { stages: 'wrong' });
+    expect((await apiError(client.pipelineReport({ closedFrom: '2026-10-01' }))).kind).toBe(
+      'malformed'
+    );
+    expect((await apiError(client.deliveryReport({ projectStatus: 'on_hold' }))).kind).toBe(
+      'malformed'
+    );
+    const id = '00000000-0000-4000-8000-000000000001';
+    expect((await apiError(client.contactOverview(id))).kind).toBe('malformed');
+    expect((await apiError(client.companyOverview(id))).kind).toBe('malformed');
+    expect(calls.map((call) => call.input)).toEqual([
+      '/api/v1/reports/pipeline?closedFrom=2026-10-01',
+      '/api/v1/reports/delivery?projectStatus=on_hold',
+      `/api/v1/contacts/${id}/overview`,
+      `/api/v1/companies/${id}/overview`
+    ]);
+  });
+
   it('rejects a malformed success body before it reaches UI state', async () => {
     const { client } = canned(200, { items: [{ id: 'nope' }], nextCursor: null });
     expect((await apiError(client.contacts({}))).kind).toBe('malformed');

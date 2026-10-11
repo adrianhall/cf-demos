@@ -37,6 +37,12 @@ import {
   type UpdateTaskInput,
   UpdateTaskInputSchema
 } from '../../../shared/api/projects.ts';
+import {
+  DELIVERY_REPORT_PROJECT_LIMIT,
+  type DeliveryReport,
+  type DeliveryReportFilter,
+  DeliveryReportFilterSchema
+} from '../../../shared/api/reports.ts';
 import type { DealStatus } from '../../../shared/api/sales.ts';
 import { serviceError } from '../../../shared/common/errors.ts';
 import { DEFAULT_PAGE_SIZE, type Page, PageRequestSchema } from '../../../shared/common/paging.ts';
@@ -56,6 +62,7 @@ import {
   isAcceptableNewDate,
   needsManage
 } from '../../domain/projects/delivery.ts';
+import { sumTaskCounts } from '../../domain/reports/reports.ts';
 import { decodeCursor, encodeCursor, type ListCriteria } from '../crm/crm-service.ts';
 import type { Authorizer } from '../permissions/permissions-service.ts';
 import {
@@ -198,6 +205,11 @@ export interface TaskRow {
 }
 
 /**
+ * One project's delivery report row as stored.
+ */
+export type DeliveryRow = DeliveryReport['projects'][number];
+
+/**
  * Storage port for the projects use cases.
  */
 export interface ProjectsRepository extends IdempotencyRepository {
@@ -280,6 +292,26 @@ export interface ProjectsRepository extends IdempotencyRepository {
    * @returns Tasks.
    */
   myWork(userId: string, limit: number): Promise<Task[]>;
+  /**
+   * Delivery report rows: every matching project's task counts and overdue count, most open work
+   * first.
+   *
+   * @param filter Project status and optional lead.
+   * @param today Today's calendar date (tasks due before it and not done are overdue).
+   * @returns One row per matching project, uncapped (a small business has tens of projects; the
+   *   service caps the rows it returns but totals all of them).
+   */
+  deliveryRows(
+    filter: { readonly status: ProjectStatus; readonly leadId: string | null },
+    today: string
+  ): Promise<DeliveryRow[]>;
+  /**
+   * Any user, active or suspended, for labelling a report filter.
+   *
+   * @param userId User id.
+   * @returns The reference, or `null` when no such user exists.
+   */
+  userRef(userId: string): Promise<UserRef | null>;
   /**
    * Recent history for an entity.
    *
@@ -882,6 +914,39 @@ export class ProjectsService implements ProjectsPort {
     return {
       today: calendarDate(this.runtime.now(), this.settings.timezone),
       items: await this.repository.myWork(caller.userId, MY_WORK_LIMIT)
+    };
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async deliveryReport(actor: ActorContext, filter: DeliveryReportFilter): Promise<DeliveryReport> {
+    const caller = validateActor(actor);
+    const parsed = validate(DeliveryReportFilterSchema, filter ?? {}, caller.requestId);
+    await this.authorizer.require(caller, 'report.read');
+    let lead: UserRef | null = null;
+    if (parsed.leadId !== undefined) {
+      lead = await this.repository.userRef(parsed.leadId);
+      if (lead === null) {
+        throw serviceError('VALIDATION_FAILED', 'That person is not on the team.', {
+          requestId: caller.requestId,
+          fields: { leadId: 'That person is not on the team.' }
+        });
+      }
+    }
+    const today = calendarDate(this.runtime.now(), this.settings.timezone);
+    const rows = await this.repository.deliveryRows(
+      { status: parsed.projectStatus, leadId: lead?.id ?? null },
+      today
+    );
+    return {
+      today,
+      filter: { projectStatus: parsed.projectStatus, lead },
+      projectCount: rows.length,
+      taskCounts: sumTaskCounts(rows.map((row) => row.taskCounts)),
+      overdue: rows.reduce((sum, row) => sum + row.overdue, 0),
+      projects: rows.slice(0, DELIVERY_REPORT_PROJECT_LIMIT),
+      truncated: rows.length > DELIVERY_REPORT_PROJECT_LIMIT
     };
   }
 

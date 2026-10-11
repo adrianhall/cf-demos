@@ -404,6 +404,57 @@ describe('delivery journey', () => {
   });
 });
 
+describe('reports and customer overview over real RPC and D1', () => {
+  it('serves a filtered pipeline report, a delivery report, and a composite overview', async () => {
+    const created = await api('/api/v1/contacts', {
+      as: 'sales@example.com',
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'journey-overview-contact' },
+      json: { firstName: 'Overview', lastName: 'Person', companyName: 'Overview Ltd' }
+    });
+    const contact = (await created.json()) as { id: string; company: { id: string } };
+
+    const pipeline = await api(
+      '/api/v1/reports/pipeline?closedFrom=2026-01-01&closedTo=2026-12-31',
+      {
+        as: 'readonly@example.com'
+      }
+    );
+    expect(pipeline.status).toBe(200);
+    expect(await pipeline.json()).toMatchObject({
+      filter: { owner: null, closedFrom: '2026-01-01', closedTo: '2026-12-31' }
+    });
+    expect(
+      (
+        await api('/api/v1/reports/pipeline?closedFrom=2026-02-01&closedTo=2026-01-01', {
+          as: 'readonly@example.com'
+        })
+      ).status
+    ).toBe(422);
+
+    const delivery = await api('/api/v1/reports/delivery', { as: 'delivery@example.com' });
+    expect(delivery.status).toBe(200);
+    expect(await delivery.json()).toMatchObject({
+      filter: { projectStatus: 'active', lead: null }
+    });
+
+    const overview = await api(`/api/v1/contacts/${contact.id}/overview`, {
+      as: 'readonly@example.com'
+    });
+    expect(overview.status).toBe(200);
+    expect(await overview.json()).toMatchObject({
+      detail: { contact: { id: contact.id } },
+      notes: { items: [] },
+      warnings: []
+    });
+    const company = await api(`/api/v1/companies/${contact.company.id}/overview`, {
+      as: 'readonly@example.com'
+    });
+    expect(company.status).toBe(200);
+    expect((await api(`/api/v1/contacts/${contact.id}/overview`, {})).status).toBe(401);
+  });
+});
+
 describe('team administration journey', () => {
   it('invites a teammate, changes their role, and the server boundary moves on the next request', async () => {
     // The bootstrap owner exists after its first request.

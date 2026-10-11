@@ -281,6 +281,16 @@ export class D1SalesRepository extends D1IdempotencyReader implements SalesRepos
   /**
    * @inheritdoc
    */
+  async userRef(userId: string): Promise<UserRef | null> {
+    const row = await this.port.readOne<{ id: string; display_name: string }>(
+      sql('SELECT id, display_name FROM users WHERE id = ?', userId)
+    );
+    return row === null ? null : { id: row.id, displayName: row.display_name };
+  }
+
+  /**
+   * @inheritdoc
+   */
   async activeUser(userId: string): Promise<UserRef | null> {
     const row = await this.port.readOne<{ id: string; display_name: string }>(
       sql("SELECT id, display_name FROM users WHERE id = ? AND status = 'active'", userId)
@@ -547,11 +557,20 @@ export class D1SalesRepository extends D1IdempotencyReader implements SalesRepos
   /**
    * @inheritdoc
    */
-  async pipelineTotals(pipelineId: string): Promise<{
+  async pipelineTotals(
+    pipelineId: string,
+    filter: {
+      readonly ownerId: string | null;
+      readonly closedFrom: string | null;
+      readonly closedBefore: string | null;
+    } = { ownerId: null, closedFrom: null, closedBefore: null }
+  ): Promise<{
     byStage: ReadonlyMap<string, { count: number; amountMinor: number }>;
     won: { count: number; amountMinor: number };
     lost: { count: number; amountMinor: number };
   }> {
+    // Constant statement text: absent filters bind NULL. The close window applies to closed deals
+    // only; a pending deal has no close date and always counts towards its stage.
     const rows = await this.port.read<{
       status: Deal['status'];
       stage_id: string;
@@ -560,9 +579,19 @@ export class D1SalesRepository extends D1IdempotencyReader implements SalesRepos
     }>(
       sql(
         `SELECT status, stage_id, count(*) AS count, coalesce(sum(amount_minor), 0) AS amount
-           FROM deals WHERE pipeline_id = ? AND deleted_at IS NULL
+           FROM deals
+          WHERE pipeline_id = ? AND deleted_at IS NULL
+            AND (? IS NULL OR owner_id = ?)
+            AND (status = 'pending' OR (
+                  (? IS NULL OR closed_at >= ?) AND (? IS NULL OR closed_at < ?)))
           GROUP BY status, stage_id`,
-        pipelineId
+        pipelineId,
+        filter.ownerId,
+        filter.ownerId,
+        filter.closedFrom,
+        filter.closedFrom,
+        filter.closedBefore,
+        filter.closedBefore
       )
     );
     const byStage = new Map<string, { count: number; amountMinor: number }>();

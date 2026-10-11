@@ -735,6 +735,43 @@ export function dataServiceContractTests(
       );
     });
 
+    it('produces pipeline and delivery reports with validated filters', async () => {
+      const reader = await actor('contract-reader@example.com');
+      const pipeline = await harness.service.crm.pipelineReport(reader, {
+        closedFrom: '2026-01-01',
+        closedTo: '2026-06-30'
+      });
+      expect(pipeline.filter).toEqual({
+        owner: null,
+        closedFrom: '2026-01-01',
+        closedTo: '2026-06-30'
+      });
+      expect(pipeline.stages.map((row) => row.stage.key)).toEqual([
+        'lead',
+        'qualified',
+        'proposal',
+        'negotiation'
+      ]);
+      expect(
+        await codeOf(
+          harness.service.crm.pipelineReport(reader, {
+            closedFrom: '2026-07-01',
+            closedTo: '2026-06-30'
+          })
+        )
+      ).toBe('VALIDATION_FAILED');
+      const delivery = await harness.service.projects.deliveryReport(reader, {});
+      expect(delivery.filter).toEqual({ projectStatus: 'active', lead: null });
+      expect(delivery.taskCounts).toEqual(
+        expect.objectContaining({ todo: expect.any(Number), done: expect.any(Number) })
+      );
+      expect(
+        await codeOf(
+          harness.service.projects.deliveryReport(reader, { projectStatus: 'archived' } as never)
+        )
+      ).toBe('VALIDATION_FAILED');
+    });
+
     it('reports dashboard counts', async () => {
       const reader = await actor('contract-reader@example.com');
       const dashboard = await harness.service.crm.dashboard(reader);

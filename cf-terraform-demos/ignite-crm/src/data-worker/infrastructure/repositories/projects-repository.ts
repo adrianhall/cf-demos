@@ -21,6 +21,7 @@ import type { DealStatus } from '../../../shared/api/sales.ts';
 import type { ListCriteria } from '../../application/crm/crm-service.ts';
 import type {
   ConvertibleDeal,
+  DeliveryRow,
   ProjectRow,
   ProjectsRepository,
   TaskRow
@@ -379,6 +380,69 @@ export class D1ProjectsRepository extends D1IdempotencyReader implements Project
       )
     );
     return row?.last ?? null;
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async deliveryRows(
+    filter: { readonly status: ProjectStatus; readonly leadId: string | null },
+    today: string
+  ): Promise<DeliveryRow[]> {
+    // One grouped pass over tasks per project (index `tasks_board` covers project_id + status).
+    const rows = await this.port.read<{
+      id: string;
+      name: string;
+      lead_id: string;
+      lead_name: string;
+      target_date: string | null;
+      todo: number;
+      in_progress: number;
+      in_review: number;
+      done: number;
+      overdue: number;
+    }>(
+      sql(
+        `SELECT p.id, p.name, u.id AS lead_id, u.display_name AS lead_name, p.target_date,
+                coalesce(sum(t.status = 'todo'), 0) AS todo,
+                coalesce(sum(t.status = 'in_progress'), 0) AS in_progress,
+                coalesce(sum(t.status = 'in_review'), 0) AS in_review,
+                coalesce(sum(t.status = 'done'), 0) AS done,
+                coalesce(sum(t.status <> 'done' AND t.due_date < ?), 0) AS overdue
+           FROM projects p
+           JOIN users u ON u.id = p.lead_id
+           LEFT JOIN tasks t ON t.project_id = p.id AND t.deleted_at IS NULL
+          WHERE p.deleted_at IS NULL AND p.status = ? AND (? IS NULL OR p.lead_id = ?)
+          GROUP BY p.id
+          ORDER BY (todo + in_progress + in_review) DESC, overdue DESC, lower(p.name), p.id`,
+        today,
+        filter.status,
+        filter.leadId,
+        filter.leadId
+      )
+    );
+    return rows.map((row) => ({
+      project: { id: row.id, name: row.name },
+      lead: { id: row.lead_id, displayName: row.lead_name },
+      targetDate: row.target_date,
+      taskCounts: {
+        todo: row.todo,
+        in_progress: row.in_progress,
+        in_review: row.in_review,
+        done: row.done
+      },
+      overdue: row.overdue
+    }));
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async userRef(userId: string): Promise<UserRef | null> {
+    const row = await this.port.readOne<{ id: string; display_name: string }>(
+      sql('SELECT id, display_name FROM users WHERE id = ?', userId)
+    );
+    return row === null ? null : { id: row.id, displayName: row.display_name };
   }
 
   /**

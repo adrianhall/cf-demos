@@ -175,6 +175,35 @@ items to review at the end. Each entry names the phase that made it.
   an owner edits their own roles. Another user's hints refresh on their next page load; the server
   enforces the change on their very next request regardless.
 
+- **Phase 6 — reports are open to `report.read`.** The plan said "owner/manager authorization" for
+  reports, but the seeded matrix (01a §3.2, confirmed in Phase 1) grants `report.read` to every
+  role, and the dashboard already showed the pipeline summary to everyone. The Reports page follows
+  the matrix; narrowing it would be a seeded-role change, not a report change.
+- **Phase 6 — report filters.** Pipeline: owner and an inclusive close-date window (≤ 366 days, in
+  the installation time zone, applied to won/lost only). Delivery: project state (active, on hold,
+  completed; archived excluded) and lead. The delivery report lists at most 50 projects by most open
+  work; totals cover all. `/reports/pipeline` keeps its path and with no query returns the summary
+  the dashboard uses (a superset of the old shape).
+- **Phase 6 — overview assembled in the Application Worker.** `GET /contacts|companies/:id/overview`
+  makes two parallel RPC reads (core detail, first notes page). Only notes is optional; a retryable
+  notes failure returns `notes: null` plus a warning, any `FORBIDDEN` or core failure fails the
+  request. Projects are part of the core detail read, so they are not separately optional. The older
+  `GET /contacts/:id` and `/companies/:id` detail routes remain for other callers.
+- **Phase 6 — lazy routes as well as lazy Markdown.** Splitting only `marked`/`dompurify` reduced
+  the entry chunk to 662.6 kB, still over Vite's 500 kB warning. Every view except the dashboard is
+  therefore also a route-level chunk (entry chunk 427.8 kB). The warning limit was not raised.
+- **Phase 6 — E2E harness.** Playwright 1.63.0 (pinned to the locally cached Chromium build) runs
+  against `cf dev` with a dedicated `.cloudflare/e2e-state`, signing in through the toolkit's local
+  Access login form. `pnpm test` runs Vitest (with the coverage gate) then Playwright.
+- **Phase 6 — bundle report mode.** `check:bundles` builds in a `bundles` mode with the committed
+  placeholder outputs so it works without a deployment; it is observational and enforces nothing.
+- **Phase 6 — deployment checkpoint.** `pnpm deploy` succeeded with an unchanged Terraform plan,
+  then authenticated `cf` listed the two Workers and D1 database. The custom hostname redirected to
+  Cloudflare Access; the in-app browser could not finish the IdP sign-in, so an authenticated
+  deployed UI smoke test was not possible in that browser session. `pnpm teardown` succeeded: both
+  Workers were deleted, Terraform destroyed three resources, authenticated `cf` listings showed no
+  Ignite CRM Workers or D1 database, and `terraform state list` was empty.
+
 ## Follow-on items
 
 - **CRM record editing — not scheduled in Phases 2–7.** Add contact editing and company editing to

@@ -45,6 +45,8 @@ import {
   VSkeletonLoader,
   VTable,
   VTextField,
+  VTimeline,
+  VTimelineItem,
   VTextarea
 } from 'vuetify/components';
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg';
@@ -166,8 +168,10 @@ export const components = {
   VSelect,
   VSkeletonLoader,
   VTable,
+  VTextarea,
   VTextField,
-  VTextarea
+  VTimeline,
+  VTimelineItem
 };
 
 /**

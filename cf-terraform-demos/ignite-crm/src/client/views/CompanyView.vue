@@ -1,10 +1,13 @@
 <script setup lang="ts">
 /**
- * One company's customer timeline: details, primary contact, contacts, deals, delivery projects,
- * every call and meeting involving the company or its people, and history.
+ * One company's customer overview: details, primary contact, contacts, deals, delivery projects,
+ * every call and meeting involving the company or its people, linked notes, a merged timeline, and
+ * history — from one composite request (`GET /companies/:id/overview`). A notes-only failure is
+ * shown as a warning in the Notes card; the rest of the page still renders.
  */
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 import ActivityList from '../components/ActivityList.vue';
+import CustomerTimeline from '../components/CustomerTimeline.vue';
 import DealList from '../components/DealList.vue';
 import HistoryList from '../components/HistoryList.vue';
 import NotesCard from '../components/NotesCard.vue';
@@ -20,7 +23,14 @@ const props = defineProps<{
   id: string;
 }>();
 
-const detail = useResource((signal) => api.company(props.id, signal));
+const overview = useResource((signal) => api.companyOverview(props.id, signal));
+const detail = {
+  ...overview,
+  data: computed(() => overview.data.value?.detail ?? null)
+};
+const notesWarning = computed(
+  () => overview.data.value?.warnings.find((warning) => warning.section === 'notes') ?? null
+);
 
 watch(
   () => props.id,
@@ -33,6 +43,7 @@ watch(
   <ResourceState
     :state="detail.state.value"
     :error="detail.error.value"
+    :has-data="overview.data.value !== null"
     skeleton="article"
     @retry="detail.load"
   >
@@ -115,7 +126,13 @@ watch(
               id: detail.data.value.company.id,
               label: detail.data.value.company.name
             }"
+            :initial="overview.data.value?.notes ?? null"
+            :warning="notesWarning?.message ?? null"
           />
+          <v-card class="mb-4">
+            <v-card-title><h2 class="text-h6">Timeline</h2></v-card-title>
+            <CustomerTimeline :entries="overview.data.value?.timeline ?? []" />
+          </v-card>
           <v-card>
             <v-card-title><h2 class="text-h6">History</h2></v-card-title>
             <HistoryList :entries="detail.data.value.history" />

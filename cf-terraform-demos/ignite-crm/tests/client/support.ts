@@ -85,6 +85,8 @@ export async function mountWithApp(
 export async function settle(): Promise<void> {
   for (let i = 0; i < 5; i++) {
     await flushPromises();
+    // Route components and the Markdown renderer are lazily imported chunks.
+    await vi.dynamicImportSettled();
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 }

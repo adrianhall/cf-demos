@@ -20,10 +20,12 @@ import {
   UpdateCompanyInputSchema
 } from '../../../shared/api/crm.ts';
 import { CompanyDetailSchema, ContactDetailSchema } from '../../../shared/api/customer.ts';
+import { CompanyOverviewSchema, ContactOverviewSchema } from '../../../shared/api/overview.ts';
 import { IdSchema } from '../../../shared/common/ids.ts';
 import { DEFAULT_PAGE_SIZE } from '../../../shared/common/paging.ts';
 import type { ListOptions, MutationMeta } from '../../../shared/data-service/contract.ts';
 import { IdempotencyKeySchema } from '../../../shared/validation/fields.ts';
+import { companyOverview, contactOverview } from '../../overview/customer-overview.ts';
 import { actorOf, type ApiContext, type ApiEnv } from '../context.ts';
 import { checkResponse, parseRequest } from '../problems.ts';
 
@@ -159,6 +161,17 @@ export function crmRoutes(): Hono<ApiEnv> {
     return context.json(detail);
   });
 
+  router.get('/contacts/:id/overview', async (context) => {
+    const id = pathId(context);
+    const actor = await actorOf(context);
+    const overview = checkResponse(
+      ContactOverviewSchema,
+      await contactOverview(context.get('data'), actor, id)
+    );
+    context.header('ETag', `"${overview.detail.contact.version}"`);
+    return context.json(overview);
+  });
+
   router.get('/companies', async (context) => {
     const options = listOptions(context);
     const actor = await actorOf(context);
@@ -194,6 +207,17 @@ export function crmRoutes(): Hono<ApiEnv> {
     );
     context.header('ETag', `"${detail.company.version}"`);
     return context.json(detail);
+  });
+
+  router.get('/companies/:id/overview', async (context) => {
+    const id = pathId(context);
+    const actor = await actorOf(context);
+    const overview = checkResponse(
+      CompanyOverviewSchema,
+      await companyOverview(context.get('data'), actor, id)
+    );
+    context.header('ETag', `"${overview.detail.company.version}"`);
+    return context.json(overview);
   });
 
   router.patch('/companies/:id', jsonBodyLimit(), async (context) => {

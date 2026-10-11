@@ -40,6 +40,7 @@ import type {
   UpdateProjectInput,
   UpdateTaskInput
 } from '../shared/api/projects.ts';
+import type { DeliveryReportFilter, PipelineReportFilter } from '../shared/api/reports.ts';
 import type {
   CreateActivityInput,
   CreateDealInput,
@@ -378,6 +379,15 @@ export class CrmRpc extends RpcTarget implements Enveloped<CrmPort> {
       this.service.pipelineSummary(actor)
     );
   }
+
+  /**
+   * @inheritdoc
+   */
+  pipelineReport(actor: ActorContext, filter: PipelineReportFilter) {
+    return envelope(this.logger, 'crm.pipelineReport', requestIdOf(actor), () =>
+      this.service.pipelineReport(actor, filter)
+    );
+  }
 }
 
 /**
@@ -473,6 +483,15 @@ export class ProjectsRpc extends RpcTarget implements Enveloped<ProjectsPort> {
   myWork(actor: ActorContext) {
     return envelope(this.logger, 'projects.myWork', requestIdOf(actor), () =>
       this.service.myWork(actor)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  deliveryReport(actor: ActorContext, filter: DeliveryReportFilter) {
+    return envelope(this.logger, 'projects.deliveryReport', requestIdOf(actor), () =>
+      this.service.deliveryReport(actor, filter)
     );
   }
 }

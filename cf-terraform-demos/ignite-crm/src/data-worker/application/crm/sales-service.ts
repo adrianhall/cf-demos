@@ -11,6 +11,11 @@ import * as v from 'valibot';
 import type { UserRef } from '../../../shared/api/crm.ts';
 import { TIMELINE_ACTIVITY_LIMIT } from '../../../shared/api/customer.ts';
 import {
+  type PipelineReport,
+  type PipelineReportFilter,
+  PipelineReportFilterSchema
+} from '../../../shared/api/reports.ts';
+import {
   type ActionItem,
   type ActionStream,
   type Activity,
@@ -48,6 +53,7 @@ import {
   lifecycleViolations,
   urgencyOf
 } from '../../domain/crm/sales.ts';
+import { closedWindow } from '../../domain/reports/reports.ts';
 import type { Authorizer } from '../permissions/permissions-service.ts';
 import {
   type IdempotencyRepository,
@@ -261,6 +267,13 @@ export interface SalesRepository extends IdempotencyRepository {
    */
   activeUser(userId: string): Promise<UserRef | null>;
   /**
+   * Any user, active or suspended, for labelling a report filter.
+   *
+   * @param userId User id.
+   * @returns The reference, or `null` when no such user exists.
+   */
+  userRef(userId: string): Promise<UserRef | null>;
+  /**
    * Active contacts among the given ids.
    *
    * @param ids Contact ids.
@@ -340,9 +353,18 @@ export interface SalesRepository extends IdempotencyRepository {
    * Deal counts and totals for a pipeline.
    *
    * @param pipelineId Pipeline id.
+   * @param filter Optional owner and a half-open UTC window `[closedFrom, closedBefore)` applied to
+   *   won/lost deals only; omitted members are unbounded.
    * @returns Pending totals by stage id, and won/lost totals.
    */
-  pipelineTotals(pipelineId: string): Promise<{
+  pipelineTotals(
+    pipelineId: string,
+    filter?: {
+      readonly ownerId: string | null;
+      readonly closedFrom: string | null;
+      readonly closedBefore: string | null;
+    }
+  ): Promise<{
     byStage: ReadonlyMap<string, { count: number; amountMinor: number }>;
     won: { count: number; amountMinor: number };
     lost: { count: number; amountMinor: number };
@@ -1111,7 +1133,55 @@ export class SalesService implements SalesPort {
     const caller = validateActor(actor);
     await this.authorizer.require(caller, 'report.read');
     const pipeline = await this.requirePipeline(caller.requestId);
-    const totals = await this.repository.pipelineTotals(pipeline.id);
+    return this.summarise(pipeline, await this.repository.pipelineTotals(pipeline.id));
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async pipelineReport(actor: ActorContext, filter: PipelineReportFilter): Promise<PipelineReport> {
+    const caller = validateActor(actor);
+    const parsed = validate(PipelineReportFilterSchema, filter ?? {}, caller.requestId);
+    await this.authorizer.require(caller, 'report.read');
+    let owner: UserRef | null = null;
+    if (parsed.ownerId !== undefined) {
+      // Suspended owners still own deals, so resolve by id regardless of status.
+      owner = await this.repository.userRef(parsed.ownerId);
+      if (owner === null) {
+        throw serviceError('VALIDATION_FAILED', 'That person is not on the team.', {
+          requestId: caller.requestId,
+          fields: { ownerId: 'That person is not on the team.' }
+        });
+      }
+    }
+    const pipeline = await this.requirePipeline(caller.requestId);
+    const window = closedWindow(parsed.closedFrom, parsed.closedTo, this.settings.timezone);
+    const totals = await this.repository.pipelineTotals(pipeline.id, {
+      ownerId: owner?.id ?? null,
+      closedFrom: window.from,
+      closedBefore: window.before
+    });
+    return {
+      ...this.summarise(pipeline, totals),
+      filter: {
+        owner,
+        closedFrom: parsed.closedFrom ?? null,
+        closedTo: parsed.closedTo ?? null
+      }
+    };
+  }
+
+  /**
+   * Shape stored totals as a pipeline summary, with every stage present in stage order.
+   *
+   * @param pipeline The pipeline.
+   * @param totals Totals from the repository.
+   * @returns The summary.
+   */
+  private summarise(
+    pipeline: Pipeline,
+    totals: Awaited<ReturnType<SalesRepository['pipelineTotals']>>
+  ): PipelineSummary {
     const stages = pipeline.stages.map((stage) => ({
       stage,
       ...(totals.byStage.get(stage.id) ?? { count: 0, amountMinor: 0 })

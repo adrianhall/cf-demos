@@ -20,7 +20,6 @@ import {
   DealPageSchema,
   DealSchema,
   PipelineSchema,
-  PipelineSummarySchema,
   SetNextActionInputSchema,
   UpdateDealInputSchema
 } from '../../../shared/api/sales.ts';
@@ -192,13 +191,6 @@ export function salesRoutes(): Hono<ApiEnv> {
     const actor = await actorOf(context);
     return context.json(
       checkResponse(ActionStreamSchema, await context.get('data').crm.actionStream(actor))
-    );
-  });
-
-  router.get('/reports/pipeline', async (context) => {
-    const actor = await actorOf(context);
-    return context.json(
-      checkResponse(PipelineSummarySchema, await context.get('data').crm.pipelineSummary(actor))
     );
   });
 

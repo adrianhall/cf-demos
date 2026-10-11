@@ -23,6 +23,8 @@
     "tests/contract",
     "tests/fakes",
     "tests/fixtures",
+    "tests/e2e",
+    "playwright.config.ts",
     "scripts",
     "infra/outputs.ts",
     "data/cloudflare.config.ts",

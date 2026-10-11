@@ -136,6 +136,11 @@ export const TaskCountsSchema = v.strictObject({
 });
 
 /**
+ * Task counts by status.
+ */
+export type TaskCounts = v.InferOutput<typeof TaskCountsSchema>;
+
+/**
  * A project.
  */
 export const ProjectSchema = v.strictObject({

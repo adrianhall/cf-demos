@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VueWrapper } from '@vue/test-utils';
 import App from '../../src/client/App.vue';
 import { resetSession } from '../../src/client/composables/useSession.ts';
+import { serviceError } from '../../src/shared/common/errors.ts';
 import type { ActorContext } from '../../src/shared/data-service/contract.ts';
 import { createFakeDataService, testRuntime } from '../fakes/fake-data-service.ts';
 import { mountWithApp, settle, useApi } from './support.ts';
@@ -281,29 +282,23 @@ describe('the multi-linked meeting note', () => {
 });
 
 describe('the notes card on a record page', () => {
-  it('fails inside its card without hiding the record, then retries', async () => {
+  it('shows the overview’s notes warning inside the card without hiding the record, then retries', async () => {
     const fake = await seeded();
-    useApi('sales@example.com', fake);
-    const realFetch = globalThis.fetch;
+    // The notes read fails in the Data Worker; the overview returns everything else plus a warning.
+    const listNotes = fake.service.notes.listNotes.bind(fake.service.notes);
     let failNotes = true;
-    vi.stubGlobal('fetch', async (input: string, init?: RequestInit) =>
-      failNotes && input.startsWith('/api/v1/notes?')
-        ? new Response(
-            JSON.stringify({
-              type: 'about:blank',
-              status: 503,
-              title: 'Unavailable',
-              detail: 'Try later.'
-            }),
-            { status: 503, headers: { 'Content-Type': 'application/problem+json' } }
+    fake.service.notes.listNotes = (actor, options) =>
+      failNotes
+        ? Promise.reject(
+            serviceError('DEPENDENCY_FAILURE', 'Unavailable.', { requestId: actor.requestId })
           )
-        : realFetch(input, init)
-    );
+        : listNotes(actor, options);
+    useApi('sales@example.com', fake);
     const { wrapper } = await mountWithApp(App, { route: `/contacts/${fake.priya.id}` });
     expect(wrapper.get('h1').text()).toBe('Priya');
-    expect(document.body.querySelector('[data-testid="notes-error"]')?.textContent).toContain(
-      'Notes could not be loaded.'
-    );
+    const warning = document.body.querySelector('[data-testid="notes-error"]');
+    expect(warning?.getAttribute('role')).toBe('status');
+    expect(warning?.textContent).toContain('Notes are temporarily unavailable.');
     failNotes = false;
     button('Retry').click();
     await settle();
@@ -323,7 +318,8 @@ describe('the notes card on a record page', () => {
     useApi('readonly@example.com', fake);
     await mountWithApp(App, { route: `/contacts/${fake.tom.id}` });
     const card = () => document.body.querySelector('[data-testid="notes-card"]')!;
-    expect(card().querySelectorAll('a[href^="/notes/"]')).toHaveLength(25);
+    // The overview supplies the first page; the card pages the rest itself.
+    expect(card().querySelectorAll('a[href^="/notes/"]')).toHaveLength(10);
     expect(card().textContent).not.toContain('New note');
     button('Show more notes').click();
     await settle();

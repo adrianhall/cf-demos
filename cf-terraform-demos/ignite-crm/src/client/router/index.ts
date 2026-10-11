@@ -1,5 +1,10 @@
 /**
- * @file Client routes.
+ * @file Client routes. The dashboard (the landing page) and the not-found page are part of the main
+ *   chunk; every other view is a lazily loaded route component, so the first page load only
+ *   downloads the shell and the dashboard. Vite emits one chunk per view (shared components are
+ *   split out automatically), which also keeps every chunk below Vite's 500 kB warning without
+ *   raising the limit. Router navigation waits for a view's chunk before rendering it, and the
+ *   shell shows a progress bar meanwhile (`App.vue`).
  */
 
 import {
@@ -9,22 +14,8 @@ import {
   type RouterHistory,
   type RouteRecordRaw
 } from 'vue-router';
-import ActionStreamView from '../views/ActionStreamView.vue';
-import AuditView from '../views/AuditView.vue';
-import CompaniesView from '../views/CompaniesView.vue';
-import CompanyView from '../views/CompanyView.vue';
-import ContactsView from '../views/ContactsView.vue';
-import ContactView from '../views/ContactView.vue';
 import DashboardView from '../views/DashboardView.vue';
-import DealsView from '../views/DealsView.vue';
-import DealView from '../views/DealView.vue';
-import MyWorkView from '../views/MyWorkView.vue';
-import NotesView from '../views/NotesView.vue';
-import NoteView from '../views/NoteView.vue';
 import NotFoundView from '../views/NotFoundView.vue';
-import ProjectsView from '../views/ProjectsView.vue';
-import ProjectView from '../views/ProjectView.vue';
-import TeamView from '../views/TeamView.vue';
 
 /**
  * Route table.
@@ -34,49 +25,95 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/actions',
     name: 'actions',
-    component: ActionStreamView,
+    component: () => import('../views/ActionStreamView.vue'),
     meta: { title: 'Action stream' }
   },
-  { path: '/deals', name: 'deals', component: DealsView, meta: { title: 'Deals' } },
+  {
+    path: '/deals',
+    name: 'deals',
+    component: () => import('../views/DealsView.vue'),
+    meta: { title: 'Deals' }
+  },
   {
     path: '/deals/:id',
     name: 'deal',
-    component: DealView,
+    component: () => import('../views/DealView.vue'),
     props: true,
     meta: { title: 'Deal' }
   },
-  { path: '/projects', name: 'projects', component: ProjectsView, meta: { title: 'Projects' } },
+  {
+    path: '/projects',
+    name: 'projects',
+    component: () => import('../views/ProjectsView.vue'),
+    meta: { title: 'Projects' }
+  },
   {
     path: '/projects/:id',
     name: 'project',
-    component: ProjectView,
+    component: () => import('../views/ProjectView.vue'),
     props: true,
     meta: { title: 'Project' }
   },
-  { path: '/my-work', name: 'my-work', component: MyWorkView, meta: { title: 'My work' } },
-  { path: '/team', name: 'team', component: TeamView, meta: { title: 'Team' } },
-  { path: '/audit', name: 'audit', component: AuditView, meta: { title: 'Audit trail' } },
-  { path: '/notes', name: 'notes', component: NotesView, meta: { title: 'Notes' } },
+  {
+    path: '/my-work',
+    name: 'my-work',
+    component: () => import('../views/MyWorkView.vue'),
+    meta: { title: 'My work' }
+  },
+  {
+    path: '/reports',
+    name: 'reports',
+    component: () => import('../views/ReportsView.vue'),
+    meta: { title: 'Reports' }
+  },
+  {
+    path: '/team',
+    name: 'team',
+    component: () => import('../views/TeamView.vue'),
+    meta: { title: 'Team' }
+  },
+  {
+    path: '/audit',
+    name: 'audit',
+    component: () => import('../views/AuditView.vue'),
+    meta: { title: 'Audit trail' }
+  },
+  {
+    path: '/notes',
+    name: 'notes',
+    component: () => import('../views/NotesView.vue'),
+    meta: { title: 'Notes' }
+  },
   {
     path: '/notes/:id',
     name: 'note',
-    component: NoteView,
+    component: () => import('../views/NoteView.vue'),
     props: true,
     meta: { title: 'Note' }
   },
-  { path: '/contacts', name: 'contacts', component: ContactsView, meta: { title: 'Contacts' } },
+  {
+    path: '/contacts',
+    name: 'contacts',
+    component: () => import('../views/ContactsView.vue'),
+    meta: { title: 'Contacts' }
+  },
   {
     path: '/contacts/:id',
     name: 'contact',
-    component: ContactView,
+    component: () => import('../views/ContactView.vue'),
     props: true,
     meta: { title: 'Contact' }
   },
-  { path: '/companies', name: 'companies', component: CompaniesView, meta: { title: 'Companies' } },
+  {
+    path: '/companies',
+    name: 'companies',
+    component: () => import('../views/CompaniesView.vue'),
+    meta: { title: 'Companies' }
+  },
   {
     path: '/companies/:id',
     name: 'company',
-    component: CompanyView,
+    component: () => import('../views/CompanyView.vue'),
     props: true,
     meta: { title: 'Company' }
   },

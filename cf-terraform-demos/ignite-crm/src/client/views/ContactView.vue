@@ -1,8 +1,12 @@
 <script setup lang="ts">
 /**
- * One contact's customer timeline: details, next action, deals, delivery projects, calls and
- * meetings, and history, with actions to create a deal for this contact and to log an activity with
- * them.
+ * One contact's customer overview: details, next action, deals, delivery projects, calls and
+ * meetings, linked notes, a merged timeline, and history, with actions to create a deal for this
+ * contact and to log an activity with them.
+ *
+ * The page makes one composite request (`GET /contacts/:id/overview`). If only the notes section
+ * could not be loaded, the server says so explicitly and the Notes card shows that warning with a
+ * retry, while everything else renders normally.
  */
 import { computed, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -11,6 +15,7 @@ import type { UserRef } from '../../shared/api/crm.ts';
 import type { CreateActivityInput, Pipeline } from '../../shared/api/sales.ts';
 import ActivityForm from '../components/ActivityForm.vue';
 import ActivityList from '../components/ActivityList.vue';
+import CustomerTimeline from '../components/CustomerTimeline.vue';
 import DealForm from '../components/DealForm.vue';
 import DealList from '../components/DealList.vue';
 import HistoryList from '../components/HistoryList.vue';
@@ -35,8 +40,15 @@ const props = defineProps<{
 const router = useRouter();
 const format = useFormat();
 const { can, session } = useSession();
-const detail = useResource((signal) => api.contact(props.id, signal));
+const overview = useResource((signal) => api.contactOverview(props.id, signal));
+const detail = {
+  ...overview,
+  data: computed(() => overview.data.value?.detail ?? null)
+};
 const contact = computed(() => detail.data.value?.contact ?? null);
+const notesWarning = computed(
+  () => overview.data.value?.warnings.find((warning) => warning.section === 'notes') ?? null
+);
 const picked = computed(() =>
   contact.value === null
     ? null
@@ -116,7 +128,7 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
   <ResourceState
     :state="detail.state.value"
     :error="detail.error.value"
-    :has-data="detail.data.value !== null"
+    :has-data="overview.data.value !== null"
     skeleton="article"
     @retry="detail.load"
   >
@@ -184,7 +196,15 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
               <v-list-item title="Created" :subtitle="format.dateTime(contact.createdAt)" />
             </v-list>
           </v-card>
-          <NotesCard :record="{ type: 'contact', id: contact.id, label: contact.displayName }" />
+          <NotesCard
+            :record="{ type: 'contact', id: contact.id, label: contact.displayName }"
+            :initial="overview.data.value?.notes ?? null"
+            :warning="notesWarning?.message ?? null"
+          />
+          <v-card class="mb-4">
+            <v-card-title><h2 class="text-h6">Timeline</h2></v-card-title>
+            <CustomerTimeline :entries="overview.data.value?.timeline ?? []" />
+          </v-card>
           <v-card>
             <v-card-title><h2 class="text-h6">History</h2></v-card-title>
             <HistoryList :entries="detail.data.value.history" />

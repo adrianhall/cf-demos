@@ -85,6 +85,51 @@ describe('shell', () => {
   });
 });
 
+describe('lazy route chunks', () => {
+  it('shows progress while a view loads and offers a reload when its chunk fails', async () => {
+    useApi('sales@example.com', await seeded());
+    const { wrapper, router } = await mountWithApp(App);
+    let release!: () => void;
+    router.addRoute({
+      path: '/slow',
+      name: 'slow',
+      component: () =>
+        new Promise((resolve) => {
+          release = () => resolve({ render: () => null });
+        })
+    });
+    router.addRoute({
+      path: '/broken',
+      name: 'broken',
+      component: () => Promise.reject(new Error('Failed to fetch dynamically imported module'))
+    });
+    const pending = router.push('/slow');
+    await settle();
+    // `aria-hidden` follows the `active` prop (the --active class also needs an intersection
+    // observer, which jsdom does not drive).
+    expect(wrapper.get('[aria-label="Loading page"]').attributes('aria-hidden')).toBe('false');
+    release();
+    await pending;
+    await settle();
+    expect(wrapper.get('[aria-label="Loading page"]').attributes('aria-hidden')).toBe('true');
+
+    await router.push('/broken').catch(() => undefined);
+    await settle();
+    expect(wrapper.text()).toContain('This page could not be loaded');
+    const reload = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload });
+    const button = wrapper
+      .findAll('[role="alert"] button')
+      .find((candidate) => candidate.text() === 'Reload')!;
+    await button.trigger('click');
+    expect(reload).toHaveBeenCalledOnce();
+    // A later successful navigation clears the alert.
+    await router.push('/companies');
+    await settle();
+    expect(wrapper.text()).not.toContain('This page could not be loaded');
+  });
+});
+
 describe('contacts', () => {
   it('searches, then opens a contact and its company', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });

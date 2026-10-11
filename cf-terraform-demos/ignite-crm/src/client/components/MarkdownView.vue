@@ -6,9 +6,15 @@
  * Vuetify has no Markdown renderer. This component takes Markdown and nothing else, renders it
  * through `renderMarkdown` — the single security boundary, with HTML disabled and unsafe URLs
  * removed (`src/client/services/markdown.ts`) — and styles the result with theme tokens only, so it
- * reads as part of the same library in light and dark themes. It owns no state and calls no API.
+ * reads as part of the same library in light and dark themes. It owns no state beyond the render
+ * and calls no API.
+ *
+ * The renderer arrives in its own lazily loaded chunk, so the first render is asynchronous. While
+ * it loads, the region is `aria-busy` and shows a Vuetify text skeleton; if the chunk cannot be
+ * fetched, an alert offers a retry instead of showing raw, unsanitised text. Renders are
+ * generation-counted so a slow earlier render can never overwrite a newer source.
  */
-import { computed } from 'vue';
+import { ref, shallowRef, watch } from 'vue';
 import { renderMarkdown } from '../services/markdown.ts';
 
 const props = defineProps<{
@@ -22,13 +28,51 @@ const props = defineProps<{
   label: string;
 }>();
 
-const html = computed(() => renderMarkdown(props.source));
+const html = shallowRef<string | null>(null);
+const failed = ref(false);
+let generation = 0;
+
+/**
+ * Render the current source, ignoring results that a newer render has superseded.
+ */
+async function render(): Promise<void> {
+  const current = ++generation;
+  failed.value = false;
+  try {
+    const rendered = await renderMarkdown(props.source);
+    if (current === generation) {
+      html.value = rendered;
+    }
+  } catch {
+    if (current === generation) {
+      failed.value = true;
+    }
+  }
+}
+
+watch(() => props.source, render, { immediate: true });
 </script>
 
 <template>
+  <v-alert v-if="failed" type="warning" variant="tonal" role="alert" data-testid="markdown-error">
+    The note could not be displayed because part of the app failed to load.
+    <template #append>
+      <v-btn variant="text" @click="render">Retry</v-btn>
+    </template>
+  </v-alert>
+  <div
+    v-else-if="html === null"
+    role="region"
+    :aria-label="props.label"
+    aria-busy="true"
+    data-testid="markdown-loading"
+  >
+    <v-skeleton-loader type="paragraph" aria-label="Loading note text" />
+  </div>
   <!-- The only v-html in the SPA: `html` comes from renderMarkdown, which disables HTML and
        sanitises with DOMPurify. Never bind unsanitised text here. -->
   <div
+    v-else
     class="markdown-view text-body-1"
     role="region"
     :aria-label="props.label"

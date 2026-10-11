@@ -10,8 +10,15 @@ design in [`01-specification.md`](../../specs/ignite-crm/01-specification.md), a
 in [`02-implementation.md`](../../specs/ignite-crm/02-implementation.md). Decisions made during
 implementation are recorded in [`03-follow-ons.md`](../../specs/ignite-crm/03-follow-ons.md).
 
-**Current increment: Phase 1** — identity, RBAC, and the first CRM journey (companies and contacts:
-create, list, search, view, history).
+**Current increment: Phase 6** — the complete first-release browser workflows: customer context,
+sales, won-deal conversion to delivery, multi-linked notes and search, team administration and
+audit, and pipeline and delivery reports, in a responsive, keyboard-operable SPA. Phase 7
+(hardening) is next.
+
+**Quick review:** `pnpm install` at the repository root, then `pnpm start` here and sign in as
+`owner@example.com`. Open a contact (customer overview and timeline), a deal (**Mark won/lost**
+converts it into a project), the project's task board, **Notes**, **Team**, **Audit trail**, and
+**Reports**.
 
 ## Architecture
 
@@ -53,8 +60,16 @@ kept for comparison in `specs/ignite-crm/microservice-experiment/`.
 ### The RPC contract
 
 `src/shared/data-service/contract.ts` defines the one grouped contract. `DataEntrypoint` exposes
-`health`, `resolveActor`, `resolveUser`, `authorize`, and module targets `crm()` and `permissions()`
-(methods, not getters, so `env.DATA_SERVICE.crm().getContact(...)` pipelines into one round trip).
+`health`, `resolveActor`, `resolveUser`, `authorize`, and module targets `crm()`, `projects()`,
+`notes()`, and `permissions()` (methods, not getters, so `env.DATA_SERVICE.crm().getContact(...)`
+pipelines into one round trip).
+
+Composite views are assembled in the Application Worker, not the Data Worker: the customer overview
+(`src/application-worker/overview/customer-overview.ts`) issues two bounded RPC reads in parallel —
+the core contact/company detail and the first page of linked notes. Only the notes section is
+optional: a retryable notes failure returns the page with `notes: null` and an explicit warning,
+while any authorization failure, and any core failure, fails the whole request. An authorization
+decision is never disguised as missing data.
 
 Every RPC method resolves to an envelope, `{ ok: true, value } | { ok: false, error }`, rather than
 throwing. Expected failures (forbidden, not found, conflict) are ordinary outcomes for a data
@@ -115,11 +130,13 @@ Run from this directory after `pnpm install` at the repository root.
 | `pnpm start`    | `migrate:local` → `seed:local` → `cf dev --persist-to .cloudflare/state`                                                      |
 | `pnpm check`    | Types for both Workers, `tsc` (app + Workers-runtime tests), Oxfmt, type-aware Oxlint, Terraform init/validate/fmt, dev build |
 | `pnpm fix`      | Regenerate types, Oxfmt write, Oxlint `--fix`, `terraform fmt`                                                                |
-| `pnpm test`     | All Vitest projects **with Istanbul coverage** (80% gate on all metrics)                                                      |
+| `pnpm test`     | All Vitest projects **with Istanbul coverage** (80% gate on all metrics), then the offline Playwright journeys                |
 | `pnpm deploy`   | Terraform apply → `infra/outputs.json` → remote migrations → production build → deploy Data, then Application                 |
 | `pnpm teardown` | Delete Application, then Data Worker, then `terraform destroy`                                                                |
 
-Each step is individually runnable (`pnpm deploy:infra`, `pnpm teardown:worker:data`, …).
+Each step is individually runnable (`pnpm deploy:infra`, `pnpm teardown:worker:data`,
+`pnpm test:vitest`, `pnpm test:e2e`, …). `pnpm check:bundles` builds the SPA and both Workers and
+records their sizes (see [Bundle sizes](#bundle-sizes)).
 
 ### Local development identities
 
@@ -146,6 +163,7 @@ repository migration helper applies it with `--local` only.
 | `client`      | jsdom          | API client, views and components with a real `createVuetify()`                                            |
 | `contract`    | Node           | Shared Data Worker contract suite against the in-memory fake                                              |
 | `integration` | workerd (30 s) | Same contract suite against the real `DataEntrypoint` over RPC + D1, D1 port guards, full system journeys |
+| `e2e`         | Chromium       | Playwright: both Workers under `cf dev`, local D1, local Access login, desktop and mobile (90 s per test) |
 
 The fake Data Worker (`tests/fakes`) composes the **real** application services and SQL repositories
 with an in-memory SQLite port, and passes the same contract suite as the real one. In the
@@ -154,6 +172,15 @@ binding, so values cross a real RPC serialization boundary.
 
 Istanbul measures every file under `src/**/*.{ts,vue}`; only tests and declaration files are
 excluded. The report is written to `coverage/`.
+
+The Playwright journeys (`tests/e2e`, `playwright.config.ts`) run offline. `scripts/e2e-server.ts`
+recreates a dedicated `.cloudflare/e2e-state`, applies the data and local seed migrations, and
+starts `cf dev` on port 5199, so a run never touches your `pnpm start` data. They cover identity →
+contact/company → deal/activity → win and convert → task (moved with the keyboard status menu) →
+multi-linked note and search → customer timeline → audit → reports, an owner changing a teammate's
+role, and keyboard skip-link/navigation focus, each at 1440 × 900 and on a Pixel 7. The browser is
+the Chromium build bundled with `@playwright/test` (`pnpm exec playwright install chromium` once on
+a new machine).
 
 ## Configuration
 
@@ -166,9 +193,31 @@ receives only the display DTO from `GET /api/v1/configuration`.
 The SPA is built entirely from Vuetify. Components are registered by name in
 `src/client/vuetify.ts`, with one light/dark theme as the single source of colour and density. The
 palette is built on Cloudflare orange `#FC7C1E` (primary) and `#5A73F4` (secondary). Each has
-AA-compliant `*-strong` tones for text and focus, plus `*-container` fills. The custom
-board/worklist compositions are documented under their respective phases below; `ResourceState`,
-`ContactForm`, and `HistoryList` compose Vuetify primitives.
+AA-compliant `*-strong` tones for text and focus, plus `*-container` fills. Registration lists
+exactly the components the templates use; `tests/client/vuetify-registration.test.ts` fails if the
+two drift apart.
+
+### Custom components and why each exists
+
+Every file in `src/client/components` is composed from Vuetify primitives and theme tokens only, and
+is exercised in the light and dark themes (`tests/client/component-api.test.ts`,
+`tests/client/theme.test.ts`). Most are thin, domain-specific compositions (forms and lists such as
+`ContactForm`, `DealForm`, `TaskForm`, `TeamMemberForm`, `ActivityList`, `DealList`, `NoteList`,
+`HistoryList`, `ResourceState`) rather than new controls. The reviewed **exceptions** — places where
+Vuetify has no suitable component — are:
+
+| Component           | Why Vuetify alone is not enough                                                                                          | Built from                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| `PipelineBoard`     | No kanban board. Drag/drop is replaced by a keyboard-first stage menu.                                                   | `VRow`/`VCol`/`VCard`, `VMenu`, `VList`             |
+| `TaskBoard`         | No kanban board; fixed task statuses with a keyboard status menu.                                                        | `VRow`/`VCol`/`VCard`, `VChip`, `VMenu`             |
+| `ActionStreamRow`   | A worklist row with urgency, contact/deal/company links, and an optional Done action.                                    | `VListItem`, `VChip`, `VBtn`                        |
+| `ContactPicker`     | `VAutocomplete` alone has no explicit, keyboard-operable "Add" for remote results.                                       | `VTextField`, `VAutocomplete`, `VList`, `VBtn`      |
+| `RecordLinkChooser` | No chooser across several record types.                                                                                  | `VSelect`, `VTextField`, `VList`, closable `VChip`s |
+| `MarkdownComposer`  | Write/Preview switch with a UTF-8 byte counter.                                                                          | `VTextarea`, `VBtnToggle`                           |
+| `MarkdownView`      | No Markdown renderer. The one `v-html` in the SPA, fed only by the sanitising renderer; shows a skeleton while it loads. | `VSkeletonLoader`, `VAlert`, theme tokens           |
+
+`CustomerTimeline` (Phase 6) is not an exception: it is Vuetify's own `VTimeline` with per-kind
+icons and theme colours.
 
 ## Phase 2: sales workflow
 
@@ -401,19 +450,75 @@ The Team and Audit pages use Vuetify's `VDataTable`, `VSelect`, `VCheckbox`, `VD
 | `PUT /api/v1/users/:id/status` | Suspend or reactivate (owner; `If-Match`)             |
 | `GET /api/v1/audit`            | Filtered, newest-first audit trail; owner and manager |
 
-## Known limitations (Phases 1–5)
+## Phase 6: reports, customer overview, and a release-ready SPA
 
-- Delivery reports and the customer overview arrive in Phase 6. Notes cannot yet be deleted,
-  task-list checkboxes are read-only (edit the Markdown to tick one), and note-to-note links are not
-  part of release one. Standalone project creation, task deletion, and drag/drop are not part of the
-  Phase 3 increment; projects are created from won deals. Pipeline reporting and the sales/delivery
-  workflows are available now.
+- **Reports** (`/reports`, every role with `report.read`). The pipeline report shows open deals and
+  value by stage plus won and lost, filterable by deal owner and by a close-date window (at most 366
+  days, inclusive dates in the installation time zone; the window narrows won/lost only, because an
+  open deal has no close date). The delivery report shows task counts by status and overdue tasks
+  across active, on-hold, or completed projects, optionally for one project lead, with up to 50
+  per-project rows (totals always include every project). Filters live in the URL, and each report
+  loads and fails independently. Archived projects are history, so they are not a delivery option.
+- **Customer overview.** Contact and company pages now load one composite response with a merged,
+  newest-first **Timeline** (calls and meetings, deals opened/won/lost, projects started, notes) —
+  titles only, never activity summaries, deal status lines, or note bodies. If notes are briefly
+  unavailable the Notes card says so and offers Retry; the rest of the page renders.
+- **Faster first load.** Every view except the dashboard is a lazily loaded route chunk, and the
+  Markdown libraries (`marked`, `dompurify`) load only when a note body or preview is first shown
+  (`src/client/services/markdown.ts` remains the single Markdown boundary; the safety tests run
+  through the lazy path). A thin progress bar shows while a view's chunk downloads, the note body
+  shows a busy skeleton, and a chunk that cannot be fetched (typically just after a deploy) offers
+  **Reload** instead of failing silently. The previous 500 kB build warning is resolved, not
+  suppressed.
+
+### Phase 6 API additions
+
+| Route                                | Purpose                                                              |
+| ------------------------------------ | -------------------------------------------------------------------- |
+| `GET /api/v1/reports/pipeline`       | Pipeline report; optional `ownerId`, `closedFrom`, `closedTo`        |
+| `GET /api/v1/reports/delivery`       | Delivery report; optional `projectStatus` (default active), `leadId` |
+| `GET /api/v1/contacts/:id/overview`  | Contact overview: detail, first notes page, timeline, warnings       |
+| `GET /api/v1/companies/:id/overview` | Company overview, same shape                                         |
+
+With no query string, `/reports/pipeline` is the whole-pipeline summary the dashboard shows.
+
+## Bundle sizes
+
+Recorded with `pnpm check:bundles` (observational only — release one asserts no account limits). It
+builds in a `bundles` mode that reads the committed placeholder outputs, so it runs in a clean
+checkout; the emitted code is the same as a production build. The full per-file report is written to
+the ignored `.cloudflare/bundle-report.json`.
+
+| Artifact                    | Before Phase 6 | After Phase 6 | gzip after |
+| --------------------------- | -------------: | ------------: | ---------: |
+| SPA entry chunk             |       735.8 kB |      427.8 kB |   139.2 kB |
+| SPA JavaScript (all chunks) |       735.8 kB |      768.3 kB |   264.1 kB |
+| `markdown-renderer` chunk   |       (inline) |       74.9 kB |    25.1 kB |
+| SPA CSS                     |       357.6 kB |      374.4 kB |    50.6 kB |
+| Application Worker          |       294.4 kB |      305.6 kB |    77.3 kB |
+| Data Worker                 |       276.1 kB |      287.1 kB |    65.4 kB |
+
+The entry chunk is what every first visit downloads; Markdown and the other views now arrive only
+when used. Total JavaScript grew slightly with Phase 6's own features.
+
+## MCP deferral
+
+The specification reserves `/mcp` for AI-assisted access (introduction §3.6), but release one ships
+no MCP handler, OAuth Worker, or MCP tests. The path is deliberately absent from the Application
+Worker's `runWorkerFirst` list, so it is not routed to Worker code. The Data Worker contract is the
+seam a later MCP module would call, with the same RBAC.
+
+## Known limitations (Phases 1–6)
+
+- Notes cannot yet be deleted, task-list checkboxes are read-only (edit the Markdown to tick one),
+  and note-to-note links are not part of release one. Standalone project creation, task deletion,
+  and drag/drop are not part of release one; projects are created from won deals.
+- Reports are on-screen only; CSV export (a "could have") is not in release one.
 - Contact/company editing and the personal profile/menu are recorded in
   `specs/ignite-crm/03-follow-ons.md`; this phase adds project/task editing alongside deal editing.
   The broader live client-side validation and phone-number normalization remain follow-ons.
 - The first-release contact action is one open ASAP or dated action per contact. More elaborate
   waiting/queued follow-ups and drag-and-drop ordering are not part of this review increment; the
   pipeline board uses a keyboard-first stage menu instead.
-- `/mcp` is reserved but has no handler in release one.
 - SFC templates are not type-checked: there is no `vue-tsc` compatible with TypeScript 7 (the same
   constraint as the sibling demos). Script logic is covered by DOM tests.

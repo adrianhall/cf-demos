@@ -50,6 +50,12 @@ import type {
   UpdateTaskInput
 } from '../api/projects.ts';
 import type {
+  DeliveryReport,
+  DeliveryReportFilter,
+  PipelineReport,
+  PipelineReportFilter
+} from '../api/reports.ts';
+import type {
   ActionStream,
   Activity,
   ContactNextAction,
@@ -348,6 +354,14 @@ export interface SalesPort {
    * @param actor The caller.
    */
   pipelineSummary(actor: ActorContext): Promise<PipelineSummary>;
+  /**
+   * The filterable pipeline report: open deals by stage, plus won and lost, optionally for one
+   * owner and a close-date window.
+   *
+   * @param actor The caller (needs `report.read`).
+   * @param filter Bounded filters.
+   */
+  pipelineReport(actor: ActorContext, filter: PipelineReportFilter): Promise<PipelineReport>;
 }
 
 /**
@@ -533,6 +547,13 @@ export interface ProjectsPort {
    * @param actor The caller.
    */
   myWork(actor: ActorContext): Promise<MyWork>;
+  /**
+   * The delivery report: task counts by status across matching projects.
+   *
+   * @param actor The caller (needs `report.read`).
+   * @param filter Project state and optional lead.
+   */
+  deliveryReport(actor: ActorContext, filter: DeliveryReportFilter): Promise<DeliveryReport>;
 }
 
 /**

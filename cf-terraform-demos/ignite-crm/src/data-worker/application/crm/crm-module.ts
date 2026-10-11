@@ -37,6 +37,7 @@ export function crmModule(contacts: ContactsPort, sales: SalesPort): CrmPort {
     completeContactNextAction: (actor, contactId, version, meta) =>
       sales.completeContactNextAction(actor, contactId, version, meta),
     actionStream: (actor) => sales.actionStream(actor),
-    pipelineSummary: (actor) => sales.pipelineSummary(actor)
+    pipelineSummary: (actor) => sales.pipelineSummary(actor),
+    pipelineReport: (actor, filter) => sales.pipelineReport(actor, filter)
   };
 }

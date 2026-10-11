@@ -26,6 +26,7 @@ import {
   NoteSearchResultSchema,
   type UpdateNoteInput
 } from '../../shared/api/notes.ts';
+import { CompanyOverviewSchema, ContactOverviewSchema } from '../../shared/api/overview.ts';
 import { type Problem, ProblemSchema } from '../../shared/api/problems.ts';
 import {
   type ConvertDealRequest,
@@ -40,6 +41,12 @@ import {
   type UpdateTaskInput
 } from '../../shared/api/projects.ts';
 import {
+  type DeliveryReportFilter,
+  DeliveryReportSchema,
+  type PipelineReportFilter,
+  PipelineReportSchema
+} from '../../shared/api/reports.ts';
+import {
   ActionStreamSchema,
   ActivitySchema,
   ContactNextActionSchema,
@@ -50,7 +57,6 @@ import {
   DealSchema,
   type DealStatus,
   PipelineSchema,
-  PipelineSummarySchema,
   type SetNextActionInput,
   type UpdateDealInput
 } from '../../shared/api/sales.ts';
@@ -308,6 +314,39 @@ export class ApiClient {
     return this.request(
       `/api/v1/companies${toQuery(query)}`,
       CompanyPageSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * A contact's customer overview: core detail, linked notes, and merged timeline. The notes
+   * section may be `null` with a warning; any other failure rejects.
+   *
+   * @param id Contact id.
+   * @param signal Cancellation.
+   * @returns The overview.
+   * @throws {ApiError} On failure.
+   */
+  contactOverview(id: string, signal?: AbortSignal) {
+    return this.request(
+      `/api/v1/contacts/${encodeURIComponent(id)}/overview`,
+      ContactOverviewSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * A company's customer overview.
+   *
+   * @param id Company id.
+   * @param signal Cancellation.
+   * @returns The overview.
+   * @throws {ApiError} On failure.
+   */
+  companyOverview(id: string, signal?: AbortSignal) {
+    return this.request(
+      `/api/v1/companies/${encodeURIComponent(id)}/overview`,
+      CompanyOverviewSchema,
       signal === undefined ? {} : { signal }
     );
   }
@@ -839,16 +878,34 @@ export class ApiClient {
   }
 
   /**
-   * Pipeline totals by stage and outcome.
+   * Pipeline totals by stage and outcome, optionally filtered.
    *
+   * @param filter Owner and close-date window; omit for the whole pipeline.
    * @param signal Cancellation.
-   * @returns The summary.
+   * @returns The report.
+   * @throws {ApiError} On failure (`validation` for a bad window, `forbidden` without
+   *   `report.read`).
+   */
+  pipelineReport(filter: PipelineReportFilter = {}, signal?: AbortSignal) {
+    return this.request(
+      `/api/v1/reports/pipeline${toQuery({ ...filter })}`,
+      PipelineReportSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * Task counts by status across projects.
+   *
+   * @param filter Project state and lead; omit for active projects.
+   * @param signal Cancellation.
+   * @returns The report.
    * @throws {ApiError} On failure.
    */
-  pipelineSummary(signal?: AbortSignal) {
+  deliveryReport(filter: DeliveryReportFilter = {}, signal?: AbortSignal) {
     return this.request(
-      '/api/v1/reports/pipeline',
-      PipelineSummarySchema,
+      `/api/v1/reports/delivery${toQuery({ ...filter })}`,
+      DeliveryReportSchema,
       signal === undefined ? {} : { signal }
     );
   }

@@ -21,7 +21,7 @@ const { session, roleLabel, can } = useSession();
 const format = useFormat();
 const dashboard = useResource((signal) => api.dashboard(signal));
 const actions = useResource((signal) => api.actionStream(signal));
-const summary = useResource((signal) => api.pipelineSummary(signal));
+const summary = useResource((signal) => api.pipelineReport({}, signal));
 const topActions = computed(() => actions.data.value?.items.slice(0, DASHBOARD_ACTIONS) ?? []);
 
 onMounted(() => {
@@ -94,7 +94,7 @@ onMounted(() => {
         <v-card>
           <v-card-title class="d-flex align-center">
             <h2 class="text-h6 flex-grow-1">Pipeline</h2>
-            <v-btn variant="text" :to="{ name: 'deals' }">Open board</v-btn>
+            <v-btn variant="text" :to="{ name: 'reports' }">Reports</v-btn>
           </v-card-title>
           <ResourceState
             :state="summary.state.value"
