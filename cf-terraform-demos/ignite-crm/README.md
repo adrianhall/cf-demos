@@ -349,13 +349,65 @@ sibling demo: `marked` (parser) and `dompurify` (sanitiser).
 Note bodies may be up to 512 KiB on the wire (JSON escaping can grow 64 KiB of text); every other
 JSON endpoint keeps the 8 KiB default.
 
-## Known limitations (Phases 1–4)
+## Phase 5: team administration, roles, and audit
 
-- Team administration, the audit viewer, and delivery reports arrive in later phases. Notes cannot
-  yet be deleted, task-list checkboxes are read-only (edit the Markdown to tick one), and
-  note-to-note links are not part of release one. Standalone project creation, task deletion, and
-  drag/drop are not part of the Phase 3 increment; projects are created from won deals. Pipeline
-  reporting and the sales/delivery workflows are available now.
+`migrations/data/0005_team.sql` adds a `users.read` permission (owner and manager), records who
+granted each role, and indexes the team directory and the audit viewer's filters. There are no new
+tables: users, the fixed seeded roles, and `audit_events` already existed. To see the increment,
+sign in as `owner@example.com` and open **Team**: add a teammate (any e-mail, for example
+`pat@example.com`) as Read-only, then sign in as that identity in another browser profile and note
+that **New contact** is absent and the API refuses writes. As the owner, choose **Roles** and make
+them a Manager; on the teammate's very next page load the **Audit trail** appears and the server
+accepts their requests. Open **Audit trail** to filter by area, record type, or person.
+
+- **Who can do what.** Owners invite, change roles, and suspend or reactivate (`users.manage`,
+  `roles.assign`). Managers read the team directory and the audit trail (`users.read`,
+  `audit.read`). Everyone else sees neither; the navigation hides both, and the API answers `403` if
+  they ask anyway. `tests/unit/permissions/role-matrix.test.ts` is an explicit, hand-written role ×
+  operation fixture that runs every critical CRM, project, notes, reporting, administration, and
+  audit operation as every role.
+- **Invitation.** Adding a teammate pre-creates their Access identity with its roles; no e-mail is
+  sent, and Cloudflare Access still decides who can authenticate at all. Their first sign-in finds
+  the record and uses those roles. A duplicate e-mail is a `409` naming the field. Unknown
+  identities that sign in without an invitation are still auto-provisioned read-only (Phase 1).
+- **Immediate effect.** Nothing caches roles: every authorization reads `user_roles` and
+  `role_permissions` afresh, so a role change or suspension applies to the teammate's next request
+  with no sign-out. The SPA's capability hints load once per page, and refresh at once when an owner
+  edits their own roles.
+- **Safety rules.** Role and status changes need `If-Match` (version) and `Idempotency-Key`. An
+  active user always has at least one role. At least one active owner always remains: the write set
+  ends with a guard that counts active owners _after_ the change inside the same D1 batch, so two
+  owners demoting each other at once cannot both succeed (proven on real D1 in
+  `tests/integration/data-worker/team.test.ts`). An owner cannot suspend themselves.
+- **Audit.** `GET /api/v1/audit` reads the one shared `audit_events` table, newest first, with a
+  keyset cursor and optional `module`, `entityType`, `entityId`, and `actorId` filters. Each event
+  shows the record's current name, the actor, the request id, and **allowlisted** metadata only —
+  ids, field names, statuses, counts, and content digests. The allowlist is applied when the event
+  leaves the Data Worker (`src/data-worker/domain/audit/audit.ts`), so even a future writer that
+  stores an unexpected key cannot leak it; such events are flagged "redacted". A note appears as its
+  title and a SHA-256 digest of its body, never its text.
+
+The Team and Audit pages use Vuetify's `VDataTable`, `VSelect`, `VCheckbox`, `VDialog`, and `VChip`.
+`TeamMemberForm` is a composition of those standard form primitives, not a new control.
+
+### Phase 5 API additions
+
+| Route                          | Purpose                                               |
+| ------------------------------ | ----------------------------------------------------- |
+| `GET /api/v1/roles`            | The fixed role catalogue with each role's permissions |
+| `GET /api/v1/users`            | Team directory (`q`, `cursor`); owner and manager     |
+| `POST /api/v1/users`           | Add a teammate with roles (owner; `Idempotency-Key`)  |
+| `PUT /api/v1/users/:id/roles`  | Replace roles (owner; `If-Match`, `Idempotency-Key`)  |
+| `PUT /api/v1/users/:id/status` | Suspend or reactivate (owner; `If-Match`)             |
+| `GET /api/v1/audit`            | Filtered, newest-first audit trail; owner and manager |
+
+## Known limitations (Phases 1–5)
+
+- Delivery reports and the customer overview arrive in Phase 6. Notes cannot yet be deleted,
+  task-list checkboxes are read-only (edit the Markdown to tick one), and note-to-note links are not
+  part of release one. Standalone project creation, task deletion, and drag/drop are not part of the
+  Phase 3 increment; projects are created from won deals. Pipeline reporting and the sales/delivery
+  workflows are available now.
 - Contact/company editing and the personal profile/menu are recorded in
   `specs/ignite-crm/03-follow-ons.md`; this phase adds project/task editing alongside deal editing.
   The broader live client-side validation and phone-number normalization remain follow-ons.

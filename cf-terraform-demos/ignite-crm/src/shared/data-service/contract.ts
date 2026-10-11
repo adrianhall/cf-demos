@@ -16,6 +16,7 @@
  *     the shared contract suite runs against both.
  */
 
+import type { AuditEntityType, AuditEvent, AuditModuleName } from '../api/audit.ts';
 import type {
   Company,
   CompanySummary,
@@ -63,6 +64,13 @@ import type {
   UpdateDealInput
 } from '../api/sales.ts';
 import type { Session } from '../api/session.ts';
+import type {
+  InviteUserInput,
+  RoleDefinition,
+  SetUserRolesInput,
+  SetUserStatusInput,
+  TeamMember
+} from '../api/team.ts';
 import type { ServiceErrorValue } from '../common/errors.ts';
 import type { Page } from '../common/paging.ts';
 import type { Permission } from '../permissions.ts';
@@ -606,7 +614,57 @@ export interface NotesPort {
 }
 
 /**
- * Permissions module operations beyond actor resolution and authorization.
+ * Team directory options passed to the Data Worker after API validation.
+ */
+export interface TeamListOptions {
+  /**
+   * Search over display name and e-mail.
+   */
+  readonly q?: string;
+  /**
+   * Page size, 1–100.
+   */
+  readonly limit: number;
+  /**
+   * Cursor from the previous page.
+   */
+  readonly cursor?: string;
+}
+
+/**
+ * Audit trail filters and paging passed to the Data Worker after API validation. Filters combine
+ * with AND.
+ */
+export interface AuditListOptions {
+  /**
+   * Only events from this module.
+   */
+  readonly module?: AuditModuleName;
+  /**
+   * Only events about this entity type.
+   */
+  readonly entityType?: AuditEntityType;
+  /**
+   * Only events about this entity.
+   */
+  readonly entityId?: string;
+  /**
+   * Only events by this user.
+   */
+  readonly actorId?: string;
+  /**
+   * Page size, 1–100.
+   */
+  readonly limit: number;
+  /**
+   * Cursor from the previous page.
+   */
+  readonly cursor?: string;
+}
+
+/**
+ * Permissions module operations beyond actor resolution and authorization: the session, team
+ * administration, and the shared audit trail.
  */
 export interface PermissionsPort {
   /**
@@ -615,6 +673,69 @@ export interface PermissionsPort {
    * @param actor The caller.
    */
   getSession(actor: ActorContext): Promise<Session>;
+  /**
+   * The fixed role catalogue with each role's permissions.
+   *
+   * @param actor The caller (needs `users.read`).
+   */
+  listRoles(actor: ActorContext): Promise<RoleDefinition[]>;
+  /**
+   * The team directory, ordered by display name.
+   *
+   * @param actor The caller (needs `users.read`).
+   * @param options Search and paging.
+   */
+  listTeam(actor: ActorContext, options: TeamListOptions): Promise<Page<TeamMember>>;
+  /**
+   * Add a teammate by Access e-mail with their initial roles. No e-mail is sent: the record means
+   * the teammate's first sign-in already has these roles.
+   *
+   * @param actor The caller (needs `users.manage` and `roles.assign`).
+   * @param input E-mail, display name, and roles.
+   * @param meta Idempotency metadata.
+   */
+  inviteUser(actor: ActorContext, input: InviteUserInput, meta: MutationMeta): Promise<TeamMember>;
+  /**
+   * Replace a teammate's roles if their record is still at the expected version. Takes effect on
+   * their next request. At least one active owner always remains.
+   *
+   * @param actor The caller (needs `roles.assign`).
+   * @param userId The teammate.
+   * @param input The complete new role set.
+   * @param expectedVersion Version the caller last read.
+   * @param meta Idempotency metadata.
+   */
+  setUserRoles(
+    actor: ActorContext,
+    userId: string,
+    input: SetUserRolesInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ): Promise<TeamMember>;
+  /**
+   * Suspend or reactivate a teammate if their record is still at the expected version. A suspended
+   * user is refused on their next request. At least one active owner always remains.
+   *
+   * @param actor The caller (needs `users.manage`).
+   * @param userId The teammate.
+   * @param input The new status.
+   * @param expectedVersion Version the caller last read.
+   * @param meta Idempotency metadata.
+   */
+  setUserStatus(
+    actor: ActorContext,
+    userId: string,
+    input: SetUserStatusInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ): Promise<TeamMember>;
+  /**
+   * The shared audit trail, newest first, with allowlisted metadata only.
+   *
+   * @param actor The caller (needs `audit.read`).
+   * @param options Filters and paging.
+   */
+  listAudit(actor: ActorContext, options: AuditListOptions): Promise<Page<AuditEvent>>;
 }
 
 /**

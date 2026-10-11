@@ -12,6 +12,7 @@ import { CrmService } from './application/crm/crm-service.ts';
 import { SalesService } from './application/crm/sales-service.ts';
 import { NotesService } from './application/notes/notes-service.ts';
 import { PermissionsService } from './application/permissions/permissions-service.ts';
+import { TeamService } from './application/permissions/team-service.ts';
 import { ProjectsService } from './application/projects/projects-service.ts';
 import { type Runtime, systemRuntime } from './application/shared/runtime.ts';
 import { D1Adapter, type D1Port, sql } from './infrastructure/d1/d1-port.ts';
@@ -20,6 +21,7 @@ import { D1NotesRepository } from './infrastructure/repositories/notes-repositor
 import { D1PermissionsRepository } from './infrastructure/repositories/permissions-repository.ts';
 import { D1ProjectsRepository } from './infrastructure/repositories/projects-repository.ts';
 import { D1SalesRepository } from './infrastructure/repositories/sales-repository.ts';
+import { D1TeamRepository } from './infrastructure/repositories/team-repository.ts';
 
 /**
  * Bindings the composition root needs.
@@ -104,6 +106,7 @@ export function composeWithPort(db: D1Port, adminEmail: string, runtime: Runtime
     timezone: configuration.timezone
   });
   const notes = new NotesService(new D1NotesRepository(db), permissions, runtime);
+  const team = new TeamService(new D1TeamRepository(db), permissions, runtime);
   return {
     health: () => health(db),
     resolveActor: (email, requestId) => permissions.resolveActor(email, requestId),
@@ -112,6 +115,16 @@ export function composeWithPort(db: D1Port, adminEmail: string, runtime: Runtime
     crm,
     projects,
     notes,
-    permissions
+    permissions: {
+      getSession: (actor) => permissions.getSession(actor),
+      listRoles: (actor) => team.listRoles(actor),
+      listTeam: (actor, options) => team.listTeam(actor, options),
+      inviteUser: (actor, input, meta) => team.inviteUser(actor, input, meta),
+      setUserRoles: (actor, userId, input, version, meta) =>
+        team.setUserRoles(actor, userId, input, version, meta),
+      setUserStatus: (actor, userId, input, version, meta) =>
+        team.setUserStatus(actor, userId, input, version, meta),
+      listAudit: (actor, options) => team.listAudit(actor, options)
+    }
   };
 }

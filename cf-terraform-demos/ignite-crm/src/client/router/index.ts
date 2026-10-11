@@ -10,6 +10,7 @@ import {
   type RouteRecordRaw
 } from 'vue-router';
 import ActionStreamView from '../views/ActionStreamView.vue';
+import AuditView from '../views/AuditView.vue';
 import CompaniesView from '../views/CompaniesView.vue';
 import CompanyView from '../views/CompanyView.vue';
 import ContactsView from '../views/ContactsView.vue';
@@ -23,6 +24,7 @@ import NoteView from '../views/NoteView.vue';
 import NotFoundView from '../views/NotFoundView.vue';
 import ProjectsView from '../views/ProjectsView.vue';
 import ProjectView from '../views/ProjectView.vue';
+import TeamView from '../views/TeamView.vue';
 
 /**
  * Route table.
@@ -52,6 +54,8 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: 'Project' }
   },
   { path: '/my-work', name: 'my-work', component: MyWorkView, meta: { title: 'My work' } },
+  { path: '/team', name: 'team', component: TeamView, meta: { title: 'Team' } },
+  { path: '/audit', name: 'audit', component: AuditView, meta: { title: 'Audit trail' } },
   { path: '/notes', name: 'notes', component: NotesView, meta: { title: 'Notes' } },
   {
     path: '/notes/:id',

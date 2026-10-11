@@ -62,6 +62,15 @@ export interface UseSession {
    * @returns Once loaded or failed.
    */
   load(client?: ApiClient): Promise<void>;
+  /**
+   * Discard the cached session and load it again, for example after an owner changes their own
+   * roles. Capability hints are otherwise loaded once per page load; the server never relies on
+   * them.
+   *
+   * @param client API client (injectable for tests).
+   * @returns Once reloaded or failed.
+   */
+  reload(client?: ApiClient): Promise<void>;
 }
 
 /**
@@ -70,7 +79,7 @@ export interface UseSession {
  * @returns The session API.
  */
 export function useSession(): UseSession {
-  return {
+  const shared: UseSession = {
     session: computed(() => session.value),
     configuration: computed(() => configuration.value),
     state: computed(() => state.value),
@@ -103,8 +112,15 @@ export function useSession(): UseSession {
         }
       })();
       return pending;
+    },
+    reload: (client = api) => {
+      if (state.value === 'ready') {
+        state.value = 'idle';
+      }
+      return shared.load(client);
     }
   };
+  return shared;
 }
 
 /**

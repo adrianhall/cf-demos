@@ -46,6 +46,7 @@ import type {
   SetNextActionInput,
   UpdateDealInput
 } from '../shared/api/sales.ts';
+import type { InviteUserInput, SetUserRolesInput, SetUserStatusInput } from '../shared/api/team.ts';
 import { isServiceError, serviceError, type ServiceErrorValue } from '../shared/common/errors.ts';
 import type {
   ActorContext,
@@ -58,9 +59,11 @@ import type {
   Enveloped,
   ListOptions,
   MutationMeta,
+  AuditListOptions,
   NoteListOptions,
   NotesPort,
   PermissionsPort,
+  TeamListOptions,
   ProjectListOptions,
   ProjectsPort,
   ResolvedActor,
@@ -565,6 +568,72 @@ export class PermissionsRpc extends RpcTarget implements Enveloped<PermissionsPo
   getSession(actor: ActorContext) {
     return envelope(this.logger, 'permissions.getSession', requestIdOf(actor), () =>
       this.service.getSession(actor)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  listRoles(actor: ActorContext) {
+    return envelope(this.logger, 'permissions.listRoles', requestIdOf(actor), () =>
+      this.service.listRoles(actor)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  listTeam(actor: ActorContext, options: TeamListOptions) {
+    return envelope(this.logger, 'permissions.listTeam', requestIdOf(actor), () =>
+      this.service.listTeam(actor, options)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  inviteUser(actor: ActorContext, input: InviteUserInput, meta: MutationMeta) {
+    return envelope(this.logger, 'permissions.inviteUser', requestIdOf(actor), () =>
+      this.service.inviteUser(actor, input, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  setUserRoles(
+    actor: ActorContext,
+    userId: string,
+    input: SetUserRolesInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ) {
+    return envelope(this.logger, 'permissions.setUserRoles', requestIdOf(actor), () =>
+      this.service.setUserRoles(actor, userId, input, expectedVersion, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  setUserStatus(
+    actor: ActorContext,
+    userId: string,
+    input: SetUserStatusInput,
+    expectedVersion: number,
+    meta: MutationMeta
+  ) {
+    return envelope(this.logger, 'permissions.setUserStatus', requestIdOf(actor), () =>
+      this.service.setUserStatus(actor, userId, input, expectedVersion, meta)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  listAudit(actor: ActorContext, options: AuditListOptions) {
+    return envelope(this.logger, 'permissions.listAudit', requestIdOf(actor), () =>
+      this.service.listAudit(actor, options)
     );
   }
 }

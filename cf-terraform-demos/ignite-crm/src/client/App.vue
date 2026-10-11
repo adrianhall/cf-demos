@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useDisplay } from 'vuetify';
 /**
@@ -8,19 +8,22 @@ import { useDisplay } from 'vuetify';
  * keyboard and screen-reader users land on the new page's content.
  */
 import {
+  mdiAccountGroup,
   mdiAccountMultiple,
   mdiBriefcase,
   mdiCheckboxMarkedCircleOutline,
   mdiDomain,
   mdiFormatListChecks,
+  mdiHistory,
   mdiMenu,
   mdiNoteTextOutline,
   mdiViewDashboard,
   mdiViewColumn
 } from '@mdi/js';
+import type { Permission } from '../shared/permissions.ts';
 import { useSession } from './composables/useSession.ts';
 
-const { session, state, error, roleLabel, load } = useSession();
+const { session, state, error, roleLabel, load, can } = useSession();
 const { mdAndUp } = useDisplay();
 const route = useRoute();
 const drawer = ref<boolean | null>(null);
@@ -34,8 +37,18 @@ const navigation = [
   { title: 'My work', icon: mdiCheckboxMarkedCircleOutline, to: { name: 'my-work' } },
   { title: 'Notes', icon: mdiNoteTextOutline, to: { name: 'notes' } },
   { title: 'Contacts', icon: mdiAccountMultiple, to: { name: 'contacts' } },
-  { title: 'Companies', icon: mdiDomain, to: { name: 'companies' } }
-] as const;
+  { title: 'Companies', icon: mdiDomain, to: { name: 'companies' } },
+  // Shown only when the session's capability hints allow; the API refuses the rest anyway.
+  { title: 'Team', icon: mdiAccountGroup, to: { name: 'team' }, needs: 'users.read' },
+  { title: 'Audit trail', icon: mdiHistory, to: { name: 'audit' }, needs: 'audit.read' }
+] as const satisfies readonly { title: string; needs?: Permission }[];
+
+/**
+ * Navigation items the signed-in user can use.
+ */
+const visibleNavigation = computed(() =>
+  navigation.filter((item) => !('needs' in item) || can(item.needs))
+);
 
 watch(
   () => route.fullPath,
@@ -81,7 +94,7 @@ onMounted(() => void load());
     <v-navigation-drawer v-model="drawer" aria-label="Main navigation">
       <v-list nav>
         <v-list-item
-          v-for="item in navigation"
+          v-for="item in visibleNavigation"
           :key="item.title"
           :to="item.to"
           :prepend-icon="item.icon"

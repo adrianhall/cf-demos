@@ -13,6 +13,7 @@ import * as v from 'valibot';
  * Every permission, in `resource.action` form.
  */
 export const PERMISSIONS = [
+  'users.read',
   'users.manage',
   'roles.assign',
   'audit.read',
@@ -74,11 +75,15 @@ const READ_ALL: readonly Permission[] = ['crm.read', 'project.read', 'note.read'
 /**
  * The seeded role→permission matrix (see `microservice-experiment/01a-permissions-spec.md` §3.2),
  * plus `crm.assign` (added by `migrations/data/0002_sales.sql`): assigning a deal to someone other
- * than yourself is the manager/owner "reassign coverage" story, not an ordinary sales write.
+ * than yourself is the manager/owner "reassign coverage" story, not an ordinary sales write. Also
+ * `users.read` (added by `migrations/data/0005_team.sql`): owners and managers may read the team
+ * directory, because a manager reassigns coverage and reviews the audit trail by person; only
+ * owners change membership, roles, or status.
  */
 export const SEED_ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
   'owner': [...PERMISSIONS],
   'manager': [
+    'users.read',
     'audit.read',
     ...READ_ALL,
     'crm.write',

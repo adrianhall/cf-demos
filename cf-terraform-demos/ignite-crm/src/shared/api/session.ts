@@ -39,6 +39,11 @@ export const RoleSummarySchema = v.strictObject({
 });
 
 /**
+ * A role summary.
+ */
+export type RoleSummary = v.InferOutput<typeof RoleSummarySchema>;
+
+/**
  * `GET /api/v1/session` response.
  */
 export const SessionSchema = v.strictObject({

@@ -6,6 +6,7 @@
  */
 
 import * as v from 'valibot';
+import { AuditPageSchema, type AuditListQuery } from '../../shared/api/audit.ts';
 import { DisplayConfigurationSchema } from '../../shared/api/configuration.ts';
 import {
   CompanyPageSchema,
@@ -54,6 +55,14 @@ import {
   type UpdateDealInput
 } from '../../shared/api/sales.ts';
 import { SessionSchema } from '../../shared/api/session.ts';
+import {
+  type InviteUserInput,
+  RoleCatalogueSchema,
+  type SetUserRolesInput,
+  type SetUserStatusInput,
+  TeamMemberSchema,
+  TeamPageSchema
+} from '../../shared/api/team.ts';
 
 /**
  * Failure kinds the UI distinguishes.
@@ -642,6 +651,105 @@ export class ApiClient {
    */
   myWork(signal?: AbortSignal) {
     return this.request('/api/v1/my-work', MyWorkSchema, signal === undefined ? {} : { signal });
+  }
+
+  /**
+   * The fixed role catalogue.
+   *
+   * @param signal Cancellation.
+   * @returns Every role with its permissions.
+   * @throws {ApiError} On failure (`forbidden` without `users.read`).
+   */
+  roles(signal?: AbortSignal) {
+    return this.request(
+      '/api/v1/roles',
+      RoleCatalogueSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * The team directory.
+   *
+   * @param query Search and cursor.
+   * @param signal Cancellation.
+   * @returns One page, ordered by display name.
+   * @throws {ApiError} On failure.
+   */
+  team(query: { q?: string; cursor?: string }, signal?: AbortSignal) {
+    return this.request(
+      `/api/v1/users${toQuery(query)}`,
+      TeamPageSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * Add a teammate (owner only).
+   *
+   * @param input E-mail, display name, and roles.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The new member.
+   * @throws {ApiError} On failure.
+   */
+  inviteUser(input: InviteUserInput, idempotencyKey: string) {
+    return this.request('/api/v1/users', TeamMemberSchema, {
+      method: 'POST',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey }
+    });
+  }
+
+  /**
+   * Replace a teammate's roles (owner only).
+   *
+   * @param id User id.
+   * @param input The new role set.
+   * @param version Version last read.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The updated member.
+   * @throws {ApiError} On failure.
+   */
+  setUserRoles(id: string, input: SetUserRolesInput, version: number, idempotencyKey: string) {
+    return this.request(`/api/v1/users/${encodeURIComponent(id)}/roles`, TeamMemberSchema, {
+      method: 'PUT',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey, 'If-Match': `"${version}"` }
+    });
+  }
+
+  /**
+   * Suspend or reactivate a teammate (owner only).
+   *
+   * @param id User id.
+   * @param input The new status.
+   * @param version Version last read.
+   * @param idempotencyKey Key for this user intent.
+   * @returns The updated member.
+   * @throws {ApiError} On failure.
+   */
+  setUserStatus(id: string, input: SetUserStatusInput, version: number, idempotencyKey: string) {
+    return this.request(`/api/v1/users/${encodeURIComponent(id)}/status`, TeamMemberSchema, {
+      method: 'PUT',
+      body: input,
+      headers: { 'Idempotency-Key': idempotencyKey, 'If-Match': `"${version}"` }
+    });
+  }
+
+  /**
+   * The audit trail.
+   *
+   * @param query Filters and cursor.
+   * @param signal Cancellation.
+   * @returns One page, newest first.
+   * @throws {ApiError} On failure (`forbidden` without `audit.read`).
+   */
+  audit(query: Omit<AuditListQuery, 'limit'>, signal?: AbortSignal) {
+    return this.request(
+      `/api/v1/audit${toQuery(query)}`,
+      AuditPageSchema,
+      signal === undefined ? {} : { signal }
+    );
   }
 
   /**

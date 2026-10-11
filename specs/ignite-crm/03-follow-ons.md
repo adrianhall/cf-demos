@@ -151,6 +151,30 @@ items to review at the end. Each entry names the phase that made it.
   usable. Notes are not added to the contact/company/deal/project RPC projections, so those
   projections' query budgets are unchanged.
 
+- **Phase 5 — `users.read`.** A new permission lets managers read the team directory and role
+  catalogue (needed to reassign coverage and to filter the audit trail by person) without being able
+  to change membership. 01a open question 1 is kept as decided: only owners invite, change roles, or
+  change status.
+- **Phase 5 — invitation keeps auto-provisioning.** An invitation pre-creates an active user with
+  the chosen roles; there is no separate `invited` state, because confirmed decision 2 still
+  auto-provisions any un-invited Access identity as read-only. An invite therefore means "this
+  person's first sign-in has these roles". Inviting an e-mail already on the team is `CONFLICT` with
+  `fields.email` (rather than 01a's idempotent success for a pending invite, which has no equivalent
+  state here). The owner enters the display name (01a open question 4).
+- **Phase 5 — status vocabulary.** Owners can suspend and reactivate. Deletion is not offered: user
+  ids are referenced from every record and the audit trail, so a suspended account is the
+  release-one way to remove access. An owner cannot suspend themselves.
+- **Phase 5 — final owner.** Enforced by a commit-time guard counting active owners after the
+  change, in the same batch; the service's earlier read only produces the friendly message.
+- **Phase 5 — role transport.** Role and status changes are `PUT /users/:id/roles|status` (they
+  replace a whole value) with `If-Match`; 01e's `PATCH` naming was adjusted to match semantics.
+- **Phase 5 — audit is one table, not a merged cursor.** 01e §Audit described merging per-service
+  cursors; with one D1 database the trail is a single keyset query. Metadata passes an allowlist on
+  the way out, and redacted events are flagged rather than hidden.
+- **Phase 5 — capability hints.** Hints load once per page load and are refreshed immediately when
+  an owner edits their own roles. Another user's hints refresh on their next page load; the server
+  enforces the change on their very next request regardless.
+
 ## Follow-on items
 
 - **CRM record editing — not scheduled in Phases 2–7.** Add contact editing and company editing to

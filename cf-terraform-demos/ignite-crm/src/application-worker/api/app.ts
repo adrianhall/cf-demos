@@ -24,6 +24,7 @@ import { crmRoutes } from './routes/crm.ts';
 import { notesRoutes } from './routes/notes.ts';
 import { projectsRoutes } from './routes/projects.ts';
 import { salesRoutes } from './routes/sales.ts';
+import { teamRoutes } from './routes/team.ts';
 
 /**
  * Inputs to {@link createApiApp}.
@@ -85,6 +86,7 @@ export function createApiApp(options: ApiAppOptions): Hono<ApiEnv> {
   app.route('/api/v1', salesRoutes());
   app.route('/api/v1', projectsRoutes());
   app.route('/api/v1', notesRoutes());
+  app.route('/api/v1', teamRoutes());
 
   app.onError(
     problemDetailsErrorHandler({ includeStack: options.includeStack, mapError: mapServiceError })

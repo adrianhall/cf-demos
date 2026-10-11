@@ -20,7 +20,7 @@ describe('health and configuration', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       status: 'ok',
-      data: { status: 'ok', migration: '0004_notes.sql' }
+      data: { status: 'ok', migration: '0005_team.sql' }
     });
     expect(response.headers.get('X-Request-Id')).toMatch(/^[0-9a-f-]{36}$/u);
   });
@@ -401,6 +401,79 @@ describe('delivery journey', () => {
     };
     expect(company.projects.map((item) => item.id)).toEqual([project.id]);
     expect(company.deals[0]?.project?.id).toBe(project.id);
+  });
+});
+
+describe('team administration journey', () => {
+  it('invites a teammate, changes their role, and the server boundary moves on the next request', async () => {
+    // The bootstrap owner exists after its first request.
+    await api('/api/v1/session', { as: 'owner@example.com' });
+    const invited = await api('/api/v1/users', {
+      as: 'owner@example.com',
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'journey-invite-1' },
+      json: { email: 'teammate@example.com', displayName: 'Teammate', roles: ['read-only'] }
+    });
+    expect(invited.status).toBe(201);
+    const member = (await invited.json()) as { id: string; version: number };
+
+    // The teammate's first request uses the invited role (no auto-provisioned duplicate).
+    const contact = {
+      firstName: 'Role',
+      lastName: 'Check',
+      companyName: 'Boundary Ltd'
+    };
+    const denied = await api('/api/v1/contacts', {
+      as: 'teammate@example.com',
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'journey-team-c1' },
+      json: contact
+    });
+    expect(denied.status).toBe(403);
+
+    const promoted = await api(`/api/v1/users/${member.id}/roles`, {
+      as: 'owner@example.com',
+      method: 'PUT',
+      headers: { 'Idempotency-Key': 'journey-roles-1', 'If-Match': `"${member.version}"` },
+      json: { roles: ['sales'] }
+    });
+    expect(promoted.status).toBe(200);
+    const allowed = await api('/api/v1/contacts', {
+      as: 'teammate@example.com',
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'journey-team-c2' },
+      json: contact
+    });
+    expect(allowed.status).toBe(201);
+
+    // A manager sees the trail; a sales user does not; the wrong Access audience never gets in.
+    const trail = await api(`/api/v1/audit?entityType=user&entityId=${member.id}`, {
+      as: 'owner@example.com'
+    });
+    expect(
+      ((await trail.json()) as { items: { action: string }[] }).items.map((item) => item.action)
+    ).toEqual(['roles-changed', 'invited']);
+    expect((await api('/api/v1/audit', { as: 'sales@example.com' })).status).toBe(403);
+    expect(
+      (await api('/api/v1/audit', { as: 'owner@example.com', audience: 'c'.repeat(64) })).status
+    ).toBe(401);
+  });
+
+  it('keeps the final owner on real D1', async () => {
+    const session = (await (await api('/api/v1/session', { as: 'owner@example.com' })).json()) as {
+      user: { id: string };
+    };
+    const team = (await (
+      await api('/api/v1/users?q=owner%40example.com', { as: 'owner@example.com' })
+    ).json()) as { items: { id: string; version: number }[] };
+    const self = team.items.find((item) => item.id === session.user.id)!;
+    const response = await api(`/api/v1/users/${self.id}/roles`, {
+      as: 'owner@example.com',
+      method: 'PUT',
+      headers: { 'Idempotency-Key': 'journey-last-owner', 'If-Match': `"${self.version}"` },
+      json: { roles: ['manager'] }
+    });
+    expect(response.status).toBe(409);
   });
 });
 

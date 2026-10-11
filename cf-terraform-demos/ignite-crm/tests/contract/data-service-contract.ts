@@ -72,6 +72,7 @@ export function dataServiceContractTests(
       harness = await setup();
       await harness.addUser('contract-sales@example.com', 'sales');
       await harness.addUser('contract-reader@example.com', 'read-only');
+      await harness.addUser('contract-team-owner@example.com', 'owner');
     });
 
     it('reports health', async () => {
@@ -659,6 +660,79 @@ export function dataServiceContractTests(
       ).toBe('VERSION_MISMATCH');
       const detail = await harness.service.notes.getNote(reader, note.id);
       expect(detail.history.map((entry) => entry.action)).toEqual(['updated', 'created']);
+    });
+
+    it('administers a teammate and reads one shared audit trail', async () => {
+      const owner = await actor('contract-team-owner@example.com');
+      const reader = await actor('contract-reader@example.com');
+      expect((await harness.service.permissions.getSession(owner)).roles.map((r) => r.id)).toEqual([
+        'owner'
+      ]);
+      const roles = await harness.service.permissions.listRoles(owner);
+      expect(roles.map((role) => role.id)).toEqual([
+        'owner',
+        'manager',
+        'sales',
+        'delivery',
+        'read-only'
+      ]);
+      expect(await codeOf(harness.service.permissions.listTeam(reader, { limit: 10 }))).toBe(
+        'FORBIDDEN'
+      );
+      const meta = { idempotencyKey: 'contract-team-invite-1' };
+      const input = {
+        email: 'Contract-Teammate@Example.com',
+        displayName: 'Contract Teammate',
+        roles: ['read-only' as const]
+      };
+      const added = await harness.service.permissions.inviteUser(owner, input, meta);
+      expect(added).toMatchObject({
+        email: 'contract-teammate@example.com',
+        version: 1,
+        roles: [{ id: 'read-only' }]
+      });
+      expect((await harness.service.permissions.inviteUser(owner, input, meta)).id).toBe(added.id);
+      expect(
+        (await harness.service.permissions.listTeam(owner, { limit: 10, q: 'Teammate' })).items.map(
+          (user) => user.id
+        )
+      ).toContain(added.id);
+      const teammate = await actor('contract-teammate@example.com');
+      expect((await harness.service.permissions.getSession(teammate)).permissions).not.toContain(
+        'audit.read'
+      );
+      const promoted = await harness.service.permissions.setUserRoles(
+        owner,
+        added.id,
+        { roles: ['manager'] },
+        1,
+        { idempotencyKey: 'contract-team-roles-1' }
+      );
+      expect(promoted.version).toBe(2);
+      expect((await harness.service.permissions.getSession(teammate)).permissions).toContain(
+        'audit.read'
+      );
+      expect(
+        await codeOf(
+          harness.service.permissions.setUserRoles(owner, added.id, { roles: ['sales'] }, 1, {
+            idempotencyKey: 'contract-team-stale-1'
+          })
+        )
+      ).toBe('VERSION_MISMATCH');
+      const audit = await harness.service.permissions.listAudit(teammate, {
+        limit: 10,
+        entityType: 'user',
+        entityId: added.id
+      });
+      expect(audit.items.map((entry) => entry.action)).toEqual(['roles-changed', 'invited']);
+      expect(JSON.stringify(audit)).not.toContain('contract-teammate@example.com');
+      await harness.service.permissions.setUserStatus(owner, added.id, { status: 'suspended' }, 2, {
+        idempotencyKey: 'contract-team-status-1'
+      });
+      expect(await codeOf(harness.service.permissions.getSession(teammate))).toBe('FORBIDDEN');
+      expect(await codeOf(harness.service.permissions.listAudit(teammate, { limit: 10 }))).toBe(
+        'FORBIDDEN'
+      );
     });
 
     it('reports dashboard counts', async () => {
