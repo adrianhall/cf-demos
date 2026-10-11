@@ -51,6 +51,10 @@ export type PageRequest = v.InferOutput<typeof PageRequestSchema>;
 /**
  * Build the schema for one page of items.
  *
+ * The return type is inferred on purpose: it is the exact Valibot object type, which carries the
+ * item's output type into every schema built from it. Spelling it out would duplicate the object
+ * and drift from it, so this builder is an intended exception to explicit return types.
+ *
  * @param item Schema each item must satisfy.
  * @returns A schema for `{ items, nextCursor }`.
  */

@@ -26,6 +26,10 @@ export const VersionSchema = v.pipe(v.number(), v.integer(), v.minValue(1));
 /**
  * Build a schema for a required, trimmed, single-line text field.
  *
+ * The return type is inferred on purpose: it is the exact Valibot pipe type, which carries the
+ * field's output type into every schema built from it. Spelling it out would duplicate the pipe and
+ * drift from it, so this builder is an intended exception to explicit return types.
+ *
  * @param label Field name used in messages.
  * @param max Maximum length after trimming.
  * @returns The schema.
@@ -44,6 +48,10 @@ export function requiredText(label: string, max: number) {
  *
  * Blank strings become `null`, so a form that submits an empty input does not store `''` and later
  * render an empty label.
+ *
+ * The return type is inferred on purpose: it is the exact Valibot pipe type, which carries the
+ * field's output type into every schema built from it. Spelling it out would duplicate the pipe and
+ * drift from it, so this builder is an intended exception to explicit return types.
  *
  * @param label Field name used in messages.
  * @param max Maximum length after trimming.

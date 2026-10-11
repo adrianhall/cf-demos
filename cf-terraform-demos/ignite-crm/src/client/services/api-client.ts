@@ -7,7 +7,9 @@
 
 import * as v from 'valibot';
 import { AuditPageSchema, type AuditListQuery } from '../../shared/api/audit.ts';
+import type { AuditEvent } from '../../shared/api/audit.ts';
 import { DisplayConfigurationSchema } from '../../shared/api/configuration.ts';
+import type { DisplayConfiguration } from '../../shared/api/configuration.ts';
 import {
   CompanyPageSchema,
   CompanySchema,
@@ -19,7 +21,16 @@ import {
   type UpdateContactInput
 } from '../../shared/api/crm.ts';
 import { UserRefSchema } from '../../shared/api/crm.ts';
+import type {
+  Company,
+  CompanySummary,
+  Contact,
+  ContactSummary,
+  Dashboard,
+  UserRef
+} from '../../shared/api/crm.ts';
 import { CompanyDetailSchema, ContactDetailSchema } from '../../shared/api/customer.ts';
+import type { CompanyDetail, ContactDetail } from '../../shared/api/customer.ts';
 import {
   type CreateNoteInput,
   NoteDetailSchema,
@@ -29,7 +40,9 @@ import {
   NoteSearchResultSchema,
   type UpdateNoteInput
 } from '../../shared/api/notes.ts';
+import type { Note, NoteDetail, NoteSearchResult, NoteSummary } from '../../shared/api/notes.ts';
 import { CompanyOverviewSchema, ContactOverviewSchema } from '../../shared/api/overview.ts';
+import type { CompanyOverview, ContactOverview } from '../../shared/api/overview.ts';
 import { type Problem, ProblemSchema } from '../../shared/api/problems.ts';
 import {
   type ConvertDealRequest,
@@ -43,6 +56,7 @@ import {
   type UpdateProjectInput,
   type UpdateTaskInput
 } from '../../shared/api/projects.ts';
+import type { MyWork, Project, ProjectDetail, Task } from '../../shared/api/projects.ts';
 import {
   type DeliveryReportFilter,
   DeliveryReportSchema,
@@ -50,6 +64,11 @@ import {
   PipelineReportSchema,
   type QuarterlyPipelineFilter,
   QuarterlyPipelineReportSchema
+} from '../../shared/api/reports.ts';
+import type {
+  DeliveryReport,
+  PipelineReport,
+  QuarterlyPipelineReport
 } from '../../shared/api/reports.ts';
 import {
   ActionStreamSchema,
@@ -65,7 +84,16 @@ import {
   type SetNextActionInput,
   type UpdateDealInput
 } from '../../shared/api/sales.ts';
+import type {
+  ActionStream,
+  Activity,
+  ContactNextAction,
+  Deal,
+  DealDetail,
+  Pipeline
+} from '../../shared/api/sales.ts';
 import { SessionSchema } from '../../shared/api/session.ts';
+import type { Session } from '../../shared/api/session.ts';
 import {
   type InviteUserInput,
   RoleCatalogueSchema,
@@ -74,6 +102,8 @@ import {
   TeamMemberSchema,
   TeamPageSchema
 } from '../../shared/api/team.ts';
+import type { RoleDefinition, TeamMember } from '../../shared/api/team.ts';
+import type { Page } from '../../shared/common/paging.ts';
 
 /**
  * Failure kinds the UI distinguishes.
@@ -286,7 +316,7 @@ export class ApiClient {
    * @returns The session.
    * @throws {ApiError} On failure.
    */
-  session() {
+  session(): Promise<Session> {
     return this.request('/api/v1/session', SessionSchema);
   }
 
@@ -296,7 +326,7 @@ export class ApiClient {
    * @returns The configuration.
    * @throws {ApiError} On failure.
    */
-  configuration() {
+  configuration(): Promise<DisplayConfiguration> {
     return this.request('/api/v1/configuration', DisplayConfigurationSchema);
   }
 
@@ -307,7 +337,7 @@ export class ApiClient {
    * @returns The dashboard.
    * @throws {ApiError} On failure.
    */
-  dashboard(signal?: AbortSignal) {
+  dashboard(signal?: AbortSignal): Promise<Dashboard> {
     return this.request(
       '/api/v1/dashboard',
       DashboardSchema,
@@ -323,7 +353,10 @@ export class ApiClient {
    * @returns One page.
    * @throws {ApiError} On failure.
    */
-  contacts(query: { q?: string; cursor?: string }, signal?: AbortSignal) {
+  contacts(
+    query: { q?: string; cursor?: string },
+    signal?: AbortSignal
+  ): Promise<Page<ContactSummary>> {
     return this.request(
       `/api/v1/contacts${toQuery(query)}`,
       ContactPageSchema,
@@ -339,7 +372,10 @@ export class ApiClient {
    * @returns One page.
    * @throws {ApiError} On failure.
    */
-  companies(query: { q?: string; cursor?: string }, signal?: AbortSignal) {
+  companies(
+    query: { q?: string; cursor?: string },
+    signal?: AbortSignal
+  ): Promise<Page<CompanySummary>> {
     return this.request(
       `/api/v1/companies${toQuery(query)}`,
       CompanyPageSchema,
@@ -356,7 +392,7 @@ export class ApiClient {
    * @returns The overview.
    * @throws {ApiError} On failure.
    */
-  contactOverview(id: string, signal?: AbortSignal) {
+  contactOverview(id: string, signal?: AbortSignal): Promise<ContactOverview> {
     return this.request(
       `/api/v1/contacts/${encodeURIComponent(id)}/overview`,
       ContactOverviewSchema,
@@ -372,7 +408,7 @@ export class ApiClient {
    * @returns The overview.
    * @throws {ApiError} On failure.
    */
-  companyOverview(id: string, signal?: AbortSignal) {
+  companyOverview(id: string, signal?: AbortSignal): Promise<CompanyOverview> {
     return this.request(
       `/api/v1/companies/${encodeURIComponent(id)}/overview`,
       CompanyOverviewSchema,
@@ -388,7 +424,7 @@ export class ApiClient {
    * @returns The detail.
    * @throws {ApiError} On failure.
    */
-  contact(id: string, signal?: AbortSignal) {
+  contact(id: string, signal?: AbortSignal): Promise<ContactDetail> {
     return this.request(
       `/api/v1/contacts/${encodeURIComponent(id)}`,
       ContactDetailSchema,
@@ -404,7 +440,7 @@ export class ApiClient {
    * @returns The detail.
    * @throws {ApiError} On failure.
    */
-  company(id: string, signal?: AbortSignal) {
+  company(id: string, signal?: AbortSignal): Promise<CompanyDetail> {
     return this.request(
       `/api/v1/companies/${encodeURIComponent(id)}`,
       CompanyDetailSchema,
@@ -420,7 +456,7 @@ export class ApiClient {
    * @returns The created contact.
    * @throws {ApiError} On failure.
    */
-  createContact(input: Partial<CreateContactInput>, idempotencyKey: string) {
+  createContact(input: Partial<CreateContactInput>, idempotencyKey: string): Promise<Contact> {
     return this.request('/api/v1/contacts', ContactSchema, {
       method: 'POST',
       body: input,
@@ -439,7 +475,12 @@ export class ApiClient {
    * @throws {ApiError} `validation` with field messages, `conflict` when the contact changed
    *   meanwhile, `forbidden` without `crm.write`, or another failure kind.
    */
-  updateContact(id: string, input: UpdateContactInput, version: number, idempotencyKey: string) {
+  updateContact(
+    id: string,
+    input: UpdateContactInput,
+    version: number,
+    idempotencyKey: string
+  ): Promise<Contact> {
     return this.request(`/api/v1/contacts/${encodeURIComponent(id)}`, ContactSchema, {
       method: 'PATCH',
       body: input,
@@ -459,7 +500,12 @@ export class ApiClient {
    *   meanwhile or the new name is taken, `forbidden` without `crm.write`, or another failure
    *   kind.
    */
-  updateCompany(id: string, input: UpdateCompanyInput, version: number, idempotencyKey: string) {
+  updateCompany(
+    id: string,
+    input: UpdateCompanyInput,
+    version: number,
+    idempotencyKey: string
+  ): Promise<Company> {
     return this.request(`/api/v1/companies/${encodeURIComponent(id)}`, CompanySchema, {
       method: 'PATCH',
       body: input,
@@ -474,7 +520,7 @@ export class ApiClient {
    * @returns The pipeline and its stages.
    * @throws {ApiError} On failure.
    */
-  pipeline(signal?: AbortSignal) {
+  pipeline(signal?: AbortSignal): Promise<Pipeline> {
     return this.request('/api/v1/pipeline', PipelineSchema, signal === undefined ? {} : { signal });
   }
 
@@ -485,7 +531,7 @@ export class ApiClient {
    * @returns User references.
    * @throws {ApiError} On failure.
    */
-  assignees(signal?: AbortSignal) {
+  assignees(signal?: AbortSignal): Promise<UserRef[]> {
     return this.request(
       '/api/v1/assignees',
       v.array(UserRefSchema),
@@ -504,7 +550,7 @@ export class ApiClient {
   deals(
     query: { q?: string; status?: DealStatus; stage?: string; limit?: number; cursor?: string },
     signal?: AbortSignal
-  ) {
+  ): Promise<Page<Deal>> {
     return this.request(
       `/api/v1/deals${toQuery({ ...query, limit: query.limit?.toString() })}`,
       DealPageSchema,
@@ -520,7 +566,7 @@ export class ApiClient {
    * @returns The detail.
    * @throws {ApiError} On failure.
    */
-  deal(id: string, signal?: AbortSignal) {
+  deal(id: string, signal?: AbortSignal): Promise<DealDetail> {
     return this.request(
       `/api/v1/deals/${encodeURIComponent(id)}`,
       DealDetailSchema,
@@ -536,7 +582,7 @@ export class ApiClient {
    * @returns The created deal.
    * @throws {ApiError} On failure.
    */
-  createDeal(input: Partial<CreateDealInput>, idempotencyKey: string) {
+  createDeal(input: Partial<CreateDealInput>, idempotencyKey: string): Promise<Deal> {
     return this.request('/api/v1/deals', DealSchema, {
       method: 'POST',
       body: input,
@@ -554,7 +600,12 @@ export class ApiClient {
    * @returns The updated deal.
    * @throws {ApiError} On failure.
    */
-  updateDeal(id: string, input: UpdateDealInput, version: number, idempotencyKey: string) {
+  updateDeal(
+    id: string,
+    input: UpdateDealInput,
+    version: number,
+    idempotencyKey: string
+  ): Promise<Deal> {
     return this.request(`/api/v1/deals/${encodeURIComponent(id)}`, DealSchema, {
       method: 'PATCH',
       body: input,
@@ -570,7 +621,7 @@ export class ApiClient {
    * @returns The activity.
    * @throws {ApiError} On failure.
    */
-  createActivity(input: CreateActivityInput, idempotencyKey: string) {
+  createActivity(input: CreateActivityInput, idempotencyKey: string): Promise<Activity> {
     return this.request('/api/v1/activities', ActivitySchema, {
       method: 'POST',
       body: input,
@@ -593,7 +644,7 @@ export class ApiClient {
     input: SetNextActionInput,
     version: number | null,
     idempotencyKey: string
-  ) {
+  ): Promise<ContactNextAction> {
     return this.request(
       `/api/v1/contacts/${encodeURIComponent(contactId)}/next-action`,
       ContactNextActionSchema,
@@ -617,7 +668,11 @@ export class ApiClient {
    * @returns The completed action.
    * @throws {ApiError} On failure.
    */
-  completeNextAction(contactId: string, version: number, idempotencyKey: string) {
+  completeNextAction(
+    contactId: string,
+    version: number,
+    idempotencyKey: string
+  ): Promise<ContactNextAction> {
     return this.request(
       `/api/v1/contacts/${encodeURIComponent(contactId)}/next-action/complete`,
       ContactNextActionSchema,
@@ -635,7 +690,7 @@ export class ApiClient {
    * @returns The action stream.
    * @throws {ApiError} On failure.
    */
-  actionStream(signal?: AbortSignal) {
+  actionStream(signal?: AbortSignal): Promise<ActionStream> {
     return this.request(
       '/api/v1/action-stream',
       ActionStreamSchema,
@@ -653,7 +708,12 @@ export class ApiClient {
    * @returns The new project.
    * @throws {ApiError} On failure (`conflict` when already converted or no longer won).
    */
-  convertDeal(dealId: string, input: ConvertDealRequest, version: number, idempotencyKey: string) {
+  convertDeal(
+    dealId: string,
+    input: ConvertDealRequest,
+    version: number,
+    idempotencyKey: string
+  ): Promise<Project> {
     return this.request(`/api/v1/deals/${encodeURIComponent(dealId)}/convert`, ProjectSchema, {
       method: 'POST',
       body: input,
@@ -672,7 +732,7 @@ export class ApiClient {
   projects(
     query: { q?: string; status?: ProjectStatus; limit?: number; cursor?: string },
     signal?: AbortSignal
-  ) {
+  ): Promise<Page<Project>> {
     return this.request(
       `/api/v1/projects${toQuery({ ...query, limit: query.limit?.toString() })}`,
       ProjectPageSchema,
@@ -688,7 +748,7 @@ export class ApiClient {
    * @returns The detail.
    * @throws {ApiError} On failure.
    */
-  project(id: string, signal?: AbortSignal) {
+  project(id: string, signal?: AbortSignal): Promise<ProjectDetail> {
     return this.request(
       `/api/v1/projects/${encodeURIComponent(id)}`,
       ProjectDetailSchema,
@@ -706,7 +766,12 @@ export class ApiClient {
    * @returns The updated project.
    * @throws {ApiError} On failure.
    */
-  updateProject(id: string, input: UpdateProjectInput, version: number, idempotencyKey: string) {
+  updateProject(
+    id: string,
+    input: UpdateProjectInput,
+    version: number,
+    idempotencyKey: string
+  ): Promise<Project> {
     return this.request(`/api/v1/projects/${encodeURIComponent(id)}`, ProjectSchema, {
       method: 'PATCH',
       body: input,
@@ -723,7 +788,11 @@ export class ApiClient {
    * @returns The task.
    * @throws {ApiError} On failure.
    */
-  createTask(projectId: string, input: Partial<CreateTaskInput>, idempotencyKey: string) {
+  createTask(
+    projectId: string,
+    input: Partial<CreateTaskInput>,
+    idempotencyKey: string
+  ): Promise<Task> {
     return this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/tasks`, TaskSchema, {
       method: 'POST',
       body: input,
@@ -741,7 +810,12 @@ export class ApiClient {
    * @returns The updated task.
    * @throws {ApiError} On failure.
    */
-  updateTask(id: string, input: UpdateTaskInput, version: number, idempotencyKey: string) {
+  updateTask(
+    id: string,
+    input: UpdateTaskInput,
+    version: number,
+    idempotencyKey: string
+  ): Promise<Task> {
     return this.request(`/api/v1/tasks/${encodeURIComponent(id)}`, TaskSchema, {
       method: 'PATCH',
       body: input,
@@ -756,7 +830,7 @@ export class ApiClient {
    * @returns The worklist.
    * @throws {ApiError} On failure.
    */
-  myWork(signal?: AbortSignal) {
+  myWork(signal?: AbortSignal): Promise<MyWork> {
     return this.request('/api/v1/my-work', MyWorkSchema, signal === undefined ? {} : { signal });
   }
 
@@ -767,7 +841,7 @@ export class ApiClient {
    * @returns Every role with its permissions.
    * @throws {ApiError} On failure (`forbidden` without `users.read`).
    */
-  roles(signal?: AbortSignal) {
+  roles(signal?: AbortSignal): Promise<RoleDefinition[]> {
     return this.request(
       '/api/v1/roles',
       RoleCatalogueSchema,
@@ -783,7 +857,7 @@ export class ApiClient {
    * @returns One page, ordered by display name.
    * @throws {ApiError} On failure.
    */
-  team(query: { q?: string; cursor?: string }, signal?: AbortSignal) {
+  team(query: { q?: string; cursor?: string }, signal?: AbortSignal): Promise<Page<TeamMember>> {
     return this.request(
       `/api/v1/users${toQuery(query)}`,
       TeamPageSchema,
@@ -799,7 +873,7 @@ export class ApiClient {
    * @returns The new member.
    * @throws {ApiError} On failure.
    */
-  inviteUser(input: InviteUserInput, idempotencyKey: string) {
+  inviteUser(input: InviteUserInput, idempotencyKey: string): Promise<TeamMember> {
     return this.request('/api/v1/users', TeamMemberSchema, {
       method: 'POST',
       body: input,
@@ -817,7 +891,12 @@ export class ApiClient {
    * @returns The updated member.
    * @throws {ApiError} On failure.
    */
-  setUserRoles(id: string, input: SetUserRolesInput, version: number, idempotencyKey: string) {
+  setUserRoles(
+    id: string,
+    input: SetUserRolesInput,
+    version: number,
+    idempotencyKey: string
+  ): Promise<TeamMember> {
     return this.request(`/api/v1/users/${encodeURIComponent(id)}/roles`, TeamMemberSchema, {
       method: 'PUT',
       body: input,
@@ -835,7 +914,12 @@ export class ApiClient {
    * @returns The updated member.
    * @throws {ApiError} On failure.
    */
-  setUserStatus(id: string, input: SetUserStatusInput, version: number, idempotencyKey: string) {
+  setUserStatus(
+    id: string,
+    input: SetUserStatusInput,
+    version: number,
+    idempotencyKey: string
+  ): Promise<TeamMember> {
     return this.request(`/api/v1/users/${encodeURIComponent(id)}/status`, TeamMemberSchema, {
       method: 'PUT',
       body: input,
@@ -851,7 +935,7 @@ export class ApiClient {
    * @returns One page, newest first.
    * @throws {ApiError} On failure (`forbidden` without `audit.read`).
    */
-  audit(query: Omit<AuditListQuery, 'limit'>, signal?: AbortSignal) {
+  audit(query: Omit<AuditListQuery, 'limit'>, signal?: AbortSignal): Promise<Page<AuditEvent>> {
     return this.request(
       `/api/v1/audit${toQuery(query)}`,
       AuditPageSchema,
@@ -870,7 +954,7 @@ export class ApiClient {
   notes(
     query: { linkType?: NoteLinkType; linkId?: string; cursor?: string },
     signal?: AbortSignal
-  ) {
+  ): Promise<Page<NoteSummary>> {
     return this.request(
       `/api/v1/notes${toQuery(query)}`,
       NotePageSchema,
@@ -886,7 +970,7 @@ export class ApiClient {
    * @returns The detail.
    * @throws {ApiError} On failure.
    */
-  note(id: string, signal?: AbortSignal) {
+  note(id: string, signal?: AbortSignal): Promise<NoteDetail> {
     return this.request(
       `/api/v1/notes/${encodeURIComponent(id)}`,
       NoteDetailSchema,
@@ -903,7 +987,7 @@ export class ApiClient {
    * @returns At most 50 hits, best first.
    * @throws {ApiError} On failure.
    */
-  searchNotes(q: string, signal?: AbortSignal) {
+  searchNotes(q: string, signal?: AbortSignal): Promise<NoteSearchResult> {
     return this.request('/api/v1/notes/search', NoteSearchResultSchema, {
       method: 'POST',
       body: { q },
@@ -919,7 +1003,7 @@ export class ApiClient {
    * @returns The note.
    * @throws {ApiError} On failure.
    */
-  createNote(input: CreateNoteInput, idempotencyKey: string) {
+  createNote(input: CreateNoteInput, idempotencyKey: string): Promise<Note> {
     return this.request('/api/v1/notes', NoteSchema, {
       method: 'POST',
       body: input,
@@ -937,7 +1021,12 @@ export class ApiClient {
    * @returns The updated note.
    * @throws {ApiError} On failure.
    */
-  updateNote(id: string, input: UpdateNoteInput, version: number, idempotencyKey: string) {
+  updateNote(
+    id: string,
+    input: UpdateNoteInput,
+    version: number,
+    idempotencyKey: string
+  ): Promise<Note> {
     return this.request(`/api/v1/notes/${encodeURIComponent(id)}`, NoteSchema, {
       method: 'PATCH',
       body: input,
@@ -954,7 +1043,7 @@ export class ApiClient {
    * @throws {ApiError} On failure (`validation` for a bad window, `forbidden` without
    *   `report.read`).
    */
-  pipelineReport(filter: PipelineReportFilter = {}, signal?: AbortSignal) {
+  pipelineReport(filter: PipelineReportFilter = {}, signal?: AbortSignal): Promise<PipelineReport> {
     return this.request(
       `/api/v1/reports/pipeline${toQuery({ ...filter })}`,
       PipelineReportSchema,
@@ -970,7 +1059,10 @@ export class ApiClient {
    * @returns The report.
    * @throws {ApiError} On failure, including `validation` for a malformed quarter.
    */
-  quarterlyPipeline(filter: QuarterlyPipelineFilter = {}, signal?: AbortSignal) {
+  quarterlyPipeline(
+    filter: QuarterlyPipelineFilter = {},
+    signal?: AbortSignal
+  ): Promise<QuarterlyPipelineReport> {
     return this.request(
       `/api/v1/reports/pipeline/quarterly${toQuery({ ...filter })}`,
       QuarterlyPipelineReportSchema,
@@ -986,7 +1078,7 @@ export class ApiClient {
    * @returns The report.
    * @throws {ApiError} On failure.
    */
-  deliveryReport(filter: DeliveryReportFilter = {}, signal?: AbortSignal) {
+  deliveryReport(filter: DeliveryReportFilter = {}, signal?: AbortSignal): Promise<DeliveryReport> {
     return this.request(
       `/api/v1/reports/delivery${toQuery({ ...filter })}`,
       DeliveryReportSchema,
