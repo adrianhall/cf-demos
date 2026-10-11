@@ -38,10 +38,11 @@ the deployed hostname. The local page also offers `manager@example.com`, `sales@
 `delivery@example.com`, and `readonly@example.com`. The responsive navigation drawer opens with the
 menu button on mobile; all major routes are also keyboard reachable.
 
-1. **Dashboard and identity.** Confirm the signed-in name and role in the app bar. The dashboard
-   shows counts, your next actions, an open pipeline by stage, and recently updated contacts. The
-   **Reports** link opens the filterable version. On a fresh production database the counts are
-   zero, not seeded examples.
+1. **Dashboard and identity.** Confirm the signed-in name and role in the app bar. Open its account
+   menu for **Your account** (verified e-mail, roles, and capabilities) or **Sign out**; an owner
+   manages profile details through Team. The dashboard shows counts, your next actions, an open
+   pipeline by stage, and recently updated contacts. The **Reports** link opens the filterable
+   version. On a fresh production database the counts are zero, not seeded examples.
 2. **Contact and company.** Open **Contacts → New contact** and enter a first name and a new company
    name. The new contact opens with its next action, deals, projects, activities, notes, and a
    merged timeline. Follow the company link to its overview and back. Locally, open Priya Shah at

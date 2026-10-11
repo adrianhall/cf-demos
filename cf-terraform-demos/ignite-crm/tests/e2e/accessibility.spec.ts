@@ -27,6 +27,7 @@ const PAGES = [
   '/reports',
   '/team',
   '/audit',
+  '/account',
   '/no-such-page'
 ] as const;
 

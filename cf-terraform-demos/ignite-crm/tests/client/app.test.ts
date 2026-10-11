@@ -10,6 +10,7 @@ import ContactForm from '../../src/client/components/ContactForm.vue';
 import ResourceState from '../../src/client/components/ResourceState.vue';
 import { resetSession } from '../../src/client/composables/useSession.ts';
 import { ApiError } from '../../src/client/services/api-client.ts';
+import { primaryRole } from '../../src/client/services/roles.ts';
 import { createAppVuetify } from '../../src/client/vuetify.ts';
 import { createFakeDataService } from '../fakes/fake-data-service.ts';
 import { mountWithApp, settle, useApi } from './support.ts';
@@ -82,6 +83,53 @@ describe('shell', () => {
     await router.push('/nowhere');
     await settle();
     expect(wrapper.text()).toContain('Page not found');
+  });
+});
+
+describe('account menu and page', () => {
+  it('opens a labelled account menu that links to the account page and to sign-out', async () => {
+    useApi('sales@example.com', await seeded());
+    const { wrapper, router } = await mountWithApp(App);
+    const trigger = wrapper.get('[data-testid="identity"]');
+    // The fake names each user after their e-mail's local part.
+    expect(trigger.attributes('aria-label')).toBe('Account menu: sales, Sales representative');
+    await trigger.trigger('click');
+    await settle();
+    expect(document.body.querySelector('[data-testid="account-summary"]')?.textContent).toContain(
+      'sales@example.com'
+    );
+    const signOut = [...document.body.querySelectorAll<HTMLAnchorElement>('a')].find(
+      (link) => link.textContent?.trim() === 'Sign out'
+    );
+    expect(signOut?.getAttribute('href')).toBe('/cdn-cgi/access/logout');
+    const account = [...document.body.querySelectorAll<HTMLAnchorElement>('a')].find(
+      (link) => link.textContent?.trim() === 'Your account'
+    )!;
+    account.click();
+    await settle();
+    expect(router.currentRoute.value.name).toBe('account');
+    expect(document.activeElement?.textContent).toBe('Your account');
+    const page = wrapper.get('section[aria-labelledby="account-title"]').text();
+    expect(page).toContain('sales@example.com');
+    expect(page).toContain('Sales representative');
+    expect(page).toContain('Create and edit contacts, companies, deals, and activities');
+    expect(page).not.toContain('Read the audit trail');
+    expect(page).toContain('Ask an owner to change your display name or roles.');
+  });
+
+  it('picks the most privileged role for the account icon', () => {
+    expect(primaryRole(['sales', 'manager'])).toBe('manager');
+    expect(primaryRole(['delivery'])).toBe('delivery');
+    // A session always carries a role, but an empty list falls back to the least privileged.
+    expect(primaryRole([])).toBe('read-only');
+  });
+
+  it('describes a read-only user’s narrower capabilities', async () => {
+    useApi('readonly@example.com', await seeded());
+    const { wrapper } = await mountWithApp(App, { route: '/account' });
+    const list = wrapper.get('[aria-label="Your permissions"]').text();
+    expect(list).toContain('See contacts, companies, and deals');
+    expect(list).not.toContain('Create and edit');
   });
 });
 

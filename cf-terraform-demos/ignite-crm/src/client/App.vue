@@ -15,12 +15,15 @@ import { useDisplay } from 'vuetify';
 import {
   mdiAccountGroup,
   mdiAccountMultiple,
+  mdiCardAccountDetailsOutline,
   mdiBriefcase,
   mdiChartBar,
   mdiCheckboxMarkedCircleOutline,
   mdiDomain,
   mdiFormatListChecks,
+  mdiChevronDown,
   mdiHistory,
+  mdiLogout,
   mdiMenu,
   mdiNoteTextOutline,
   mdiViewDashboard,
@@ -29,8 +32,15 @@ import {
 import type { Permission } from '../shared/permissions.ts';
 import { useAnnouncement } from './composables/useAnnouncer.ts';
 import { useSession } from './composables/useSession.ts';
+import { primaryRole, ROLE_ICONS } from './services/roles.ts';
 
 const { session, state, error, roleLabel, load, can } = useSession();
+/**
+ * Icon for the signed-in user's most privileged role.
+ */
+const roleIcon = computed(
+  () => ROLE_ICONS[primaryRole(session.value?.roles.map((role) => role.id) ?? [])]
+);
 const { mdAndUp } = useDisplay();
 const route = useRoute();
 const announcement = useAnnouncement();
@@ -136,10 +146,37 @@ onMounted(() => void load());
       </template>
       <v-app-bar-title>Ignite CRM</v-app-bar-title>
       <template v-if="session" #append>
-        <div class="text-right mr-2" data-testid="identity">
-          <div class="text-body-2">{{ session.user.displayName }}</div>
-          <div class="text-caption">{{ roleLabel }}</div>
-        </div>
+        <v-menu location="bottom end">
+          <template #activator="{ props: menu }">
+            <v-btn
+              v-bind="menu"
+              variant="text"
+              class="mr-1 text-none"
+              :prepend-icon="roleIcon"
+              :append-icon="mdiChevronDown"
+              :aria-label="`Account menu: ${session.user.displayName}, ${roleLabel}`"
+              data-testid="identity"
+            >
+              <span class="d-flex flex-column align-start text-left identity-text">
+                <span class="text-body-2">{{ session.user.displayName }}</span>
+                <span class="text-caption">{{ roleLabel }}</span>
+              </span>
+            </v-btn>
+          </template>
+          <v-list density="compact" aria-label="Account">
+            <v-list-item
+              :title="session.user.displayName"
+              :subtitle="session.user.email"
+              data-testid="account-summary"
+            />
+            <v-list-item
+              :to="{ name: 'account' }"
+              :prepend-icon="mdiCardAccountDetailsOutline"
+              title="Your account"
+            />
+            <v-list-item href="/cdn-cgi/access/logout" :prepend-icon="mdiLogout" title="Sign out" />
+          </v-list>
+        </v-menu>
       </template>
     </v-app-bar>
 
@@ -244,6 +281,13 @@ html {
 </style>
 
 <style scoped>
+/* On a phone the account button shows only its role icon; the name stays in its accessible name. */
+@media (max-width: 599.98px) {
+  .identity-text {
+    display: none !important;
+  }
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

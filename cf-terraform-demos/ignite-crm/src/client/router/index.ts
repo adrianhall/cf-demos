@@ -118,6 +118,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: 'Company' }
   },
   {
+    path: '/account',
+    name: 'account',
+    component: () => import('../views/AccountView.vue'),
+    meta: { title: 'Your account' }
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: NotFoundView,

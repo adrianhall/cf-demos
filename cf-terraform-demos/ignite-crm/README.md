@@ -570,6 +570,12 @@ Items from the first follow-on pass in
   primary contact moves away, the same D1 batch clears that primary contact — unless someone already
   chose another one, which the conditional SQL keeps.
 
+- **Your account.** The app-bar identity is now a menu with a role icon, the verified e-mail, **Your
+  account**, and **Sign out** (the Access logout endpoint). `/account` shows the signed-in user's
+  display name, e-mail, roles, and capabilities from the session. It is read-only by design: e-mail
+  comes from Access and an owner manages display names and roles on the Team page. No profile
+  mutation API or separate source of truth was introduced.
+
 ## Known limitations (first release)
 
 - Notes cannot yet be deleted, task-list checkboxes are read-only (edit the Markdown to tick one),
