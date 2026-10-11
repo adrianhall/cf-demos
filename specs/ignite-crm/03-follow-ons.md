@@ -219,9 +219,10 @@ items to review at the end. Each entry names the phase that made it.
 - **Phase 7 — repository-wide dependency pins.** `sharp: 0.35.5` and `shell-quote@<1.11.0: 1.12.0`
   were added to the root `pnpm-workspace.yaml` `overrides`, so other demos pick them up too. One
   peer-resolved `sharp@0.35.4` remains in the lockfile under an _optional_ webpack peer chain
-  (vue-router → unplugin → webpack → minimizer-webpack-plugin) that Ignite CRM never installs or
-  runs; two lockfile re-resolutions did not remove it. Remove the pins once upstream depends on the
-  patched versions.
+  (vue-router → unplugin → webpack → minimizer-webpack-plugin). That peer chain appears in Ignite
+  CRM's installed dependency graph; the application does not invoke webpack or its minimizer, and
+  none of it is in the deployed bundle. Two lockfile re-resolutions did not remove the copy. Remove
+  the pins once upstream depends on the patched versions.
 - **Phase 7 — expired Access session.** A redirected or HTML API response is treated as an expired
   sign-in, and the SPA offers **Sign in** (a full reload so Access can run its flow) instead of a
   retry.
