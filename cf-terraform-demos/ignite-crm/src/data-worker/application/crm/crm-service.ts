@@ -9,8 +9,10 @@ import * as v from 'valibot';
 import { configuration } from '../../../configuration.ts';
 import {
   type Company,
+  CompanySchema,
   type CompanySummary,
   type Contact,
+  ContactSchema,
   type ContactSummary,
   type CreateCompanyInput,
   CreateCompanyInputSchema,
@@ -483,7 +485,7 @@ export class CrmService implements ContactsPort {
       fields,
       this.runtime
     );
-    const replayed = await mutation.replay<Contact>(this.repository);
+    const replayed = await mutation.replay(this.repository, ContactSchema);
     if (replayed !== undefined) {
       return replayed;
     }
@@ -586,7 +588,7 @@ export class CrmService implements ContactsPort {
       { contactId, fields, version },
       this.runtime
     );
-    const replayed = await mutation.replay<Contact>(this.repository);
+    const replayed = await mutation.replay(this.repository, ContactSchema);
     if (replayed !== undefined) {
       return replayed;
     }
@@ -746,7 +748,7 @@ export class CrmService implements ContactsPort {
       fields,
       this.runtime
     );
-    const replayed = await mutation.replay<Company>(this.repository);
+    const replayed = await mutation.replay(this.repository, CompanySchema);
     if (replayed !== undefined) {
       return replayed;
     }
@@ -811,7 +813,7 @@ export class CrmService implements ContactsPort {
       { companyId, fields, version },
       this.runtime
     );
-    const replayed = await mutation.replay<Company>(this.repository);
+    const replayed = await mutation.replay(this.repository, CompanySchema);
     if (replayed !== undefined) {
       return replayed;
     }

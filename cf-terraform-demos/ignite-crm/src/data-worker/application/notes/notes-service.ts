@@ -29,6 +29,7 @@ import {
   type CreateNoteInput,
   CreateNoteInputSchema,
   type Note,
+  NoteSchema,
   type NoteDetail,
   type NoteLink,
   type NoteLinkRef,
@@ -380,7 +381,7 @@ export class NotesService implements NotesPort {
       fields,
       this.runtime
     );
-    const replayed = await mutation.replay<Note>(this.repository);
+    const replayed = await mutation.replay(this.repository, NoteSchema);
     if (replayed !== undefined) {
       return replayed;
     }
@@ -460,7 +461,7 @@ export class NotesService implements NotesPort {
       { noteId, fields, version },
       this.runtime
     );
-    const replayed = await mutation.replay<Note>(this.repository);
+    const replayed = await mutation.replay(this.repository, NoteSchema);
     if (replayed !== undefined) {
       return replayed;
     }

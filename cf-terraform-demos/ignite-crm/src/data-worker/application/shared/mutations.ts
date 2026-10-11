@@ -5,6 +5,7 @@
  *   change. Either all of it is stored or none of it is.
  */
 
+import * as v from 'valibot';
 import { serviceError } from '../../../shared/common/errors.ts';
 import type { ActorContext, MutationMeta } from '../../../shared/data-service/contract.ts';
 import type { Runtime } from './runtime.ts';
@@ -229,12 +230,20 @@ export class IdempotentMutation {
    * successful update and retries it (now holding a stale version) receives the original result
    * instead of a spurious conflict.
    *
+   * The stored result is untrusted data (a restored backup, a manual repair, or a result written
+   * before a schema change), so it is parsed against the operation's response schema rather than
+   * cast. A result that no longer matches fails closed as `INTERNAL`, and is never returned.
+   *
    * @param repository Idempotency storage.
+   * @param schema The operation's response schema.
    * @returns The earlier result, or `undefined` when this is a first attempt.
    * @throws {Error} An `IDEMPOTENCY_KEY_REUSED` service error when the key was used for a different
-   *   request.
+   *   request, or `INTERNAL` when the stored result does not match `schema`.
    */
-  async replay<T>(repository: IdempotencyRepository): Promise<T | undefined> {
+  async replay<TSchema extends v.GenericSchema>(
+    repository: IdempotencyRepository,
+    schema: TSchema
+  ): Promise<v.InferOutput<TSchema> | undefined> {
     const stored = await repository.findIdempotency(
       this.actor.userId,
       this.operation,
@@ -251,7 +260,15 @@ export class IdempotentMutation {
         { requestId: this.actor.requestId }
       );
     }
-    return JSON.parse(stored.resultJson) as T;
+    // `result_json` has a `json_valid` CHECK, so parsing cannot fail; its shape still can.
+    const result = v.safeParse(schema, JSON.parse(stored.resultJson));
+    if (!result.success) {
+      // Name the operation, never the stored content, which may hold customer data.
+      throw serviceError('INTERNAL', `The stored result for ${this.operation} is invalid.`, {
+        requestId: this.actor.requestId
+      });
+    }
+    return result.output;
   }
 
   /**

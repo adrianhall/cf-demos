@@ -172,6 +172,29 @@ describe('concurrency and idempotency', () => {
   });
 });
 
+describe('idempotent replay of a stored result', () => {
+  it('re-validates the stored result and fails closed without echoing it when it is corrupt', async () => {
+    const { service, store, sales } = world();
+    const meta = key();
+    const created = await service.crm.createContact(sales, contact('Replay', 'Replay Co'), meta);
+    expect(await service.crm.createContact(sales, contact('Replay', 'Replay Co'), meta)).toEqual(
+      created
+    );
+    // A repair script or old schema leaves a result the response schema no longer accepts.
+    store.exec(
+      'UPDATE idempotency_records SET result_json = ? WHERE idempotency_key = ?',
+      JSON.stringify({ ...created, email: 42, secret: 'customer note text' }),
+      meta.idempotencyKey
+    );
+    const error = await failure(
+      service.crm.createContact(sales, contact('Replay', 'Replay Co'), meta)
+    );
+    expect(error.code).toBe('INTERNAL');
+    expect(JSON.stringify(error)).not.toContain('customer note text');
+    expect(store.count('contacts', "first_name = 'Replay'")).toBe(1);
+  });
+});
+
 describe('company primary-contact reassignment', () => {
   it('reassigns, refuses a contact from elsewhere, and catches a move between read and commit', async () => {
     const { service, store, sales } = world();

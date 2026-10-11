@@ -31,6 +31,7 @@ import {
   type SetUserStatusInput,
   SetUserStatusInputSchema,
   type TeamMember,
+  TeamMemberSchema,
   type UserStatus
 } from '../../../shared/api/team.ts';
 import { serviceError } from '../../../shared/common/errors.ts';
@@ -326,7 +327,7 @@ export class TeamService {
       { ...parsed, roles },
       this.runtime
     );
-    const replayed = await mutation.replay<TeamMember>(this.repository);
+    const replayed = await mutation.replay(this.repository, TeamMemberSchema);
     if (replayed !== undefined) {
       return replayed;
     }
@@ -534,7 +535,7 @@ export class TeamService {
       request,
       this.runtime
     );
-    const replayed = await mutation.replay<TeamMember>(this.repository);
+    const replayed = await mutation.replay(this.repository, TeamMemberSchema);
     if (replayed !== undefined) {
       return replayed;
     }

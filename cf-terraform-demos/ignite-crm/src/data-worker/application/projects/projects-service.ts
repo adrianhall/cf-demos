@@ -25,11 +25,13 @@ import {
   MY_WORK_LIMIT,
   type MyWork,
   type Project,
+  ProjectSchema,
   type ProjectDetail,
   PROJECT_TASK_LIMIT,
   ProjectStatusSchema,
   type ProjectStatus,
   type Task,
+  TaskSchema,
   type TaskPriority,
   type TaskStatus,
   type UpdateProjectInput,
@@ -536,7 +538,7 @@ export class ProjectsService implements ProjectsPort {
       { dealId: id, fields, version },
       this.runtime
     );
-    const replayed = await mutation.replay<Project>(this.repository);
+    const replayed = await mutation.replay(this.repository, ProjectSchema);
     if (replayed !== undefined) {
       return replayed;
     }
@@ -638,7 +640,7 @@ export class ProjectsService implements ProjectsPort {
       { projectId, fields, version },
       this.runtime
     );
-    const replayed = await mutation.replay<Project>(this.repository);
+    const replayed = await mutation.replay(this.repository, ProjectSchema);
     if (replayed !== undefined) {
       return replayed;
     }
@@ -749,7 +751,7 @@ export class ProjectsService implements ProjectsPort {
       { projectId: id, fields },
       this.runtime
     );
-    const replayed = await mutation.replay<Task>(this.repository);
+    const replayed = await mutation.replay(this.repository, TaskSchema);
     if (replayed !== undefined) {
       return replayed;
     }
@@ -829,7 +831,7 @@ export class ProjectsService implements ProjectsPort {
       { taskId, fields, version },
       this.runtime
     );
-    const replayed = await mutation.replay<Task>(this.repository);
+    const replayed = await mutation.replay(this.repository, TaskSchema);
     if (replayed !== undefined) {
       return replayed;
     }

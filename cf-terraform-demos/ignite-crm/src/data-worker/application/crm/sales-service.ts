@@ -23,12 +23,15 @@ import {
   type ActionItem,
   type ActionStream,
   type Activity,
+  ActivitySchema,
   type ContactNextAction,
+  ContactNextActionSchema,
   type CreateActivityInput,
   CreateActivityInputSchema,
   type CreateDealInput,
   CreateDealInputSchema,
   type Deal,
+  DealSchema,
   type DealDetail,
   DealStatusSchema,
   type Pipeline,
@@ -651,7 +654,7 @@ export class SalesService implements SalesPort {
       fields,
       this.runtime
     );
-    const replayed = await mutation.replay<Deal>(this.repository);
+    const replayed = await mutation.replay(this.repository, DealSchema);
     if (replayed !== undefined) {
       return replayed;
     }
@@ -746,7 +749,7 @@ export class SalesService implements SalesPort {
       { dealId, fields, version },
       this.runtime
     );
-    const replayed = await mutation.replay<Deal>(this.repository);
+    const replayed = await mutation.replay(this.repository, DealSchema);
     if (replayed !== undefined) {
       return replayed;
     }
@@ -914,7 +917,7 @@ export class SalesService implements SalesPort {
       fields,
       this.runtime
     );
-    const replayed = await mutation.replay<Activity>(this.repository);
+    const replayed = await mutation.replay(this.repository, ActivitySchema);
     if (replayed !== undefined) {
       return replayed;
     }
@@ -1035,7 +1038,7 @@ export class SalesService implements SalesPort {
       { contactId: id, fields, version },
       this.runtime
     );
-    const replayed = await mutation.replay<ContactNextAction>(this.repository);
+    const replayed = await mutation.replay(this.repository, ContactNextActionSchema);
     if (replayed !== undefined) {
       return replayed;
     }
@@ -1113,7 +1116,7 @@ export class SalesService implements SalesPort {
       { contactId: id, version },
       this.runtime
     );
-    const replayed = await mutation.replay<ContactNextAction>(this.repository);
+    const replayed = await mutation.replay(this.repository, ContactNextActionSchema);
     if (replayed !== undefined) {
       return replayed;
     }
