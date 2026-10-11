@@ -685,6 +685,10 @@ export const PipelineSummarySchema = v.strictObject({
    */
   thisQuarter: v.strictObject({
     /**
+     * The quarter as `YYYY-Qn` (the quarterly report's `quarter` parameter).
+     */
+    id: v.string(),
+    /**
      * The quarter, for example `Q4 2026`.
      */
     label: v.string(),

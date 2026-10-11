@@ -618,6 +618,16 @@ Items from the first follow-on pass in
   (`thisQuarter`) and follows that report's owner filter. Quarters are calendar quarters; there is
   no fiscal-year setting in this release.
 
+- **Quarterly pipeline report.** Reports gains a **Quarterly pipeline** card
+  (`QuarterlyPipelineCard.vue`, `GET /api/v1/reports/pipeline/quarterly?quarter=YYYY-Qn&ownerId=`).
+  It shows open deals with an expected close date in one calendar quarter, by stage, plus a quarter
+  total, and lists those deals by expected close date (at most 100; totals cover every match). The
+  default quarter is the current one in the installation's time zone. The selector offers the
+  previous, current, and next two quarters, plus any bookmarked quarter, and is kept in the URL. The
+  card shares the Sales pipeline card's owner filter. Deals with no expected close date are not
+  counted. Migration `0007_quarterly_pipeline.sql` adds a partial index over open, dated deals in
+  listing order.
+
 ## Known limitations (first release)
 
 - Notes cannot yet be deleted, task-list checkboxes are read-only (edit the Markdown to tick one),

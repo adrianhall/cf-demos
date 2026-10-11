@@ -11,7 +11,7 @@ import { DateOnlySchema } from '../common/dates.ts';
 import { IdSchema } from '../common/ids.ts';
 import { UserRefSchema } from './crm.ts';
 import { ProjectRefSchema, TaskCountsSchema } from './projects.ts';
-import { PipelineSummarySchema } from './sales.ts';
+import { DealSchema, PipelineSummarySchema, StageSchema } from './sales.ts';
 
 /**
  * The longest closed-date window a pipeline report may cover, in days. Bounded so the won/lost
@@ -114,6 +114,104 @@ export const PipelineReportSchema = v.strictObject({
  * A pipeline report.
  */
 export type PipelineReport = v.InferOutput<typeof PipelineReportSchema>;
+
+/**
+ * Most deals the quarterly pipeline report lists; stage totals always cover every matching deal.
+ */
+export const QUARTERLY_REPORT_DEAL_LIMIT = 100;
+
+/**
+ * A calendar quarter as `YYYY-Qn`, for example `2026-Q4`.
+ */
+export const QuarterSchema = v.pipe(
+  v.string(),
+  v.regex(/^\d{4}-Q[1-4]$/u, 'Choose a quarter such as 2026-Q4.')
+);
+
+/**
+ * Filters for the quarterly pipeline report.
+ */
+export const QuarterlyPipelineFilterSchema = v.strictObject({
+  /**
+   * The quarter; defaults to the current quarter in the installation's time zone.
+   */
+  quarter: v.optional(QuarterSchema),
+  /**
+   * Restrict to one owner.
+   */
+  ownerId: v.optional(IdSchema)
+});
+
+/**
+ * Validated quarterly pipeline filters.
+ */
+export type QuarterlyPipelineFilter = v.InferOutput<typeof QuarterlyPipelineFilterSchema>;
+
+/**
+ * Open deals expected to close in one calendar quarter, by stage, with the deals themselves.
+ */
+export const QuarterlyPipelineReportSchema = v.strictObject({
+  /**
+   * The quarter covered.
+   */
+  quarter: v.strictObject({
+    /**
+     * `YYYY-Qn`.
+     */
+    id: QuarterSchema,
+    /**
+     * Display label, for example `Q4 2026`.
+     */
+    label: v.string(),
+    /**
+     * First day.
+     */
+    from: DateOnlySchema,
+    /**
+     * Last day (inclusive).
+     */
+    to: DateOnlySchema
+  }),
+  /**
+   * Installation currency of every amount.
+   */
+  currency: v.pipe(v.string(), v.length(3)),
+  /**
+   * Every stage in pipeline order, including empty ones.
+   */
+  stages: v.array(
+    v.strictObject({
+      stage: StageSchema,
+      count: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      amountMinor: v.pipe(v.number(), v.integer(), v.minValue(0))
+    })
+  ),
+  /**
+   * All matching deals.
+   */
+  total: v.strictObject({
+    count: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    amountMinor: v.pipe(v.number(), v.integer(), v.minValue(0))
+  }),
+  /**
+   * Matching deals by expected close date, then title (at most
+   * {@link QUARTERLY_REPORT_DEAL_LIMIT}).
+   */
+  deals: v.array(DealSchema),
+  /**
+   * Whether more deals matched than are listed.
+   */
+  truncated: v.boolean(),
+  /**
+   * The owner filter, resolved, or `null` for everyone.
+   */
+  owner: v.nullable(UserRefSchema)
+});
+
+/**
+ * A quarterly pipeline report.
+ */
+export type QuarterlyPipelineReport = v.InferOutput<typeof QuarterlyPipelineReportSchema>;
 
 /**
  * Project states a delivery report can cover. Archived projects are history, not delivery health,

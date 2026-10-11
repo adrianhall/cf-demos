@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * Reports: sales health (deal counts and value by stage, plus won and lost) and delivery health
- * (task counts by status across projects), each with a few bounded filters.
+ * Reports: sales health (deal counts and value by stage, plus won and lost), the quarterly pipeline
+ * (open deals expected to close in a quarter, by stage), and delivery health (task counts by status
+ * across projects), each with a few bounded filters.
  *
  * Every role with `report.read` may open this page; the API decides. Filters live in the URL so a
  * filtered report can be bookmarked or shared, and each report loads independently so one failing
@@ -14,6 +15,7 @@ import { useRoute, useRouter } from 'vue-router';
 import type { UserRef } from '../../shared/api/crm.ts';
 import { TASK_STATUSES } from '../../shared/api/projects.ts';
 import { DELIVERY_REPORT_STATUSES } from '../../shared/api/reports.ts';
+import QuarterlyPipelineCard from '../components/QuarterlyPipelineCard.vue';
 import ResourceState from '../components/ResourceState.vue';
 import { TASK_STATUS_LABELS } from '../components/taskLabels.ts';
 import { useFormat } from '../composables/useFormat.ts';
@@ -99,12 +101,25 @@ const totalTasks = computed(() => {
   return counts === undefined ? 0 : TASK_STATUSES.reduce((sum, status) => sum + counts[status], 0);
 });
 
+/**
+ * Every report filter for the URL, keeping the quarterly card's `quarter`.
+ *
+ * @returns The query.
+ */
+function urlQuery(): Record<string, string> {
+  return {
+    ...pipelineFilter.value,
+    ...defined(deliveryFilter.value),
+    ...defined({ quarter: query('quarter') })
+  };
+}
+
 watch(pipelineFilter, async () => {
-  await router.replace({ query: { ...pipelineFilter.value, ...defined(deliveryFilter.value) } });
+  await router.replace({ query: urlQuery() });
   await pipeline.load();
 });
 watch(deliveryFilter, async () => {
-  await router.replace({ query: { ...pipelineFilter.value, ...defined(deliveryFilter.value) } });
+  await router.replace({ query: urlQuery() });
   await delivery.load();
 });
 
@@ -215,6 +230,8 @@ onMounted(() => {
         </v-table>
       </ResourceState>
     </v-card>
+
+    <QuarterlyPipelineCard :owner-id="ownerId" />
 
     <v-card>
       <v-card-title><h2 class="text-h6">Delivery</h2></v-card-title>

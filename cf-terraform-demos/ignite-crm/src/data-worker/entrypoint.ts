@@ -41,7 +41,11 @@ import type {
   UpdateProjectInput,
   UpdateTaskInput
 } from '../shared/api/projects.ts';
-import type { DeliveryReportFilter, PipelineReportFilter } from '../shared/api/reports.ts';
+import type {
+  DeliveryReportFilter,
+  PipelineReportFilter,
+  QuarterlyPipelineFilter
+} from '../shared/api/reports.ts';
 import type {
   CreateActivityInput,
   CreateDealInput,
@@ -402,6 +406,15 @@ export class CrmRpc extends RpcTarget implements Enveloped<CrmPort> {
   pipelineReport(actor: ActorContext, filter: PipelineReportFilter) {
     return envelope(this.logger, 'crm.pipelineReport', requestIdOf(actor), () =>
       this.service.pipelineReport(actor, filter)
+    );
+  }
+
+  /**
+   * @inheritdoc
+   */
+  quarterlyPipeline(actor: ActorContext, filter: QuarterlyPipelineFilter) {
+    return envelope(this.logger, 'crm.quarterlyPipeline', requestIdOf(actor), () =>
+      this.service.quarterlyPipeline(actor, filter)
     );
   }
 }

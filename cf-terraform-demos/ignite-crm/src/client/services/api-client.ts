@@ -47,7 +47,9 @@ import {
   type DeliveryReportFilter,
   DeliveryReportSchema,
   type PipelineReportFilter,
-  PipelineReportSchema
+  PipelineReportSchema,
+  type QuarterlyPipelineFilter,
+  QuarterlyPipelineReportSchema
 } from '../../shared/api/reports.ts';
 import {
   ActionStreamSchema,
@@ -956,6 +958,22 @@ export class ApiClient {
     return this.request(
       `/api/v1/reports/pipeline${toQuery({ ...filter })}`,
       PipelineReportSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * Open deals expected to close in one calendar quarter, by stage, with the deals listed.
+   *
+   * @param filter Quarter (`YYYY-Qn`; omit for the current one) and owner.
+   * @param signal Cancellation.
+   * @returns The report.
+   * @throws {ApiError} On failure, including `validation` for a malformed quarter.
+   */
+  quarterlyPipeline(filter: QuarterlyPipelineFilter = {}, signal?: AbortSignal) {
+    return this.request(
+      `/api/v1/reports/pipeline/quarterly${toQuery({ ...filter })}`,
+      QuarterlyPipelineReportSchema,
       signal === undefined ? {} : { signal }
     );
   }

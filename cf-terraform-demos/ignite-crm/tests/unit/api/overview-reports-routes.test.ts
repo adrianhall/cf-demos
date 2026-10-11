@@ -20,7 +20,11 @@ import {
   ContactOverviewSchema,
   TIMELINE_LIMIT
 } from '../../../src/shared/api/overview.ts';
-import { DeliveryReportSchema, PipelineReportSchema } from '../../../src/shared/api/reports.ts';
+import {
+  DeliveryReportSchema,
+  PipelineReportSchema,
+  QuarterlyPipelineReportSchema
+} from '../../../src/shared/api/reports.ts';
 import { serviceError } from '../../../src/shared/common/errors.ts';
 import type { DataService } from '../../../src/shared/data-service/contract.ts';
 import { createFakeDataService, testRuntime } from '../../fakes/fake-data-service.ts';
@@ -296,6 +300,12 @@ describe('report routes', () => {
     expect(((await reversed.json()) as { fields: Record<string, string> }).fields).toHaveProperty(
       'closedTo'
     );
+    const quarterly = await call('/api/v1/reports/pipeline/quarterly?quarter=2026-Q4&ownerId=');
+    expect(quarterly.status).toBe(200);
+    expect(v.parse(QuarterlyPipelineReportSchema, await quarterly.json()).quarter.id).toBe(
+      '2026-Q4'
+    );
+    expect((await call('/api/v1/reports/pipeline/quarterly?quarter=2026-Q9')).status).toBe(422);
     expect((await call('/api/v1/reports/delivery?projectStatus=archived')).status).toBe(422);
     expect((await call('/api/v1/reports/delivery?extra=1')).status).toBe(422);
   });
@@ -305,5 +315,6 @@ describe('report routes', () => {
     store.exec("DELETE FROM role_permissions WHERE permission = 'report.read'");
     expect((await call('/api/v1/reports/pipeline')).status).toBe(403);
     expect((await call('/api/v1/reports/delivery')).status).toBe(403);
+    expect((await call('/api/v1/reports/pipeline/quarterly')).status).toBe(403);
   });
 });

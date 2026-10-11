@@ -13,7 +13,11 @@ import { TIMELINE_ACTIVITY_LIMIT } from '../../../shared/api/customer.ts';
 import {
   type PipelineReport,
   type PipelineReportFilter,
-  PipelineReportFilterSchema
+  PipelineReportFilterSchema,
+  QUARTERLY_REPORT_DEAL_LIMIT,
+  type QuarterlyPipelineFilter,
+  QuarterlyPipelineFilterSchema,
+  type QuarterlyPipelineReport
 } from '../../../shared/api/reports.ts';
 import {
   type ActionItem,
@@ -54,7 +58,7 @@ import {
   lifecycleViolations,
   urgencyOf
 } from '../../domain/crm/sales.ts';
-import { calendarQuarter, closedWindow } from '../../domain/reports/reports.ts';
+import { calendarQuarter, closedWindow, parseQuarter } from '../../domain/reports/reports.ts';
 import type { Authorizer } from '../permissions/permissions-service.ts';
 import {
   type IdempotencyRepository,
@@ -383,6 +387,25 @@ export interface SalesRepository extends IdempotencyRepository {
     range: { readonly from: string; readonly to: string },
     ownerId: string | null
   ): Promise<{ count: number; amountMinor: number }>;
+  /**
+   * Open deals expected to close in an inclusive date range: totals by stage over every match, and
+   * the first `limit + 1` deals by expected close date, then title, then id.
+   *
+   * @param pipelineId Pipeline id.
+   * @param range First and last expected close dates (inclusive).
+   * @param ownerId Restrict to one owner, or `null`.
+   * @param limit Most deals to list (one more is read to detect truncation).
+   * @returns Stage totals and deals.
+   */
+  expectedToCloseByStage(
+    pipelineId: string,
+    range: { readonly from: string; readonly to: string },
+    ownerId: string | null,
+    limit: number
+  ): Promise<{
+    byStage: ReadonlyMap<string, { count: number; amountMinor: number }>;
+    deals: Deal[];
+  }>;
   /**
    * Recent history for an entity.
    *
@@ -1169,17 +1192,7 @@ export class SalesService implements SalesPort {
     const caller = validateActor(actor);
     const parsed = validate(PipelineReportFilterSchema, filter ?? {}, caller.requestId);
     await this.authorizer.require(caller, 'report.read');
-    let owner: UserRef | null = null;
-    if (parsed.ownerId !== undefined) {
-      // Suspended owners still own deals, so resolve by id regardless of status.
-      owner = await this.repository.userRef(parsed.ownerId);
-      if (owner === null) {
-        throw serviceError('VALIDATION_FAILED', 'That person is not on the team.', {
-          requestId: caller.requestId,
-          fields: { ownerId: 'That person is not on the team.' }
-        });
-      }
-    }
+    const owner = await this.reportOwner(parsed.ownerId, caller.requestId);
     const pipeline = await this.requirePipeline(caller.requestId);
     const window = closedWindow(parsed.closedFrom, parsed.closedTo, this.settings.timezone);
     const totals = await this.repository.pipelineTotals(pipeline.id, {
@@ -1195,6 +1208,75 @@ export class SalesService implements SalesPort {
         closedTo: parsed.closedTo ?? null
       }
     };
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async quarterlyPipeline(
+    actor: ActorContext,
+    filter: QuarterlyPipelineFilter
+  ): Promise<QuarterlyPipelineReport> {
+    const caller = validateActor(actor);
+    const parsed = validate(QuarterlyPipelineFilterSchema, filter ?? {}, caller.requestId);
+    await this.authorizer.require(caller, 'report.read');
+    const owner = await this.reportOwner(parsed.ownerId, caller.requestId);
+    const pipeline = await this.requirePipeline(caller.requestId);
+    const quarter =
+      parsed.quarter === undefined
+        ? calendarQuarter(calendarDate(this.runtime.now(), this.settings.timezone))
+        : parseQuarter(parsed.quarter);
+    const found = await this.repository.expectedToCloseByStage(
+      pipeline.id,
+      quarter,
+      owner?.id ?? null,
+      QUARTERLY_REPORT_DEAL_LIMIT
+    );
+    const stages = pipeline.stages.map((stage) => ({
+      stage,
+      ...(found.byStage.get(stage.id) ?? { count: 0, amountMinor: 0 })
+    }));
+    return {
+      quarter,
+      currency: this.settings.currencyCode,
+      stages,
+      total: stages.reduce(
+        (sum, item) => ({
+          count: sum.count + item.count,
+          amountMinor: sum.amountMinor + item.amountMinor
+        }),
+        { count: 0, amountMinor: 0 }
+      ),
+      deals: found.deals.slice(0, QUARTERLY_REPORT_DEAL_LIMIT),
+      truncated: found.deals.length > QUARTERLY_REPORT_DEAL_LIMIT,
+      owner
+    };
+  }
+
+  /**
+   * Resolve a report's owner filter. Suspended owners still own deals, so this resolves by id
+   * regardless of status.
+   *
+   * @param ownerId The filter, if any.
+   * @param requestId Request identifier for errors.
+   * @returns The owner, or `null` for everyone.
+   * @throws {Error} `VALIDATION_FAILED` on `ownerId` when that user does not exist.
+   */
+  private async reportOwner(
+    ownerId: string | undefined,
+    requestId: string
+  ): Promise<UserRef | null> {
+    if (ownerId === undefined) {
+      return null;
+    }
+    const owner = await this.repository.userRef(ownerId);
+    if (owner === null) {
+      throw serviceError('VALIDATION_FAILED', 'That person is not on the team.', {
+        requestId,
+        fields: { ownerId: 'That person is not on the team.' }
+      });
+    }
+    return owner;
   }
 
   /**

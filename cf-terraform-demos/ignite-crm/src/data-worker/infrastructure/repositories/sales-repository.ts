@@ -643,6 +643,48 @@ export class D1SalesRepository extends D1IdempotencyReader implements SalesRepos
   /**
    * @inheritdoc
    */
+  async expectedToCloseByStage(
+    pipelineId: string,
+    range: { readonly from: string; readonly to: string },
+    ownerId: string | null,
+    limit: number
+  ): Promise<{
+    byStage: ReadonlyMap<string, { count: number; amountMinor: number }>;
+    deals: Deal[];
+  }> {
+    const match = `d.pipeline_id = ? AND d.status = 'pending'
+            AND d.expected_close_date BETWEEN ? AND ? AND (? IS NULL OR d.owner_id = ?)`;
+    const params = [pipelineId, range.from, range.to, ownerId, ownerId];
+    const [totals, rows] = await Promise.all([
+      this.port.read<{ stage_id: string; count: number; amount: number }>(
+        sql(
+          `SELECT d.stage_id, count(*) AS count, coalesce(sum(d.amount_minor), 0) AS amount
+             FROM deals d
+            WHERE d.deleted_at IS NULL AND ${match}
+            GROUP BY d.stage_id`,
+          ...params
+        )
+      ),
+      this.port.read<DealProjectionRow>(
+        sql(
+          `${DEAL_SELECT} AND ${match}
+            ORDER BY d.expected_close_date, lower(d.title), d.id LIMIT ?`,
+          ...params,
+          limit + 1
+        )
+      )
+    ]);
+    return {
+      byStage: new Map(
+        totals.map((row) => [row.stage_id, { count: row.count, amountMinor: row.amount }])
+      ),
+      deals: rows.map(toDeal)
+    };
+  }
+
+  /**
+   * @inheritdoc
+   */
   async history(
     entityType: string,
     entityId: string,

@@ -60,7 +60,7 @@ async function seeded() {
     },
     key()
   );
-  const deal = (title: string, amountMinor: number) =>
+  const deal = (title: string, amountMinor: number, expectedCloseDate: string | null = null) =>
     fake.service.crm.createDeal(
       sales,
       {
@@ -70,7 +70,7 @@ async function seeded() {
         statusLine: null,
         nextActionText: null,
         nextActionDate: null,
-        expectedCloseDate: null
+        expectedCloseDate
       },
       key()
     );
@@ -97,7 +97,7 @@ async function seeded() {
       key()
     );
   }
-  return { ...fake, contact, project, sales };
+  return { ...fake, contact, project, sales, deal };
 }
 
 /**
@@ -213,6 +213,47 @@ describe('the reports page', () => {
     retry.click();
     await settle();
     expect(labelled('Delivery by project').textContent).toContain('Engines rollout');
+  });
+
+  it('shows the quarterly pipeline by stage and switches quarter through the URL', async () => {
+    const fake = await seeded();
+    await fake.deal('Closing this quarter', 40_000, '2026-11-20');
+    await fake.deal('Closing next quarter', 7_000, '2027-02-10');
+    useApi('readonly@example.com', fake);
+    const { wrapper, router } = await mountWithApp(App, { route: '/reports' });
+    const stages = () => wrapper.get('[data-testid="quarterly-stages"]').text();
+    const deals = () => labelled('Deals expected to close').textContent ?? '';
+    expect(stages()).toContain('Q4 2026');
+    expect(stages()).toContain('£400.00');
+    expect(deals()).toContain('Closing this quarter');
+    expect(deals()).not.toContain('Closing next quarter');
+    expect(deals()).not.toContain('Open deal');
+    const quarter = wrapper
+      .findAllComponents({ name: 'VSelect' })
+      .find((candidate) => candidate.props('label') === 'Quarter')!;
+    expect((quarter.props('items') as { value: string }[]).map((item) => item.value)).toEqual([
+      '2026-Q3',
+      '2026-Q4',
+      '2027-Q1',
+      '2027-Q2'
+    ]);
+    quarter.vm.$emit('update:modelValue', '2027-Q1');
+    await settle();
+    expect(router.currentRoute.value.query.quarter).toBe('2027-Q1');
+    expect(deals()).toContain('Closing next quarter');
+    expect(stages()).toContain('Q1 2027');
+
+    // A bookmarked quarter outside the offered range is still selectable, and empty is explained.
+    await router.push('/reports?quarter=2025-Q1');
+    await settle();
+    expect(deals()).toContain('No open deals are expected to close in this quarter.');
+    // The owner filter on the pipeline card narrows the quarterly report too, keeping the quarter.
+    select(wrapper, 'Deal owner').vm.$emit('update:modelValue', fake.sales.userId);
+    await settle();
+    expect(router.currentRoute.value.query).toMatchObject({
+      quarter: '2025-Q1',
+      ownerId: fake.sales.userId
+    });
   });
 
   it('is hidden from navigation and refused by the server without report.read', async () => {

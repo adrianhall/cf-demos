@@ -9,12 +9,16 @@ import { describe, expect, it } from 'vitest';
 import {
   calendarQuarter,
   closedWindow,
+  parseQuarter,
   nextDate,
   openTasks,
   startOfLocalDay,
   sumTaskCounts
 } from '../../../src/data-worker/domain/reports/reports.ts';
-import { DELIVERY_REPORT_PROJECT_LIMIT } from '../../../src/shared/api/reports.ts';
+import {
+  DELIVERY_REPORT_PROJECT_LIMIT,
+  QUARTERLY_REPORT_DEAL_LIMIT
+} from '../../../src/shared/api/reports.ts';
 import type { ActorContext } from '../../../src/shared/data-service/contract.ts';
 import type { Role } from '../../../src/shared/permissions.ts';
 import { createFakeDataService, testRuntime } from '../../fakes/fake-data-service.ts';
@@ -129,20 +133,24 @@ describe('calendarQuarter', () => {
     expect(calendarQuarter('2026-01-01')).toEqual({
       from: '2026-01-01',
       to: '2026-03-31',
-      label: 'Q1 2026'
+      label: 'Q1 2026',
+      id: '2026-Q1'
     });
     expect(calendarQuarter('2028-02-29')).toMatchObject({ from: '2028-01-01', to: '2028-03-31' });
     expect(calendarQuarter('2026-06-30')).toEqual({
       from: '2026-04-01',
       to: '2026-06-30',
-      label: 'Q2 2026'
+      label: 'Q2 2026',
+      id: '2026-Q2'
     });
     expect(calendarQuarter('2026-07-01')).toMatchObject({ to: '2026-09-30', label: 'Q3 2026' });
     expect(calendarQuarter('2026-12-31')).toEqual({
       from: '2026-10-01',
       to: '2026-12-31',
-      label: 'Q4 2026'
+      label: 'Q4 2026',
+      id: '2026-Q4'
     });
+    expect(parseQuarter('2028-Q1')).toEqual(calendarQuarter('2028-02-29'));
   });
 });
 
@@ -167,6 +175,7 @@ describe('pipeline this quarter', () => {
 
     const summary = await service.crm.pipelineSummary(actor('read-only'));
     expect(summary.thisQuarter).toEqual({
+      id: '2026-Q4',
       label: 'Q4 2026',
       from: '2026-10-01',
       to: '2026-12-31',
@@ -182,6 +191,81 @@ describe('pipeline this quarter', () => {
     // 00:30 on 1 July in London (British Summer Time), so it is Q3 there.
     runtime.set(new Date('2026-06-30T23:30:00.000Z'));
     expect((await service.crm.pipelineSummary(actor('owner'))).thisQuarter.label).toBe('Q3 2026');
+  });
+});
+
+describe('quarterlyPipeline', () => {
+  it('totals and lists open deals expected to close in the chosen quarter, by stage', async () => {
+    const { service, store, actor, deal } = await world();
+    const pipeline = await service.crm.getPipeline(actor('sales'));
+    const rows = [
+      ['B later', 'sales', '2026-12-31', 0],
+      ['A early', 'manager', '2026-10-02', 1],
+      ['Next quarter', 'sales', '2027-01-01', 0],
+      ['Won in quarter', 'sales', '2026-11-01', 0]
+    ] as const;
+    const made = [];
+    for (const [title, owner, date, stage] of rows) {
+      const created = await deal(owner, 100, title);
+      store.exec(
+        'UPDATE deals SET expected_close_date = ?, stage_id = ? WHERE id = ?',
+        date,
+        pipeline.stages[stage]!.id,
+        created.id
+      );
+      made.push(created);
+    }
+    await service.crm.updateDeal(actor('sales'), made[3]!.id, { status: 'won' }, 1, key());
+
+    const current = await service.crm.quarterlyPipeline(actor('read-only'), {});
+    expect(current.quarter).toEqual({
+      id: '2026-Q4',
+      label: 'Q4 2026',
+      from: '2026-10-01',
+      to: '2026-12-31'
+    });
+    expect(current.deals.map((item) => item.title)).toEqual(['A early', 'B later']);
+    expect(current.stages.map((row) => row.count)).toEqual([1, 1, 0, 0]);
+    expect(current.total).toEqual({ count: 2, amountMinor: 200 });
+    expect(current).toMatchObject({ truncated: false, owner: null, currency: 'GBP' });
+
+    const next = await service.crm.quarterlyPipeline(actor('owner'), { quarter: '2027-Q1' });
+    expect(next.deals.map((item) => item.title)).toEqual(['Next quarter']);
+    const mine = await service.crm.quarterlyPipeline(actor('manager'), {
+      ownerId: actor('manager').userId
+    });
+    expect(mine.deals.map((item) => item.title)).toEqual(['A early']);
+    expect(mine.owner).toEqual({ id: actor('manager').userId, displayName: 'manager' });
+  });
+
+  it('caps the listed deals while totals cover every match', async () => {
+    const { service, store, actor, deal } = await world();
+    for (let index = 0; index <= QUARTERLY_REPORT_DEAL_LIMIT; index++) {
+      const created = await deal('sales', 1, `Deal ${String(index).padStart(3, '0')}`);
+      store.exec('UPDATE deals SET expected_close_date = ? WHERE id = ?', '2026-11-15', created.id);
+    }
+    const report = await service.crm.quarterlyPipeline(actor('sales'), {});
+    expect(report.deals).toHaveLength(QUARTERLY_REPORT_DEAL_LIMIT);
+    expect(report.truncated).toBe(true);
+    expect(report.total.count).toBe(QUARTERLY_REPORT_DEAL_LIMIT + 1);
+  });
+
+  it('refuses a malformed quarter or unknown owner, and needs report.read', async () => {
+    const { service, store, actor } = await world();
+    expect(
+      await failure(service.crm.quarterlyPipeline(actor('sales'), { quarter: '2026-Q5' }))
+    ).toMatchObject({ code: 'VALIDATION_FAILED' });
+    expect(
+      await failure(service.crm.quarterlyPipeline(actor('sales'), { ownerId: crypto.randomUUID() }))
+    ).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      fields: { ownerId: 'That person is not on the team.' }
+    });
+    const nobody = actor('read-only');
+    store.setRoles(nobody.userId, []);
+    expect(await failure(service.crm.quarterlyPipeline(nobody, {}))).toMatchObject({
+      code: 'FORBIDDEN'
+    });
   });
 });
 

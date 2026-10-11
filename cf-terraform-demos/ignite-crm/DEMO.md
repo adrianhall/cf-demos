@@ -75,10 +75,11 @@ menu button on mobile; all major routes are also keyboard reachable.
    membership/roles/status. Membership changes are enforced on the next request.
 7. **Reports.** **Sales pipeline** shows count/value by stage and won/lost totals. Filter by deal
    owner and an inclusive close-date window (at most 366 days, in the installation timezone); open
-   deals have no close date, so only won/lost totals use that window. **Delivery** aggregates task
-   statuses and overdue work across active projects; filter by status or lead. Filters are
-   bookmarkable in the URL. The report permission is granted to every seeded role, including
-   read-only, per the role matrix.
+   deals have no close date, so only won/lost totals use that window. **Quarterly pipeline** shows
+   open deals expected to close in a chosen quarter, by stage, with the deals listed. **Delivery**
+   aggregates task statuses and overdue work across active projects; filter by status or lead.
+   Filters are bookmarkable in the URL. The report permission is granted to every seeded role,
+   including read-only, per the role matrix.
 
 **Mobile:** repeat the contact overview, deal close, task Move menu, note preview, and Reports at a
 narrow width. Tables may be horizontally scrollable as a self-contained region, while the overall

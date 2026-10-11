@@ -54,7 +54,9 @@ import type {
   DeliveryReport,
   DeliveryReportFilter,
   PipelineReport,
-  PipelineReportFilter
+  PipelineReportFilter,
+  QuarterlyPipelineFilter,
+  QuarterlyPipelineReport
 } from '../api/reports.ts';
 import type {
   ActionStream,
@@ -367,6 +369,16 @@ export interface SalesPort {
    * @param filter Bounded filters.
    */
   pipelineReport(actor: ActorContext, filter: PipelineReportFilter): Promise<PipelineReport>;
+  /**
+   * Open deals expected to close in one calendar quarter, by stage, with the deals listed.
+   *
+   * @param actor The caller (needs `report.read`).
+   * @param filter Quarter (default: the current one) and owner.
+   */
+  quarterlyPipeline(
+    actor: ActorContext,
+    filter: QuarterlyPipelineFilter
+  ): Promise<QuarterlyPipelineReport>;
 }
 
 /**

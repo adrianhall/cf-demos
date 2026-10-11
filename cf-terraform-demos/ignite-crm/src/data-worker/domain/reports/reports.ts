@@ -112,22 +112,64 @@ export function sumTaskCounts(rows: readonly TaskCounts[]): TaskCounts {
 }
 
 /**
- * The calendar quarter containing a date: January–March, April–June, July–September, or
- * October–December. Quarters are calendar quarters in release one (no fiscal-year setting).
- *
- * @param today `YYYY-MM-DD`, already in the installation's time zone.
- * @returns The quarter's first and last dates (inclusive) and a label such as `Q4 2026`.
+ * One calendar quarter: January–March, April–June, July–September, or October–December. Quarters
+ * are calendar quarters in release one (no fiscal-year setting).
  */
-export function calendarQuarter(today: string): { from: string; to: string; label: string } {
-  const year = Number(today.slice(0, 4));
-  const quarter = Math.floor((Number(today.slice(5, 7)) - 1) / 3);
-  const firstMonth = quarter * 3 + 1;
+export interface CalendarQuarter {
+  /**
+   * `YYYY-Qn`, for example `2026-Q4`.
+   */
+  readonly id: string;
+  /**
+   * Display label, for example `Q4 2026`.
+   */
+  readonly label: string;
+  /**
+   * First day, `YYYY-MM-DD`.
+   */
+  readonly from: string;
+  /**
+   * Last day (inclusive), `YYYY-MM-DD`.
+   */
+  readonly to: string;
+}
+
+/**
+ * Build a quarter from its year and number.
+ *
+ * @param year Calendar year.
+ * @param quarter Quarter number, 1–4.
+ * @returns The quarter.
+ */
+function quarterOf(year: number, quarter: number): CalendarQuarter {
+  const firstMonth = (quarter - 1) * 3 + 1;
   const pad = (value: number): string => String(value).padStart(2, '0');
   // Day 0 of the month after the quarter is its last day.
   const lastDay = new Date(Date.UTC(year, firstMonth + 2, 0)).getUTCDate();
   return {
+    id: `${year}-Q${quarter}`,
+    label: `Q${quarter} ${year}`,
     from: `${year}-${pad(firstMonth)}-01`,
-    to: `${year}-${pad(firstMonth + 2)}-${pad(lastDay)}`,
-    label: `Q${quarter + 1} ${year}`
+    to: `${year}-${pad(firstMonth + 2)}-${pad(lastDay)}`
   };
+}
+
+/**
+ * The calendar quarter containing a date.
+ *
+ * @param today `YYYY-MM-DD`, already in the installation's time zone.
+ * @returns The quarter.
+ */
+export function calendarQuarter(today: string): CalendarQuarter {
+  return quarterOf(Number(today.slice(0, 4)), Math.floor((Number(today.slice(5, 7)) - 1) / 3) + 1);
+}
+
+/**
+ * Parse a validated `YYYY-Qn` quarter id.
+ *
+ * @param id The id (already checked against `QuarterSchema`).
+ * @returns The quarter.
+ */
+export function parseQuarter(id: string): CalendarQuarter {
+  return quarterOf(Number(id.slice(0, 4)), Number(id.slice(6)));
 }
