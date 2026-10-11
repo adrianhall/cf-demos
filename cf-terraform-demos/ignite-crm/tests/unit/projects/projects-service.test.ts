@@ -343,6 +343,119 @@ describe('convertDeal', () => {
     expect((await service.crm.getDeal(actor('sales'), won.id)).deal.project?.id).toBe(project.id);
   });
 
+  it('wins a pending deal and converts it in one write ("Mark won" + convert)', async () => {
+    const { service, store, actor, deal } = await world();
+    const pending = await deal({ won: false });
+    await service.crm.updateDeal(
+      actor('sales'),
+      pending.id,
+      { nextActionText: 'Chase', nextActionDate: '2026-10-20', expectedCloseDate: '2026-11-01' },
+      1,
+      key()
+    );
+    const project = await service.projects.convertDeal(
+      actor('sales'),
+      pending.id,
+      { markWon: true },
+      2,
+      key()
+    );
+    const { deal: closed } = await service.crm.getDeal(actor('sales'), pending.id);
+    expect(closed).toMatchObject({
+      status: 'won',
+      project: { id: project.id },
+      nextActionText: null,
+      nextActionDate: null,
+      expectedCloseDate: null,
+      version: 3
+    });
+    expect(closed.closedAt).toMatch(/^2026-10-11T/u);
+    expect(store.audit.slice(-3).map((event) => event.action)).toEqual([
+      'created-from-deal',
+      'won',
+      'converted'
+    ]);
+    // markWon on an already-won deal just converts it, without a second "won" event.
+    const won = await deal({ title: 'Already won' });
+    await service.projects.convertDeal(
+      actor('sales'),
+      won.id,
+      { markWon: true },
+      won.version,
+      key()
+    );
+    expect(store.audit.filter((event) => event.entityId === won.id).map((e) => e.action)).toEqual([
+      'created',
+      'won',
+      'converted'
+    ]);
+  });
+
+  it('requires crm.write as well as deal.convert to win and convert a pending deal', async () => {
+    const { service, store, actor, deal } = await world();
+    const pending = await deal({ won: false });
+    store.exec("DELETE FROM role_permissions WHERE role_id = 'sales' AND permission = 'crm.write'");
+    expect(
+      (
+        await failure(
+          service.projects.convertDeal(actor('sales'), pending.id, { markWon: true }, 1, key())
+        )
+      ).code
+    ).toBe('FORBIDDEN');
+    expect((await service.crm.getDeal(actor('sales'), pending.id)).deal.status).toBe('pending');
+    expect(store.count('projects')).toBe(0);
+  });
+
+  it('refuses markWon for a lost deal, and leaves a pending deal pending when it fails', async () => {
+    const { service, store, actor, deal } = await world();
+    const pending = await deal({ won: false });
+    const lost = await service.crm.updateDeal(
+      actor('sales'),
+      pending.id,
+      { status: 'lost' },
+      1,
+      key()
+    );
+    expect(
+      await failure(
+        service.projects.convertDeal(
+          actor('sales'),
+          lost.id,
+          { markWon: true },
+          lost.version,
+          key()
+        )
+      )
+    ).toMatchObject({ code: 'CONFLICT', message: /lost deal/u });
+
+    const other = await deal({ won: false, title: 'Rolls back' });
+    store.failNextWriteAt(3);
+    expect(
+      (
+        await failure(
+          service.projects.convertDeal(actor('sales'), other.id, { markWon: true }, 1, key())
+        )
+      ).code
+    ).toBe('DEPENDENCY_FAILURE');
+    const { deal: after } = await service.crm.getDeal(actor('sales'), other.id);
+    expect(after).toMatchObject({ status: 'pending', closedAt: null, project: null, version: 1 });
+    expect(store.count('projects')).toBe(0);
+    // A concurrent close (here: lost) between read and commit also rolls the whole thing back.
+    store.beforeNextCommit((db) => {
+      db.prepare(
+        "UPDATE deals SET status = 'lost', closed_at = 'x', version = version + 1 WHERE id = ?"
+      ).run(other.id);
+    });
+    expect(
+      (
+        await failure(
+          service.projects.convertDeal(actor('sales'), other.id, { markWon: true }, 1, key())
+        )
+      ).code
+    ).toBe('VERSION_MISMATCH');
+    expect(store.count('projects')).toBe(0);
+  });
+
   it('rolls back every row when the write set fails at any statement', async () => {
     const { service, store, actor, deal } = await world();
     const won = await deal();

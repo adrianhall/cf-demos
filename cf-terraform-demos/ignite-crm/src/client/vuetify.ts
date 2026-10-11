@@ -36,6 +36,8 @@ import {
   VMenu,
   VNavigationDrawer,
   VProgressLinear,
+  VRadio,
+  VRadioGroup,
   VRow,
   VSelect,
   VSkeletonLoader,
@@ -154,6 +156,8 @@ export const components = {
   VMenu,
   VNavigationDrawer,
   VProgressLinear,
+  VRadio,
+  VRadioGroup,
   VRow,
   VSelect,
   VSkeletonLoader,
@@ -185,6 +189,7 @@ export function createAppVuetify(): ReturnType<typeof createVuetify> {
       VAutocomplete: { variant: 'outlined', density: 'comfortable', color: 'primary-strong' },
       VTextarea: { variant: 'outlined', density: 'comfortable', color: 'primary-strong' },
       VCheckbox: { color: 'primary-strong' },
+      VRadio: { color: 'primary-strong' },
       VBtn: { rounded: 'lg' },
       VCard: { rounded: 'lg' }
     }

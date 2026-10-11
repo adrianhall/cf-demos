@@ -1,12 +1,13 @@
 <script setup lang="ts">
 /**
- * One deal: fixed outcome and stage, free-text status line, next action, customer links, calls and
+ * One deal: fixed outcome and stage (closed with "Mark won/lost", optionally converting a win into
+ * a project in the same transaction), free-text status line, next action, customer links, calls and
  * meetings, and history. Editing happens in a dialog; on a version conflict the dialog stays open
  * with the user's draft intact and offers to load the latest version.
  */
 import { computed, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { mdiCalendarPlus, mdiPencil, mdiRocketLaunch } from '@mdi/js';
+import { mdiCalendarPlus, mdiFlagCheckered, mdiPencil, mdiRocketLaunch } from '@mdi/js';
 import type { UserRef } from '../../shared/api/crm.ts';
 import type { CreateActivityInput, Deal, Pipeline } from '../../shared/api/sales.ts';
 import ActivityForm from '../components/ActivityForm.vue';
@@ -166,6 +167,64 @@ async function convert(): Promise<void> {
   }
 }
 
+const closing = ref(false);
+const closer = useSubmission({ forbidden: 'Your role does not allow closing deals.' });
+const outcome = ref<'won' | 'lost'>('won');
+const convertOnWin = ref(true);
+const canClose = computed(() => can('crm.write') && deal.value?.status === 'pending');
+/**
+ * Whether the "also convert" option applies: only for a win, and only for roles that may convert.
+ */
+const conversionOffered = computed(() => outcome.value === 'won' && can('deal.convert'));
+
+/**
+ * Open the "Mark won/lost" dialog with its defaults: won, and convert when allowed.
+ */
+function openClose(): void {
+  closer.reset();
+  outcome.value = 'won';
+  convertOnWin.value = can('deal.convert');
+  closing.value = true;
+}
+
+/**
+ * Close the deal with the chosen outcome.
+ *
+ * "Won" with conversion is one Data Worker transaction (`markWon`): the deal is won, the project
+ * created, and the deal linked together, or nothing changes — the deal is never left won but
+ * unconverted by a failure. "Won" alone and "lost" are ordinary versioned deal updates, which also
+ * clear the next action and stamp the close time.
+ */
+async function closeDeal(): Promise<void> {
+  const current = deal.value;
+  if (current === null) {
+    return;
+  }
+  if (conversionOffered.value && convertOnWin.value) {
+    const project = await closer.run((key) =>
+      api.convertDeal(current.id, { markWon: true, targetDate: null }, current.version, key)
+    );
+    if (project !== undefined) {
+      closing.value = false;
+      await router.push({ name: 'project', params: { id: project.id } });
+      return;
+    }
+  } else {
+    const updated = await closer.run((key) =>
+      api.updateDeal(current.id, { status: outcome.value }, current.version, key)
+    );
+    if (updated !== undefined) {
+      closing.value = false;
+      await detail.load();
+      return;
+    }
+  }
+  if (closer.conflict.value || closer.alreadyApplied.value) {
+    // Changed, closed, or converted by someone else: show the deal as it now is.
+    await detail.load();
+  }
+}
+
 const logging = ref(false);
 const logger = useSubmission({ forbidden: 'Your role does not allow logging activities.' });
 
@@ -206,6 +265,9 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
       />
       <div class="d-flex flex-wrap align-center ga-2 mb-1">
         <h1 id="deal-title" class="text-h4 flex-grow-1">{{ deal.title }}</h1>
+        <v-btn v-if="canClose" color="secondary" :prepend-icon="mdiFlagCheckered" @click="openClose"
+          >Mark won/lost</v-btn
+        >
         <v-btn
           v-if="canConvert"
           color="secondary"
@@ -331,6 +393,59 @@ async function logActivity(input: CreateActivityInput): Promise<void> {
               @submit="save"
               @cancel="editing = false"
             />
+          </v-card-text>
+        </v-card>
+      </v-dialog>
+
+      <v-dialog v-model="closing" max-width="520" aria-labelledby="close-title">
+        <v-card>
+          <v-card-title><h2 id="close-title" class="text-h6">Mark won/lost</h2></v-card-title>
+          <v-card-text>
+            <v-alert
+              v-if="closer.formError.value"
+              type="error"
+              variant="tonal"
+              role="alert"
+              class="mb-4"
+              data-testid="close-error"
+              >{{
+                closer.conflict.value
+                  ? 'This deal changed after you opened it. It has been reloaded; review it and try again.'
+                  : closer.formError.value
+              }}</v-alert
+            >
+            <v-form novalidate aria-label="Deal outcome" @submit.prevent="closeDeal">
+              <v-radio-group v-model="outcome" label="Outcome" data-testid="outcome">
+                <v-radio label="Won" value="won" />
+                <v-radio label="Lost" value="lost" />
+              </v-radio-group>
+              <v-checkbox
+                :model-value="conversionOffered && convertOnWin"
+                :disabled="!conversionOffered"
+                label="Also convert to a delivery project"
+                :hint="
+                  outcome === 'lost'
+                    ? 'Only a won deal can become a project.'
+                    : can('deal.convert')
+                      ? 'The deal is won and the project is created together, or nothing changes.'
+                      : 'Your role cannot convert deals; a manager or sales user can do it later.'
+                "
+                persistent-hint
+                data-testid="convert-on-win"
+                @update:model-value="(value) => (convertOnWin = value === true)"
+              />
+              <p class="text-body-2 text-medium-emphasis mt-4">
+                Closing a deal clears its next action and records when it closed.
+              </p>
+              <div class="d-flex justify-end ga-2 mt-4">
+                <v-btn variant="text" :disabled="closer.submitting.value" @click="closing = false"
+                  >Cancel</v-btn
+                >
+                <v-btn type="submit" color="primary" :loading="closer.submitting.value"
+                  >Submit</v-btn
+                >
+              </div>
+            </v-form>
           </v-card-text>
         </v-card>
       </v-dialog>

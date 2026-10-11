@@ -88,6 +88,78 @@ beforeAll(async () => {
 });
 
 describe('convertDeal over real D1', () => {
+  it('rolls back both the win and project when the combined write fails, then succeeds once', async () => {
+    const port = new FailingTailPort(new D1Adapter(env.DATA_DB));
+    const service = composeWithPort(port, 'owner@example.com', {
+      now: () => new Date(),
+      newId: () => crypto.randomUUID()
+    });
+    const contact = await service.crm.createContact(
+      sales,
+      {
+        firstName: 'Combined',
+        lastName: null,
+        email: null,
+        phone: null,
+        jobTitle: null,
+        companyId: null,
+        companyName: 'Combined Ltd'
+      },
+      { idempotencyKey: 'combined-contact' }
+    );
+    const deal = await service.crm.createDeal(
+      sales,
+      {
+        title: 'Combined close and conversion',
+        primaryContactId: contact.id,
+        amountMinor: 0,
+        statusLine: null,
+        nextActionText: null,
+        nextActionDate: null,
+        expectedCloseDate: null
+      },
+      { idempotencyKey: 'combined-deal' }
+    );
+    const before = {
+      projects: await count('projects'),
+      conversions: await count('conversion_attempts'),
+      audit: await count('audit_events')
+    };
+
+    port.failNext = true;
+    const failure = await service.projects
+      .convertDeal(sales, deal.id, { markWon: true }, deal.version, {
+        idempotencyKey: 'combined-failure'
+      })
+      .catch((error: unknown) => error);
+    expect(failure).toMatchObject({ code: 'DEPENDENCY_FAILURE', retryable: true });
+    expect({
+      projects: await count('projects'),
+      conversions: await count('conversion_attempts'),
+      audit: await count('audit_events')
+    }).toEqual(before);
+    expect(await count('idempotency_records', "idempotency_key = 'combined-failure'")).toBe(0);
+    const pending = await service.crm.getDeal(sales, deal.id);
+    expect(pending.deal).toMatchObject({
+      status: 'pending',
+      closedAt: null,
+      project: null,
+      version: deal.version
+    });
+
+    const project = await service.projects.convertDeal(
+      sales,
+      deal.id,
+      { markWon: true },
+      deal.version,
+      { idempotencyKey: 'combined-success' }
+    );
+    const won = await service.crm.getDeal(sales, deal.id);
+    expect(won.deal).toMatchObject({ status: 'won', project: { id: project.id } });
+    expect(won.deal.closedAt).not.toBeNull();
+    expect(await count('conversion_attempts', `project_id = '${project.id}'`)).toBe(1);
+  });
+
   it('leaves no half-created project when the write set fails, then converts once', async () => {
     const port = new FailingTailPort(new D1Adapter(env.DATA_DB));
     const service = composeWithPort(port, 'owner@example.com', {

@@ -261,6 +261,152 @@ describe('converting a won deal', () => {
   });
 });
 
+describe('Mark won/lost', () => {
+  /**
+   * A seeded fake whose deal is still pending (the default seed wins it).
+   *
+   * @returns The fake and the pending deal.
+   */
+  async function withPending() {
+    const fake = await seeded();
+    const pending = await fake.service.crm.createDeal(
+      fake.sales,
+      {
+        title: 'Open opportunity',
+        primaryContactId: fake.contact.id,
+        amountMinor: 500,
+        statusLine: null,
+        nextActionText: 'Chase',
+        nextActionDate: '2026-10-20',
+        expectedCloseDate: null
+      },
+      key()
+    );
+    return { ...fake, pending };
+  }
+
+  /**
+   * The "also convert" checkbox input.
+   *
+   * @returns The input.
+   */
+  function convertBox(): HTMLInputElement {
+    const box = document.body.querySelector<HTMLInputElement>(
+      '[data-testid="convert-on-win"] input[type="checkbox"]'
+    );
+    if (box === null) {
+      throw new Error('No convert checkbox');
+    }
+    return box;
+  }
+
+  /**
+   * Choose an outcome radio.
+   *
+   * @param value `won` or `lost`.
+   */
+  function chooseOutcome(value: 'won' | 'lost'): void {
+    const radio = document.body.querySelector<HTMLInputElement>(
+      `[data-testid="outcome"] input[value="${value}"]`
+    );
+    if (radio === null) {
+      throw new Error(`No ${value} radio`);
+    }
+    radio.click();
+  }
+
+  it('defaults to won with conversion checked, and wins + converts in one step', async () => {
+    const fake = await withPending();
+    useApi('sales@example.com', fake);
+    const { wrapper, router } = await mountWithApp(App, { route: `/deals/${fake.pending.id}` });
+    button('Mark won/lost').click();
+    await settle();
+    expect(convertBox().checked).toBe(true);
+    expect(convertBox().disabled).toBe(false);
+    button('Submit').click();
+    await settle();
+    expect(router.currentRoute.value.name).toBe('project');
+    expect(wrapper.get('h1').text()).toBe('Open opportunity');
+    const { deal } = await fake.service.crm.getDeal(fake.sales, fake.pending.id);
+    expect(deal).toMatchObject({ status: 'won', nextActionText: null });
+    expect(deal.project).not.toBeNull();
+  });
+
+  it('wins without converting when unchecked, then offers Convert to project', async () => {
+    const fake = await withPending();
+    useApi('sales@example.com', fake);
+    const { wrapper } = await mountWithApp(App, { route: `/deals/${fake.pending.id}` });
+    button('Mark won/lost').click();
+    await settle();
+    convertBox().click();
+    await settle();
+    expect(convertBox().checked).toBe(false);
+    button('Submit').click();
+    await settle();
+    expect(wrapper.text()).toContain('Won');
+    expect(() => button('Mark won/lost')).toThrow();
+    expect(button('Convert to project')).toBeDefined();
+    expect(fake.store.count('projects')).toBe(0);
+  });
+
+  it('greys out conversion for lost and closes the deal as lost', async () => {
+    const fake = await withPending();
+    useApi('sales@example.com', fake);
+    const { wrapper } = await mountWithApp(App, { route: `/deals/${fake.pending.id}` });
+    button('Mark won/lost').click();
+    await settle();
+    chooseOutcome('lost');
+    await settle();
+    expect(convertBox().disabled).toBe(true);
+    expect(convertBox().checked).toBe(false);
+    expect(document.body.textContent).toContain('Only a won deal can become a project.');
+    button('Submit').click();
+    await settle();
+    expect(wrapper.text()).toContain('Lost');
+    expect(() => button('Convert to project')).toThrow();
+    expect((await fake.service.crm.getDeal(fake.sales, fake.pending.id)).deal.status).toBe('lost');
+    expect(fake.store.count('projects')).toBe(0);
+  });
+
+  it('reloads and explains when the deal changed after the dialog opened', async () => {
+    const fake = await withPending();
+    useApi('sales@example.com', fake);
+    await mountWithApp(App, { route: `/deals/${fake.pending.id}` });
+    button('Mark won/lost').click();
+    await settle();
+    await fake.service.crm.updateDeal(
+      fake.sales,
+      fake.pending.id,
+      { statusLine: 'Moved on' },
+      1,
+      key()
+    );
+    button('Submit').click();
+    await settle();
+    expect(document.body.querySelector('[data-testid="close-error"]')?.textContent).toContain(
+      'This deal changed after you opened it'
+    );
+    expect((await fake.service.crm.getDeal(fake.sales, fake.pending.id)).deal.status).toBe(
+      'pending'
+    );
+    expect(fake.store.count('projects')).toBe(0);
+  });
+
+  it('is hidden from read-only users and on a closed deal; a delivery user cannot convert', async () => {
+    const fake = await withPending();
+    useApi('readonly@example.com', fake);
+    const first = await mountWithApp(App, { route: `/deals/${fake.pending.id}` });
+    expect(() => button('Mark won/lost')).toThrow();
+    first.wrapper.unmount();
+    document.body.innerHTML = '';
+    resetSession();
+    // The default seed deal is already won: no Mark won/lost for anyone.
+    useApi('sales@example.com', fake);
+    await mountWithApp(App, { route: `/deals/${fake.won.id}` });
+    expect(() => button('Mark won/lost')).toThrow();
+  });
+});
+
 describe('task board', () => {
   it('moves a task with the keyboard-operable status menu and announces it', async () => {
     const fake = await withProject();

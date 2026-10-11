@@ -318,7 +318,8 @@ export type MyWork = v.InferOutput<typeof MyWorkSchema>;
  * Request body for converting a won deal into a project.
  *
  * Every field is optional: the name defaults to the deal title and the lead to the caller. The
- * company and primary contact always come from the deal itself, never from the request.
+ * company and primary contact always come from the deal itself, never from the request. `markWon`
+ * lets a pending deal be won and converted in one transaction.
  */
 export const ConvertDealInputSchema = v.strictObject({
   /**
@@ -333,7 +334,13 @@ export const ConvertDealInputSchema = v.strictObject({
   /**
    * Target completion date.
    */
-  targetDate: OptionalDateSchema
+  targetDate: OptionalDateSchema,
+  /**
+   * Close a still-pending deal as won in the same atomic write as the conversion ("Mark won" with
+   * "also convert"). Without it, only an already-won deal can be converted. Either way, the deal is
+   * never left won-but-unconverted by a failed conversion.
+   */
+  markWon: v.optional(v.boolean('markWon must be true or false.'), false)
 });
 
 /**

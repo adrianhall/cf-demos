@@ -21,6 +21,13 @@ describe('conversionBlocker', () => {
     expect(conversionBlocker({ status: 'lost', projectId: null })).toMatch(/won deal/u);
     expect(conversionBlocker({ status: 'won', projectId: 'p' })).toMatch(/already been converted/u);
   });
+
+  it('with markWon, also allows a pending deal but never a lost or converted one', () => {
+    expect(conversionBlocker({ status: 'pending', projectId: null }, true)).toBeNull();
+    expect(conversionBlocker({ status: 'won', projectId: null }, true)).toBeNull();
+    expect(conversionBlocker({ status: 'lost', projectId: null }, true)).toMatch(/lost deal/u);
+    expect(conversionBlocker({ status: 'pending', projectId: 'p' }, true)).toMatch(/already/u);
+  });
 });
 
 describe('needsManage', () => {

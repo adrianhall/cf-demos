@@ -17,24 +17,29 @@ export const POSITION_GAP = 1024;
  * Why a deal cannot be converted, or `null` when it can.
  *
  * Only a won deal becomes delivery work, and only once: a pending deal may still be lost, and a
- * second project for the same deal would split its delivery history.
+ * second project for the same deal would split its delivery history. With `markWon`, a pending deal
+ * is also eligible, because it is closed as won in the same transaction as the conversion; a lost
+ * deal never is.
  *
  * @param deal The deal's outcome and existing project link.
  * @param deal.status Outcome.
  * @param deal.projectId Project already created from it, if any.
+ * @param markWon Whether the conversion also closes a pending deal as won.
  * @returns A caller-safe reason, or `null` when eligible.
  */
-export function conversionBlocker(deal: {
-  readonly status: DealStatus;
-  readonly projectId: string | null;
-}): string | null {
+export function conversionBlocker(
+  deal: { readonly status: DealStatus; readonly projectId: string | null },
+  markWon = false
+): string | null {
   if (deal.projectId !== null) {
     return 'This deal has already been converted into a project.';
   }
-  if (deal.status !== 'won') {
-    return 'Only a won deal can be converted into a project.';
+  if (deal.status === 'won' || (markWon && deal.status === 'pending')) {
+    return null;
   }
-  return null;
+  return markWon
+    ? 'A lost deal cannot be won and converted. Reopen it first.'
+    : 'Only a won deal can be converted into a project.';
 }
 
 /**

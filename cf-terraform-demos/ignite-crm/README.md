@@ -230,6 +230,15 @@ confirm. The result opens the linked project; the deal, contact, and company pag
 delivery link. Sign in as Delivery to add and progress tasks on the project and see assigned tasks
 under **My work**. Read-only users see those records but no mutation controls.
 
+A deal's pipeline **stage** and its **outcome** are separate: moving a deal through the stages never
+wins it. To close an open deal, choose **Mark won/lost** on the deal page. The dialog defaults to
+**Won** with **Also convert to a delivery project** checked; submitting then wins the deal, creates
+the project, and links them in one Data Worker transaction (`POST /deals/:id/convert` with
+`markWon: true`), so a failure leaves the deal open rather than won but unconverted. Unchecking
+conversion only wins the deal (it can be converted later with **Convert to project**). Choosing
+**Lost** greys out the conversion option and only closes the deal. Closing clears the next action
+and records when the deal closed.
+
 The Data Worker converts a won deal in **one D1 batch**: it checks the deal's version and status,
 inserts the project and a completed conversion record, links the deal, writes audit events and the
 idempotency result, and commits. Any failed guard or storage statement rolls all of it back; there

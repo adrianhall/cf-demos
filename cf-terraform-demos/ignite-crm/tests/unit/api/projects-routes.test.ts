@@ -149,6 +149,22 @@ describe('conversion', () => {
     expect(await body(again)).toMatchObject({ code: 'CONFLICT' });
   });
 
+  it('wins and converts a pending deal in one request with markWon', async () => {
+    const { call, pendingId } = await setup();
+    const response = await call(`/api/v1/deals/${pendingId}/convert`, {
+      as: 'sales@example.com',
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'http-convert-mw', 'If-Match': '"1"' },
+      json: { markWon: true }
+    });
+    expect(response.status).toBe(201);
+    const deal = await body<{ deal: { status: string; project: { id: string } | null } }>(
+      await call(`/api/v1/deals/${pendingId}`, { as: 'reader@example.com' })
+    );
+    expect(deal.deal.status).toBe('won');
+    expect(deal.deal.project).not.toBeNull();
+  });
+
   it('maps ineligible, forbidden, missing-precondition, and invalid conversions', async () => {
     const { call, won, pendingId } = await setup();
     const pending = await call(`/api/v1/deals/${pendingId}/convert`, {

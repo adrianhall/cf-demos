@@ -440,6 +440,7 @@ export class D1ProjectsRepository extends D1IdempotencyReader implements Project
   async convert(write: {
     project: ProjectRow;
     expectedDealVersion: number;
+    markWon: boolean;
     at: string;
     envelope: MutationEnvelope;
   }): Promise<void> {
@@ -479,16 +480,32 @@ export class D1ProjectsRepository extends D1IdempotencyReader implements Project
       // The back-link is a compare-and-swap on the deal's state *and* version: if the deal was
       // reopened, edited, or converted by someone else since it was read, no row changes and the
       // guard below rolls back the project, conversion record, audit, and idempotency rows.
+      // With `markWon`, the same statement closes a pending deal: it becomes won, stamps closedAt,
+      // and drops the next action and expected close date, exactly as a manual "won" edit does.
       tx.write(
-        sql(
-          `UPDATE deals SET project_id = ?, version = version + 1, updated_at = ?
-            WHERE id = ? AND version = ? AND status = 'won' AND project_id IS NULL
-              AND deleted_at IS NULL`,
-          project.id,
-          write.at,
-          dealId,
-          write.expectedDealVersion
-        )
+        write.markWon
+          ? sql(
+              `UPDATE deals
+                  SET project_id = ?, status = 'won', closed_at = ?, next_action_text = NULL,
+                      next_action_date = NULL, expected_close_date = NULL,
+                      version = version + 1, updated_at = ?
+                WHERE id = ? AND version = ? AND status = 'pending' AND project_id IS NULL
+                  AND deleted_at IS NULL`,
+              project.id,
+              write.at,
+              write.at,
+              dealId,
+              write.expectedDealVersion
+            )
+          : sql(
+              `UPDATE deals SET project_id = ?, version = version + 1, updated_at = ?
+                WHERE id = ? AND version = ? AND status = 'won' AND project_id IS NULL
+                  AND deleted_at IS NULL`,
+              project.id,
+              write.at,
+              dealId,
+              write.expectedDealVersion
+            )
       );
       tx.requireChanged('VERSION_MISMATCH');
       writeEnvelope(tx, write.envelope);

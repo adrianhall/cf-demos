@@ -109,6 +109,14 @@ items to review at the end. Each entry names the phase that made it.
   timelines at 50 projects per customer. Task creation, editing, and project status edits use
   idempotency keys and versioned updates; a version conflict keeps the user's draft.
 
+- **Phase 3 — Mark won/lost (review feedback).** Stage and outcome stay separate fields, but
+  closing a deal is now an explicit **Mark won/lost** dialog rather than a field hidden in the deal
+  editor. "Won" with the (default-checked) conversion option is a single atomic Data Worker
+  transaction (`convertDeal` with `markWon`), so a failed conversion never leaves a won-but-
+  unconverted deal; the deal is closed exactly as a manual win would (close time stamped, next
+  action and expected close date cleared). The option is disabled for "Lost" and for roles without
+  `deal.convert`; a lost deal cannot be won-and-converted in one step (reopen it first).
+
 ## Follow-on items
 
 - **CRM record editing — not scheduled in Phases 2–7.** Add contact editing and company editing

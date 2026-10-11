@@ -8,10 +8,11 @@
  *
  *   Because every module shares one D1 database (specification §7.1), converting a won deal is a
  *   single write set: the project, the conversion record, the deal's versioned back-link, the audit
- *   events, and the idempotency result. Guards inside that write set re-check that the deal is
- *   still won, unconverted, and at the version the caller saw, so a concurrent conversion or edit
- *   rolls the whole conversion back. There is no pending state, retry endpoint, or saga — the
- *   contrast with `specs/ignite-crm/microservice-experiment/01c-projectservice-spec.md` §7.
+ *   events, and the idempotency result — plus, for "Mark won" with conversion, closing the deal as
+ *   won. Guards inside that write set re-check that the deal is still eligible, unconverted, and at
+ *   the version the caller saw, so a concurrent conversion or edit rolls the whole conversion back.
+ *   There is no pending state, retry endpoint, or saga — the contrast with
+ *   `specs/ignite-crm/microservice-experiment/01c-projectservice-spec.md` §7.
  */
 
 import * as v from 'valibot';
@@ -290,7 +291,8 @@ export interface ProjectsRepository extends IdempotencyRepository {
   history(entityType: string, entityId: string, limit: number): Promise<ProjectDetail['history']>;
   /**
    * Atomically convert a deal: insert the project and conversion record, link the deal if it is
-   * still won, unconverted, and at `expectedDealVersion`, and write the envelope rows.
+   * still won (or, with `markWon`, still pending — it is then closed as won in the same write),
+   * unconverted, and at `expectedDealVersion`, and write the envelope rows.
    *
    * @param write The rows.
    * @returns Once committed.
@@ -300,6 +302,7 @@ export interface ProjectsRepository extends IdempotencyRepository {
   convert(write: {
     project: ProjectRow;
     expectedDealVersion: number;
+    markWon: boolean;
     at: string;
     envelope: MutationEnvelope;
   }): Promise<void>;
@@ -512,9 +515,14 @@ export class ProjectsService implements ProjectsPort {
     }
     // An already-converted deal is reported before a stale version: the caller's intent is already
     // satisfied and the message tells them so, rather than asking them to reload and try again.
-    const blocker = conversionBlocker(deal);
+    const blocker = conversionBlocker(deal, fields.markWon);
     if (blocker !== null) {
       throw serviceError('CONFLICT', blocker, { requestId: caller.requestId });
+    }
+    // `deal.convert` authorizes project creation, not closing a pending sale. Keep the existing
+    // `crm.write` check for a win even if a future role receives conversion without write access.
+    if (fields.markWon && deal.status === 'pending') {
+      await this.authorizer.require(caller, 'crm.write');
     }
     if (deal.version !== version) {
       throw serviceError(
@@ -529,6 +537,8 @@ export class ProjectsService implements ProjectsPort {
       invalid('targetDate', 'The target date cannot be in the past.', caller.requestId);
     }
     const lead = await this.requireUser(fields.leadId ?? caller.userId, 'leadId', caller.requestId);
+    // Winning happens only when the deal is still pending; an already-won deal is just converted.
+    const winning = fields.markWon && deal.status === 'pending';
 
     const project: Project = {
       id: this.runtime.newId(),
@@ -548,6 +558,7 @@ export class ProjectsService implements ProjectsPort {
     await this.repository.convert({
       project: toProjectRow(project),
       expectedDealVersion: version,
+      markWon: winning,
       at,
       envelope: mutation.envelope(
         project,
@@ -560,6 +571,9 @@ export class ProjectsService implements ProjectsPort {
             { dealId: deal.id, leadId: lead.id },
             at
           ),
+          ...(winning
+            ? [mutation.audit('crm', 'deal', deal.id, 'won', { viaConversion: true }, at)]
+            : []),
           mutation.audit('crm', 'deal', deal.id, 'converted', { projectId: project.id }, at)
         ],
         now
