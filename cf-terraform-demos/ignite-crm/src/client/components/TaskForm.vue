@@ -118,6 +118,7 @@ watch(
         <v-text-field
           v-model="draft.title"
           label="Title"
+          required
           counter="200"
           :error-messages="errorsFor('title')"
         />

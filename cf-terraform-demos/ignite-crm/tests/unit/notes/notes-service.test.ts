@@ -437,6 +437,24 @@ describe('updateNote', () => {
     expect((await service.notes.searchNotes(actor('sales'), 'revised')).items).toHaveLength(1);
   });
 
+  it('adds and removes links in the same edit', async () => {
+    const { service, store, actor, links, priya, project } = await world();
+    const note = await meetingNote(service, actor('sales'), [{ type: 'contact', id: priya.id }]);
+    const swapped = await service.notes.updateNote(
+      actor('sales'),
+      note.id,
+      { links: [{ type: 'project', id: project.id }] },
+      1,
+      key()
+    );
+    expect(swapped.links.map((link) => link.id)).toEqual([project.id]);
+    expect(store.count('note_links')).toBe(1);
+    // Every seeded record added at once (the add path for several types together).
+    const all = await service.notes.updateNote(actor('sales'), note.id, { links }, 2, key());
+    expect(all.links).toHaveLength(5);
+    expect(all.lastEditedBy.id).toBe(actor('sales').userId);
+  });
+
   it('keeps a link to a since-deleted record as an unavailable tombstone', async () => {
     const { service, store, actor, links, tom } = await world();
     const note = await meetingNote(service, actor('sales'), links);

@@ -263,6 +263,56 @@ describe('deal editing', () => {
     submit();
     await settle();
     expect(wrapper.text()).toContain('Nothing changed, so nothing was saved.');
+    const notice = wrapper.findAll('.v-alert').find((alert) => alert.text().includes('Nothing'))!;
+    await notice.get('button').trigger('click');
+    await settle();
+    expect(wrapper.text()).not.toContain('Nothing changed');
+  });
+
+  it('logs a call about the deal from the deal page, and cancels each dialog without writing', async () => {
+    const fake = await seeded();
+    const deal = await fake.service.crm.createDeal(
+      fake.sales,
+      {
+        title: 'Expansion',
+        primaryContactId: fake.ada.id,
+        amountMinor: 0,
+        statusLine: null,
+        nextActionText: null,
+        nextActionDate: null,
+        expectedCloseDate: null
+      },
+      { idempotencyKey: 'seed-log-deal' }
+    );
+    useApi('sales@example.com', fake);
+    const { wrapper } = await mountWithApp(App, { route: `/deals/${deal.id}` });
+    // Closed Vuetify dialogs stay mounted, so act within the one that is open.
+    const openDialog = (): HTMLElement =>
+      [...document.body.querySelectorAll<HTMLElement>('.v-overlay--active[role="dialog"]')].at(-1)!;
+    const within = (text: string): HTMLButtonElement =>
+      [...openDialog().querySelectorAll('button')].find(
+        (candidate) => candidate.textContent?.trim() === text
+      )!;
+    for (const opener of ['Edit deal', 'Mark won/lost', 'Log activity']) {
+      button(opener).click();
+      await settle();
+      within('Cancel').click();
+      await settle();
+      expect(document.body.querySelector('.v-overlay--active[role="dialog"]')).toBeNull();
+    }
+    expect(fake.store.count('activities')).toBe(0);
+    expect((await fake.service.crm.getDeal(fake.sales, deal.id)).deal.version).toBe(1);
+
+    button('Log activity').click();
+    await settle();
+    type('Subject', 'Pricing call');
+    type('When', '2026-10-11T08:00');
+    openDialog()
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await settle();
+    expect(wrapper.text()).toContain('Pricing call');
+    expect(fake.store.count('activities')).toBe(1);
   });
 });
 
@@ -299,6 +349,15 @@ describe('pipeline board', () => {
     expect((await fake.service.crm.getDeal(fake.sales, deal.id)).deal.stage.key).toBe('proposal');
     const column = wrapper.findAll('[role="listitem"]')[2] as DOMWrapper<Element>;
     expect(column.text()).toContain('Movable');
+    // The move is announced, and focus follows the card to its new column (WCAG 4.1.3, 2.4.3).
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(document.body.querySelector('[data-testid="announcer"]')?.textContent?.trim()).toBe(
+      'Movable moved to Proposal.'
+    );
+    expect(document.activeElement?.getAttribute('aria-label')).toBe(
+      'Move Movable to another stage'
+    );
+    expect(column.element.contains(document.activeElement)).toBe(true);
   });
 
   it('switches to the list with a URL-backed filter, and hides writes from read-only users', async () => {
@@ -446,7 +505,7 @@ describe('contact picker keyboard selection', () => {
     button('Log activity').click();
     await settle();
     const picker = document.body.querySelector(
-      '.v-dialog input[role="searchbox"]'
+      '.v-dialog input[type="search"]'
     ) as HTMLInputElement;
     picker.focus();
     picker.value = 'Grace';
@@ -578,5 +637,55 @@ describe('next actions and the action stream', () => {
     ).click();
     await settle();
     expect(wrapper.text()).toContain('That action has already changed.');
+    // The row is gone; focus lands on the page heading rather than <body>.
+    expect(document.activeElement?.tagName).toBe('H1');
+  });
+
+  it('sets, cancels, conflicts on, and completes a contact next action from its card', async () => {
+    const fake = await seeded();
+    useApi('sales@example.com', fake);
+    const { wrapper, router } = await mountWithApp(App, { route: `/contacts/${fake.ada.id}` });
+    const card = () => wrapper.findAll('.v-card').find((c) => c.text().startsWith('Next action'))!;
+    expect(card().text()).toContain('No next action set.');
+
+    // Cancel discards the draft without a request.
+    button('Set next action').click();
+    await settle();
+    type('What to do', 'Draft');
+    button('Cancel').click();
+    await settle();
+    expect(card().text()).toContain('No next action set.');
+
+    button('Set next action').click();
+    await settle();
+    type('What to do', 'Call Ada');
+    button('Save next action').click();
+    await settle();
+    expect(card().get('[data-testid="next-action"]').text()).toContain('As soon as possible');
+
+    // Someone else completes it first: Done explains why instead of failing silently.
+    await fake.service.crm.completeContactNextAction(fake.sales, fake.ada.id, 1, {
+      idempotencyKey: 'card-other-done'
+    });
+    button('Done').click();
+    await settle();
+    expect(card().get('[role="alert"]').text()).toContain('This contact has no open next action.');
+
+    // After a reload the card shows the current (empty) state; set a dated one and complete it.
+    await fake.service.crm.setContactNextAction(
+      fake.sales,
+      fake.ada.id,
+      { text: 'Send quote', dueDate: '2026-10-20' },
+      null,
+      { idempotencyKey: 'card-set-dated' }
+    );
+    await router.push('/contacts');
+    await router.push(`/contacts/${fake.ada.id}`);
+    await settle();
+    expect(card().text()).toContain('Send quote');
+    expect(card().text()).not.toContain('As soon as possible');
+    button('Done').click();
+    await settle();
+    expect(card().text()).toContain('No next action set.');
   });
 });

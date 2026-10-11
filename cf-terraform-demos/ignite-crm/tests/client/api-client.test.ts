@@ -101,6 +101,20 @@ describe('ApiClient', () => {
     ]);
   });
 
+  it('treats a redirect to the Access sign-in page as an expired session', async () => {
+    const client = new ApiClient(() =>
+      Promise.resolve(
+        new Response('<!doctype html><title>Sign in</title>', {
+          status: 200,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        })
+      )
+    );
+    const error = await apiError(client.session());
+    expect(error).toMatchObject({ kind: 'unauthenticated', status: 401 });
+    expect(error.message).toContain('sign-in has expired');
+  });
+
   it('rejects a malformed success body before it reaches UI state', async () => {
     const { client } = canned(200, { items: [{ id: 'nope' }], nextCursor: null });
     expect((await apiError(client.contacts({}))).kind).toBe('malformed');

@@ -210,7 +210,12 @@ watch(
     </div>
     <v-row density="compact">
       <v-col cols="12">
-        <v-text-field v-model="draft.title" label="Title" :error-messages="errorsFor('title')" />
+        <v-text-field
+          v-model="draft.title"
+          label="Title"
+          required
+          :error-messages="errorsFor('title')"
+        />
       </v-col>
       <v-col cols="12" sm="6">
         <ContactPicker

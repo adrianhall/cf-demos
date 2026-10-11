@@ -16,9 +16,10 @@ import { mdiNotePlusOutline } from '@mdi/js';
 import type { NoteLinkType, NoteSummary } from '../../shared/api/notes.ts';
 import type { Page } from '../../shared/common/paging.ts';
 import { useLinkSearch } from '../composables/useLinkSearch.ts';
+import { useReturnFocus } from '../composables/useReturnFocus.ts';
 import { useSession } from '../composables/useSession.ts';
 import { useSubmission } from '../composables/useSubmission.ts';
-import { api, type ApiError } from '../services/api-client.ts';
+import { api, ApiError } from '../services/api-client.ts';
 import { type NoteFormValue, toCreateNoteInput } from '../services/note-draft.ts';
 import NoteForm from './NoteForm.vue';
 import NoteList from './NoteList.vue';
@@ -46,6 +47,7 @@ const loading = ref(false);
 const loadError = shallowRef<ApiError | null>(null);
 const warningText = ref<string | null>(null);
 const composing = ref(false);
+useReturnFocus(composing);
 const submission = useSubmission({ forbidden: 'Your role does not allow writing notes.' });
 const linkSearch = useLinkSearch();
 let generation = 0;
@@ -72,7 +74,10 @@ async function load(more = false): Promise<void> {
     }
   } catch (caught) {
     if (current === generation) {
-      loadError.value = caught as ApiError;
+      loadError.value =
+        caught instanceof ApiError
+          ? caught
+          : new ApiError('server', 'Something went wrong while loading notes.', 0);
     }
   } finally {
     if (current === generation) {
@@ -155,7 +160,11 @@ watch(() => [props.record.type, props.record.id, props.initial, props.warning], 
         <v-btn variant="text" @click="load()">Retry</v-btn>
       </template>
     </v-alert>
-    <v-progress-linear v-else-if="loading && notes.length === 0" indeterminate />
+    <v-progress-linear
+      v-else-if="loading && notes.length === 0"
+      indeterminate
+      aria-label="Loading notes"
+    />
     <NoteList
       v-else
       :notes="notes"

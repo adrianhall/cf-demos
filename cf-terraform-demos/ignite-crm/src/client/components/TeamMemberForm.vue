@@ -138,6 +138,7 @@ watch(
       <v-text-field
         v-model="draft.email"
         label="Access e-mail"
+        required
         type="email"
         autocomplete="off"
         hint="The address they sign in to Cloudflare Access with. No e-mail is sent."
@@ -149,6 +150,7 @@ watch(
       <v-text-field
         v-model="draft.displayName"
         label="Display name"
+        required
         counter="100"
         :disabled="submitting"
         :error-messages="errorsFor('displayName')"

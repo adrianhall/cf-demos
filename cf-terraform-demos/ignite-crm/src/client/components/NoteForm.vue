@@ -174,6 +174,7 @@ watch(
     <v-text-field
       v-model="draft.title"
       label="Title"
+      required
       counter="200"
       :disabled="submitting"
       :error-messages="errorsFor('title')"
@@ -182,6 +183,7 @@ watch(
     <MarkdownComposer
       v-model="draft.markdown"
       label="Body"
+      required
       :disabled="submitting"
       :error-messages="errorsFor('markdown')"
     />

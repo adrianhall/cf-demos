@@ -27,15 +27,22 @@ import {
   mdiViewColumn
 } from '@mdi/js';
 import type { Permission } from '../shared/permissions.ts';
+import { useAnnouncement } from './composables/useAnnouncer.ts';
 import { useSession } from './composables/useSession.ts';
 
 const { session, state, error, roleLabel, load, can } = useSession();
 const { mdAndUp } = useDisplay();
 const route = useRoute();
+const announcement = useAnnouncement();
 const router = useRouter();
 const navigating = ref(false);
 const chunkError = ref(false);
 const drawer = ref<boolean | null>(null);
+/**
+ * Whether the navigation drawer is showing. `null` means Vuetify has not decided yet, which it
+ * resolves to open on wide screens and closed on narrow ones.
+ */
+const drawerOpen = computed(() => drawer.value ?? mdAndUp.value);
 const main = ref<{ $el: HTMLElement } | null>(null);
 
 const navigation = [
@@ -60,8 +67,10 @@ const visibleNavigation = computed(() =>
   navigation.filter((item) => !('needs' in item) || can(item.needs))
 );
 
+// `route.path`, not `fullPath`: filter pages rewrite only the query string as the user types or
+// chooses, and stealing focus to the heading in the middle of filtering would undo their work.
 watch(
-  () => route.fullPath,
+  () => route.path,
   async (_now, before) => {
     if (before === undefined) {
       return;
@@ -112,12 +121,17 @@ onMounted(() => void load());
 <template>
   <v-app>
     <a href="#main" class="skip-link">Skip to content</a>
+    <div class="sr-only" role="status" aria-live="polite" data-testid="announcer">
+      {{ announcement }}
+    </div>
     <v-app-bar color="primary" density="comfortable">
       <template #prepend>
         <v-app-bar-nav-icon
           :icon="mdiMenu"
           aria-label="Toggle navigation"
-          @click="drawer = !drawer"
+          aria-controls="main-navigation"
+          :aria-expanded="drawerOpen ? 'true' : 'false'"
+          @click="drawer = !drawerOpen"
         />
       </template>
       <v-app-bar-title>Ignite CRM</v-app-bar-title>
@@ -129,8 +143,8 @@ onMounted(() => void load());
       </template>
     </v-app-bar>
 
-    <v-navigation-drawer v-model="drawer" aria-label="Main navigation">
-      <v-list nav>
+    <v-navigation-drawer id="main-navigation" v-model="drawer" aria-label="Main navigation">
+      <v-list nav role="group" aria-label="Pages">
         <v-list-item
           v-for="item in visibleNavigation"
           :key="item.title"
@@ -182,7 +196,66 @@ onMounted(() => void load());
   </v-app>
 </template>
 
+<style>
+/*
+ * Links inside the app use the theme's strong brand tone instead of the browser default (blue),
+ * which is about 1.6:1 on the dark background. `primary-strong` is 5.6:1 in light and 9.9:1 in dark
+ * (see the theme notes in vuetify.ts). Not scoped: it is a global typography rule.
+ */
+.v-application a:not(.v-btn):not(.v-list-item):not(.v-chip):not(.v-breadcrumbs-item--link) {
+  color: rgb(var(--v-theme-primary-strong));
+}
+
+/*
+ * Required fields carry the native `required` attribute (announced by screen readers; the forms
+ * use `novalidate`, so the browser never blocks submission) and show a visible asterisk after
+ * their label (WCAG 3.3.2). The forms' introductions do not explain the asterisk because the
+ * required state is also announced and every error names the missing field.
+ */
+.v-input:has(input[required], textarea[required]) .v-label::after {
+  /* Empty alternative text: the native `required` state is announced, so the asterisk is visual
+     only and the field's accessible name stays exactly its label. */
+  content: ' *';
+  content: ' *' / '';
+}
+
+/*
+ * Vuetify dims list subtitles with `opacity`, which also dims any link inside them below 4.5:1.
+ * Dim the text colour instead, so a subtitle link keeps its full `primary-strong` contrast.
+ */
+.v-list-item-subtitle {
+  --v-list-item-subtitle-opacity: 1;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+}
+
+/*
+ * The current page in a breadcrumb trail is “disabled” (not a link), and Vuetify fades it with the
+ * disabled opacity on top of high emphasis. Show it as plain medium-emphasis text instead.
+ */
+.v-breadcrumbs-item--disabled {
+  opacity: 1;
+  color: rgba(var(--v-theme-on-background), var(--v-medium-emphasis-opacity));
+}
+
+/* Keep focused controls clear of the sticky app bar (WCAG 2.4.11). */
+html {
+  scroll-padding-top: 80px;
+}
+</style>
+
 <style scoped>
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .skip-link {
   position: absolute;
   left: -10000px;

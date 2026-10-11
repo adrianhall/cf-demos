@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "run-s migrate:local seed:local start:dev",
-    "start:dev": "cf dev --persist-to .cloudflare/state",
+    "start:dev": "cf dev",
     "migrate:local": "node ../../scripts/d1-migrate.ts --cwd . --outputs infra/local-outputs.json --local --dir migrations/data",
     "seed:local": "node ../../scripts/d1-migrate.ts --cwd . --outputs infra/local-outputs.json --local --dir migrations/seed",
     "migrate:remote": "node ../../scripts/d1-migrate.ts --cwd . --outputs infra/outputs.json --dir migrations/data",
@@ -64,6 +64,7 @@
     "vuetify": "4.2.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@cloudflare/vite-plugin": "2.0.0-beta.sha-91c870c02",
     "@cloudflare/vitest-plugin": "1.4.0",
     "@cloudflare/workers-types": "5.20261005.1",

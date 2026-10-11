@@ -9,6 +9,7 @@ import type { ContactSummary } from '../../shared/api/crm.ts';
 import ContactForm, { type ContactDraft } from '../components/ContactForm.vue';
 import ResourceState from '../components/ResourceState.vue';
 import { useResource } from '../composables/useResource.ts';
+import { useReturnFocus } from '../composables/useReturnFocus.ts';
 import { useSession } from '../composables/useSession.ts';
 import { api, ApiError, newIdempotencyKey } from '../services/api-client.ts';
 
@@ -55,6 +56,7 @@ async function loadMore(): Promise<void> {
 }
 
 const dialog = ref(false);
+useReturnFocus(dialog);
 const submitting = ref(false);
 const fieldErrors = ref<Record<string, string>>({});
 const formError = ref<string | null>(null);
@@ -133,7 +135,7 @@ onMounted(() => void page.load());
       :prepend-inner-icon="mdiMagnify"
       clearable
       hint="Name, e-mail, or company"
-      role="searchbox"
+      type="search"
       class="mb-4"
     />
     <ResourceState
@@ -145,7 +147,7 @@ onMounted(() => void page.load());
       :empty-text="search ? 'Try a different search.' : 'Create your first contact to get started.'"
       @retry="page.load"
     >
-      <v-list lines="two" aria-label="Contacts">
+      <v-list lines="two" role="group" aria-label="Contacts">
         <v-list-item
           v-for="contact in items"
           :key="contact.id"

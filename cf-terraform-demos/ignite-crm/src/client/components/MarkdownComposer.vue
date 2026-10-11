@@ -31,6 +31,10 @@ const props = defineProps<{
    * Disable editing (for example, while saving).
    */
   disabled?: boolean;
+  /**
+   * Mark the field required (announced, and shown with an asterisk); validation stays in the form.
+   */
+  required?: boolean;
 }>();
 
 /**
@@ -63,14 +67,25 @@ const messages = computed(() => [
         divided
         :aria-label="`${props.label} mode`"
       >
-        <v-btn value="write" :prepend-icon="mdiPencilOutline">Write</v-btn>
-        <v-btn value="preview" :prepend-icon="mdiEyeOutline">Preview</v-btn>
+        <v-btn
+          value="write"
+          :prepend-icon="mdiPencilOutline"
+          :aria-pressed="mode === 'write' ? 'true' : 'false'"
+          >Write</v-btn
+        >
+        <v-btn
+          value="preview"
+          :prepend-icon="mdiEyeOutline"
+          :aria-pressed="mode === 'preview' ? 'true' : 'false'"
+          >Preview</v-btn
+        >
       </v-btn-toggle>
     </div>
     <v-textarea
       v-show="mode === 'write'"
       v-model="model"
       :label="props.label"
+      :required="props.required"
       :disabled="props.disabled"
       :error-messages="messages"
       rows="8"
@@ -86,7 +101,7 @@ const messages = computed(() => [
       data-testid="markdown-preview"
     >
       <p v-if="model.trim() === ''" class="text-medium-emphasis mb-0">Nothing to preview yet.</p>
-      <MarkdownView v-else :source="model" :label="`${props.label} preview`" tabindex="0" />
+      <MarkdownView v-else :source="model" :label="`${props.label} preview`" focusable />
       <div v-if="messages.length > 0" class="text-error text-body-2 mt-2" role="alert">
         {{ messages[0] }}
       </div>

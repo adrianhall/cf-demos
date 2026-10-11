@@ -25,6 +25,7 @@ import ProjectList from '../components/ProjectList.vue';
 import ResourceState from '../components/ResourceState.vue';
 import { useFormat } from '../composables/useFormat.ts';
 import { useResource } from '../composables/useResource.ts';
+import { useReturnFocus } from '../composables/useReturnFocus.ts';
 import { useSession } from '../composables/useSession.ts';
 import { useSubmission } from '../composables/useSubmission.ts';
 import { api } from '../services/api-client.ts';
@@ -68,6 +69,7 @@ watch(
 const pipeline = shallowRef<Pipeline | null>(null);
 const assignees = shallowRef<UserRef[]>([]);
 const creating = ref(false);
+useReturnFocus(creating);
 const creator = useSubmission({ forbidden: 'Your role does not allow creating deals.' });
 
 /**
@@ -100,6 +102,7 @@ async function createDeal(value: DealFormValue): Promise<void> {
 }
 
 const logging = ref(false);
+useReturnFocus(logging);
 const logger = useSubmission({ forbidden: 'Your role does not allow logging activities.' });
 
 /**

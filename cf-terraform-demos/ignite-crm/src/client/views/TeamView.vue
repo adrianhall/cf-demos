@@ -16,6 +16,7 @@ import ResourceState from '../components/ResourceState.vue';
 import TeamMemberForm from '../components/TeamMemberForm.vue';
 import { useFormat } from '../composables/useFormat.ts';
 import { useResource } from '../composables/useResource.ts';
+import { useReturnFocus } from '../composables/useReturnFocus.ts';
 import { useSession } from '../composables/useSession.ts';
 import { useSubmission } from '../composables/useSubmission.ts';
 import { api, ApiError } from '../services/api-client.ts';
@@ -99,6 +100,7 @@ function replace(member: TeamMember): void {
 }
 
 const dialog = ref<'invite' | 'roles' | null>(null);
+useReturnFocus(computed(() => dialog.value !== null));
 const editing = shallowRef<TeamMember | null>(null);
 const submission = useSubmission({
   forbidden: 'Only an owner can change the team.',
@@ -157,6 +159,7 @@ async function save(value: TeamMemberFormValue): Promise<void> {
 
 const statusError = ref<string | null>(null);
 const confirming = shallowRef<TeamMember | null>(null);
+useReturnFocus(computed(() => confirming.value !== null));
 
 /**
  * Suspend or reactivate after confirmation.

@@ -60,25 +60,49 @@ export interface Formatters {
  * @returns The formatters.
  */
 export function createFormatters(config: DisplayConfiguration): Formatters {
+  // Build each `Intl` formatter once per configuration; constructing them is far costlier than
+  // formatting, and list views format hundreds of values per render.
+  const dateTime = new Intl.DateTimeFormat(config.locale, {
+    dateStyle: config.dateFormat,
+    timeStyle: 'short',
+    timeZone: config.timezone
+  });
+  const date = new Intl.DateTimeFormat(config.locale, {
+    dateStyle: config.dateFormat,
+    timeZone: 'UTC'
+  });
+  const money = new Intl.NumberFormat(config.numberFormat, {
+    style: 'currency',
+    currency: config.currencyCode
+  });
+  const count = new Intl.NumberFormat(config.numberFormat);
   return {
-    dateTime: (iso) =>
-      new Intl.DateTimeFormat(config.locale, {
-        dateStyle: config.dateFormat,
-        timeStyle: 'short',
-        timeZone: config.timezone
-      }).format(new Date(iso)),
-    date: (date) =>
-      new Intl.DateTimeFormat(config.locale, {
-        dateStyle: config.dateFormat,
-        timeZone: 'UTC'
-      }).format(new Date(`${date}T00:00:00.000Z`)),
-    money: (minor) =>
-      new Intl.NumberFormat(config.numberFormat, {
-        style: 'currency',
-        currency: config.currencyCode
-      }).format(minor / 100),
-    count: (value) => new Intl.NumberFormat(config.numberFormat).format(value)
+    dateTime: (iso) => dateTime.format(new Date(iso)),
+    date: (value) => date.format(new Date(`${value}T00:00:00.000Z`)),
+    money: (minor) => money.format(minor / 100),
+    count: (value) => count.format(value)
   };
+}
+
+/**
+ * Formatters per loaded configuration object. A weak map, so a replaced configuration (a session
+ * reload) builds fresh formatters and the old ones can be collected.
+ */
+const cache = new WeakMap<DisplayConfiguration, Formatters>();
+
+/**
+ * Formatters for a configuration, built once and shared.
+ *
+ * @param config The configuration.
+ * @returns Cached formatters.
+ */
+function formattersFor(config: DisplayConfiguration): Formatters {
+  let formatters = cache.get(config);
+  if (formatters === undefined) {
+    formatters = createFormatters(config);
+    cache.set(config, formatters);
+  }
+  return formatters;
 }
 
 /**
@@ -88,7 +112,9 @@ export function createFormatters(config: DisplayConfiguration): Formatters {
  */
 export function useFormat(): Formatters {
   const { configuration } = useSession();
-  const current = (): Formatters => createFormatters(configuration.value ?? FALLBACK);
+  // Read the configuration at call time (it may load after the component mounts), but reuse the
+  // formatters built for it.
+  const current = (): Formatters => formattersFor(configuration.value ?? FALLBACK);
   return {
     dateTime: (iso) => current().dateTime(iso),
     date: (date) => current().date(date),

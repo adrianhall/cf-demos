@@ -204,6 +204,42 @@ items to review at the end. Each entry names the phase that made it.
   Workers were deleted, Terraform destroyed three resources, authenticated `cf` listings showed no
   Ignite CRM Workers or D1 database, and `terraform state list` was empty.
 
+- **Phase 7 — review scope and fixes.** The review-orchestrator reviewed the whole demo (report and
+  per-finding status in [`04-mvp-review.md`](./04-mvp-review.md)). Findings were fixed only where a
+  Phase 7 deliverable called for it: security review (D3), WCAG review (D4), and performance/failure
+  review (D5). Refactor-only findings stay open and are listed below.
+- **Phase 7 — real-browser accessibility gate.** `@axe-core/playwright` 4.13.0 scans 14 pages in
+  light and dark themes at both E2E sizes as part of `pnpm test`, with target-size, 320 px reflow,
+  reduced-motion, and dialog-focus checks. To meet 4.5:1, the theme raises Vuetify's emphasis
+  opacities; a future theme change must keep that scan green.
+- **Phase 7 — CSP allows inline styles.** Vuetify writes its theme as a runtime `<style>` element
+  and sets inline style attributes, so `style-src` includes `'unsafe-inline'`; `script-src` is
+  `'self'` only. `cf dev` does not apply `public/_headers`, so `tests/e2e/csp.spec.ts` injects the
+  committed policy to prove compatibility. HSTS is left to the zone.
+- **Phase 7 — repository-wide dependency pins.** `sharp: 0.35.5` and `shell-quote@<1.11.0: 1.12.0`
+  were added to the root `pnpm-workspace.yaml` `overrides`, so other demos pick them up too. One
+  peer-resolved `sharp@0.35.4` remains in the lockfile under an _optional_ webpack peer chain
+  (vue-router → unplugin → webpack → minimizer-webpack-plugin) that Ignite CRM never installs or
+  runs; two lockfile re-resolutions did not remove it. Remove the pins once upstream depends on the
+  patched versions.
+- **Phase 7 — expired Access session.** A redirected or HTML API response is treated as an expired
+  sign-in, and the SPA offers **Sign in** (a full reload so Access can run its flow) instead of a
+  retry.
+- **Phase 7 — clean-state D1 persistence.** `cf dev`'s Vite delegate no longer forwards
+  `--persist-to` (only mode/port/host/local). Migrations wrote `.cloudflare/e2e-state` but Vite
+  opened `.cloudflare/state`, so clean E2E runs failed every sign-in with a retryable 503. The
+  `cloudflare()` plugin now reads `persistState.path` from `IGNITE_PERSIST_TO` (default
+  `.cloudflare/state`); `e2e-server.ts` sets that variable, and `start:dev` runs `cf dev` without a
+  discarded flag. Verified with clean `.cloudflare/state` and `.cloudflare/e2e-state`: local owner
+  sign-in, both E2E sizes, and full `pnpm test` pass.
+- **Phase 7 — lifecycle rehearsal.** From a clean local state, `pnpm check` and `pnpm test` passed,
+  `pnpm start` served the seeded CRM, and desktop/mobile layouts were inspected. Terraform's
+  pre-deploy plan showed no changes. `pnpm deploy` succeeded; the hostname redirected to Access, but
+  the browser panel could not complete the corporate IdP sign-in, so an authenticated deployed UI
+  smoke test was not possible there. `pnpm teardown` succeeded, deleting both Workers and destroying
+  three Terraform resources. Authenticated `cf` showed no Ignite CRM Workers or D1, and
+  `terraform state list` was empty. The final deploy follows the Phase 7 commit and stays up.
+
 ## Follow-on items
 
 - **CRM record editing — not scheduled in Phases 2–7.** Add contact editing and company editing to
@@ -246,13 +282,13 @@ items to review at the end. Each entry names the phase that made it.
   open deals (`?view=list&status=pending`). Depends on the stage filter above. Make each row label a
   real link (keyboard-reachable, with an accessible name such as "Show deals in Qualified"), and
   test that the filtered list's counts agree with the panel.
-- **Rename "Open total" to "Pipeline total" — not scheduled in Phases 2–7.** In the dashboard's Pipeline
-  panel, relabel the open-deals total row from "Open total" to "Pipeline total", the usual sales term for
-  the value of open opportunities. Because the panel heading is also "Pipeline", review the heading
-  at the same time (for example "Pipeline summary") so the row label and heading do not read as a
-  duplicate to screen-reader users; update the DOM tests that assert the label.
-- **Add "Pipeline this qtr" line to the dashboard's Pipeline panel** (below the pipeline total) - this will 
-  provide the total pipeline for deals that are expected to close this quarter.
+- **Rename "Open total" to "Pipeline total" — not scheduled in Phases 2–7.** In the dashboard's
+  Pipeline panel, relabel the open-deals total row from "Open total" to "Pipeline total", the usual
+  sales term for the value of open opportunities. Because the panel heading is also "Pipeline",
+  review the heading at the same time (for example "Pipeline summary") so the row label and heading
+  do not read as a duplicate to screen-reader users; update the DOM tests that assert the label.
+- **Add "Pipeline this qtr" line to the dashboard's Pipeline panel** (below the pipeline total) -
+  this will provide the total pipeline for deals that are expected to close this quarter.
 - **Add a "Quarterly Pipeline" report to the report set**, covering this quarters pipeline deals and
   where they are in the pipeline (stage).
 
@@ -271,3 +307,29 @@ items to review at the end. Each entry names the phase that made it.
   `d1_migrations`; the health query already excludes it.
 - **Phase 1 — deferred UI.** Deals/activities, projects/tasks, notes, team administration, audit
   viewer, and reports are in Phases 2–6. No active MCP handler is introduced in release one.
+
+### From the Phase 7 review (unfixed; see `04-mvp-review.md`)
+
+- **ARCH-001 / ARCH-002 — shared helper placement.** Move the cursor codec and `ListCriteria` to
+  `data-worker/application/shared/paging.ts`, and `mutationMeta`/`expectedVersion`/`pathId` to one
+  `application-worker/api/preconditions.ts`.
+- **ARCH-003 — generated Data Worker types.** Derive `DataBindings` from `dataWorkerEnv()`, or
+  include the Data Worker's generated types in a tsconfig.
+- **ARCH-004 — cross-module table reads (accepted for MVP).** The CRM timeline reads sales and
+  projects tables through their repository ports; record this in spec §3.1 as the coupling to undo
+  if a module is ever split out.
+- **CODE-004** — report bad `Idempotency-Key`/`If-Match` headers as header problems, not query
+  problems. **CODE-005** — validate replayed idempotent results against the response schema instead
+  of relying on the API tier's `checkResponse`. **CODE-007/008** — fix ContactPicker's duplicated
+  JSDoc and clear its debounce on unmount. **CODE-009** — a clearer error for RPC contract drift in
+  the data-client proxy. **CODE-010** — explicit `Promise<T>` return types on `ApiClient` methods.
+  **CODE-011** — exhaustive `switch` in `link-search.ts`.
+- **SEC-004 (accepted)** — the Access policy admits any authenticated identity (provisioned
+  read-only). Restrict it to a domain or Access group for a real deployment.
+- **SEC-006 (deferred)** — per-user rate limiting, and FTS/prefix search for contact, company, and
+  deal lists, before exposing the app beyond a small team.
+- **A11Y-006 (partly fixed)** — merge ContactPicker's search field and autocomplete into one
+  server-searching `VAutocomplete`, keeping an explicit keyboard Add path.
+- **A11Y-010 (partly fixed)** — confirm before archiving a project from the status select.
+- **Tooling** — run full Semgrep registry packs and CodeQL in CI; the review could only run targeted
+  Semgrep rules and skipped CodeQL.

@@ -128,7 +128,7 @@ watch(
   <v-text-field
     v-model="search"
     :label="`Search ${props.label.toLowerCase()}`"
-    role="searchbox"
+    type="search"
     clearable
     @keydown.enter.stop.prevent="selectFirstResult"
   />
@@ -148,6 +148,16 @@ watch(
     clearable
     no-data-text="No matching contacts"
   />
+  <!-- Announces asynchronous results, which arrive after typing stops (WCAG 4.1.3). -->
+  <div class="text-caption text-medium-emphasis" aria-live="polite" data-testid="picker-status">
+    <template v-if="search.trim() !== '' && !loading">
+      {{
+        availableResults.length === 0
+          ? 'No matching contacts'
+          : `${availableResults.length} matching ${availableResults.length === 1 ? 'contact' : 'contacts'}`
+      }}
+    </template>
+  </div>
   <v-list
     v-if="search.trim() !== ''"
     density="compact"
@@ -164,6 +174,5 @@ watch(
         >
       </template>
     </v-list-item>
-    <v-list-item v-if="!loading && availableResults.length === 0" title="No matching contacts" />
   </v-list>
 </template>

@@ -22,7 +22,7 @@ const format = useFormat();
 </script>
 
 <template>
-  <v-list lines="two" aria-label="Deals">
+  <v-list lines="two" role="group" aria-label="Deals">
     <v-list-item
       v-for="deal in deals"
       :key="deal.id"

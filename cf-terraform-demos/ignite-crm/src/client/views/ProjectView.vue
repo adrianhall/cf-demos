@@ -21,8 +21,10 @@ import {
   TASK_PRIORITY_VIEW,
   TASK_STATUS_LABELS
 } from '../components/taskLabels.ts';
+import { announce } from '../composables/useAnnouncer.ts';
 import { useFormat } from '../composables/useFormat.ts';
 import { useResource } from '../composables/useResource.ts';
+import { focusByLabel, useReturnFocus } from '../composables/useReturnFocus.ts';
 import { useSession } from '../composables/useSession.ts';
 import { useSubmission } from '../composables/useSubmission.ts';
 import { api, ApiError, newIdempotencyKey } from '../services/api-client.ts';
@@ -92,10 +94,13 @@ async function move(task: Task, status: TaskStatus): Promise<void> {
   } finally {
     movingId.value = null;
     await detail.load();
+    // The card was remounted in another column (or left the list): keep focus on its Move button.
+    await focusByLabel(`Move ${task.title} to another status`);
   }
 }
 
 const editing = ref(false);
+useReturnFocus(editing);
 /**
  * The task as it was when the dialog opened: the base the user's edits are measured against.
  */
@@ -181,6 +186,7 @@ async function setStatus(status: ProjectStatus): Promise<void> {
   statusError.value = null;
   try {
     await api.updateProject(current.id, { status }, current.version, newIdempotencyKey());
+    announce(`Project status changed to ${PROJECT_STATUS_VIEW[status].label}.`);
   } catch (caught) {
     statusError.value =
       caught instanceof ApiError && caught.kind === 'forbidden'
@@ -266,8 +272,12 @@ const statusItems = computed(() =>
             <v-card-title class="d-flex flex-wrap align-center ga-2">
               <h2 class="text-h6 flex-grow-1">Tasks</h2>
               <v-btn-toggle v-model="view" mandatory density="compact" aria-label="Task view">
-                <v-btn value="board">Board</v-btn>
-                <v-btn value="table">Table</v-btn>
+                <v-btn value="board" :aria-pressed="view === 'board' ? 'true' : 'false'"
+                  >Board</v-btn
+                >
+                <v-btn value="table" :aria-pressed="view === 'table' ? 'true' : 'false'"
+                  >Table</v-btn
+                >
               </v-btn-toggle>
             </v-card-title>
             <v-card-text>
@@ -363,7 +373,7 @@ const statusItems = computed(() =>
                 label="Project status"
                 :loading="statusSaving"
                 :error-messages="statusError ? [statusError] : []"
-                hint="Archiving needs a manager or owner."
+                hint="Saves as soon as you choose. Archiving makes the project read-only and needs a manager or owner."
                 persistent-hint
                 @update:model-value="setStatus"
               />

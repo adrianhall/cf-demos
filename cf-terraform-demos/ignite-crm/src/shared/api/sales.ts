@@ -11,7 +11,12 @@ import * as v from 'valibot';
 import { DateOnlySchema, TimestampSchema } from '../common/dates.ts';
 import { IdSchema } from '../common/ids.ts';
 import { CursorSchema, MAX_PAGE_SIZE, pageSchema } from '../common/paging.ts';
-import { optionalText, requiredText, SearchTermSchema } from '../validation/fields.ts';
+import {
+  OptionalDateSchema,
+  optionalText,
+  requiredText,
+  SearchTermSchema
+} from '../validation/fields.ts';
 import { HistoryEntrySchema, UserRefSchema } from './crm.ts';
 
 /**
@@ -59,20 +64,6 @@ export const AmountMinorSchema = v.pipe(
  * Most contacts one activity may link.
  */
 export const MAX_ACTIVITY_CONTACTS = 20;
-
-/**
- * Optional calendar date where `null` (or a blank string from a form) means "none".
- */
-const OptionalDateSchema = v.optional(
-  v.nullable(
-    v.pipe(
-      v.string(),
-      v.transform((value) => (value.trim() === '' ? null : value.trim())),
-      v.nullable(DateOnlySchema)
-    )
-  ),
-  null
-);
 
 /**
  * A reference to a contact.

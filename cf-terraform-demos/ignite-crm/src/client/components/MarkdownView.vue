@@ -26,6 +26,12 @@ const props = defineProps<{
    * Accessible name of the rendered region (for example, the note title).
    */
   label: string;
+  /**
+   * Make the rendered region a tab stop, so keyboard users can reach and scroll a long preview. A
+   * prop rather than a passed-through `tabindex`, because this component has several possible root
+   * elements and Vue would silently drop a fallthrough attribute.
+   */
+  focusable?: boolean;
 }>();
 
 const html = shallowRef<string | null>(null);
@@ -65,6 +71,7 @@ watch(() => props.source, render, { immediate: true });
     role="region"
     :aria-label="props.label"
     aria-busy="true"
+    :tabindex="props.focusable ? 0 : undefined"
     data-testid="markdown-loading"
   >
     <v-skeleton-loader type="paragraph" aria-label="Loading note text" />
@@ -76,6 +83,7 @@ watch(() => props.source, render, { immediate: true });
     class="markdown-view text-body-1"
     role="region"
     :aria-label="props.label"
+    :tabindex="props.focusable ? 0 : undefined"
     data-testid="markdown-view"
     v-html="html"
   ></div>

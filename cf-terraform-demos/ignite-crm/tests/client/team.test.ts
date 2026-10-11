@@ -397,6 +397,52 @@ describe('the audit trail', () => {
     expect(findButton('Load more')).toBeUndefined();
   });
 
+  it('filters by type, person, and one record from the URL, and flags redacted metadata', async () => {
+    const fake = seeded();
+    const owner = fake.actor('owner');
+    const company = await fake.service.crm.createCompany(
+      owner,
+      { name: 'Initech' } as never,
+      key()
+    );
+    await fake.service.crm.createCompany(fake.actor('manager'), { name: 'Other' } as never, key());
+    // A row written with a forbidden metadata key (as a buggy writer might) is shown redacted.
+    fake.store.exec(
+      'UPDATE audit_events SET metadata_json = \'{"body":"secret text"}\' WHERE entity_id = ?',
+      company.id
+    );
+    useApi('owner@example.com', fake);
+    const { router, wrapper } = await mountWithApp(App, {
+      route: `/audit?entityType=company&entityId=${company.id}&module=bogus`
+    });
+    const table = () => labelled('Audit events');
+    expect(table().textContent).toContain('Initech');
+    expect(table().textContent).not.toContain('Other');
+    expect(table().textContent).toContain('redacted');
+    expect(document.body.textContent).not.toContain('secret text');
+    // An unknown module in the URL is ignored (the server would otherwise refuse it with a 422,
+    // and no rows would show).
+
+    // Closing the "One record" chip widens to every company.
+    const chip = document.body.querySelector<HTMLButtonElement>('[aria-label="Show every record"]');
+    chip!.click();
+    await settle();
+    expect(table().textContent).toContain('Other');
+
+    const select = (label: string) =>
+      wrapper
+        .findAllComponents({ name: 'VSelect' })
+        .find((candidate) => candidate.props('label') === label) as VueWrapper;
+    select('Person').vm.$emit('update:modelValue', fake.actor('manager').userId);
+    await settle();
+    expect(table().textContent).toContain('Other');
+    expect(table().textContent).not.toContain('Initech');
+    select('Record type').vm.$emit('update:modelValue', 'note');
+    await settle();
+    expect(router.currentRoute.value.query).toMatchObject({ entityType: 'note' });
+    expect(document.body.textContent).toContain('No matching changes');
+  });
+
   it('is hidden from roles without audit.read, and the server refuses them', async () => {
     const fake = seeded();
     useApi('delivery@example.com', fake);

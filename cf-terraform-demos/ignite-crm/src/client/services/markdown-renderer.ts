@@ -176,14 +176,16 @@ const ALLOWED_TAGS = [
 const ALLOWED_ATTR = ['align', 'checked', 'disabled', 'href', 'title', 'type'];
 
 /**
- * Render note Markdown as sanitised HTML.
+ * The final security boundary: sanitise HTML against the note allowlist, as if the parser had a
+ * bug. Exported separately from {@link renderMarkdown} so this second layer is tested on its own
+ * with hostile HTML that the parser itself would never emit.
  *
- * @param source Raw Markdown.
- * @returns HTML safe to insert with `v-html`. External links open in a new tab with `rel="noopener
- *   noreferrer nofollow"`; task-list checkboxes are disabled (read-only).
+ * @param html HTML from the parser (or, in tests, any untrusted HTML).
+ * @returns HTML containing only allowlisted tags and attributes; links with an unsafe target lose
+ *   their `href`, external links gain `target="_blank"` and `rel="noopener noreferrer nofollow"`,
+ *   non-checkbox inputs are removed, and checkboxes are disabled.
  */
-export function renderMarkdown(source: string): string {
-  const html = parser.parse(source) as string;
+export function sanitizeNoteHtml(html: string): string {
   const purifier = DOMPurify();
   purifier.addHook('afterSanitizeAttributes', (node) => {
     if (node.tagName === 'A') {
@@ -202,12 +204,26 @@ export function renderMarkdown(source: string): string {
         return;
       }
       node.setAttribute('disabled', '');
+      // A GFM task box has no <label>; name it by its state so screen readers announce more than
+      // “checkbox” (WCAG 1.3.1, 4.1.2). The item's own text follows it in the list item.
+      node.setAttribute('aria-label', node.hasAttribute('checked') ? 'Done' : 'Not done');
     }
   });
   return purifier.sanitize(html, {
     ALLOWED_TAGS,
-    // `rel`/`target` are added by the hook above after the allowlist has been applied.
-    ALLOWED_ATTR: [...ALLOWED_ATTR, 'rel', 'target'],
+    // `aria-label`/`rel`/`target` are added by the hook above after the allowlist has been applied.
+    ALLOWED_ATTR: [...ALLOWED_ATTR, 'aria-label', 'rel', 'target'],
     ALLOWED_URI_REGEXP: SAFE_URI
   });
+}
+
+/**
+ * Render note Markdown as sanitised HTML.
+ *
+ * @param source Raw Markdown.
+ * @returns HTML safe to insert with `v-html`. External links open in a new tab with `rel="noopener
+ *   noreferrer nofollow"`; task-list checkboxes are disabled (read-only).
+ */
+export function renderMarkdown(source: string): string {
+  return sanitizeNoteHtml(parser.parse(source) as string);
 }

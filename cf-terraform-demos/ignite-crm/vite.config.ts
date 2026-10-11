@@ -31,6 +31,12 @@ export default defineConfig(({ mode }) => ({
     }),
     vue(),
     cloudflare({
+      // Where local resource state lives. `cf dev` does not forward `--persist-to` to the Vite
+      // delegate (it accepts only --mode/--host/--port/--local), so the location is set here. It
+      // must match the directory `scripts/d1-migrate.ts` migrated: `.cloudflare/state` for
+      // `pnpm start`, or the E2E harness's own directory via `IGNITE_PERSIST_TO`
+      // (`scripts/e2e-server.ts`).
+      persistState: { path: process.env.IGNITE_PERSIST_TO ?? '.cloudflare/state' },
       // The Data Worker runs beside the Application Worker in `cf dev` and is emitted as its own
       // Build Output entry by `vite build`, from the same settings `data/cloudflare.config.ts` uses.
       auxiliaryWorkers: [

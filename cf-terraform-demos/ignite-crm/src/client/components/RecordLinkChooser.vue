@@ -177,7 +177,7 @@ watch(
         <v-text-field
           v-model="text"
           :label="`Search ${LINK_TYPE_LABELS[type].toLowerCase()} records`"
-          role="searchbox"
+          type="search"
           :loading="props.loading"
           :disabled="props.disabled"
           clearable

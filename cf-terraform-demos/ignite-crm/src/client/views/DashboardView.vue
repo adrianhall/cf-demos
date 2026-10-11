@@ -146,7 +146,7 @@ onMounted(() => {
 
     <v-card class="mt-6">
       <v-card-title><h2 class="text-h6">Recently updated contacts</h2></v-card-title>
-      <v-list>
+      <v-list role="group" aria-label="Recently updated contacts">
         <v-list-item
           v-for="contact in dashboard.data.value?.recentContacts ?? []"
           :key="contact.id"

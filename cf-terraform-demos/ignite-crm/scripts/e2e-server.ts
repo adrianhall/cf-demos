@@ -67,11 +67,13 @@ await rm(path.join(ROOT, STATE), { recursive: true, force: true });
 await migrate('migrations/data');
 await migrate('migrations/seed');
 
-const server = spawn(
-  path.join(ROOT, 'node_modules', '.bin', 'cf'),
-  ['dev', '--persist-to', STATE, '--port', port],
-  { cwd: ROOT, stdio: 'inherit' }
-);
+// `cf dev` ignores `--persist-to`; `vite.config.ts` reads the state directory from this variable
+// so the dev server opens the same database the migrations above were applied to.
+const server = spawn(path.join(ROOT, 'node_modules', '.bin', 'cf'), ['dev', '--port', port], {
+  cwd: ROOT,
+  stdio: 'inherit',
+  env: { ...process.env, IGNITE_PERSIST_TO: STATE }
+});
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => server.kill(signal));
 }

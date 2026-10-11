@@ -596,12 +596,52 @@ describe('projects list and my work', () => {
     useApi('delivery@example.com', fake);
     const { wrapper } = await mountWithApp(App, { route: '/my-work' });
     expect(wrapper.text()).toContain('Kickoff call');
+    expect(wrapper.get('[aria-label="My tasks"] .text-error').text()).toContain('(overdue)');
     clickLabelled('Move Kickoff call to another status');
     await settle();
     chooseMenuItem('Done');
     await settle();
     expect(wrapper.text()).toContain('Kickoff call moved to Done.');
     expect(wrapper.text()).toContain('Nothing assigned to you');
+  });
+
+  it('explains a my-work move that lost a version race, then lets the notice be dismissed', async () => {
+    const fake = await withProject();
+    useApi('delivery@example.com', fake);
+    const { wrapper } = await mountWithApp(App, { route: '/my-work' });
+    // Not overdue on its due date.
+    expect(wrapper.find('[aria-label="My tasks"] .text-error').exists()).toBe(false);
+    await fake.service.projects.updateTask(
+      fake.delivery,
+      fake.task.id,
+      { priority: 'low' },
+      fake.task.version,
+      key()
+    );
+    clickLabelled('Move Kickoff call to another status');
+    await settle();
+    chooseMenuItem('In review');
+    await settle();
+    expect(wrapper.text()).toContain('Kickoff call was changed by someone else.');
+    // The list reloaded with the other person's change.
+    expect(wrapper.text()).toContain('Low');
+    const close = wrapper.get('[aria-live="polite"] .v-alert button');
+    await close.trigger('click');
+    await settle();
+    expect(wrapper.text()).not.toContain('was changed by someone else');
+  });
+
+  it('opens the project list searched from the URL, ignoring an unknown status', async () => {
+    const fake = await withProject();
+    useApi('readonly@example.com', fake);
+    const { wrapper } = await mountWithApp(App, { route: '/projects?q=engine&status=bogus' });
+    expect(wrapper.text()).toContain('Engine renewal');
+    const search = wrapper
+      .findAllComponents({ name: 'VTextField' })
+      .find((field) => field.props('label') === 'Search projects')!;
+    expect(search.props('modelValue')).toBe('engine');
+    const none = await mountWithApp(App, { route: '/projects?q=zzz-nothing' });
+    expect(none.wrapper.text()).toContain('No matching projects');
   });
 
   it('shows projects on the company and contact timelines', async () => {

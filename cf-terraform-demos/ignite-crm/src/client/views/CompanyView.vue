@@ -86,7 +86,7 @@ watch(
           </v-card>
           <v-card>
             <v-card-title><h2 class="text-h6">Contacts</h2></v-card-title>
-            <v-list aria-label="Company contacts">
+            <v-list role="group" aria-label="Company contacts">
               <v-list-item
                 v-for="contact in detail.data.value.contacts"
                 :key="contact.id"

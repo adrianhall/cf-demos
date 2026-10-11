@@ -171,6 +171,7 @@ watch(
         <v-text-field
           v-model="draft.subject"
           label="Subject"
+          required
           :error-messages="errorsFor('subject')"
         />
       </v-col>

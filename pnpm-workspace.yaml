@@ -11,3 +11,9 @@ allowBuilds:
   core-js-pure: false
 minimumReleaseAgeExclude:
   - agents@0.27.0
+# Security pins for transitive dev tooling (Ignite CRM Phase 7 review, SEC-002/SEC-003). Neither
+# package reaches a deployed bundle: sharp comes through miniflare/@vercel/og, and shell-quote
+# through npm-run-all2. Remove a pin once its parent depends on the patched version itself.
+overrides:
+  sharp: 0.35.5
+  shell-quote@<1.11.0: 1.12.0

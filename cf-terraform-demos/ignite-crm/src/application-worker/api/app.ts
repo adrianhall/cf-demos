@@ -1,7 +1,7 @@
 /**
  * @file The API module's Hono application factory. Middleware order matters and reads top to bottom
- *   as the request's path: logging → request id → Access verification (which also scrubs smuggled
- *   identity) → same-origin and content-type protections → data-service injection → routes. The
+ *   as the request's path: logging → security headers → request id → identity-header scrub → Access
+ *   verification → same-origin and content-type protections → data-service injection → routes. The
  *   data service is injected rather than constructed here, so tests run the same app against the
  *   fake Data Worker.
  */
@@ -18,7 +18,13 @@ import { DisplayConfigurationSchema } from '../../shared/api/configuration.ts';
 import { HealthSchema, SessionSchema } from '../../shared/api/session.ts';
 import type { DataService } from '../../shared/data-service/contract.ts';
 import { actorOf, type ApiEnv } from './context.ts';
-import { jsonOnly, requestId, sameOrigin } from './middleware/protections.ts';
+import {
+  jsonOnly,
+  requestId,
+  sameOrigin,
+  scrubIdentityHeaders,
+  securityHeaders
+} from './middleware/protections.ts';
 import { checkResponse, mapServiceError } from './problems.ts';
 import { crmRoutes } from './routes/crm.ts';
 import { notesRoutes } from './routes/notes.ts';
@@ -55,7 +61,9 @@ export function createApiApp(options: ApiAppOptions): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
 
   app.use(cloudflareLogger());
+  app.use(securityHeaders());
   app.use(requestId());
+  app.use(scrubIdentityHeaders());
   app.use(options.access);
   app.use(sameOrigin());
   app.use(jsonOnly());

@@ -125,6 +125,25 @@ export interface D1Port extends D1Reader {
 const GUARD_MARKER = 'IGNITE_TX_GUARD:';
 
 /**
+ * Every reason a guard can carry.
+ */
+const GUARD_REASONS: ReadonlySet<string> = new Set<GuardReason>([
+  'CONFLICT',
+  'VERSION_MISMATCH',
+  'NOT_FOUND'
+]);
+
+/**
+ * Whether parsed text is a known guard reason.
+ *
+ * @param value Text parsed from a D1 error message.
+ * @returns `true` when it is one of {@link GUARD_REASONS}.
+ */
+function isGuardReason(value: string | undefined): value is GuardReason {
+  return value !== undefined && GUARD_REASONS.has(value);
+}
+
+/**
  * Translate a D1 failure into a service error.
  *
  * Exported so the Workers-runtime suite can prove each translation against real D1 messages.
@@ -136,8 +155,13 @@ export function translateD1Error(error: unknown): Error {
   const message = error instanceof Error ? error.message : String(error);
   const guard = message.indexOf(GUARD_MARKER);
   if (guard !== -1) {
-    const reason = message.slice(guard + GUARD_MARKER.length).split(/[^A-Z_]/u)[0] as GuardReason;
-    return serviceError(reason, guardMessage(reason));
+    const reason = message.slice(guard + GUARD_MARKER.length).split(/[^A-Z_]/u)[0];
+    // Only reasons this port itself queues are trusted; anything else (a truncated or altered
+    // message) fails closed as a retryable dependency failure rather than an arbitrary code.
+    if (isGuardReason(reason)) {
+      return serviceError(reason, guardMessage(reason));
+    }
+    return serviceError('DEPENDENCY_FAILURE', 'The database is temporarily unavailable.');
   }
   if (message.includes('UNIQUE constraint failed')) {
     return serviceError('CONFLICT', 'A record with the same unique value already exists.');

@@ -71,9 +71,9 @@ describe('RecordLinkChooser', () => {
     const { wrapper, onSearch } = mountChooser();
     vi.advanceTimersByTime(300);
     expect(onSearch).toHaveBeenLastCalledWith('contact', '');
-    await wrapper.get('input[role="searchbox"]').setValue('  ad ');
+    await wrapper.get('input[type="search"]').setValue('  ad ');
     vi.advanceTimersByTime(100);
-    await wrapper.get('input[role="searchbox"]').setValue('  ada ');
+    await wrapper.get('input[type="search"]').setValue('  ada ');
     vi.advanceTimersByTime(300);
     expect(onSearch).toHaveBeenLastCalledWith('contact', 'ada');
     expect(onSearch).toHaveBeenCalledTimes(2);
@@ -87,7 +87,7 @@ describe('RecordLinkChooser', () => {
     expect(model.value).toEqual([ADA]);
     expect(wrapper.find('button[aria-label="Link contact Ada"]').exists()).toBe(false);
     // Enter in the search adds the first remaining result instead of submitting a form.
-    const searchbox = wrapper.get('input[role="searchbox"]');
+    const searchbox = wrapper.get('input[type="search"]');
     await searchbox.trigger('keydown', { key: 'Enter' });
     expect(model.value).toEqual([ADA, BEN]);
     expect(wrapper.get('[data-testid="link-results"]').text()).toContain(
@@ -133,7 +133,7 @@ describe('RecordLinkChooser', () => {
     const { wrapper } = mountChooser({ disabled: true }, [ADA]);
     await flushPromises();
     expect(wrapper.get('fieldset').attributes()).toHaveProperty('disabled');
-    expect(wrapper.get('input[role="searchbox"]').attributes()).toHaveProperty('disabled');
+    expect(wrapper.get('input[type="search"]').attributes()).toHaveProperty('disabled');
   });
 });
 

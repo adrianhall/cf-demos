@@ -10,10 +10,12 @@ design in [`01-specification.md`](../../specs/ignite-crm/01-specification.md), a
 in [`02-implementation.md`](../../specs/ignite-crm/02-implementation.md). Decisions made during
 implementation are recorded in [`03-follow-ons.md`](../../specs/ignite-crm/03-follow-ons.md).
 
-**Current increment: Phase 6** — the complete first-release browser workflows: customer context,
-sales, won-deal conversion to delivery, multi-linked notes and search, team administration and
-audit, and pipeline and delivery reports, in a responsive, keyboard-operable SPA. Phase 7
-(hardening) is next.
+**Status: first release (Phases 1–7 complete).** Customer context, sales, won-deal conversion to
+delivery, multi-linked notes and search, team administration and audit, and pipeline and delivery
+reports, in a responsive, keyboard-operable SPA that passes an automated WCAG 2.2 AA scan in both
+themes. The Phase 7 review and its per-finding status are in
+[`04-mvp-review.md`](../../specs/ignite-crm/04-mvp-review.md); a guided end-to-end walkthrough is in
+[`DEMO.md`](./DEMO.md).
 
 **Quick review:** `pnpm install` at the repository root, then `pnpm start` here and sign in as
 `owner@example.com`. Open a contact (customer overview and timeline), a deal (**Mark won/lost**
@@ -102,7 +104,8 @@ the same write set as the business change.
 - The Application Worker **re-verifies the Access JWT and its exact audience** on every `/api`
   request (`@demos/worker-common`'s `createAccessMiddleware`). Development tokens are only accepted
   when `import.meta.env.DEV` — statically `false` in production builds.
-- Identity is taken **only** from the verified JWT; inbound identity headers are ignored and request
+- Identity is taken **only** from the verified JWT. Client copies of edge identity headers are
+  deleted by one named function (`withoutIdentityHeaders`) before Access verification, and request
   bodies are `strictObject` schemas, so an `ownerId` cannot be smuggled in.
 - **RBAC in the Data Worker**: every use case asks the Permissions module to authorize; the SPA's
   capability hints only hide controls. Permission storage failures fail closed (503, retryable).
@@ -114,6 +117,17 @@ the same write set as the business change.
 - All SQL is constant text with bound parameters; search escapes `LIKE` wildcards.
 - Errors are RFC 9457 `application/problem+json` with a stable `code`, `requestId`, and `retryable`;
   internal errors never leak detail or stacks in production.
+- **Security headers.** Every API response carries `Content-Security-Policy: default-src 'none'`,
+  `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
+  The SPA's assets get a page CSP (`script-src 'self'`; inline styles allowed for Vuetify's runtime
+  theme) from `public/_headers`. `tests/e2e/csp.spec.ts` renders the SPA under that exact policy
+  with no violations. Enable HSTS on the zone (SSL/TLS → Edge Certificates); it is not an asset
+  header.
+- **Expired sessions.** When Access redirects an expired session's API call to its login page, the
+  SPA says "Please sign in again" and offers a reload rather than a misleading retry.
+- **Access breadth (accepted).** Any identity the team's IdPs can authenticate is admitted, then
+  provisioned read-only. For a real deployment, restrict the Access policy in `infra/access.tf` to
+  your email domain or an Access group.
 
 ## Prerequisites
 
@@ -157,13 +171,13 @@ repository migration helper applies it with `--local` only.
 
 ## Tests and coverage
 
-| Project       | Runs in        | Covers                                                                                                    |
-| ------------- | -------------- | --------------------------------------------------------------------------------------------------------- |
-| `unit`        | Node           | Schemas, domain, use cases over in-memory ports, Hono app over the fake                                   |
-| `client`      | jsdom          | API client, views and components with a real `createVuetify()`                                            |
-| `contract`    | Node           | Shared Data Worker contract suite against the in-memory fake                                              |
-| `integration` | workerd (30 s) | Same contract suite against the real `DataEntrypoint` over RPC + D1, D1 port guards, full system journeys |
-| `e2e`         | Chromium       | Playwright: both Workers under `cf dev`, local D1, local Access login, desktop and mobile (90 s per test) |
+| Project       | Runs in        | Covers                                                                                                                                    |
+| ------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `unit`        | Node           | Schemas, domain, use cases over in-memory ports, Hono app over the fake                                                                   |
+| `client`      | jsdom          | API client, views and components with a real `createVuetify()`                                                                            |
+| `contract`    | Node           | Shared Data Worker contract suite against the in-memory fake                                                                              |
+| `integration` | workerd (30 s) | Same contract suite against the real `DataEntrypoint` over RPC + D1, D1 port guards, full system journeys                                 |
+| `e2e`         | Chromium       | Playwright: both Workers under `cf dev`, local D1, local Access login, desktop and mobile (90 s per test): journeys, axe WCAG 2.2 AA, CSP |
 
 The fake Data Worker (`tests/fakes`) composes the **real** application services and SQL repositories
 with an in-memory SQLite port, and passes the same contract suite as the real one. In the
@@ -175,12 +189,13 @@ excluded. The report is written to `coverage/`.
 
 The Playwright journeys (`tests/e2e`, `playwright.config.ts`) run offline. `scripts/e2e-server.ts`
 recreates a dedicated `.cloudflare/e2e-state`, applies the data and local seed migrations, and
-starts `cf dev` on port 5199, so a run never touches your `pnpm start` data. They cover identity →
-contact/company → deal/activity → win and convert → task (moved with the keyboard status menu) →
-multi-linked note and search → customer timeline → audit → reports, an owner changing a teammate's
-role, and keyboard skip-link/navigation focus, each at 1440 × 900 and on a Pixel 7. The browser is
-the Chromium build bundled with `@playwright/test` (`pnpm exec playwright install chromium` once on
-a new machine).
+starts `cf dev` on port 5199. `vite.config.ts` selects that directory using `IGNITE_PERSIST_TO`, so
+the dev server opens the same database the migrations wrote without touching your `pnpm start` data.
+The journeys cover identity → contact/company → deal/activity → win and convert → task (moved with
+the keyboard status menu) → multi-linked note and search → customer timeline → audit → reports, an
+owner changing a teammate's role, and keyboard skip-link/navigation focus, each at 1440 × 900 and on
+a Pixel 7. The browser is the Chromium build bundled with `@playwright/test`
+(`pnpm exec playwright install chromium` once on a new machine).
 
 ## Configuration
 
@@ -489,17 +504,18 @@ builds in a `bundles` mode that reads the committed placeholder outputs, so it r
 checkout; the emitted code is the same as a production build. The full per-file report is written to
 the ignored `.cloudflare/bundle-report.json`.
 
-| Artifact                    | Before Phase 6 | After Phase 6 | gzip after |
-| --------------------------- | -------------: | ------------: | ---------: |
-| SPA entry chunk             |       735.8 kB |      427.8 kB |   139.2 kB |
-| SPA JavaScript (all chunks) |       735.8 kB |      768.3 kB |   264.1 kB |
-| `markdown-renderer` chunk   |       (inline) |       74.9 kB |    25.1 kB |
-| SPA CSS                     |       357.6 kB |      374.4 kB |    50.6 kB |
-| Application Worker          |       294.4 kB |      305.6 kB |    77.3 kB |
-| Data Worker                 |       276.1 kB |      287.1 kB |    65.4 kB |
+| Artifact                    | Before Phase 6 | After Phase 6 | Release (Phase 7) | gzip (release) |
+| --------------------------- | -------------: | ------------: | ----------------: | -------------: |
+| SPA entry chunk             |       735.8 kB |      427.8 kB |          428.5 kB |       139.5 kB |
+| SPA JavaScript (all chunks) |       735.8 kB |      768.3 kB |          772.6 kB |       265.8 kB |
+| `markdown-renderer` chunk   |       (inline) |       74.9 kB |           75.0 kB |        24.7 kB |
+| SPA CSS                     |       357.6 kB |      374.4 kB |          375.1 kB |        50.9 kB |
+| Application Worker          |       294.4 kB |      305.6 kB |          307.8 kB |        78.2 kB |
+| Data Worker                 |       276.1 kB |      287.1 kB |          287.3 kB |        65.5 kB |
 
 The entry chunk is what every first visit downloads; Markdown and the other views now arrive only
-when used. Total JavaScript grew slightly with Phase 6's own features.
+when used. Total JavaScript grew slightly with Phase 6's own features; Phase 7's hardening
+(announcer, focus management, security headers) added under 1% to any artifact.
 
 ## MCP deferral
 
@@ -508,12 +524,47 @@ no MCP handler, OAuth Worker, or MCP tests. The path is deliberately absent from
 Worker's `runWorkerFirst` list, so it is not routed to Worker code. The Data Worker contract is the
 seam a later MCP module would call, with the same RBAC.
 
-## Known limitations (Phases 1–6)
+## Phase 7: hardening
+
+- **Coverage.** Every authored `src` runtime file is at ≥ 80% statements, branches, functions, and
+  lines (not just the total). Gaps were closed through public interfaces, with no coverage
+  exclusions; overall 97.4% statements, 91.0% branches, 95.6% functions, 97.4% lines over 542 Vitest
+  tests, plus 20 Playwright checks.
+- **Corner cases.** `tests/unit/edge-cases.test.ts`, `tests/client/drafts-and-boundaries.test.ts`,
+  and `tests/unit/notes/notes-repository.test.ts` cover: deleted cursor rows and exactly-full last
+  pages; Unicode names and UTF-16 length limits; two writers holding one version; idempotent replay
+  after later edits; primary contacts moving company between read and commit; a failure at every
+  statement of a write set leaving no partial rows; RPC error envelopes surviving structured
+  cloning; one slow RPC timing out without affecting another; tombstoned note links; and the
+  Markdown sanitiser on its own against hostile HTML.
+- **Accessibility.** `tests/e2e/accessibility.spec.ts` runs axe-core (WCAG 2.0–2.2 A/AA) on 14 pages
+  in the light and dark themes at both sizes. It also checks that dialogs return focus to their
+  opener, 24 px targets, reflow at 320 CSS px, and reduced motion. Fixes include themed link colour,
+  emphasis opacities raised to ≥ 4.5:1, focus return for every dialog, a shared polite announcer for
+  moves and completions, focus that follows a moved card, `aria-pressed` toggles, `aria-expanded` on
+  the drawer, marked required fields, named task checkboxes, valid list roles, and a 404 `h1`.
+- **Security.** Response security headers and a page CSP, an identity-header scrub, expired-session
+  handling, guard-reason validation in the D1 error translator, generic messages for unexpected
+  client errors, and pinned patched versions of two vulnerable dev-tool dependencies.
+- **Performance and failure.** Median local API latency (`pnpm start`, seeded data, warm): 5–7 ms
+  for lists, the dashboard, reports, search, and audit, and about 15 ms for the customer overview
+  (two parallel RPC reads). Each use case issues a fixed number of bounded queries (no per-row
+  loops), and `Intl` formatters are built once per configuration. Data Worker outages are exercised
+  as safe, retryable 503s (`tests/unit/api/worker-entry.test.ts`, `tests/unit/api/app.test.ts`). No
+  MCP, OAuth, Durable Object, R2, or Queue dependency exists; Vuetify is the only component or CSS
+  framework, and its registration is checked against the templates.
+
+## Known limitations (first release)
 
 - Notes cannot yet be deleted, task-list checkboxes are read-only (edit the Markdown to tick one),
   and note-to-note links are not part of release one. Standalone project creation, task deletion,
   and drag/drop are not part of release one; projects are created from won deals.
 - Reports are on-screen only; CSV export (a "could have") is not in release one.
+- List search for contacts, companies, and deals uses `LIKE '%term%'` within a page limit and has no
+  per-user rate limiting. That is fine for a small team, but add FTS and rate limiting before wider
+  exposure.
+- Unfixed review items (mostly helper placement and typing polish) are listed in
+  [`03-follow-ons.md`](../../specs/ignite-crm/03-follow-ons.md).
 - Contact/company editing and the personal profile/menu are recorded in
   `specs/ignite-crm/03-follow-ons.md`; this phase adds project/task editing alongside deal editing.
   The broader live client-side validation and phone-number normalization remain follow-ons.

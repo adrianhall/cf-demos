@@ -106,7 +106,7 @@ onMounted(() => void page.load());
           :prepend-inner-icon="mdiMagnify"
           clearable
           hint="Project, company, or contact"
-          role="searchbox"
+          type="search"
         />
       </v-col>
       <v-col cols="12" sm="4">
@@ -129,7 +129,7 @@ onMounted(() => void page.load());
       empty-text="Win a deal, then use Convert to project on the deal page."
       @retry="page.load"
     >
-      <v-list lines="two" aria-label="Projects">
+      <v-list lines="two" role="group" aria-label="Projects">
         <v-list-item
           v-for="project in items"
           :key="project.id"

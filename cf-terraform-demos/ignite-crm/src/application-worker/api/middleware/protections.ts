@@ -12,6 +12,81 @@ import type { ApiEnv } from '../context.ts';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**
+ * Client-controllable request headers that carry identity at the Cloudflare edge. This Worker never
+ * reads them — identity comes only from the verified Access JWT — but they are removed anyway so no
+ * later code (or a future handler forwarding the request to the Data Worker) can mistake a client's
+ * copy for a verified value.
+ */
+export const IDENTITY_HEADERS: readonly string[] = [
+  'cf-access-authenticated-user-email',
+  'cf-access-authenticated-user-id',
+  'x-authenticated-user-email'
+];
+
+/**
+ * Return a copy of request headers with every {@link IDENTITY_HEADERS} entry deleted. Header names
+ * are case-insensitive, so `CF-ACCESS-AUTHENTICATED-USER-EMAIL` is removed too. The one place this
+ * deletion happens, so it is tested once (`tests/unit/api/app.test.ts`).
+ *
+ * @param headers Incoming request headers.
+ * @returns New headers without identity headers.
+ */
+export function withoutIdentityHeaders(headers: Headers): Headers {
+  const clean = new Headers(headers);
+  for (const name of IDENTITY_HEADERS) {
+    clean.delete(name);
+  }
+  return clean;
+}
+
+/**
+ * Replace the request with one whose identity headers are scrubbed, before Access verification
+ * stores the trusted identity (specification §11). The Access JWT header and cookie are kept.
+ *
+ * @returns The middleware.
+ */
+export function scrubIdentityHeaders(): MiddlewareHandler<ApiEnv> {
+  return async (context, next) => {
+    const original = context.req.raw;
+    if (IDENTITY_HEADERS.some((name) => original.headers.has(name))) {
+      context.req.raw = new Request(original, {
+        headers: withoutIdentityHeaders(original.headers)
+      });
+    }
+    await next();
+  };
+}
+
+/**
+ * Headers set on every API response. JSON responses are never meant to render, frame, or leak a
+ * referrer, so the policy is the strictest possible; the SPA's own page policy lives in
+ * `public/_headers`, because static assets are served before Worker code runs.
+ */
+export const API_SECURITY_HEADERS: Readonly<Record<string, string>> = {
+  'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  // Responses are per user and per request; no shared cache may keep them.
+  'Cache-Control': 'no-store'
+};
+
+/**
+ * Add {@link API_SECURITY_HEADERS} to every API response, including error responses produced by the
+ * error handler (it runs inside `next()`).
+ *
+ * @returns The middleware.
+ */
+export function securityHeaders(): MiddlewareHandler<ApiEnv> {
+  return async (context, next) => {
+    await next();
+    for (const [name, value] of Object.entries(API_SECURITY_HEADERS)) {
+      context.res.headers.set(name, value);
+    }
+  };
+}
+
+/**
  * Assign a request identifier and echo it as `X-Request-Id`.
  *
  * The identifier is always generated here; a client-supplied `X-Request-Id` is ignored so a caller

@@ -6,6 +6,7 @@
  */
 
 import * as v from 'valibot';
+import { DateOnlySchema } from '../common/dates.ts';
 
 /**
  * Schema for an `Idempotency-Key` header value: 8–128 printable, header-safe characters.
@@ -108,4 +109,19 @@ export const SearchTermSchema = v.pipe(
   v.trim(),
   v.minLength(1, 'Search term must not be empty.'),
   v.maxLength(100, 'Search term must be at most 100 characters.')
+);
+
+/**
+ * Optional calendar date where `null`, an omitted value, or a blank string from a form all mean
+ * "none". Surrounding whitespace is trimmed before the `YYYY-MM-DD` check.
+ */
+export const OptionalDateSchema = v.optional(
+  v.nullable(
+    v.pipe(
+      v.string(),
+      v.transform((value) => (value.trim() === '' ? null : value.trim())),
+      v.nullable(DateOnlySchema)
+    )
+  ),
+  null
 );

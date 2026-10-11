@@ -7,8 +7,10 @@ import { computed, onMounted, ref } from 'vue';
 import type { ActionItem, Urgency } from '../../shared/api/sales.ts';
 import ActionStreamRow from '../components/ActionStreamRow.vue';
 import ResourceState from '../components/ResourceState.vue';
+import { announce } from '../composables/useAnnouncer.ts';
 import { useFormat } from '../composables/useFormat.ts';
 import { useResource } from '../composables/useResource.ts';
+import { focusPageHeading } from '../composables/useReturnFocus.ts';
 import { useSession } from '../composables/useSession.ts';
 import { api, ApiError, newIdempotencyKey } from '../services/api-client.ts';
 
@@ -56,12 +58,15 @@ async function complete(item: ActionItem): Promise<void> {
         contact.nextAction.version,
         newIdempotencyKey()
       );
+      announce(`${item.text} for ${item.contact.displayName} marked done.`);
     }
   } catch (caught) {
     actionError.value = caught instanceof ApiError ? caught.message : 'Could not complete it.';
   } finally {
     busyId.value = null;
     await stream.load();
+    // The row is gone; put focus on the page heading rather than letting it fall to <body>.
+    focusPageHeading();
   }
 }
 

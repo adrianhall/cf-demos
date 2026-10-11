@@ -51,7 +51,7 @@ onMounted(() => void page.load());
       label="Search companies"
       :prepend-inner-icon="mdiMagnify"
       clearable
-      role="searchbox"
+      type="search"
       class="mb-4"
     />
     <ResourceState
@@ -63,7 +63,7 @@ onMounted(() => void page.load());
       empty-text="Companies are created automatically when you add a contact with a company name."
       @retry="page.load"
     >
-      <v-list lines="two" aria-label="Companies">
+      <v-list lines="two" role="group" aria-label="Companies">
         <v-list-item
           v-for="company in items"
           :key="company.id"

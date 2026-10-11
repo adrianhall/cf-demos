@@ -19,6 +19,7 @@ import NotesCard from '../components/NotesCard.vue';
 import ResourceState from '../components/ResourceState.vue';
 import { useFormat } from '../composables/useFormat.ts';
 import { useResource } from '../composables/useResource.ts';
+import { useReturnFocus } from '../composables/useReturnFocus.ts';
 import { useSession } from '../composables/useSession.ts';
 import { useSubmission } from '../composables/useSubmission.ts';
 import { api } from '../services/api-client.ts';
@@ -46,6 +47,7 @@ watch(
 const pipeline = shallowRef<Pipeline | null>(null);
 const assignees = shallowRef<UserRef[]>([]);
 const editing = ref(false);
+useReturnFocus(editing);
 /**
  * The deal as it was when the editor opened: the base the user's edits are measured against.
  */
@@ -113,6 +115,7 @@ async function reloadLatest(): Promise<void> {
 }
 
 const converting = ref(false);
+useReturnFocus(converting);
 const converter = useSubmission({ forbidden: 'Your role does not allow converting deals.' });
 const conversion = ref({ name: '', leadId: '', targetDate: '' });
 const canConvert = computed(
@@ -169,6 +172,7 @@ async function convert(): Promise<void> {
 }
 
 const closing = ref(false);
+useReturnFocus(closing);
 const closer = useSubmission({ forbidden: 'Your role does not allow closing deals.' });
 const outcome = ref<'won' | 'lost'>('won');
 const convertOnWin = ref(true);
@@ -227,6 +231,7 @@ async function closeDeal(): Promise<void> {
 }
 
 const logging = ref(false);
+useReturnFocus(logging);
 const logger = useSubmission({ forbidden: 'Your role does not allow logging activities.' });
 
 /**

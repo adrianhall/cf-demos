@@ -31,7 +31,7 @@ function openTasks(project: Project): number {
 </script>
 
 <template>
-  <v-list lines="two" aria-label="Projects">
+  <v-list lines="two" role="group" aria-label="Projects">
     <v-list-item
       v-for="project in projects"
       :key="project.id"

@@ -162,4 +162,20 @@ describe('D1Adapter', () => {
   it('translates non-Error values', () => {
     expect(translateD1Error('boom')).toMatchObject({ code: 'DEPENDENCY_FAILURE' });
   });
+
+  it('trusts only known guard reasons and fails closed on anything else', () => {
+    expect(translateD1Error(new Error('D1_ERROR: IGNITE_TX_GUARD:NOT_FOUND'))).toMatchObject({
+      code: 'NOT_FOUND'
+    });
+    for (const message of [
+      'D1_ERROR: IGNITE_TX_GUARD:FORBIDDEN',
+      'D1_ERROR: IGNITE_TX_GUARD:',
+      'D1_ERROR: IGNITE_TX_GUARD:internal'
+    ]) {
+      expect(translateD1Error(new Error(message))).toMatchObject({
+        code: 'DEPENDENCY_FAILURE',
+        retryable: true
+      });
+    }
+  });
 });

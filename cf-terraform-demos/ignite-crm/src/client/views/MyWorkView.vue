@@ -11,6 +11,7 @@ import ResourceState from '../components/ResourceState.vue';
 import { TASK_PRIORITY_VIEW, TASK_STATUS_LABELS } from '../components/taskLabels.ts';
 import { useFormat } from '../composables/useFormat.ts';
 import { useResource } from '../composables/useResource.ts';
+import { focusByLabel } from '../composables/useReturnFocus.ts';
 import { useSession } from '../composables/useSession.ts';
 import { api, ApiError, newIdempotencyKey } from '../services/api-client.ts';
 
@@ -53,6 +54,8 @@ async function move(task: Task, status: TaskStatus): Promise<void> {
   } finally {
     movingId.value = null;
     await work.load();
+    // The card was remounted in another column (or left the list): keep focus on its Move button.
+    await focusByLabel(`Move ${task.title} to another status`);
   }
 }
 

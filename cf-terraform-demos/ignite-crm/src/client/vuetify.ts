@@ -98,6 +98,15 @@ const igniteLight: ThemeDefinition = {
     'info': '#3B4FCC',
     'warning': '#8A5100',
     'success': '#1B6E2D'
+  },
+  // Vuetify's default emphasis opacities (0.60 medium, 0.38 disabled) blend `on-surface` to about
+  // 4.4:1 and 2.1:1 on our warm background — below WCAG 1.4.3 for subtitles, hints, field labels,
+  // and the current breadcrumb. These keep every emphasis level at least 4.5:1 on background,
+  // surface, and the tonal container tint (a field label is medium × high emphasis: 4.8:1; disabled is 4.7:1).
+  variables: {
+    'high-emphasis-opacity': 0.9,
+    'medium-emphasis-opacity': 0.74,
+    'disabled-opacity': 0.62
   }
 };
 
@@ -125,6 +134,11 @@ const igniteDark: ThemeDefinition = {
     'info': '#A3B0FA',
     'warning': '#FFB870',
     'success': '#8FD99A'
+  },
+  // As in light: medium 7.1:1+, and a disabled label stays legible (Vuetify's 0.50 is 2.8:1).
+  variables: {
+    'medium-emphasis-opacity': 0.74,
+    'disabled-opacity': 0.7
   }
 };
 

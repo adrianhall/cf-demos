@@ -55,6 +55,8 @@ const errorTitle = computed(() => {
   switch (props.error?.kind) {
     case 'forbidden':
       return 'You do not have access';
+    case 'unauthenticated':
+      return 'Please sign in again';
     case 'not-found':
       return 'Not found';
     case 'unavailable':
@@ -66,8 +68,18 @@ const errorTitle = computed(() => {
 });
 
 const retryable = computed(
-  () => props.error?.kind !== 'forbidden' && props.error?.kind !== 'not-found'
+  () =>
+    props.error?.kind !== 'forbidden'
+    && props.error?.kind !== 'not-found'
+    && props.error?.kind !== 'unauthenticated'
 );
+
+/**
+ * Reload the whole page, so Cloudflare Access can run its sign-in flow.
+ */
+function reloadPage(): void {
+  window.location.reload();
+}
 </script>
 
 <template>
@@ -87,6 +99,9 @@ const retryable = computed(
       <p v-if="error?.requestId" class="text-caption">Reference: {{ error.requestId }}</p>
       <template v-if="retryable" #append>
         <v-btn variant="text" @click="emit('retry')">Retry</v-btn>
+      </template>
+      <template v-else-if="error?.kind === 'unauthenticated'" #append>
+        <v-btn variant="text" @click="reloadPage">Sign in</v-btn>
       </template>
     </v-alert>
     <v-empty-state

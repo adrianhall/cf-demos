@@ -11,7 +11,12 @@ import * as v from 'valibot';
 import { DateOnlySchema, TimestampSchema } from '../common/dates.ts';
 import { IdSchema } from '../common/ids.ts';
 import { CursorSchema, MAX_PAGE_SIZE, pageSchema } from '../common/paging.ts';
-import { optionalText, requiredText, SearchTermSchema } from '../validation/fields.ts';
+import {
+  OptionalDateSchema,
+  optionalText,
+  requiredText,
+  SearchTermSchema
+} from '../validation/fields.ts';
 import { HistoryEntrySchema, UserRefSchema } from './crm.ts';
 import { CompanyRefSchema, ContactRefSchema, DealRefSchema } from './sales.ts';
 
@@ -79,20 +84,6 @@ export const PROJECT_TASK_LIMIT = 200;
  * Most rows in the personal worklist.
  */
 export const MY_WORK_LIMIT = 100;
-
-/**
- * Optional calendar date where `null` (or a blank string from a form) means "none".
- */
-const OptionalDateSchema = v.optional(
-  v.nullable(
-    v.pipe(
-      v.string(),
-      v.transform((value) => (value.trim() === '' ? null : value.trim())),
-      v.nullable(DateOnlySchema)
-    )
-  ),
-  null
-);
 
 /**
  * A reference to a project.

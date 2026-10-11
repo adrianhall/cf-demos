@@ -85,6 +85,76 @@ describe('shell', () => {
   });
 });
 
+describe('shell accessibility', () => {
+  it('reports the drawer state, keeps focus while only the query changes, and gives 404 an h1', async () => {
+    useApi('sales@example.com', await seeded());
+    const { wrapper, router } = await mountWithApp(App);
+    const toggle = wrapper.get('[aria-label="Toggle navigation"]');
+    expect(toggle.attributes('aria-controls')).toBe('main-navigation');
+    const before = toggle.attributes('aria-expanded');
+    await toggle.trigger('click');
+    await settle();
+    expect(toggle.attributes('aria-expanded')).not.toBe(before);
+
+    await router.push('/companies');
+    await settle();
+    const search = document.body.querySelector<HTMLInputElement>('input');
+    search?.focus();
+    await router.replace({ query: { q: 'x' } });
+    await settle();
+    expect(document.activeElement).toBe(search);
+
+    await router.push('/no-such-page');
+    await settle();
+    expect(document.activeElement?.tagName).toBe('H1');
+    expect(document.activeElement?.textContent).toBe('Page not found');
+  });
+
+  it('returns focus to the button that opened a dialog when it is cancelled', async () => {
+    useApi('sales@example.com', await seeded());
+    await mountWithApp(App, { route: '/contacts' });
+    const opener = [...document.body.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'New contact'
+    )!;
+    opener.focus();
+    opener.click();
+    await settle();
+    const cancel = [
+      ...document.body.querySelectorAll<HTMLButtonElement>('.v-overlay--active button')
+    ].find((button) => button.textContent?.trim() === 'Cancel')!;
+    cancel.click();
+    await settle();
+    expect(document.activeElement).toBe(opener);
+  });
+});
+
+describe('expired sign-in', () => {
+  it('asks the user to sign in again, with a reload instead of a retry', async () => {
+    useApi('sales@example.com', await seeded());
+    const { router } = await mountWithApp(App, { route: '/' });
+    const reload = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload });
+    vi.stubGlobal('fetch', () =>
+      Promise.resolve(
+        new Response('<html>Sign in</html>', { headers: { 'Content-Type': 'text/html' } })
+      )
+    );
+    await router.push('/companies');
+    await settle();
+    expect(document.body.textContent).toContain('Please sign in again');
+    const button = [...document.body.querySelectorAll('[role="alert"] button')].find(
+      (candidate) => candidate.textContent?.trim() === 'Sign in'
+    ) as HTMLButtonElement;
+    expect(
+      [...document.body.querySelectorAll('[role="alert"] button')].some(
+        (candidate) => candidate.textContent?.trim() === 'Retry'
+      )
+    ).toBe(false);
+    button.click();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+});
+
 describe('lazy route chunks', () => {
   it('shows progress while a view loads and offers a reload when its chunk fails', async () => {
     useApi('sales@example.com', await seeded());
@@ -138,13 +208,13 @@ describe('contacts', () => {
     expect(wrapper.text()).toContain('Your role can view contacts but not create');
     expect(wrapper.text()).not.toContain('New contact');
 
-    await wrapper.get('input[role="searchbox"], [role="searchbox"] input').setValue('zzz');
+    await wrapper.get('input[type="search"], [role="searchbox"] input').setValue('zzz');
     await vi.advanceTimersByTimeAsync(300);
     await settle();
     expect(wrapper.text()).toContain('No matching contacts');
     expect(router.currentRoute.value.query).toEqual({ q: 'zzz' });
 
-    await wrapper.get('input[role="searchbox"], [role="searchbox"] input').setValue('love');
+    await wrapper.get('input[type="search"], [role="searchbox"] input').setValue('love');
     await vi.advanceTimersByTimeAsync(300);
     await settle();
     await wrapper.get('a[href^="/contacts/"]').trigger('click');
@@ -242,7 +312,7 @@ describe('companies', () => {
       ?.trigger('click');
     await settle();
     expect(wrapper.findAll('main a[href^="/companies/"]')).toHaveLength(26);
-    await wrapper.get('[role="searchbox"] input, input[role="searchbox"]').setValue('analytical');
+    await wrapper.get('[role="searchbox"] input, input[type="search"]').setValue('analytical');
     await vi.advanceTimersByTimeAsync(300);
     await settle();
     expect(wrapper.findAll('main a[href^="/companies/"]').map((link) => link.text())).toEqual([

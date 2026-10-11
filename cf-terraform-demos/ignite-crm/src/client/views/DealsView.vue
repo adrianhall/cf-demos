@@ -12,8 +12,10 @@ import DealForm from '../components/DealForm.vue';
 import DealStatusChip from '../components/DealStatusChip.vue';
 import PipelineBoard from '../components/PipelineBoard.vue';
 import ResourceState from '../components/ResourceState.vue';
+import { announce } from '../composables/useAnnouncer.ts';
 import { useFormat } from '../composables/useFormat.ts';
 import { useResource } from '../composables/useResource.ts';
+import { focusByLabel, useReturnFocus } from '../composables/useReturnFocus.ts';
 import { useSession } from '../composables/useSession.ts';
 import { useSubmission } from '../composables/useSubmission.ts';
 import { api, ApiError, newIdempotencyKey } from '../services/api-client.ts';
@@ -116,6 +118,8 @@ async function move(deal: Deal, stage: Stage): Promise<void> {
       newIdempotencyKey()
     );
     items.value = items.value.map((item) => (item.id === updated.id ? updated : item));
+    announce(`${deal.title} moved to ${stage.label}.`);
+    await focusByLabel(`Move ${deal.title} to another stage`);
   } catch (caught) {
     moveError.value =
       caught instanceof ApiError && caught.kind === 'conflict'
@@ -124,12 +128,14 @@ async function move(deal: Deal, stage: Stage): Promise<void> {
           ? caught.message
           : 'Could not move the deal.';
     await page.load();
+    await focusByLabel(`Move ${deal.title} to another stage`);
   } finally {
     movingId.value = null;
   }
 }
 
 const dialog = ref(false);
+useReturnFocus(dialog);
 const submission = useSubmission({ forbidden: 'Your role does not allow creating deals.' });
 
 /**
@@ -168,8 +174,8 @@ onMounted(() => void page.load());
     <div class="d-flex flex-wrap align-center ga-4 mb-4">
       <h1 id="deals-title" class="text-h4 flex-grow-1">Deals</h1>
       <v-btn-toggle v-model="view" mandatory density="comfortable" aria-label="Deals view">
-        <v-btn value="board">Pipeline</v-btn>
-        <v-btn value="list">List</v-btn>
+        <v-btn value="board" :aria-pressed="view === 'board' ? 'true' : 'false'">Pipeline</v-btn>
+        <v-btn value="list" :aria-pressed="view === 'list' ? 'true' : 'false'">List</v-btn>
       </v-btn-toggle>
       <v-btn v-if="can('crm.write')" color="primary" :prepend-icon="mdiPlus" @click="openCreate"
         >New deal</v-btn
@@ -196,7 +202,7 @@ onMounted(() => void page.load());
           :prepend-inner-icon="mdiMagnify"
           clearable
           hint="Title, company, or contact"
-          role="searchbox"
+          type="search"
         />
       </v-col>
       <v-col cols="12" sm="4">

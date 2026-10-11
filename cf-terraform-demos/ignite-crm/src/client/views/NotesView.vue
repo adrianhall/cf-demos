@@ -23,6 +23,7 @@ import NoteList from '../components/NoteList.vue';
 import ResourceState from '../components/ResourceState.vue';
 import { useLinkSearch } from '../composables/useLinkSearch.ts';
 import { useResource } from '../composables/useResource.ts';
+import { useReturnFocus } from '../composables/useReturnFocus.ts';
 import { useSession } from '../composables/useSession.ts';
 import { useSubmission } from '../composables/useSubmission.ts';
 import { api } from '../services/api-client.ts';
@@ -92,6 +93,7 @@ async function loadMore(): Promise<void> {
 }
 
 const composing = ref(false);
+useReturnFocus(composing);
 const submission = useSubmission({ forbidden: 'Your role does not allow writing notes.' });
 const linkSearch = useLinkSearch();
 

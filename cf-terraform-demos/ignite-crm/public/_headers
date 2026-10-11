@@ -1,0 +1,16 @@
+# Security headers for the SPA's static assets (served by the platform before Worker code runs;
+# API responses get their own, stricter headers in src/application-worker/api/middleware/protections.ts).
+#
+# - script-src 'self': only the bundled, hashed chunks; no inline script anywhere in index.html.
+# - style-src 'unsafe-inline': Vuetify writes its theme as an inline <style> element at runtime and
+#   sets inline style attributes; scripts remain locked down, which is where XSS executes.
+# - img-src data:: Vuetify and the MDI icon set render small data: URLs.
+# - connect-src 'self': the SPA only calls its own /api.
+# - frame-ancestors 'none' + X-Frame-Options: never framed (clickjacking).
+# HSTS is a zone setting (SSL/TLS → Edge Certificates), not an asset header.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()

@@ -306,6 +306,22 @@ describe('the notes card on a record page', () => {
     expect(document.body.textContent).toContain('No notes about this record yet.');
   });
 
+  it('shows a safe message, never an internal one, when the feed fails unexpectedly', async () => {
+    const fake = await seeded();
+    useApi('sales@example.com', fake);
+    const realFetch = globalThis.fetch;
+    // A deal page loads the feed itself; break only that request with a non-API failure.
+    vi.stubGlobal('fetch', (input: string, init?: RequestInit) =>
+      input.startsWith('/api/v1/notes?')
+        ? Promise.reject(new TypeError('internal: socket 10.0.0.4 reset'))
+        : realFetch(input, init)
+    );
+    await mountWithApp(App, { route: `/deals/${fake.deal.id}` });
+    const card = document.body.querySelector('[data-testid="notes-error"]');
+    expect(card?.textContent).toContain('Notes could not be loaded.');
+    expect(document.body.textContent).not.toContain('10.0.0.4');
+  });
+
   it('pages a long feed with Show more notes', async () => {
     const fake = await seeded();
     for (let index = 0; index < 27; index++) {
@@ -328,6 +344,45 @@ describe('the notes card on a record page', () => {
 });
 
 describe('search states', () => {
+  it('pages recent notes, and creates a note from the Notes page', async () => {
+    const fake = await seeded();
+    for (let index = 0; index < 27; index++) {
+      await fake.service.notes.createNote(
+        fake.sales,
+        {
+          title: `Recent ${String(index).padStart(2, '0')}`,
+          markdown: 'x',
+          links: [{ type: 'contact', id: fake.priya.id }]
+        },
+        key()
+      );
+    }
+    useApi('sales@example.com', fake);
+    const { wrapper, router } = await mountWithApp(App, { route: '/notes' });
+    const rows = () => document.body.querySelectorAll('a[href^="/notes/"]').length;
+    expect(rows()).toBe(25);
+    button('Load more').click();
+    await settle();
+    expect(rows()).toBe(27);
+    expect(
+      [...document.body.querySelectorAll('button')].some(
+        (b) => b.textContent?.trim() === 'Load more'
+      )
+    ).toBe(false);
+
+    button('New note').click();
+    await settle();
+    fill('Title', 'From the notes page');
+    fill('Body', 'Body');
+    await searchLinks(wrapper, 'contact', 'Pri');
+    labelled('Link contact Priya').click();
+    await settle();
+    button('Create note').click();
+    await settle();
+    expect(router.currentRoute.value.name).toBe('note');
+    expect(wrapper.get('h1').text()).toBe('From the notes page');
+  });
+
   it('validates length, shows an empty result, recovers from an error, and clears', async () => {
     const fake = await seeded();
     await fake.service.notes.createNote(
@@ -433,6 +488,28 @@ describe('editing a note', () => {
       markdown: 'Their body',
       version: 3
     });
+  });
+
+  it('closes an unchanged edit with a dismissible notice, and shows who last edited', async () => {
+    const fake = await withNote();
+    useApi('sales@example.com', fake);
+    const { wrapper } = await mountWithApp(App, { route: `/notes/${fake.note.id}` });
+    button('Edit note').click();
+    await settle();
+    button('Save note').click();
+    await settle();
+    expect(document.body.textContent).toContain('Nothing changed, so nothing was saved.');
+    const notice = wrapper.findAll('.v-alert').find((alert) => alert.text().includes('Nothing'))!;
+    await notice.get('button').trigger('click');
+    await settle();
+    expect(document.body.textContent).not.toContain('Nothing changed');
+    // Cancel leaves the note untouched.
+    button('Edit note').click();
+    await settle();
+    fill('Title', 'Discarded');
+    button('Cancel').click();
+    await settle();
+    expect(wrapper.get('h1').text()).toBe('Weekly sync');
   });
 
   it('offers Edit to the author and managers only', async () => {

@@ -11,6 +11,7 @@ import { createAccessMiddleware } from '@demos/worker-common';
 import { buildAccessPolicies } from '../../../src/application-worker/api/access-policies.ts';
 import { createApiApp } from '../../../src/application-worker/api/app.ts';
 import type { ApiEnv } from '../../../src/application-worker/api/context.ts';
+import { withoutIdentityHeaders } from '../../../src/application-worker/api/middleware/protections.ts';
 import { sameOrigin } from '../../../src/application-worker/api/middleware/protections.ts';
 import { mapServiceError } from '../../../src/application-worker/api/problems.ts';
 import { createDataClient, type DataRpc } from '../../../src/application-worker/data-client.ts';
@@ -109,6 +110,19 @@ describe('authentication', () => {
     expect(await response.json()).toEqual({ email: 'reader@example.com' });
   });
 
+  it('scrubs identity headers in one named function, case-insensitively, keeping the rest', () => {
+    const clean = withoutIdentityHeaders(
+      new Headers({
+        'CF-ACCESS-AUTHENTICATED-USER-EMAIL': 'owner@example.com',
+        'cf-access-authenticated-user-id': 'x',
+        'X-Authenticated-User-Email': 'y',
+        [JWT_HEADER]: 'token',
+        'Content-Type': 'application/json'
+      })
+    );
+    expect([...clean.keys()].sort()).toEqual(['content-type', JWT_HEADER.toLowerCase()].sort());
+  });
+
   it('ignores a client-supplied request id', async () => {
     const { call } = setup();
     const response = await call('/api/me', {
@@ -127,6 +141,23 @@ describe('session, health, configuration', () => {
     ).json()) as { roles: unknown; permissions: string[] };
     expect(session.roles).toEqual([{ id: 'read-only', label: 'Read-only' }]);
     expect(session.permissions).toContain('crm.read');
+  });
+
+  it('sets strict security headers on success and error responses', async () => {
+    const { call } = setup();
+    for (const response of [
+      await call('/api/v1/configuration', { as: 'sales@example.com' }),
+      await call('/api/v1/nope', { as: 'sales@example.com' }),
+      await call('/api/v1/session')
+    ]) {
+      expect(response.headers.get('Content-Security-Policy')).toBe(
+        "default-src 'none'; frame-ancestors 'none'"
+      );
+      expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+      expect(response.headers.get('X-Frame-Options')).toBe('DENY');
+      expect(response.headers.get('Referrer-Policy')).toBe('no-referrer');
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+    }
   });
 
   it('serves health and configuration', async () => {

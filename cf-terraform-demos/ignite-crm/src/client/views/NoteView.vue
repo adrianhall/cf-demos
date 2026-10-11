@@ -16,6 +16,7 @@ import ResourceState from '../components/ResourceState.vue';
 import { useFormat } from '../composables/useFormat.ts';
 import { useLinkSearch } from '../composables/useLinkSearch.ts';
 import { useResource } from '../composables/useResource.ts';
+import { useReturnFocus } from '../composables/useReturnFocus.ts';
 import { useSession } from '../composables/useSession.ts';
 import { useSubmission } from '../composables/useSubmission.ts';
 import { api } from '../services/api-client.ts';
@@ -47,6 +48,7 @@ watch(
 );
 
 const editing = ref(false);
+useReturnFocus(editing);
 /**
  * The note as it was when the editor opened: the base edits are measured against.
  */
@@ -147,11 +149,12 @@ async function reloadLatest(): Promise<void> {
         <v-col cols="12" md="4">
           <v-card class="mb-4">
             <v-card-title><h2 class="text-h6">Linked records</h2></v-card-title>
-            <v-list density="compact" aria-label="Linked records">
+            <v-list density="compact" role="group" aria-label="Linked records">
               <v-list-item
                 v-for="link in note.links"
                 :key="`${link.type}:${link.id}`"
                 :to="link.available ? linkRoute(link) : undefined"
+                v-bind="link.available ? {} : { role: 'none' }"
                 :title="link.label"
                 :subtitle="
                   link.available

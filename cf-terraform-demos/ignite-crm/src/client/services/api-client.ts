@@ -124,6 +124,21 @@ export class ApiError extends Error {
 }
 
 /**
+ * Whether a response is the Cloudflare Access sign-in page rather than an API answer.
+ *
+ * The edge redirects an expired session to the team's login page, `fetch` follows the redirect, and
+ * the SPA receives HTML. A same-origin API never returns HTML, so a redirected or HTML response
+ * means the user must sign in again (review SEC-005).
+ *
+ * @param response The response.
+ * @returns `true` for a redirected or HTML response.
+ */
+function isSignInPage(response: Response): boolean {
+  const type = response.headers.get('Content-Type') ?? '';
+  return response.redirected || type.includes('text/html');
+}
+
+/**
  * Classify a status code.
  *
  * @param status HTTP status.
@@ -230,6 +245,15 @@ export class ApiClient {
         'network',
         'Could not reach the server. Check your connection and try again.',
         0
+      );
+    }
+    if (isSignInPage(response)) {
+      // Cloudflare Access answered instead of the API: the session expired, and the edge
+      // redirected this fetch to its HTML login page (fetch follows the redirect).
+      throw new ApiError(
+        'unauthenticated',
+        'Your sign-in has expired. Reload the page to sign in again.',
+        401
       );
     }
     const body: unknown = await response.json().catch(() => undefined);

@@ -5,18 +5,29 @@
  *   themes, so the theme tokens they rely on resolve in either.
  */
 
-import { describe, expect, it } from 'vitest';
-import { h } from 'vue';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { h, ref } from 'vue';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { VApp, VList } from 'vuetify/components';
 import { mount } from '@vue/test-utils';
 import ActionStreamRow from '../../src/client/components/ActionStreamRow.vue';
+import ActivityList from '../../src/client/components/ActivityList.vue';
+import ContactPicker from '../../src/client/components/ContactPicker.vue';
 import CustomerTimeline from '../../src/client/components/CustomerTimeline.vue';
+import DealList from '../../src/client/components/DealList.vue';
+import HistoryList from '../../src/client/components/HistoryList.vue';
 import PipelineBoard from '../../src/client/components/PipelineBoard.vue';
+import ProjectList from '../../src/client/components/ProjectList.vue';
+import type { PickedContact } from '../../src/client/services/deal-draft.ts';
 import { createAppVuetify } from '../../src/client/vuetify.ts';
 import type { TimelineEntry } from '../../src/shared/api/overview.ts';
-import type { ActionItem, Deal, Stage } from '../../src/shared/api/sales.ts';
+import type { ActionItem, Activity, Deal, Stage } from '../../src/shared/api/sales.ts';
 import { settle } from './support.ts';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 const USER = { id: '00000000-0000-4000-8000-000000000001', displayName: 'Sam Sales' };
 const CONTACT = { id: '00000000-0000-4000-8000-000000000002', displayName: 'Ada' };
@@ -188,5 +199,151 @@ describe.each(['light', 'dark'] as const)('reusable components in the %s theme',
     const empty = await mountIn(() => h(CustomerTimeline, { entries: [] }), theme);
     expect(empty.text()).toContain('Nothing has happened yet.');
     empty.unmount();
+  });
+
+  it('the record lists show empty states, tombstoned contacts, and optional details', async () => {
+    const activity: Activity = {
+      id: '00000000-0000-4000-8000-0000000000e1',
+      type: 'meeting',
+      subject: 'Review',
+      summary: null,
+      occurredAt: '2026-10-01T09:00:00.000Z',
+      durationMinutes: null,
+      author: USER,
+      contacts: [
+        { ...CONTACT, deleted: false },
+        { id: '00000000-0000-4000-8000-0000000000e2', displayName: 'Gone', deleted: true }
+      ],
+      company: null,
+      deal: { id: '00000000-0000-4000-8000-0000000000e3', title: 'Renewal' },
+      createdAt: '2026-10-01T09:00:00.000Z'
+    };
+    const lists = await mountIn(
+      () =>
+        h('div', [
+          h(ActivityList, { activities: [activity] }),
+          h(ActivityList, { activities: [] }),
+          h(HistoryList, { entries: [] }),
+          h(DealList, {
+            deals: [
+              {
+                ...deal('d1', STAGES[0]!, 100),
+                project: { id: '00000000-0000-4000-8000-0000000000e4', name: 'Rollout' },
+                // The schema pairs these (CHECK: both or neither).
+                nextActionText: 'Call back',
+                nextActionDate: '2026-10-20'
+              }
+            ]
+          }),
+          h(DealList, { deals: [] }),
+          h(DealList, { deals: [], emptyText: 'Nothing for this contact.' }),
+          h(ProjectList, { projects: [] }),
+          h(ProjectList, { projects: [], emptyText: 'No projects here.' })
+        ]),
+      theme
+    );
+    const text = lists.text();
+    expect(text).toContain('Meeting: Review');
+    expect(text).not.toContain(' min');
+    expect(lists.get('s').text()).toBe('Gone (deleted)');
+    expect(lists.find('a[href="/deal/00000000-0000-4000-8000-0000000000e3"]').exists()).toBe(true);
+    expect(text).toContain('No calls or meetings logged yet.');
+    expect(text).toContain('No history recorded.');
+    expect(text).toContain('Converted to Rollout');
+    expect(text).toContain('Next: Call back');
+    expect(text).toContain('No deals yet.');
+    expect(text).toContain('Nothing for this contact.');
+    expect(text).toContain('No projects yet.');
+    expect(text).toContain('No projects here.');
+    lists.unmount();
+  });
+
+  it('ContactPicker adds with a keyboard-operable button, replaces in single mode, and survives a failed search', async () => {
+    let fail = false;
+    vi.stubGlobal('fetch', (input: string) =>
+      Promise.resolve(
+        fail
+          ? new Response('{}', { status: 503 })
+          : Response.json({
+              items: [
+                {
+                  id: CONTACT.id,
+                  displayName: 'Ada',
+                  email: null,
+                  jobTitle: null,
+                  companyId: null,
+                  companyName: null,
+                  updatedAt: '2026-10-01T09:00:00.000Z'
+                }
+              ].filter(() => input.startsWith('/api/v1/contacts')),
+              nextCursor: null
+            })
+      )
+    );
+    const single = ref<PickedContact | PickedContact[] | null>({
+      id: USER.id,
+      displayName: 'Earlier choice'
+    });
+    const multiple = ref<PickedContact | PickedContact[] | null>([
+      { id: CONTACT.id, displayName: 'Ada' }
+    ]);
+    const wrapper = await mountIn(
+      () =>
+        h('div', [
+          h(ContactPicker, {
+            'label': 'Primary contact',
+            'modelValue': single.value,
+            'onUpdate:modelValue': (value: PickedContact | PickedContact[] | null) => {
+              single.value = value;
+            }
+          }),
+          h(ContactPicker, {
+            'label': 'Contacts involved',
+            'multiple': true,
+            'modelValue': multiple.value,
+            'onUpdate:modelValue': (value: PickedContact | PickedContact[] | null) => {
+              multiple.value = value;
+            }
+          })
+        ]),
+      theme
+    );
+    const [primarySearch, involvedSearch] = wrapper.findAll('input[type="search"]');
+    await primarySearch!.setValue('ad');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await settle();
+    expect(wrapper.findAll('[data-testid="picker-status"]')[0]!.text()).toBe('1 matching contact');
+    // Enter in the search field picks the first result rather than submitting a parent form.
+    await primarySearch!.trigger('keydown', { key: 'Enter' });
+    await settle();
+    expect(single.value).toMatchObject({ id: CONTACT.id });
+    single.value = null;
+    await settle();
+    await primarySearch!.setValue('ad');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await settle();
+    const add = wrapper.get('[aria-label="Add Ada to Primary contact"]');
+    await add.trigger('click');
+    await settle();
+    expect(single.value).toMatchObject({ id: CONTACT.id, displayName: 'Ada' });
+    // Ada is already involved, so the multiple picker offers no Add for her.
+    await involvedSearch!.setValue('ad');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await settle();
+    expect(wrapper.find('[aria-label="Add Ada to Contacts involved"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid="picker-status"]')[1]!.text()).toBe(
+      'No matching contacts'
+    );
+    // Clearing the selection entirely (the autocomplete's clear button) is allowed.
+    wrapper.findAllComponents({ name: 'VAutocomplete' })[1]!.vm.$emit('update:modelValue', null);
+    await settle();
+    expect(multiple.value).toBeNull();
+    // An outage clears stale results rather than offering them.
+    fail = true;
+    await involvedSearch!.setValue('zz');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await settle();
+    expect(wrapper.find('[aria-label^="Add "]').exists()).toBe(false);
+    wrapper.unmount();
   });
 });
