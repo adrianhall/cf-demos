@@ -243,6 +243,8 @@ items to review at the end. Each entry names the phase that made it.
 
 ## Follow-on items
 
+**Pass 1**:
+
 - **CRM record editing — not scheduled in Phases 2–7.** Add contact editing and company editing to
   the SPA, with the corresponding contact update service/API contract (company update exists in the
   Data Worker and API but has no UI). Preserve drafts on validation and version conflicts, and
@@ -293,6 +295,8 @@ items to review at the end. Each entry names the phase that made it.
 - **Add a "Quarterly Pipeline" report to the report set**, covering this quarters pipeline deals and
   where they are in the pipeline (stage).
 
+**Pass 2**:
+
 - **Phase 1 — check script writes ignored artifacts.** The implementation plan requires generated
   type freshness for both Workers and dry Vite builds inside `pnpm check`; `cf workers types` and
   Vite currently write ignored `.cloudflare/` artifacts to do this. This conflicts with the
@@ -311,26 +315,36 @@ items to review at the end. Each entry names the phase that made it.
 
 ### From the Phase 7 review (unfixed; see `04-mvp-review.md`)
 
+**Pass 1**:
+
 - **ARCH-001 / ARCH-002 — shared helper placement.** Move the cursor codec and `ListCriteria` to
   `data-worker/application/shared/paging.ts`, and `mutationMeta`/`expectedVersion`/`pathId` to one
   `application-worker/api/preconditions.ts`.
+- **CODE-004** — report bad `Idempotency-Key`/`If-Match` headers as header problems, not query
+  problems.
+- **CODE-005** — validate replayed idempotent results against the response schema instead
+  of relying on the API tier's `checkResponse`.
+- **CODE-007/008** — fix ContactPicker's duplicated JSDoc and clear its debounce on unmount.
+- **CODE-010** — explicit `Promise<T>` return types on `ApiClient` methods.
+- **A11Y-010 (partly fixed)** — confirm before archiving a project from the status select.
+
+**Pass 2**:
+
 - **ARCH-003 — generated Data Worker types.** Derive `DataBindings` from `dataWorkerEnv()`, or
   include the Data Worker's generated types in a tsconfig.
 - **ARCH-004 — cross-module table reads (accepted for MVP).** The CRM timeline reads sales and
   projects tables through their repository ports; record this in spec §3.1 as the coupling to undo
   if a module is ever split out.
-- **CODE-004** — report bad `Idempotency-Key`/`If-Match` headers as header problems, not query
-  problems. **CODE-005** — validate replayed idempotent results against the response schema instead
-  of relying on the API tier's `checkResponse`. **CODE-007/008** — fix ContactPicker's duplicated
-  JSDoc and clear its debounce on unmount. **CODE-009** — a clearer error for RPC contract drift in
-  the data-client proxy. **CODE-010** — explicit `Promise<T>` return types on `ApiClient` methods.
-  **CODE-011** — exhaustive `switch` in `link-search.ts`.
+- **CODE-009** — a clearer error for RPC contract drift in the data-client proxy.
+- **CODE-011** — exhaustive `switch` in `link-search.ts`.
+- **A11Y-006 (partly fixed)** — merge ContactPicker's search field and autocomplete into one
+  server-searching `VAutocomplete`, keeping an explicit keyboard Add path.
+
+**Deferred or Accepted**:
+
 - **SEC-004 (accepted)** — the Access policy admits any authenticated identity (provisioned
   read-only). Restrict it to a domain or Access group for a real deployment.
 - **SEC-006 (deferred)** — per-user rate limiting, and FTS/prefix search for contact, company, and
   deal lists, before exposing the app beyond a small team.
-- **A11Y-006 (partly fixed)** — merge ContactPicker's search field and autocomplete into one
-  server-searching `VAutocomplete`, keeping an explicit keyboard Add path.
-- **A11Y-010 (partly fixed)** — confirm before archiving a project from the status select.
 - **Tooling** — run full Semgrep registry packs and CodeQL in CI; the review could only run targeted
   Semgrep rules and skipped CodeQL.
