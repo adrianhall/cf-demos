@@ -199,7 +199,7 @@ Malformed geometry must not discard an otherwise valid source event. Archive it 
 ### Immutable logical event history
 
 | Field | Purpose |
-|---|---|
+| --- | --- |
 | event_key | Stable application deduplication identity |
 | source / environment | Dataset provenance |
 | source_event_reference | Original upstream event identifier |
@@ -343,7 +343,7 @@ Expire obsolete Iceberg metadata snapshots and superseded compacted files withou
 Pro/Business website pricing and application usage are separate. Published rates from design research:
 
 | Component | Included / base | Overage |
-|---|---|---|
+| --- | --- | --- |
 | Pro website plan | $25 monthly, or $20/month equivalent annually | Add-ons separate |
 | Business website plan | $250 monthly, or $200/month equivalent annually | Add-ons separate |
 | Workers Paid | $5/month; 10M requests, 30M CPU-ms | $0.30/M requests; $0.02/M CPU-ms |
@@ -397,7 +397,7 @@ Excluded: tax, development, support, map tiles/geocoding, additional feeds, init
 ## 15. Decisions required before implementation
 
 | Decision | Required evidence |
-|---|---|
+| --- | --- |
 | Source/API version and access | Supported version, Open Data polling authorization and exact contract |
 | Coverage claim | Regional and activity coverage, additional-source plan |
 | Record ordering and identity | Verified event identity, ordering and payload completeness |
