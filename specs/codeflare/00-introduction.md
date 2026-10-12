@@ -19,11 +19,11 @@ Version 1 introduces "Artifacts" and allows the user to create and manage reposi
 
 ### 2. MVP
 
-Version 2 (the MVP) introduces a sandbox similar to "github.dev" - the user can create a session, which creates a sandbox on a branch of the main repository.  Within this branch and sandbox, the user can use a "Monoco" based editor system which includes a terminal in which the user can execute shell commands.  The environment provided includes standard web development commands lines like pnpm and node.
+Version 2 (the MVP) introduces a file browser similar to `github.com` and a sandbox implementing an editing experience similar to `github.dev` - the user can create a session, which creates a sandbox on a branch of the main repository.  Within this branch and sandbox, the user can use a "Monoco" based editor system which includes a terminal in which the user can execute shell commands.  The environment provided includes standard web development commands lines like pnpm and node.
 
 ### 3. Previews
 
-Version 3 introduces sandbox previews.  The user can run "npm start" to build and run the site locally and a preview website is made available for the user.  Cloudflare sandbox containers provides this capability already, so it should be relatively easy to implement as well, making v3 small and targetted.
+Version 3 introduces sandbox previews.  The user can request a preview, which runs "npm start" in the sandbox to build and run the site locally and a preview website is made available for the user.  Cloudflare sandbox containers provides this capability already, so it should be relatively easy to implement as well, making v3 small and targetted.
 
 ### 4. Agentic Coding
 
@@ -43,3 +43,7 @@ Future versions will include:
 8. Pull request capabilities (merge queue)
 9. Repository permissions (view only, editor, admin)
 10. Branch protection rules
+
+## Notes
+
+The recent "Birthday Week" announcements made several key improvements to sandbox / container handling. It's also worth understanding if `@cloudflare/computer` can help. Review the <https://blog.cloudflare.com> site and the [Cloudflare changelog](https://developers.cloudflare.com/changelog/) for the last few months for relevant improvements to this project.

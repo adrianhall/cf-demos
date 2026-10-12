@@ -669,8 +669,8 @@ describe('next actions and the action stream', () => {
     const heading = document.getElementById(panel.get('table').attributes('aria-labelledby')!);
     expect(heading?.textContent).toBe('Pipeline summary');
     const quarter = panel.get('[data-testid="pipeline-this-quarter"]').text();
-    expect(quarter).toContain('Pipeline this qtr');
-    expect(quarter).toMatch(/Q\d 20\d\d: open deals expected to close/u);
+    expect(quarter).toMatch(/Pipeline Q\d 20\d\d/u);
+    expect(quarter).not.toContain('open deals expected to close');
     // The fake's clock decides the quarter, so compare with what the service reports.
     const expected = (await fake.service.crm.pipelineSummary(fake.sales)).thisQuarter;
     expect(quarter).toContain(expected.label);
