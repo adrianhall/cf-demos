@@ -9,8 +9,6 @@ allowBuilds:
   # the SDK's optional `@callable` Vite transform). Its install script only prints a funding
   # notice, and no demo imports it, so it is denied rather than allowed.
   core-js-pure: false
-minimumReleaseAgeExclude:
-  - agents@0.27.0
 # Security pins for transitive dev tooling (Ignite CRM Phase 7 review, SEC-002/SEC-003). Neither
 # package reaches a deployed bundle: sharp comes through miniflare/@vercel/og, and shell-quote
 # through npm-run-all2. Remove a pin once its parent depends on the patched version itself.
