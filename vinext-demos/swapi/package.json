@@ -53,7 +53,7 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-server-dom-webpack": "19.3.0",
-    "vinext": "1.0.1"
+    "vinext": "1.1.0"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.sha-ad79608dd",
@@ -65,7 +65,7 @@
     "@types/node": "26.6.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@vitejs/plugin-rsc": "0.5.35",
+    "@vitejs/plugin-rsc": "0.5.36",
     "@vitest/coverage-istanbul": "^4.1.11",
     "cf": "1.0.0-beta.14",
     "commander": "15.0.0",
