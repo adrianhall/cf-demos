@@ -23,14 +23,14 @@
   },
   "devDependencies": {
     "@adrianhall/cloudflare-toolkit": "^2.7.0",
-    "@cloudflare/workers-types": "5.20261005.1",
-    "@types/node": "26.6.4",
+    "@cloudflare/workers-types": "5.20261012.1",
+    "@types/node": "26.6.5",
     "@vitest/coverage-istanbul": "^4.1.11",
     "hono": "4.13.13",
     "npm-run-all2": "^9.0.3",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
-    "oxlint-tsgolint": "^7.0.2003",
+    "oxlint-tsgolint": "^7.0.2004",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   },
