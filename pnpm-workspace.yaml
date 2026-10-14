@@ -12,6 +12,12 @@ allowBuilds:
 # Security pins for transitive dev tooling (Ignite CRM Phase 7 review, SEC-002/SEC-003). Neither
 # package reaches a deployed bundle: sharp comes through miniflare/@vercel/og, and shell-quote
 # through npm-run-all2. Remove a pin once its parent depends on the patched version itself.
+minimumReleaseAgeExclude:
+  - '@cloudflare/build-output-utils@0.9.1'
+  - '@cloudflare/config@0.25.0'
+  - '@cloudflare/runtime-types@0.1.10'
+  - cf@1.0.0-beta.16
+  - miniflare@5.20261006.2-beta
 overrides:
   sharp: 0.35.5
   shell-quote@<1.11.0: 1.12.0
