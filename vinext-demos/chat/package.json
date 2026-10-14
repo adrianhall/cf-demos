@@ -60,7 +60,7 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-rsc": "0.5.36",
     "@vitest/coverage-istanbul": "^4.1.11",
-    "cf": "1.0.0-beta.14",
+    "cf": "1.0.0-beta.16",
     "commander": "15.0.0",
     "jsdom": "30.1.2",
     "npm-run-all2": "^9.0.3",
