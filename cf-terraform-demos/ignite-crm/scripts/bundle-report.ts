@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * @file `pnpm check:bundles`: build the SPA and both Workers, then record their sizes. The report
- *   is **observational**. It prints a table and writes `.cloudflare/bundle-report.json` (ignored,
- *   suitable as a CI artifact), but it never fails on a size: release one deliberately makes no
- *   free-tier account-limit assertions (specification §12). The figures quoted in the README come
- *   from this script.
+ * @file `pnpm check:bundles`: build the SPA and both Workers, then check the lazy-chat budget. The
+ *   command is part of `pnpm check`, so it is intentionally **non-writing**: repository rules
+ *   require CI verification to leave the checkout untouched. It still prints the observational size
+ *   table the README quotes, while failing for the one product promise this feature makes — the
+ *   chat panel stays a lazy chunk. `pnpm report:bundles` runs the same measurement and writes the
+ *   ignored `.cloudflare/bundle-report.json` artifact when a release needs a saved report.
  *
  *   ## Why it builds in its own mode
  *
@@ -14,6 +15,15 @@
  *   a non-DEV build (development-token bypass is compiled out in both), and the modes differ only
  *   in binding values and the custom domain, which live in deployment configuration, not in the
  *   bundles.
+ *
+ *   ## The one thing it does enforce
+ *
+ *   The chat panel's chunk. The AI chat feature brings in the Agents client and the AI SDK's chat
+ *   pieces, and the design is that a user who never opens chat downloads none of it
+ *   (`specs/ignite-crm/05-ai-features.md` §6.3). That property is easy to lose by accident — one
+ *   static import from the shell is enough — and impossible to notice by reading a size table. So
+ *   {@link CHAT_BUDGET} is checked and a violation exits non-zero. Everything else stays
+ *   observational.
  */
 
 import { spawn } from 'node:child_process';
@@ -31,6 +41,37 @@ const ROOT = path.resolve(import.meta.dirname, '..');
  * Where `cf`/Vite writes Build Output.
  */
 const OUTPUT = path.join(ROOT, '.cloudflare', 'output', 'v0', 'workers');
+
+/**
+ * Budget for the lazily loaded chat panel, the only size this script enforces.
+ *
+ * `maxEntryGzipBytes` is the real assertion: the SPA's first chunk must not grow by the chat
+ * machinery, which it only can if the panel stops being lazily loaded. The current entry chunk is
+ * about 144 kB gzipped, so the limit leaves ordinary room to grow while a statically imported panel
+ * (roughly +78 kB gzipped) would break it.
+ *
+ * `mustNotAppearInEntry` is the same property checked directly, by content rather than by size: the
+ * chat protocol's own frame type cannot appear in the entry chunk.
+ */
+const CHAT_BUDGET = {
+  /**
+   * Chunk whose name identifies the chat panel.
+   */
+  chunkPattern: /^default\/assets\/assets\/ChatPanel-[^/]+\.js$/u,
+  /**
+   * Largest the SPA entry chunk may be, gzipped.
+   */
+  maxEntryGzipBytes: 170_000,
+  /**
+   * A string that must be absent from the entry chunk, because it belongs to the chat transport.
+   */
+  mustNotAppearInEntry: 'cf_agent_use_chat_request',
+  /**
+   * Largest the lazy chat panel chunk itself may be, gzipped. The current chunk is about 77 kB; 100
+   * kB leaves deliberate headroom while catching a substantial, silent feature expansion.
+   */
+  maxChatChunkGzipBytes: 100_000
+} as const;
 
 /**
  * One measured file.
@@ -159,10 +200,12 @@ function kb(bytes: number): string {
 /**
  * Build, measure, print, and write the report.
  *
- * @returns Once the report is written.
- * @throws {Error} When the build fails or its output is missing.
+ * @param writeReport Whether to write the ignored JSON artifact. `check:bundles` leaves the
+ *   checkout unchanged; `report:bundles` opts in for a release artifact.
+ * @returns Once the build and checks have completed.
+ * @throws {Error} When the build fails, its output is missing, or the lazy-chat budget is violated.
  */
-async function main(): Promise<void> {
+async function main(writeReport: boolean): Promise<void> {
   await build();
   const workers = await readdir(OUTPUT);
   const dataDirectory = workers.find((name) => name.startsWith('ignite-crm-data'));
@@ -205,15 +248,72 @@ async function main(): Promise<void> {
     ...Object.values(report.totals)
   ];
   const width = Math.max(...rows.map((row) => row.file.length));
-  process.stdout.write('\nBundle sizes (observational; no limits are enforced)\n\n');
+  process.stdout.write('\nBundle sizes (observational, except the chat-panel budget below)\n\n');
   for (const row of rows) {
     process.stdout.write(
       `  ${row.file.padEnd(width)}  ${kb(row.bytes).padStart(10)}  gzip ${kb(row.gzipBytes).padStart(9)}\n`
     );
   }
-  const target = path.join(ROOT, '.cloudflare', 'bundle-report.json');
-  await writeFile(target, `${JSON.stringify(report, null, 2)}\n`);
-  process.stdout.write(`\nFull report: ${path.relative(ROOT, target)}\n`);
+  const chatChunk = spaJs.find((item) => CHAT_BUDGET.chunkPattern.test(item.file));
+  if (chatChunk !== undefined) {
+    process.stdout.write(
+      `\n  ${'Chat panel chunk (lazy)'.padEnd(width)}  ${kb(chatChunk.bytes).padStart(10)}  gzip ${kb(chatChunk.gzipBytes).padStart(9)}\n`
+    );
+  }
+
+  if (writeReport) {
+    const target = path.join(ROOT, '.cloudflare', 'bundle-report.json');
+    await writeFile(target, `${JSON.stringify(report, null, 2)}\n`);
+    process.stdout.write(`\nFull report: ${path.relative(ROOT, target)}\n`);
+  }
+
+  await enforceChatBudget(spaEntry, entryName, chatChunk);
 }
 
-await main();
+/**
+ * Check that the chat panel is still lazily loaded.
+ *
+ * @param spaEntry The measured SPA entry chunk, when it could be identified.
+ * @param entryName The entry chunk's file name relative to the assets directory.
+ * @param chatChunk The lazy chat panel chunk discovered in the build output.
+ * @returns Once the budget holds.
+ * @throws {Error} When the entry chunk or the chat chunk is missing, either exceeds its budget, or
+ *   the entry contains the chat transport — each means the panel is no longer safely lazy.
+ */
+async function enforceChatBudget(
+  spaEntry: Measured | null,
+  entryName: string | undefined,
+  chatChunk: Measured | undefined
+): Promise<void> {
+  if (spaEntry === null || entryName === undefined) {
+    throw new Error(
+      'The SPA entry chunk could not be identified, so its budget cannot be checked.'
+    );
+  }
+  if (spaEntry.gzipBytes > CHAT_BUDGET.maxEntryGzipBytes) {
+    throw new Error(
+      `The SPA entry chunk is ${kb(spaEntry.gzipBytes)} gzipped, over the ${kb(CHAT_BUDGET.maxEntryGzipBytes)} budget. The usual cause is a feature chunk — most often the chat panel — becoming a static import of the shell.`
+    );
+  }
+  if (chatChunk === undefined) {
+    throw new Error(
+      'The ChatPanel lazy chunk is missing. Import it only through components/chat/LazyChatPanel.vue.'
+    );
+  }
+  if (chatChunk.gzipBytes > CHAT_BUDGET.maxChatChunkGzipBytes) {
+    throw new Error(
+      `The ChatPanel chunk is ${kb(chatChunk.gzipBytes)} gzipped, over the ${kb(CHAT_BUDGET.maxChatChunkGzipBytes)} budget. Keep optional chat UI dependencies out of its initial load.`
+    );
+  }
+  const entry = await readFile(path.join(OUTPUT, 'default', 'assets', entryName), 'utf8');
+  if (entry.includes(CHAT_BUDGET.mustNotAppearInEntry)) {
+    throw new Error(
+      'The chat transport is in the SPA entry chunk, so the chat panel is no longer lazily loaded. Import it only through components/chat/LazyChatPanel.vue.'
+    );
+  }
+  process.stdout.write(
+    '\nChat panel is lazy, the entry chunk is within budget, and the chat chunk is within budget.\n'
+  );
+}
+
+await main(process.argv.includes('--write-report'));

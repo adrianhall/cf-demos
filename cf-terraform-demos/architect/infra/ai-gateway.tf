@@ -28,15 +28,14 @@ resource "cloudflare_ai_gateway" "demo" {
   rate_limiting_limit     = 30
   rate_limiting_technique = "sliding"
 
-  # This differs from playground's authenticated public provider endpoint. Architect never exposes
-  # a provider-native gateway URL: its sole caller is this Worker's account-authenticated AI binding,
-  # so an additional API-token check has no client to protect and would be dead configuration.
-  authentication = false
+  # Require authenticated AI Gateway requests. The sole caller is this Worker's account-bound AI
+  # binding, which supplies the Worker-to-Gateway authentication when it routes through the gateway.
+  authentication = true
 
   # Use Cloudflare-managed provider credentials, retain no customer-provided key requirement, and
-  # select Unified Billing deliberately for the paid model this demo names.
+  # use Standard billing. The provider calls Standard billing "postpaid".
   byok_only               = false
-  workers_ai_billing_mode = "unified"
+  workers_ai_billing_mode = "postpaid"
   zdr                     = false
 
   spend_limits = {

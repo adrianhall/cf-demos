@@ -104,7 +104,7 @@ before product code depends on them.
     - `teardown`: delete deployed Worker → delete the production and development demo namespaces →
       Terraform destroy;
     - `check` and `fix` according to the repository contract.
-11. Add `ARTIFACTS-SPIKE.md` recording the installed `cf`, Vite plugin, Miniflare, and
+11. Add `specs/codeflare/artifacts-spike.md` recording the installed `cf`, Vite plugin, Miniflare, and
     Workers-types versions; verified `bindings.artifacts()` syntax; local remote-proxy requirement;
     namespace create/delete command shape; generated type availability; and any deviation required
     by actual `cf` behaviour. The spike uses a throwaway namespace/repository and removes it before
@@ -127,7 +127,7 @@ before product code depends on them.
 ### Exit criteria
 
 A clean checkout can generate types, start the landing page, and run all offline checks/tests.
-`ARTIFACTS-SPIKE.md` records a real, current remote-binding validation and no temporary Artifacts
+`specs/codeflare/artifacts-spike.md` records a real, current remote-binding validation and no temporary Artifacts
 resource survives it.
 
 ## 4. Phase 2 — Access, identity, and application shell

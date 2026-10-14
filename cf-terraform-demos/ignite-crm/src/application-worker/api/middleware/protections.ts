@@ -2,7 +2,7 @@
  * @file Request protections: request identifiers, same-origin enforcement, and JSON-only bodies.
  */
 
-import type { MiddlewareHandler } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import { forbidden, unsupportedMediaType } from '@adrianhall/cloudflare-toolkit/errors';
 import type { ApiEnv } from '../context.ts';
 
@@ -72,6 +72,42 @@ export const API_SECURITY_HEADERS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Make a response's headers writable, so response-shaping middleware can run over it.
+ *
+ * Two kinds of response reach this middleware with immutable headers, both introduced by the chat
+ * feature, and both throwing `Can't modify immutable headers` if written to directly:
+ *
+ * 1. **A `101 Switching Protocols`** from the WebSocket upgrade. The runtime has already committed the
+ *    handshake and the response carries a live socket, so it can be neither modified nor
+ *    reconstructed — and none of these headers would mean anything for a WebSocket anyway. It is
+ *    left exactly as it is.
+ * 2. **A response produced by a subrequest**, such as the chat object's own `get-messages`. That one
+ *    is merely frozen: copying it into a fresh `Response` gives writable headers while passing the
+ *    body stream straight through, so a streamed answer is still streamed.
+ *
+ * @param context The request context, whose `res` is replaced when a copy is needed.
+ * @returns `true` when `context.res` may now be written to.
+ */
+function makeHeadersWritable(context: Context<ApiEnv>): boolean {
+  if (context.res.status === 101) {
+    return false;
+  }
+  try {
+    // Probing is the only way to ask: immutability is not observable on the object itself.
+    context.res.headers.set('X-Header-Probe', '1');
+    context.res.headers.delete('X-Header-Probe');
+    return true;
+  } catch {
+    context.res = new Response(context.res.body, {
+      status: context.res.status,
+      statusText: context.res.statusText,
+      headers: new Headers(context.res.headers)
+    });
+    return true;
+  }
+}
+
+/**
  * Add {@link API_SECURITY_HEADERS} to every API response, including error responses produced by the
  * error handler (it runs inside `next()`).
  *
@@ -80,6 +116,9 @@ export const API_SECURITY_HEADERS: Readonly<Record<string, string>> = {
 export function securityHeaders(): MiddlewareHandler<ApiEnv> {
   return async (context, next) => {
     await next();
+    if (!makeHeadersWritable(context)) {
+      return;
+    }
     for (const [name, value] of Object.entries(API_SECURITY_HEADERS)) {
       context.res.headers.set(name, value);
     }
@@ -99,7 +138,9 @@ export function requestId(): MiddlewareHandler<ApiEnv> {
     const id = crypto.randomUUID();
     context.set('requestId', id);
     await next();
-    context.res.headers.set('X-Request-Id', id);
+    if (makeHeadersWritable(context)) {
+      context.res.headers.set('X-Request-Id', id);
+    }
   };
 }
 
@@ -116,6 +157,12 @@ export function requestId(): MiddlewareHandler<ApiEnv> {
  */
 export function sameOrigin(): MiddlewareHandler<ApiEnv> {
   return async (context, next) => {
+    // MCP clients use an explicit OAuth credential, not a browser's ambient Access cookie. Keep this
+    // exact so a future `/mcp/*` endpoint cannot accidentally bypass CSRF protections.
+    if (context.req.path === '/mcp') {
+      await next();
+      return;
+    }
     if (!SAFE_METHODS.has(context.req.method)) {
       const origin = context.req.header('Origin');
       const site = context.req.header('Sec-Fetch-Site');

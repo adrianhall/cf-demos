@@ -155,6 +155,81 @@ test('an owner adds a teammate whose controls and server access change with thei
   await expect(page.getByRole('button', { name: 'New contact' })).toBeVisible();
 });
 
+test('the assistant answers from the CRM and asks before it writes', async ({ page }, testInfo) => {
+  const id = suffix(testInfo);
+  // Start on the record the note will be about, so the panel's page-context hint names it. A phone
+  // shows the panel as an overlay (`temporary` below the `md` breakpoint), so navigating with it
+  // open dismisses it — Vuetify's own behaviour for an overlay drawer, and the reason this journey
+  // opens the panel where it intends to use it rather than carrying it across pages.
+  await signIn(page, 'owner@example.com', '/contacts/00000000-0000-4000-8000-0000000000b1');
+  await expect(page.getByRole('heading', { level: 1, name: 'Priya Shah' })).toBeVisible();
+
+  // Open the panel from the app bar, as a user does.
+  const toggle = page.getByRole('button', { name: 'Assistant' });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  const panel = page.getByRole('navigation', { name: 'Assistant' });
+  await expect(panel).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+  // A session belongs to a user and outlives a page load, so an earlier test's conversation is still
+  // there. Clearing is how a user starts over, and doing it here keeps this test's assertions about
+  // its own turns.
+  await panel.getByRole('button', { name: 'Clear chat' }).click();
+  await expect(panel.getByText('asks before changing anything')).toBeVisible();
+
+  // Ask a question whose answer can only come from a tool call.
+  await panel.getByRole('textbox', { name: 'Message' }).fill('How is the pipeline?');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await expect(panel.getByText('Totalled the pipeline')).toBeVisible();
+  await expect(panel.getByText('that came from your own CRM data')).toBeVisible();
+
+  // Ask for a change. It must pause for approval rather than happen.
+  await panel.getByRole('textbox', { name: 'Message' }).fill(`Write a note about ${id}`);
+  await panel.getByRole('button', { name: 'Send' }).click();
+  const approval = panel.getByRole('group', { name: /Approval required/u });
+  await expect(approval).toBeVisible();
+  await expect(approval).toContainText(id);
+  await expect(panel.getByText('Wrote a note')).toBeHidden();
+
+  // Approve it. The card records the decision, and the write then reaches the CRM — which is the
+  // claim that matters, so it is checked where the record actually lives rather than in the panel.
+  await approval.getByRole('button', { name: 'Approve' }).click();
+  await expect(approval).toContainText('You approved this.');
+
+  // Escape closes the panel, and focus comes back to the button that opened it (WCAG 2.4.3).
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+  // The approved write is in the CRM, behind where the panel was.
+  await navigate(page, 'Notes');
+  await expect(page.getByRole('main').getByText(id, { exact: false }).first()).toBeVisible();
+});
+
+test('a declined change does not happen', async ({ page }, testInfo) => {
+  const id = suffix(testInfo);
+  await signIn(page, 'owner@example.com', '/contacts/00000000-0000-4000-8000-0000000000b1');
+  await expect(page.getByRole('heading', { level: 1, name: 'Priya Shah' })).toBeVisible();
+  await page.getByRole('button', { name: 'Assistant' }).click();
+  const panel = page.getByRole('navigation', { name: 'Assistant' });
+  await panel.getByRole('button', { name: 'Clear chat' }).click();
+  await expect(panel.getByText('asks before changing anything')).toBeVisible();
+
+  await panel.getByRole('textbox', { name: 'Message' }).fill(`Write a note about ${id}`);
+  await panel.getByRole('button', { name: 'Send' }).click();
+  const approval = panel.getByRole('group', { name: /Approval required/u });
+  await approval.getByRole('button', { name: 'Decline' }).click();
+
+  // Declining is not failing: the card records the decision, and nothing reached the CRM.
+  await expect(approval).toContainText('You declined this.');
+  await navigate(page, 'Notes');
+  // Scoped to the page, not the whole document: the declined request is still in the transcript
+  // beside it, and finding the text there would prove nothing about the CRM.
+  await expect(page.getByRole('main').getByText(id, { exact: false })).toBeHidden();
+});
+
 test('keyboard users can skip to content and reach the primary navigation', async ({ page }) => {
   await signIn(page, 'readonly@example.com');
   await page.keyboard.press('Tab');

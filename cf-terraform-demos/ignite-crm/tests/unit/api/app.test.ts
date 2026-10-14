@@ -133,6 +133,107 @@ describe('authentication', () => {
   });
 });
 
+describe('MCP routing', () => {
+  it('authenticates the exact MCP route, allows non-browser POSTs, and refuses GET', async () => {
+    const { call } = setup();
+    const get = await call('/mcp', { as: 'reader@example.com' });
+    expect(get.status).toBe(405);
+    expect(get.headers.get('Allow')).toBe('POST');
+
+    const post = await call('/mcp', {
+      as: 'reader@example.com',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Host': 'crm.example' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
+    });
+    expect(post.status).toBe(400);
+    expect(await post.text()).toContain('Unsupported protocol version');
+    expect(post.headers.get('Content-Type')).toContain('application/json');
+  });
+
+  it('does not extend the MCP same-origin exemption to future subpaths', async () => {
+    const { call } = setup();
+    const response = await call('/mcp/future', {
+      as: 'reader@example.com',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    expect(response.status, await response.text()).toBe(404);
+  });
+});
+
+describe('chat routing', () => {
+  it('tells a caller its own session name, derived from the verified identity', async () => {
+    const { call } = setup();
+
+    const response = await call('/api/v1/chat/session', { as: 'sales@example.com' });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { sessionId: string };
+    expect(body.sessionId).toMatch(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u);
+    // The browser never chooses the name, so the same user always learns the same one.
+    const again = (await (
+      await call('/api/v1/chat/session', { as: 'sales@example.com' })
+    ).json()) as { sessionId: string };
+    expect(again.sessionId).toBe(body.sessionId);
+  });
+
+  it('gives two users different session names', async () => {
+    const { call } = setup();
+
+    const mine = (await (
+      await call('/api/v1/chat/session', { as: 'sales@example.com' })
+    ).json()) as { sessionId: string };
+    const theirs = (await (
+      await call('/api/v1/chat/session', { as: 'reader@example.com' })
+    ).json()) as { sessionId: string };
+
+    expect(theirs.sessionId).not.toBe(mine.sessionId);
+  });
+
+  it('requires authentication for the chat surface', async () => {
+    const { call } = setup();
+
+    for (const response of [
+      await call('/api/v1/chat/session'),
+      await call('/api/v1/chat/00000000-0000-4000-8000-000000000001')
+    ]) {
+      expect(response.status).toBe(401);
+      expect(response.headers.get('Content-Type')).toContain('application/problem+json');
+    }
+  });
+
+  it('refuses a session name that is not the caller’s own, before any dispatch', async () => {
+    const { call } = setup();
+    // A real session name — just somebody else's. This is the attack the derivation exists to stop:
+    // connecting by guessing a name would otherwise read another user's transcript (§3.2).
+    const theirs = (await (
+      await call('/api/v1/chat/session', { as: 'reader@example.com' })
+    ).json()) as { sessionId: string };
+
+    const response = await call(`/api/v1/chat/${theirs.sessionId}`, { as: 'sales@example.com' });
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get('Content-Type')).toContain('application/problem+json');
+  });
+
+  it('answers the same way for a name belonging to nobody, so a probe learns nothing', async () => {
+    const { call } = setup();
+
+    const unknown = await call('/api/v1/chat/00000000-0000-4000-8000-0000000000ff', {
+      as: 'sales@example.com'
+    });
+    const theirs = (await (
+      await call('/api/v1/chat/session', { as: 'reader@example.com' })
+    ).json()) as { sessionId: string };
+    const other = await call(`/api/v1/chat/${theirs.sessionId}`, { as: 'sales@example.com' });
+
+    expect(unknown.status).toBe(other.status);
+    expect(await unknown.text()).toBe(await other.text());
+  });
+});
+
 describe('session, health, configuration', () => {
   it('returns role summaries and capability hints', async () => {
     const { call } = setup();
@@ -164,7 +265,7 @@ describe('session, health, configuration', () => {
     const { call } = setup();
     expect(await (await call('/api/v1/health', { as: 'reader@example.com' })).json()).toEqual({
       status: 'ok',
-      data: { status: 'ok', migration: '0007_quarterly_pipeline.sql' }
+      data: { status: 'ok', migration: '0008_agent_channel.sql' }
     });
     expect(
       await (await call('/api/v1/configuration', { as: 'reader@example.com' })).json()

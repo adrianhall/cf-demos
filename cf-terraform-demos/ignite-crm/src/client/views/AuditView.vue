@@ -38,6 +38,15 @@ const MODULE_LABELS: Readonly<Record<AuditModuleName, string>> = {
 };
 
 /**
+ * Display names for composition surfaces.
+ */
+const CHANNEL_LABELS: Readonly<Record<'api' | 'chat' | 'mcp', string>> = {
+  api: 'Browser',
+  chat: 'AI chat',
+  mcp: 'MCP'
+};
+
+/**
  * Display names for record types.
  */
 const TYPE_LABELS: Readonly<Record<AuditEntityType, string>> = {
@@ -115,6 +124,7 @@ const trail = useResource(async (signal) => {
 const headers = [
   { title: 'When', key: 'occurredAt', sortable: false },
   { title: 'Who', key: 'actor', sortable: false },
+  { title: 'Channel', key: 'channel', sortable: false },
   { title: 'What', key: 'action', sortable: false },
   { title: 'Record', key: 'entity', sortable: false },
   { title: 'Details', key: 'metadata', sortable: false }
@@ -256,6 +266,9 @@ onMounted(async () => {
             format.dateTime(item.occurredAt)
           }}</template>
           <template #[`item.actor`]="{ item }">{{ item.actor.displayName }}</template>
+          <template #[`item.channel`]="{ item }">
+            <v-chip size="small" variant="tonal">{{ CHANNEL_LABELS[item.channel] }}</v-chip>
+          </template>
           <template #[`item.action`]="{ item }">
             <v-chip size="small" variant="tonal">{{ MODULE_LABELS[item.module] }}</v-chip>
             <span class="ms-2">{{ item.action }}</span>

@@ -122,8 +122,8 @@ export class D1PermissionsRepository implements PermissionsRepository {
       tx.write(
         sql(
           `INSERT INTO audit_events
-             (id, module, entity_type, entity_id, action, actor_id, request_id, metadata_json, occurred_at)
-           SELECT ?, 'permissions', 'user', id, 'provisioned', id, ?, json_object('role', ?), ?
+             (id, module, entity_type, entity_id, action, actor_id, channel, request_id, metadata_json, occurred_at)
+           SELECT ?, 'permissions', 'user', id, 'provisioned', id, 'api', ?, json_object('role', ?), ?
              FROM users WHERE id = ?`,
           user.auditId,
           user.requestId,

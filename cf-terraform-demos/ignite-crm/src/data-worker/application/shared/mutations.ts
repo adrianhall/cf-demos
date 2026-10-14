@@ -54,6 +54,10 @@ export interface AuditEntry {
    */
   readonly actorId: string;
   /**
+   * Transport that initiated the mutation.
+   */
+  readonly channel: 'api' | 'chat' | 'mcp';
+  /**
    * Request identifier.
    */
   readonly requestId: string;
@@ -297,6 +301,7 @@ export class IdempotentMutation {
       entityId,
       action,
       actorId: this.actor.userId,
+      channel: this.actor.channel,
       requestId: this.actor.requestId,
       metadata,
       occurredAt

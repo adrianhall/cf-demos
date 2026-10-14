@@ -16,6 +16,39 @@ import {
 } from './shared/api/configuration.ts';
 
 /**
+ * How long a chat session survives after its last message before it is deleted. Three hours covers
+ * a working session with interruptions while keeping transcripts short-lived. Changing the policy
+ * is this one line, because the agent reads it rather than restating the number
+ * (`specs/ignite-crm/05-ai-features.md` §3.6).
+ */
+export const CHAT_SESSION_TTL_SECONDS = 3 * 60 * 60;
+
+/**
+ * How long, in hours, {@link CHAT_SESSION_TTL_SECONDS} is — for the one user-facing sentence that
+ * has to quote it ("This conversation expired after 3 hours of inactivity"), so the notice cannot
+ * contradict the policy.
+ */
+export const CHAT_SESSION_TTL_HOURS = CHAT_SESSION_TTL_SECONDS / 3600;
+
+/**
+ * Maximum number of chat messages one session keeps in its own storage. Bounds transcript growth;
+ * what is actually sent to the model is bounded separately, per turn, by `pruneMessages`.
+ */
+export const CHAT_MAX_PERSISTED_MESSAGES = 100;
+
+/**
+ * How many model/tool rounds one chat turn may take before it must answer. Bounds both latency and
+ * token spend for a confused multi-step plan.
+ */
+export const CHAT_TOOL_ROUNDS_PER_TURN = 8;
+
+/**
+ * Fallback chat model, used when the `AI_CHAT_MODEL` binding is absent. The binding is the real
+ * setting, so changing models in a deployment is a configuration edit rather than a code change.
+ */
+export const DEFAULT_AI_CHAT_MODEL = '@cf/zai-org/glm-4.7-flash';
+
+/**
  * Schema for the installation configuration. Every field is currently browser-safe, so it is the
  * display schema; a future server-only setting would extend this schema without widening the DTO.
  */
@@ -59,7 +92,7 @@ export const configuration: InstallationConfiguration = loadConfiguration(DEFAUL
 /**
  * Project the configuration onto the browser-safe display DTO.
  *
- * @param config The installation configuration.
+ * @param config The configuration to project.
  * @returns A fresh DTO containing only fields the SPA may see.
  */
 export function toDisplayConfiguration(config: InstallationConfiguration): DisplayConfiguration {

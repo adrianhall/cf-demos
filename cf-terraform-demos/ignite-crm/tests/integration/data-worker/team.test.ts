@@ -35,6 +35,7 @@ function envelopeFor(key: string) {
         entityId: ownerId,
         action: 'roles-changed',
         actorId: ownerId,
+        channel: 'api' as const,
         requestId: 'it-team',
         metadata: { rolesAfter: 'manager' },
         occurredAt: at

@@ -179,6 +179,7 @@ const AuditListOptionsSchema = v.strictObject({
   module: v.optional(AuditModuleSchema),
   entityType: v.optional(AuditEntityTypeSchema),
   entityId: v.optional(IdSchema),
+  channel: v.optional(v.picklist(['api', 'chat', 'mcp'])),
   actorId: v.optional(IdSchema),
   ...PageRequestSchema.entries
 });

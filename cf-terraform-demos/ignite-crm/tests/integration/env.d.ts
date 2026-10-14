@@ -25,5 +25,18 @@ declare namespace Cloudflare {
      * Parsed migrations applied by `beforeAll`.
      */
     TEST_MIGRATIONS: { name: string; queries: string[] }[];
+    /**
+     * Chat session Durable Objects, over the test module's own agent class.
+     */
+    CHAT_AGENT: DurableObjectNamespace;
+    /**
+     * Model name, bound as in a deployment. The agent under test uses a scripted model, so the
+     * value is never sent anywhere.
+     */
+    AI_CHAT_MODEL: string;
+    /**
+     * AI Gateway identifier, bound as in a deployment and likewise never called.
+     */
+    AI_GATEWAY_ID: string;
   }
 }

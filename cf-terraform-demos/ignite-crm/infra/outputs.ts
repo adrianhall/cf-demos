@@ -15,6 +15,10 @@ export type TerraformOutputs = {
    * Cloudflare Access Application Audience (AUD) tag the Application Worker validates every JWT's
    * `aud` claim against.
    */
+  /**
+   * AI Gateway identifier used by the chat model provider.
+   */
+  aiGatewayId: string;
   accessAud: string;
   /**
    * Repository-root `ADMIN_EMAIL`, bound into the Data Worker as the bootstrap owner identity.
@@ -59,6 +63,7 @@ export type TerraformOutputs = {
  * Maps {@link TerraformOutputs}' keys to the output names declared in `infra/outputs.tf`.
  */
 export const OUTPUT_KEYS = {
+  aiGatewayId: 'ai_gateway_id',
   accessAud: 'access_aud',
   adminEmail: 'admin_email',
   applicationHostname: 'application_hostname',

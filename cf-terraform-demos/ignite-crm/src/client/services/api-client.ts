@@ -8,6 +8,7 @@
 import * as v from 'valibot';
 import { AuditPageSchema, type AuditListQuery } from '../../shared/api/audit.ts';
 import type { AuditEvent } from '../../shared/api/audit.ts';
+import { type ChatSession, ChatSessionSchema } from '../../shared/api/chat.ts';
 import { DisplayConfigurationSchema } from '../../shared/api/configuration.ts';
 import type { DisplayConfiguration } from '../../shared/api/configuration.ts';
 import {
@@ -1082,6 +1083,24 @@ export class ApiClient {
     return this.request(
       `/api/v1/reports/delivery${toQuery({ ...filter })}`,
       DeliveryReportSchema,
+      signal === undefined ? {} : { signal }
+    );
+  }
+
+  /**
+   * The chat session this user may connect to.
+   *
+   * The identifier is derived server-side from the verified identity, so the panel learns its own
+   * session name rather than choosing one (`src/application-worker/chat/session.ts`).
+   *
+   * @param signal Cancellation.
+   * @returns The session identifier.
+   * @throws {ApiError} On failure.
+   */
+  chatSession(signal?: AbortSignal): Promise<ChatSession> {
+    return this.request(
+      '/api/v1/chat/session',
+      ChatSessionSchema,
       signal === undefined ? {} : { signal }
     );
   }
