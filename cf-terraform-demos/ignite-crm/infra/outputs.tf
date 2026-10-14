@@ -1,3 +1,8 @@
+output "ai_gateway_id" {
+  description = "AI Gateway identifier used to observe and bound chat model calls."
+  value       = cloudflare_ai_gateway.chat.id
+}
+
 output "access_aud" {
   description = "Cloudflare Access Application Audience (AUD) tag the Application Worker validates every JWT's aud claim against."
   value       = cloudflare_zero_trust_access_application.application.aud

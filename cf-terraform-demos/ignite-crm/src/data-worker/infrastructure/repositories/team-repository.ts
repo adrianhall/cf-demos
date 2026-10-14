@@ -92,6 +92,7 @@ interface AuditRow {
   action: string;
   actor_id: string;
   actor_name: string;
+  channel?: 'api' | 'chat' | 'mcp';
   request_id: string;
   metadata_json: string;
   occurred_at: string;
@@ -291,12 +292,14 @@ export class D1TeamRepository extends D1IdempotencyReader implements TeamReposit
       optional(filters.entityType),
       optional(filters.entityId),
       optional(filters.entityId),
+      optional(filters.channel),
+      optional(filters.channel),
       optional(filters.actorId),
       optional(filters.actorId)
     ];
     let text = `
       SELECT a.id, a.module, a.entity_type, a.entity_id, a.action, a.actor_id,
-             u.display_name AS actor_name, a.request_id, a.metadata_json, a.occurred_at,
+             u.display_name AS actor_name, a.channel, a.request_id, a.metadata_json, a.occurred_at,
              CASE a.entity_type
                WHEN 'contact' THEN (SELECT display_name FROM contacts WHERE id = a.entity_id)
                WHEN 'company' THEN (SELECT name FROM companies WHERE id = a.entity_id)
@@ -311,6 +314,7 @@ export class D1TeamRepository extends D1IdempotencyReader implements TeamReposit
        WHERE (? IS NULL OR a.module = ?)
          AND (? IS NULL OR a.entity_type = ?)
          AND (? IS NULL OR a.entity_id = ?)
+         AND (? IS NULL OR a.channel = ?)
          AND (? IS NULL OR a.actor_id = ?)`;
     if (criteria.after !== null) {
       text += ' AND (a.occurred_at < ? OR (a.occurred_at = ? AND a.id > ?))';
@@ -329,6 +333,7 @@ export class D1TeamRepository extends D1IdempotencyReader implements TeamReposit
         entityLabel: row.entity_label,
         action: row.action,
         actor: { id: row.actor_id, displayName: row.actor_name },
+        channel: row.channel ?? 'api',
         requestId: row.request_id,
         metadata,
         redacted,

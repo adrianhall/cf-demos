@@ -18,6 +18,7 @@ import type { PathPolicy } from '@adrianhall/cloudflare-toolkit/hono';
  */
 export function buildAccessPolicies(audience: string): PathPolicy[] {
   return [
+    { pattern: /^\/mcp$/u, authenticate: true, redirect: false, audience },
     { pattern: /^\/api(?:\/|$)/u, authenticate: true, redirect: false, audience },
     { pattern: /^\//u, authenticate: true, redirect: true, audience }
   ];

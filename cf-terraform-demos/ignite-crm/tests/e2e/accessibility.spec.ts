@@ -68,6 +68,29 @@ for (const scheme of ['light', 'dark'] as const) {
   });
 }
 
+test('the open assistant panel passes axe WCAG 2.2 AA', async ({ page }) => {
+  await signIn(page, 'owner@example.com', '/contacts/00000000-0000-4000-8000-0000000000b1');
+  await expect(page.locator('#main h1').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Assistant' }).click();
+  const panel = page.getByRole('navigation', { name: 'Assistant' });
+  await expect(panel).toBeVisible();
+  // A chat session outlives a page load, so start from an empty one rather than another test's.
+  await panel.getByRole('button', { name: 'Clear chat' }).click();
+  await expect(panel.getByText('asks before changing anything')).toBeVisible();
+
+  // Scan the panel with a conversation in it, not an empty one: the transcript, an activity line,
+  // and an approval card are the parts with the most markup, and the composer is the only form.
+  await panel.getByRole('textbox', { name: 'Message' }).fill('How is the pipeline?');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await expect(panel.getByText('Totalled the pipeline')).toBeVisible();
+  await panel.getByRole('textbox', { name: 'Message' }).fill('Write a note about access');
+  await panel.getByRole('button', { name: 'Send' }).click();
+  await expect(panel.getByRole('group', { name: /Approval required/u })).toBeVisible();
+  await page.waitForLoadState('networkidle');
+
+  expect(await violations(page)).toEqual([]);
+});
+
 test('dialogs return focus to the control that opened them', async ({ page }) => {
   await signIn(page, 'owner@example.com', '/contacts');
   const opener = page.getByRole('button', { name: 'New contact' });

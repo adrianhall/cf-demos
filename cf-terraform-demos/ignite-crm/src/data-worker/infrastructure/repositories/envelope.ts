@@ -25,14 +25,15 @@ export function writeEnvelope(tx: D1TransactionPort, envelope: MutationEnvelope)
     tx.write(
       sql(
         `INSERT INTO audit_events
-           (id, module, entity_type, entity_id, action, actor_id, request_id, metadata_json, occurred_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, module, entity_type, entity_id, action, actor_id, channel, request_id, metadata_json, occurred_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         event.id,
         event.module,
         event.entityType,
         event.entityId,
         event.action,
         event.actorId,
+        event.channel,
         event.requestId,
         JSON.stringify(event.metadata),
         event.occurredAt

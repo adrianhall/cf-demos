@@ -14,7 +14,7 @@ resource "cloudflare_worker" "application" {
 
   # The DATA_SERVICE service binding is attached by cf. This edge destroys the Application Worker
   # before the Data Worker it binds.
-  depends_on = [cloudflare_worker.data]
+  depends_on = [cloudflare_worker.data, cloudflare_ai_gateway.chat]
 }
 
 # Cloudflare rejects a custom domain for a Worker that has never been deployed. This placeholder

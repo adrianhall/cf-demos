@@ -1,136 +1,162 @@
-# Ignite CRM — first-release walkthrough
+# Ignite CRM — AI-enabled demo walkthrough
 
-**Live application:** <https://ignite-crm.cfapps.uk/>. The final Phase 7 deployment is intentionally
-left running. Cloudflare Access protects the entire hostname; sign in through your organization's
-identity provider. Your first sign-in as the `ADMIN_EMAIL` configured in the repository-root `.env`
-bootstraps the owner. Other Access-authenticated identities are provisioned read-only unless an
-owner assigns another role. Invitations pre-create users and assign roles; **no invitation email is
-sent**.
+**Live application:** <https://ignite-crm.cfapps.uk/>. Cloudflare Access protects the entire
+hostname; authenticate through the organization's identity provider. The first deployed sign-in as
+the `ADMIN_EMAIL` configured in the repository-root `.env` bootstraps the owner. Other
+Access-authenticated identities are provisioned read-only until an owner assigns a role. Invitations
+pre-create users and assign roles; **no invitation email is sent**.
 
-The deployed D1 database starts **empty**. The examples below using Northwind Traders, Priya Shah,
-and the five local identities are available only under `pnpm start`: the seed migrations are
-local-only and are never deployed. To evaluate the production site, create your own disposable
-records from the UI. Do not use real customer information in a demo environment.
+> [!IMPORTANT]
+> The deployed D1 database starts **empty**. Northwind Traders, Priya Shah, and the five local
+> identities below exist only under `pnpm start`: seed migrations are local-only and are never
+> deployed. Create disposable records to evaluate the production site. Do not use customer data in a
+> demo environment.
 
 ## Prerequisites and commands
 
-From the repository root, run `pnpm install` and `pnpm create-env` (if the root `.env` does not
-already exist). Set the Cloudflare account, zone, team domain, API token, and `ADMIN_EMAIL`
-documented in `.env.example`. Run the following from `cf-terraform-demos/ignite-crm`:
+From the repository root, run `pnpm install` and `pnpm create-env` if the root `.env` does not
+already exist. Set the Cloudflare account, zone, team domain, API token, and `ADMIN_EMAIL`
+documented in `.env.example`. Run these from `cf-terraform-demos/ignite-crm`:
 
-| Command              | Purpose                                                                                                                                                                                 |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm start`         | Migrate and seed the **local** D1 simulation, then start both Workers and the SPA at `http://localhost:5173/`. Local state is `.cloudflare/state`.                                      |
-| `pnpm check`         | Types, formatting, linting, Terraform validation, and build.                                                                                                                            |
-| `pnpm test`          | 542 Vitest tests with 80%-per-file coverage gate, followed by 20 Chromium E2E checks in a separate local D1 state. On a new machine, run `pnpm exec playwright install chromium` first. |
-| `pnpm check:bundles` | Record observational SPA and Worker sizes in `.cloudflare/bundle-report.json`.                                                                                                          |
-| `pnpm deploy`        | Provision, migrate, build, and deploy both Workers.                                                                                                                                     |
-| `pnpm teardown`      | Delete both Workers **before** Terraform destroys infrastructure. **Do not run after the final demo deployment** unless you intend to remove it.                                        |
+| Command               | Purpose                                                                                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm start`          | Migrate and seed the **local** D1 simulation, then start both Workers and the SPA at `http://localhost:5173/`. Local state is `.cloudflare/state`.                  |
+| `pnpm check`          | Types, formatting, linting, Terraform validation and formatting, development build, and the **non-writing enforced lazy-chat bundle budget**.                       |
+| `pnpm report:bundles` | Run the same bundle checks and write the ignored `.cloudflare/bundle-report.json` release artifact.                                                                 |
+| `pnpm test`           | Vitest with the 80%-per-file coverage gate, then Chromium E2E against separate local D1 state. On a new machine, first run `pnpm exec playwright install chromium`. |
+| `pnpm deploy`         | Terraform apply → write outputs → remote D1 migration → production build → upload Data Worker then Application Worker.                                              |
+| `pnpm teardown`       | Delete Application Worker, then Data Worker, **before** Terraform destroys infrastructure. Do not run against a retained demo unless removal is intended.           |
 
 The E2E runner uses `.cloudflare/e2e-state` and port 5199, not your `pnpm start` data.
-`vite.config.ts` uses `IGNITE_PERSIST_TO` to point Vite at that same migrated state. The root `.env`
-is never read by local browsing and is never committed.
+`vite.config.ts` reads `IGNITE_PERSIST_TO` so that its Worker opens that same migrated state. The
+root `.env` is never read by local browsing and is never committed.
 
-## The browser walkthrough
+## Browser walkthrough
 
 Use `owner@example.com` on the **local** Access login page, or the real `ADMIN_EMAIL` identity on
-the deployed hostname. The local page also offers `manager@example.com`, `sales@example.com`,
+the deployed hostname. Local development also offers `manager@example.com`, `sales@example.com`,
 `delivery@example.com`, and `readonly@example.com`. The responsive navigation drawer opens with the
-menu button on mobile; all major routes are also keyboard reachable.
+menu button on mobile; all major routes are keyboard reachable.
 
-1. **Dashboard and identity.** Confirm the signed-in name and role in the app bar. Open its account
-   menu for **Your account** (verified e-mail, roles, and capabilities) or **Sign out**; an owner
-   manages profile details through Team. The dashboard shows counts, your next actions, a **Pipeline
-   summary** by stage (each row links to the matching filtered Deals table; **Pipeline total** is
-   the value of all open deals), and recently updated contacts. The **Reports** link opens the
-   filterable version. On a fresh production database the counts are zero, not seeded examples.
+1. **Dashboard and identity.** Confirm the signed-in name and role in the app bar. Open the account
+   menu for **Your account** (verified e-mail, roles, capabilities) or **Sign out**. The dashboard
+   shows counts, next actions, a pipeline summary by stage, and recently updated contacts. On a
+   fresh production database these are zero, not seeded examples.
 2. **Contact and company.** Open **Contacts → New contact** and enter a first name and a new company
-   name. The new contact opens with its next action, deals, projects, activities, notes, and a
-   merged timeline. Follow the company link to its overview and back. Locally, open Priya Shah at
-   `/contacts/00000000-0000-4000-8000-0000000000b1` and Northwind Traders to inspect populated
-   views. Use **Edit contact** or **Edit company** to change details; changing a contact's company
-   name moves it (reusing or creating that company), and a stale edit keeps your draft.
-3. **Sales.** On a contact, choose **New deal**, enter a title and amount, and save. Open **Deals**
-   to see the board and list views; the board's **Move** menu changes the stage with the keyboard
-   (no drag/drop). Log a call or meeting from the deal or contact page; multi-contact activities
-   appear on every linked customer overview. Set one next action on the contact; **Action stream**
-   shows it and its due-date urgency. Use **Done** to complete it. The actor comes from the verified
-   Access identity, never a form field.
-4. **Win and deliver.** Open a pending deal and select **Mark won/lost**. The dialog defaults to
-   **Won** with **Also convert to a delivery project** checked. Submit and follow the new project.
-   This closes and converts in **one D1 batch**; the won deal remains a won deal linked to the
-   project. Add a task, change its fixed status using the keyboard-first **Move** menu, and inspect
-   **My work** as its assignee. Only managers/owners can archive a project; project-status changes
-   save immediately, as the hint states.
-5. **Notes and search.** Create a note from the project and add another linked contact or company in
-   **Linked records**. Switch **Write/Preview**; Markdown is rendered as escaped/sanitized HTML,
-   images do not load, unsafe link schemes are not clickable, and task checkboxes are read-only.
-   Save, then open **Notes**, search for a word in the title or body, and open the result. The same
-   note appears on each linked record. Deleted targets remain labelled tombstones instead of
-   breaking the note; the UI does not expose a DELETE action.
-6. **Team and audit.** As owner, open **Team**, add a teammate with a read-only role, then assign
-   sales or delivery permissions as appropriate. Open **Audit trail** to inspect versioned writes,
-   actor, timestamp, and allowlisted metadata. Note bodies and free-text status lines are not in
-   audit entries. A manager may read the team and audit pages but only an owner may change
-   membership/roles/status. Membership changes are enforced on the next request.
-7. **Reports.** **Sales pipeline** shows count/value by stage and won/lost totals. Filter by deal
-   owner and an inclusive close-date window (at most 366 days, in the installation timezone); open
-   deals have no close date, so only won/lost totals use that window. **Quarterly pipeline** shows
-   open deals expected to close in a chosen quarter, by stage, with the deals listed. **Delivery**
-   aggregates task statuses and overdue work across active projects; filter by status or lead.
-   Filters are bookmarkable in the URL. The report permission is granted to every seeded role,
-   including read-only, per the role matrix.
+   name. The contact opens with next action, deals, projects, activities, notes, and a merged
+   timeline. Locally, open Priya Shah at `/contacts/00000000-0000-4000-8000-0000000000b1` and
+   Northwind Traders to inspect populated views. A stale edit preserves its draft rather than
+   overwriting a concurrent update.
+3. **Sales and delivery.** Create a deal, view it in the board and list, and use the keyboard-first
+   **Move** menu to change stage. Log an activity, set a next action, mark a deal won, and follow
+   its converted delivery project. Add a task and change its fixed status with the same
+   keyboard-first menu. Only managers/owners can archive a project.
+4. **Notes and search.** Create a note linked to more than one record. Switch **Write/Preview**:
+   Markdown is escaped/sanitized HTML; images do not load, unsafe links are not clickable, and task
+   checkboxes are read-only. Search it in **Notes** and confirm it appears on every linked record.
+5. **Team, audit, and reports.** As owner, add a teammate and assign a role. In **Audit trail**, see
+   actor, timestamp, channel, versioned write and allowlisted metadata — never note bodies or free
+   text. Open **Reports** for filterable pipeline, quarterly, and delivery aggregates; every seeded
+   role, including read-only, has the report permission.
 
-**Mobile:** repeat the contact overview, deal close, task Move menu, note preview, and Reports at a
-narrow width. Tables may be horizontally scrollable as a self-contained region, while the overall
-page reflows. **Keyboard:** use Tab/Shift+Tab, Enter/Space, Escape, and the **Skip to content**
-link. Focus returns to the dialog opener after Escape/Cancel and follows a card moved between board
-columns. A live region announces moves and completion.
+### Chat assistant walkthrough
 
-## Validation and failure checks
+1. Open a record, then choose the **Assistant** button in the app bar. On desktop it remains beside
+   the record; on a phone it is a focus-managed overlay. `Esc` closes it and returns focus to the
+   button.
+2. Ask a grounded question, for example **“How is the pipeline?”**. See a compact tool-activity line
+   such as “Totalled the pipeline”, then the assistant's answer. The assistant gets facts only from
+   tools; it never receives CRM records in its prompt.
+3. Ask it to change a disposable record, for example **“Write a note about this contact.”** It shows
+   an approval card with the proposed action and arguments. Choose **Decline**: the card records
+   that decision and no mutation reaches the CRM. Repeat and choose **Approve**: the note appears
+   behind the panel and the audit row has channel **`chat`**.
+4. Reload or close and reopen the panel: it rejoins the same per-user conversation. After three
+   hours of inactivity, the Durable Object destroys the transcript; a returning tab says so once.
+   This is intentional: the audit trail is the durable record of changes, not a chat log.
+5. The Terraform-owned AI Gateway permits 30 model requests per rolling minute and has a $2 rolling
+   daily cap. If it is temporarily unavailable or limited, the panel gives a safe unavailable
+   message. It does **not** retry a mutation or approval continuation automatically; start a new
+   action after recovery.
 
-These are safe to perform locally, or in production with disposable records:
+Local development and browser E2E use a deterministic development-only model so they work offline. A
+deployed Worker uses Workers AI through the AI Gateway. This is a deliberate build-time split:
+`import.meta.env.DEV` is statically false in every deployed bundle.
+
+## MCP walkthrough and live-only validation
+
+`POST /mcp` is a stateless Streamable HTTP MCP endpoint under the same Cloudflare Access policy as
+`/api/*`. It is **not** a browser feature and it is not claimed as locally OAuth-tested: local
+requests use a development JWT through the identical Worker policy list, while Managed OAuth itself
+lives at the Access edge.
+
+For a deployed validation, follow [MCP-VALIDATION.md](./MCP-VALIDATION.md). It covers Managed OAuth
+and Dynamic Client Registration with a real client, capability-filtered discovery, one read and one
+disposable write plus idempotency replay, audit `channel = mcp`, the 15-minute silent refresh, and a
+suspended-user refusal. The runbook becomes evidence only when an operator records a dated outcome
+against a deployment.
+
+## Failure and accessibility checks
+
+These checks are safe locally, or in production with disposable records:
 
 - Submit a contact without a name or company, a deal without a primary contact, a note without a
-  title/body/link, or a task with an invalid due date. The form preserves its draft and displays
-  field-specific errors; it does not save partial data.
-- Open the same deal or note in two tabs, edit in one, then submit the stale version in the other.
-  The second write is rejected rather than overwriting the first; reload the latest version and
-  review your draft.
-- As a read-only identity, check that mutation controls are absent, but customer pages and Reports
-  remain available. A direct mutation is denied by the **Data Worker**, not merely by hidden UI
-  controls. As a suspended user, the next authenticated request fails closed.
-- Simulated Data Worker outages become retryable RFC 9457 `503` responses without SQL text or stack
-  traces. A failed optional notes read returns an explicit warning and a retry button on the
-  customer page; a core or authorization failure cannot be downgraded to partial data. A redirected
-  HTML Access login after session expiry prompts **Sign in** instead of misreporting a network
+  title/body/link, or a task with an invalid due date. The form keeps its draft and displays
+  field-specific errors; no partial record is saved.
+- Open the same deal or note in two tabs, save one, then submit the stale version in the other. The
+  second write is rejected instead of silently overwriting the first.
+- As a read-only identity, mutation controls and advertised write tools are absent. A direct write
+  is still denied by the **Data Worker**, not merely hidden by the UI. Suspend a user and the next
+  authenticated request fails closed.
+- Simulate a Data Worker outage: it becomes retryable RFC 9457 `503` without SQL text or stacks. An
+  expired Access session that returns HTML prompts **Sign in**, rather than being called a network
   failure.
-- `GET /mcp` has no active handler. No MCP/OAuth, Durable Object, R2, or Queue resource is needed
-  for release one.
+- Use Tab/Shift+Tab, Enter/Space, and Escape throughout the assistant. The transcript is a polite
+  live region, the composer has a label, approval cards state the proposed change before their
+  buttons, and the open panel passes the same axe WCAG 2.2 AA pass as the main routes.
 
-`pnpm test` runs these outcomes offline against production service/repository SQL, a genuine Workers
-RPC/D1 runtime, and the browser. `tests/e2e/accessibility.spec.ts` scans 14 pages in both themes on
-desktop and mobile for WCAG 2.2 A/AA violations, and checks dialog focus, 24 px targets, 320 px
-reflow, and reduced motion. `tests/e2e/csp.spec.ts` runs the SPA under the committed CSP. The review
-and each finding's resolution or deferral are in
-[`04-mvp-review.md`](../../specs/ignite-crm/04-mvp-review.md).
+`pnpm test` exercises these outcomes offline against production service/repository SQL, genuine
+Workers RPC/D1 and Durable Objects, and a browser. It includes the assistant's grounded read,
+approval/replay/decline paths, session isolation, reconnection, expiry schedule, lazy bundle
+boundary, open-panel axe scan, and desktop/mobile E2E journeys.
 
-## Deployment evidence and limits
+## Deployment and teardown checkpoint
 
-Phase 7 rehearsal: `pnpm check` and `pnpm test` passed from a clean local state; `pnpm start` and
-both desktop/mobile browser layouts worked; `pnpm deploy` succeeded; authenticated `cf` listed both
-Workers and D1; `pnpm teardown` removed the Workers first, destroyed three Terraform-managed
-resources, and authenticated listings and Terraform state were clean. **Final deployment** was then
-run separately and left up: authenticated `cf` lists `ignite-crm-application`, `ignite-crm-data`,
-and `ignite-crm-data` D1, with nine Terraform state objects. The custom hostname responds with an
-Access redirect when unauthenticated. An authenticated _deployed_ UI smoke test could not be
-completed from the in-app browser because its corporate IdP session was not signed in; local
-Chromium E2E did exercise both Workers and D1. Do not mistake the Access redirect for a successful
-in-app smoke test.
+The live checkpoint is intentionally manual because Managed OAuth and a real Workers AI call cannot
+be proved offline:
 
-The release SPA entry chunk is about **428.5 kB** (139.5 kB gzip), down from 735.8 kB before the
-Phase 6 split. Notes' `marked`/`dompurify` renderer is a separate ~75.0 kB chunk fetched on demand.
-See `README.md` for Worker sizes, architecture, lifecycle ownership, security choices, and
-trade-offs. Remaining follow-ons include CSV export, rate limiting/FTS before wider exposure, and
-several review-only refactors recorded in
-[`03-follow-ons.md`](../../specs/ignite-crm/03-follow-ons.md).
+1. Run `pnpm deploy`. If a fresh remote D1 migration hits the documented immediate 7403/403 race,
+   wait 30 seconds and retry **only** `pnpm migrate:remote`, no more than three times.
+2. On `https://<hostname>`, authenticate, perform a grounded chat read and an approved disposable
+   chat write, then confirm its audit channel is `chat`.
+3. Complete [MCP-VALIDATION.md](./MCP-VALIDATION.md), including the Managed OAuth refresh and
+   suspended-user checks.
+4. Confirm the AI Gateway configuration: logging enabled, cache disabled, 30/min sliding rate limit,
+   and $2/24-hour sliding spend cap. Do not intentionally exhaust the production spend cap.
+5. If this is a disposable deployment, run `pnpm teardown`; verify that both Workers are deleted
+   before Terraform removes the D1 database, hostname, Access application/policies, and AI Gateway.
+   The chat Durable Object namespace is an Application Worker export, so deleting that Worker
+   retires the namespace and its sessions as part of its lifecycle.
+
+A retained demo should record the deployment URL, UTC date, operator, MCP client/version, and
+results outside source control. Never record Access tokens, OAuth client secrets, or customer
+content.
+
+### Phase 6 lifecycle evidence — 2026-10-14
+
+A clean lifecycle rehearsal completed against this demo's account:
+
+1. The pre-existing Application and Data Workers were deleted before Terraform destroy, leaving an
+   empty Terraform state.
+2. `pnpm deploy` recreated the D1 database, Access application/policy with Managed OAuth and Dynamic
+   Client Registration, AI Gateway (30/minute and $2/day), bootstrap deployment/custom hostname,
+   both Workers, all eight remote D1 migrations, and the `CrmChatAgent` Durable Object export.
+3. The deployed hostname correctly required Access. An authenticated browser smoke test and Managed
+   OAuth validation were deliberately **not** claimed: this session did not have the corporate IdP
+   session needed to complete them. They remain the operator steps in
+   [MCP-VALIDATION.md](./MCP-VALIDATION.md).
+4. `pnpm teardown` then deleted the Application Worker, Data Worker, D1, Access resources, and AI
+   Gateway. Terraform state was empty afterwards. The hostname no longer served the application.
+
+This is lifecycle evidence, not Managed OAuth evidence. Do not replace the runbook's interactive
+OAuth/refresh/suspension checks with this rehearsal.

@@ -17,6 +17,8 @@ import { configuration, toDisplayConfiguration } from '../../configuration.ts';
 import { DisplayConfigurationSchema } from '../../shared/api/configuration.ts';
 import { HealthSchema, SessionSchema } from '../../shared/api/session.ts';
 import type { DataService } from '../../shared/data-service/contract.ts';
+import { chatRoutes } from '../chat/route.ts';
+import { mcpRoutes } from '../mcp/route.ts';
 import { actorOf, type ApiEnv } from './context.ts';
 import {
   jsonOnly,
@@ -72,6 +74,8 @@ export function createApiApp(options: ApiAppOptions): Hono<ApiEnv> {
     await next();
   });
 
+  app.route('/mcp', mcpRoutes());
+  app.route('/api/v1/chat', chatRoutes());
   app.route('/api/me', createMeRouter<ApiEnv>());
 
   app.get('/api/v1/health', async (context) =>

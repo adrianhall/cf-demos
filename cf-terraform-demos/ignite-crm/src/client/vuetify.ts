@@ -27,6 +27,7 @@ import {
   VContainer,
   VDataTable,
   VDialog,
+  VDivider,
   VEmptyState,
   VForm,
   VIcon,
@@ -43,10 +44,13 @@ import {
   VRow,
   VSelect,
   VSkeletonLoader,
+  VSpacer,
   VTable,
   VTextField,
   VTimeline,
   VTimelineItem,
+  VToolbar,
+  VToolbarTitle,
   VTextarea
 } from 'vuetify/components';
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg';
@@ -165,6 +169,7 @@ export const components = {
   VContainer,
   VDataTable,
   VDialog,
+  VDivider,
   VEmptyState,
   VForm,
   VIcon,
@@ -181,11 +186,14 @@ export const components = {
   VRow,
   VSelect,
   VSkeletonLoader,
+  VSpacer,
   VTable,
   VTextarea,
   VTextField,
   VTimeline,
-  VTimelineItem
+  VTimelineItem,
+  VToolbar,
+  VToolbarTitle
 };
 
 /**

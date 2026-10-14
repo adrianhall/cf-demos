@@ -106,9 +106,9 @@ export interface ActorContext {
    */
   readonly requestId: string;
   /**
-   * Transport the request arrived on; `mcp` is reserved for a later release.
+   * Transport the request arrived on, which is also recorded in the audit trail.
    */
-  readonly channel: 'api';
+  readonly channel: 'api' | 'chat' | 'mcp';
 }
 
 /**
@@ -703,6 +703,10 @@ export interface AuditListOptions {
    * Only events about this entity.
    */
   readonly entityId?: string;
+  /**
+   * Only events from this composition surface.
+   */
+  readonly channel?: 'api' | 'chat' | 'mcp';
   /**
    * Only events by this user.
    */

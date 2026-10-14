@@ -11,6 +11,10 @@ import { useDisplay } from 'vuetify';
  * progress bar under the app bar shows that navigation is in progress; if the chunk cannot be
  * fetched (typically after a new deployment replaced the hashed files), an alert explains and
  * offers a full reload instead of leaving the user on a page that silently did not change.
+ *
+ * The app bar's Chat button toggles the assistant panel on the right. The panel itself is a lazily
+ * loaded chunk too (`components/chat/LazyChatPanel.vue`), so a user who never opens it downloads
+ * none of the chat machinery; the shell holds only the toggle and the open/closed flag.
  */
 import {
   mdiAccountGroup,
@@ -18,6 +22,7 @@ import {
   mdiCardAccountDetailsOutline,
   mdiBriefcase,
   mdiChartBar,
+  mdiChatProcessingOutline,
   mdiCheckboxMarkedCircleOutline,
   mdiDomain,
   mdiFormatListChecks,
@@ -30,7 +35,9 @@ import {
   mdiViewColumn
 } from '@mdi/js';
 import type { Permission } from '../shared/permissions.ts';
+import LazyChatPanel from './components/chat/LazyChatPanel.vue';
 import { useAnnouncement } from './composables/useAnnouncer.ts';
+import { useChatPanel } from './composables/useChatPanel.ts';
 import { useSession } from './composables/useSession.ts';
 import { primaryRole, ROLE_ICONS } from './services/roles.ts';
 
@@ -125,6 +132,20 @@ function reloadPage(): void {
   window.location.reload();
 }
 
+const chatPanel = useChatPanel();
+
+/**
+ * Close the chat panel and put focus back on the Chat button that opened it (WCAG 2.4.3). The panel
+ * is opened from a toggle, so the toggle is where a keyboard user expects to land.
+ *
+ * @returns Once focus has moved.
+ */
+async function closeChat(): Promise<void> {
+  chatPanel.hide();
+  await nextTick();
+  document.querySelector<HTMLElement>('[data-testid="chat-toggle"]')?.focus();
+}
+
 onMounted(() => void load());
 </script>
 
@@ -146,6 +167,15 @@ onMounted(() => void load());
       </template>
       <v-app-bar-title>Ignite CRM</v-app-bar-title>
       <template v-if="session" #append>
+        <v-btn
+          variant="text"
+          :icon="mdiChatProcessingOutline"
+          aria-label="Assistant"
+          aria-controls="chat-panel"
+          :aria-expanded="chatPanel.open.value ? 'true' : 'false'"
+          data-testid="chat-toggle"
+          @click="chatPanel.toggle()"
+        />
         <v-menu location="bottom end">
           <template #activator="{ props: menu }">
             <v-btn
@@ -191,6 +221,8 @@ onMounted(() => void load());
         />
       </v-list>
     </v-navigation-drawer>
+
+    <LazyChatPanel v-if="session && chatPanel.open.value" @close="closeChat" />
 
     <v-main id="main" ref="main">
       <v-progress-linear

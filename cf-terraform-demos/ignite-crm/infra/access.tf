@@ -22,6 +22,21 @@ resource "cloudflare_zero_trust_access_application" "application" {
   domain     = local.hostname
   type       = "self_hosted"
 
+  # Access is the OAuth authorization server for non-browser MCP clients. The short-lived access
+  # token causes Access policy to be re-evaluated on silent refresh.
+  oauth_configuration = {
+    enabled = true
+    dynamic_client_registration = {
+      enabled                = true
+      allow_any_on_loopback  = true
+      allow_any_on_localhost = true
+    }
+    grant = {
+      access_token_lifetime = "15m"
+      session_duration      = "336h"
+    }
+  }
+
   destinations = [{
     type = "public"
     uri  = local.hostname

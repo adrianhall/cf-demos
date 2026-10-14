@@ -20,6 +20,16 @@ import { UserRefSchema } from './crm.ts';
 export const AUDIT_MODULES = ['crm', 'projects', 'notes', 'permissions'] as const;
 
 /**
+ * Composition surfaces that can create an audit event.
+ */
+export const AUDIT_CHANNELS = ['api', 'chat', 'mcp'] as const;
+
+/**
+ * Schema for an audit channel.
+ */
+export const AuditChannelSchema = v.picklist(AUDIT_CHANNELS);
+
+/**
  * Schema for an audit module.
  */
 export const AuditModuleSchema = v.picklist(
@@ -90,6 +100,10 @@ export const AuditEventSchema = v.strictObject({
    */
   action: v.string(),
   /**
+   * Composition surface that initiated the change.
+   */
+  channel: v.optional(AuditChannelSchema, 'api'),
+  /**
    * Who did it.
    */
   actor: UserRefSchema,
@@ -137,6 +151,10 @@ export const AuditListQuerySchema = v.strictObject({
    * Only events about this entity (usually with `entityType`).
    */
   entityId: v.optional(IdSchema),
+  /**
+   * Only events from this composition surface.
+   */
+  channel: v.optional(AuditChannelSchema),
   /**
    * Only events by this user.
    */

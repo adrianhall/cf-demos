@@ -24,6 +24,7 @@ This document maps GitHub capabilities to potential Codeflare capabilities and i
 
 | GitHub feature | Potential Codeflare feature | Likely Cloudflare building blocks |
 | --- | --- | --- |
+| OAuth-based Git | Clone, push git repo using https authenticated with OAuth | Cloudflare Access protected Worker that implements the git protocol and translates the request to use a short-lived token. |
 | Forks | Fork a repository into a user's or organization's namespace, with upstream synchronization | Artifacts for repository copy or clone; D1 for fork relationships |
 | Repository import and mirroring | Import from a GitHub or GitLab URL, or schedule pull and push mirrors | Workflows, Sandbox for `git clone`, Cron Triggers |
 | Tags and releases | Release pages with notes, version tags, and downloadable assets; release notes could be AI-generated | R2 for assets; Workers AI for release notes |

@@ -13,6 +13,11 @@ import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-plugin';
  *
  * Migrations are read here, in Node, and applied inside the isolated D1 database by the suites'
  * `beforeAll` hooks, so the committed migration SQL is what these tests exercise.
+ *
+ * `CHAT_AGENT` is a real SQLite-backed Durable Object namespace over the same module, so the chat
+ * suite drives a genuine Durable Object with genuine storage. The `AI` binding is deliberately
+ * absent: the agent under test uses a scripted model (`./chat-agent-under-test.ts`), so a test that
+ * somehow reached Workers AI would fail loudly rather than quietly spend the allowance.
  */
 export default defineProject(async () => {
   const migrations = await readD1Migrations(
@@ -27,6 +32,9 @@ export default defineProject(async () => {
           compatibilityDate: '2026-10-07',
           compatibilityFlags: ['nodejs_compat'],
           d1Databases: ['DATA_DB'],
+          durableObjects: {
+            CHAT_AGENT: { className: 'CrmChatAgent', useSQLite: true }
+          },
           serviceBindings: {
             DATA_SERVICE: {
               name: Symbol.for('miniflare.kCurrentWorker'),
@@ -36,6 +44,8 @@ export default defineProject(async () => {
           bindings: {
             ACCESS_AUD: 'a'.repeat(64),
             ADMIN_EMAIL: 'owner@example.com',
+            AI_CHAT_MODEL: '@cf/zai-org/glm-4.7-flash',
+            AI_GATEWAY_ID: 'ignite-crm-chat-test',
             ENVIRONMENT: 'test',
             TEST_MIGRATIONS: migrations
           }

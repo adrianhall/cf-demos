@@ -171,13 +171,13 @@ repository migration helper applies it with `--local` only.
 
 ## Tests and coverage
 
-| Project       | Runs in        | Covers                                                                                                                                    |
-| ------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `unit`        | Node           | Schemas, domain, use cases over in-memory ports, Hono app over the fake                                                                   |
-| `client`      | jsdom          | API client, views and components with a real `createVuetify()`                                                                            |
-| `contract`    | Node           | Shared Data Worker contract suite against the in-memory fake                                                                              |
-| `integration` | workerd (30 s) | Same contract suite against the real `DataEntrypoint` over RPC + D1, D1 port guards, full system journeys                                 |
-| `e2e`         | Chromium       | Playwright: both Workers under `cf dev`, local D1, local Access login, desktop and mobile (90 s per test): journeys, axe WCAG 2.2 AA, CSP |
+| Project       | Runs in        | Covers                                                                                                                                             |
+| ------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unit`        | Node           | Schemas, domain, use cases over in-memory ports, Hono app over the fake                                                                            |
+| `client`      | jsdom          | API client, views and components with a real `createVuetify()`                                                                                     |
+| `contract`    | Node           | Shared Data Worker contract suite against the in-memory fake                                                                                       |
+| `integration` | workerd (30 s) | Same contract suite against the real `DataEntrypoint` over RPC + D1, D1 port guards, full system journeys, the chat agent in a real Durable Object |
+| `e2e`         | Chromium       | Playwright: both Workers under `cf dev`, local D1, local Access login, desktop and mobile (90 s per test): journeys, axe WCAG 2.2 AA, CSP          |
 
 The fake Data Worker (`tests/fakes`) composes the **real** application services and SQL repositories
 with an in-memory SQLite port, and passes the same contract suite as the real one. In the
@@ -187,15 +187,27 @@ binding, so values cross a real RPC serialization boundary.
 Istanbul measures every file under `src/**/*.{ts,vue}`; only tests and declaration files are
 excluded. The report is written to `coverage/`.
 
+**No test calls Workers AI.** The chat suites drive the real agent, the real Durable Object, and the
+real tool path with a deterministic model (`tests/integration/fake-model.ts`) that implements the AI
+SDK's provider interface: they assert the turn loop, the tools, and the permissions, never the
+prose. The allowance is finite and a model's output is not reproducible, so a test that depended on
+either would be flaky and expensive.
+
+Two Vitest projects run Worker code outside workerd — the Hono app under Node, and the SPA's `fetch`
+served from it under jsdom — and since the chat feature that import graph reaches modules only
+workerd provides. `tests/workers-aliases.ts` substitutes exactly those, and the stubs throw if
+called, so nothing a test actually exercises is faked.
+
 The Playwright journeys (`tests/e2e`, `playwright.config.ts`) run offline. `scripts/e2e-server.ts`
 recreates a dedicated `.cloudflare/e2e-state`, applies the data and local seed migrations, and
 starts `cf dev` on port 5199. `vite.config.ts` selects that directory using `IGNITE_PERSIST_TO`, so
 the dev server opens the same database the migrations wrote without touching your `pnpm start` data.
 The journeys cover identity → contact/company → deal/activity → win and convert → task (moved with
 the keyboard status menu) → multi-linked note and search → customer timeline → audit → reports, an
-owner changing a teammate's role, and keyboard skip-link/navigation focus, each at 1440 × 900 and on
-a Pixel 7. The browser is the Chromium build bundled with `@playwright/test`
-(`pnpm exec playwright install chromium` once on a new machine).
+owner changing a teammate's role, the assistant answering from CRM data and writing only after an
+approval (plus a declined change that does not happen), and keyboard skip-link/navigation focus,
+each at 1440 × 900 and on a Pixel 7. The browser is the Chromium build bundled with
+`@playwright/test` (`pnpm exec playwright install chromium` once on a new machine).
 
 ## Configuration
 
@@ -499,37 +511,161 @@ With no query string, `/reports/pipeline` is the whole-pipeline summary the dash
 
 ## Bundle sizes
 
-Recorded with `pnpm check:bundles` (observational only — release one asserts no account limits). It
-builds in a `bundles` mode that reads the committed placeholder outputs, so it runs in a clean
-checkout; the emitted code is the same as a production build. The full per-file report is written to
-the ignored `.cloudflare/bundle-report.json`.
+Recorded with `pnpm check:bundles`. The figures are observational, with one exception: the chat
+panel's budget is **enforced**, because "a user who never opens chat downloads none of it" is easy
+to lose by accident and impossible to notice in a size table (see
+[AI chat agent](#bundle-cost-none-unless-opened)). It builds in a `bundles` mode that reads the
+committed placeholder outputs, so it runs in a clean checkout; the emitted code is the same as a
+production build. The full per-file report is written to the ignored
+`.cloudflare/bundle-report.json`.
 
-| Artifact                    | Before Phase 6 | After Phase 6 | Release (Phase 7) | gzip (release) |
-| --------------------------- | -------------: | ------------: | ----------------: | -------------: |
-| SPA entry chunk             |       735.8 kB |      427.8 kB |          428.5 kB |       139.5 kB |
-| SPA JavaScript (all chunks) |       735.8 kB |      768.3 kB |          772.6 kB |       265.8 kB |
-| `markdown-renderer` chunk   |       (inline) |       74.9 kB |           75.0 kB |        24.7 kB |
-| SPA CSS                     |       357.6 kB |      374.4 kB |          375.1 kB |        50.9 kB |
-| Application Worker          |       294.4 kB |      305.6 kB |          307.8 kB |        78.2 kB |
-| Data Worker                 |       276.1 kB |      287.1 kB |          287.3 kB |        65.5 kB |
+| Artifact                    | After Phase 6 | Release (Phase 7) | With AI features | gzip (current) |
+| --------------------------- | ------------: | ----------------: | ---------------: | -------------: |
+| SPA entry chunk             |      427.8 kB |          428.5 kB |         436.9 kB |       142.6 kB |
+| SPA JavaScript (all chunks) |      768.3 kB |          772.6 kB |       1 207.4 kB |       385.2 kB |
+| `markdown-renderer` chunk   |       74.9 kB |           75.0 kB |          74.7 kB |        25.2 kB |
+| `ChatPanel` chunk (lazy)    |             — |                 — |         279.8 kB |        77.4 kB |
+| SPA CSS                     |      374.4 kB |          375.1 kB |         376.0 kB |        51.4 kB |
+| Application Worker          |      305.6 kB |          307.8 kB |       3 958.5 kB |       929.7 kB |
+| Data Worker                 |      287.1 kB |          287.3 kB |         526.0 kB |       110.9 kB |
 
-The entry chunk is what every first visit downloads; Markdown and the other views now arrive only
-when used. Total JavaScript grew slightly with Phase 6's own features; Phase 7's hardening
-(announcer, focus management, security headers) added under 1% to any artifact.
+The entry chunk is what every first visit downloads, and it grew by about 3 kB for the AI features —
+the app-bar toggle and the loading boundary, nothing more. The panel's own 280 kB arrives only when
+somebody opens it.
 
-## MCP deferral
+The Application Worker grew an order of magnitude, which is worth being plain about: it now carries
+the Agents SDK, the AI SDK, the MCP server, and the Workers AI provider. That is Worker code, not
+something a browser downloads, and it is within the 10 MB compressed Workers limit with room to
+spare — but it is the real cost of putting two agent surfaces in one Worker, and a reader sizing
+their own should expect it. `pnpm check` enforces both the initial-entry budget and a 100 kB gzipped
+ceiling for the lazy `ChatPanel` chunk; `pnpm report:bundles` additionally writes the ignored JSON
+artifact when a release needs saved figures.
 
-The specification reserves `/mcp` for AI-assisted access (introduction §3.6), but release one ships
-no MCP handler, OAuth Worker, or MCP tests. The path is deliberately absent from the Application
-Worker's `runWorkerFirst` list, so it is not routed to Worker code. The Data Worker contract is the
-seam a later MCP module would call, with the same RBAC.
+## AI chat agent
+
+A **Chat** button in the app bar opens the assistant in a right-hand panel. It answers questions
+about this installation's CRM data and can change it, within exactly the authority the signed-in
+user already has.
+
+### Endpoints
+
+| Route                                      | Purpose                                                              |
+| ------------------------------------------ | -------------------------------------------------------------------- |
+| `GET /api/v1/chat/session`                 | The session identifier this user may connect to, derived server-side |
+| `ALL /api/v1/chat/:sessionId`              | WebSocket upgrade into the caller's own chat session                 |
+| `GET /api/v1/chat/:sessionId/get-messages` | The session's stored transcript, served by the agent itself          |
+
+Both are under `/api/`, so they are gated by exactly the same Access policy as every other API
+route: the WebSocket upgrade needs no policy of its own.
+
+### What the user sees
+
+- The button is a toggle with `aria-expanded` and `aria-controls` pointing at the panel. `Esc`
+  closes it and focus returns to the button.
+- The panel is a Vuetify drawer: `temporary` below the `md` breakpoint so it overlays on a phone,
+  `permanent` above it so the record under discussion stays beside the conversation.
+- The transcript shows user messages, assistant Markdown (through the existing `MarkdownView`
+  pipeline, so sanitisation is already solved), tool activity as a compact line — "Read a company" —
+  and an approval card for a pending write. Records the assistant names are links into the app.
+- Reopening the panel or reloading the page rejoins the same conversation: the transcript lives in
+  the Durable Object, not in the tab.
+
+### How it is grounded
+
+By **tool calls over the live RPC contract**, not by a vector index. The system prompt carries the
+caller's name, roles, and capabilities, the installation's formats, the fixed pipeline stage names,
+the behavioural rules, and — when the panel sends one — a hint naming the record on screen. It
+carries **no customer data**: a prompt that did would be a second copy of the CRM with no permission
+model, which is exactly the escalation the design forbids. A unit test asserts that directly.
+
+Capabilities are re-read from the Data Worker every turn rather than cached, so an owner removing a
+role takes effect on the user's next message.
+
+### Writes always ask
+
+Every mutating tool is declared `needsApproval`, without exception. The stream pauses, the panel
+shows what will happen with the arguments the assistant proposed, and nothing reaches the Data
+Worker until the user approves. Declining is reported to the model as a declined action rather than
+a failure, so the assistant says it was declined.
+
+The idempotency key is **derived** from the chat request and the tool call, never supplied by the
+model, so an approval replayed after a reconnect is a replay rather than a second record. Updates
+still carry the version they were read at, so a concurrent change is a conflict rather than a silent
+overwrite. Approval is user consent, not a permission grant: the Data Worker remains the authority
+for permissions, validation, concurrency, audit, and idempotency, and a test calls a tool the caller
+lacks and asserts `FORBIDDEN` rather than success.
+
+### Sessions and lifetime
+
+One session per user. The Durable Object instance is named `${userId}:${sessionId}`, where
+`sessionId` is **derived server-side** from the verified identity: the browser asks
+`GET /api/v1/chat/session` for its own session name, and the Worker re-derives and re-checks it on
+every request. A name belonging to somebody else is refused with `403` before any dispatch, and a
+name belonging to nobody gets the same answer, so a probe learns nothing.
+
+The transcript is not business data. It never enters D1, and three hours after the last message the
+object destroys it — genuinely gone, not archived. The authoritative record of what changed is the
+audit trail, which names the actor, the change, and the channel (`chat`), and outlives the
+conversation that produced it. A returning user whose session expired sees one line saying so.
+
+### Model and cost control
+
+Workers AI's `@cf/zai-org/glm-4.7-flash`, bound as `AI_CHAT_MODEL` so changing it is a configuration
+edit, routed through a Terraform-owned AI Gateway with logging, a **30 requests / 60 seconds sliding
+rate limit**, and a **$2 / 24 hours sliding spend cap**. Caching is off: replaying a cached
+tool-calling round would repeat stale prose or skip a write. A turn is bounded to eight tool rounds,
+the stored transcript to 100 messages, and what is sent to the model by `pruneMessages`. No prompt
+or response content reaches the Worker's logs — the gateway holds the content, Workers Logs holds
+the metadata.
+
+A Gateway limit gives the panel a safe temporary-usage-limit message. It does **not** auto-retry the
+failed turn or an approval continuation: retrying could replay a write, so recovery is always a
+fresh, explicit user action after the limit window resets. The live-only rate-limit check is in
+[`MCP-VALIDATION.md`](./MCP-VALIDATION.md).
+
+Local development and the Playwright journeys use a **scripted model**
+(`src/application-worker/chat/development-model.ts`) instead, gated on `import.meta.env.DEV`, which
+every build compiles to a literal `false`. Without it `pnpm start` and `pnpm test:e2e` would call
+the real service: they would not work offline, would spend the account's allowance, and would assert
+different prose every run.
+
+### Bundle cost: none unless opened
+
+The panel, the Agents client, the AI SDK's chat pieces, and the Markdown renderer are all in a
+lazily loaded chunk (about 77 kB gzipped), so a user who never opens chat downloads none of it.
+`pnpm check` runs `check:bundles`, which fails if the SPA entry chunk exceeds its budget, the chat
+transport appears in it at all, the `ChatPanel` lazy chunk disappears, or that chunk exceeds its 100
+kB gzip budget. `pnpm report:bundles` writes the ignored JSON artifact for a release.
+
+## MCP agent surface
+
+`POST /mcp` exposes the catalogue's read and write CRM tools through a stateless Streamable HTTP MCP
+server. Every write requires an idempotency key and, for updates, the version returned by a prior
+read; the Data Worker performs the final permission, validation, concurrency, audit, and idempotency
+checks. The MCP transport does not silently broaden authority: the authenticated actor is never a
+tool argument, and a replay with the same key returns the original mutation result.
+
+The endpoint is routed through the same Cloudflare Access policy and Worker-side JWT audience
+validation as `/api`; Cloudflare Access Managed OAuth is configured on that existing application, so
+the demo implements no separate OAuth Worker or token store. The tool server derives its actor only
+from the verified identity and calls the existing `DATA_SERVICE` RPC client with `channel: 'mcp'`.
+
+The endpoint is intentionally exact: `GET /mcp` returns `405 Allow: POST`, and only `/mcp` (not an
+unreviewed future `/mcp/*` path) bypasses same-origin browser CSRF checks. Non-browser clients use
+an explicit OAuth credential, not an ambient browser cookie. Tool visibility is capability-filtered
+for usability; the Data Worker remains authoritative for authorization.
+
+Managed OAuth is the one part that cannot be proven offline. The operator runbook,
+[`MCP-VALIDATION.md`](./MCP-VALIDATION.md), covers a real client's Dynamic Client Registration and
+login, one read and one disposable write with idempotency replay, the `mcp` audit channel, silent
+refresh after the 15-minute Access token lifetime, and refusal after suspension.
 
 ## Phase 7: hardening
 
 - **Coverage.** Every authored `src` runtime file is at ≥ 80% statements, branches, functions, and
   lines (not just the total). Gaps were closed through public interfaces, with no coverage
-  exclusions; overall 97.4% statements, 91.0% branches, 95.6% functions, 97.4% lines over 542 Vitest
-  tests, plus 20 Playwright checks.
+  exclusions; current `pnpm test` reports its exact totals (including the AI suites) instead of this
+  historical pre-AI count.
 - **Corner cases.** `tests/unit/edge-cases.test.ts`, `tests/client/drafts-and-boundaries.test.ts`,
   and `tests/unit/notes/notes-repository.test.ts` cover: deleted cursor rows and exactly-full last
   pages; Unicode names and UTF-16 length limits; two writers holding one version; idempotent replay
@@ -537,12 +673,12 @@ seam a later MCP module would call, with the same RBAC.
   statement of a write set leaving no partial rows; RPC error envelopes surviving structured
   cloning; one slow RPC timing out without affecting another; tombstoned note links; and the
   Markdown sanitiser on its own against hostile HTML.
-- **Accessibility.** `tests/e2e/accessibility.spec.ts` runs axe-core (WCAG 2.0–2.2 A/AA) on 14 pages
-  in the light and dark themes at both sizes. It also checks that dialogs return focus to their
-  opener, 24 px targets, reflow at 320 CSS px, and reduced motion. Fixes include themed link colour,
-  emphasis opacities raised to ≥ 4.5:1, focus return for every dialog, a shared polite announcer for
-  moves and completions, focus that follows a moved card, `aria-pressed` toggles, `aria-expanded` on
-  the drawer, marked required fields, named task checkboxes, valid list roles, and a 404 `h1`.
+- **Accessibility.** `tests/e2e/accessibility.spec.ts` runs axe-core (WCAG 2.0–2.2 A/AA) on the main
+  pages in the light and dark themes at both sizes **and on the open assistant panel**. It also
+  checks dialog focus return, 24 px targets, reflow at 320 CSS px, and reduced motion. Fixes include
+  themed link colour, emphasis opacities raised to ≥ 4.5:1, focus return for every dialog and the
+  chat panel, a shared polite announcer, `aria-expanded` drawer toggles, named task checkboxes, and
+  a separate live-region wrapper that preserves the transcript's native list semantics.
 - **Security.** Response security headers and a page CSP, an identity-header scrub, expired-session
   handling, guard-reason validation in the D1 error translator, generic messages for unexpected
   client errors, and pinned patched versions of two vulnerable dev-tool dependencies.
@@ -550,9 +686,10 @@ seam a later MCP module would call, with the same RBAC.
   for lists, the dashboard, reports, search, and audit, and about 15 ms for the customer overview
   (two parallel RPC reads). Each use case issues a fixed number of bounded queries (no per-row
   loops), and `Intl` formatters are built once per configuration. Data Worker outages are exercised
-  as safe, retryable 503s (`tests/unit/api/worker-entry.test.ts`, `tests/unit/api/app.test.ts`). No
-  MCP, OAuth, Durable Object, R2, or Queue dependency exists; Vuetify is the only component or CSS
-  framework, and its registration is checked against the templates.
+  as safe, retryable 503s (`tests/unit/api/worker-entry.test.ts`, `tests/unit/api/app.test.ts`). The
+  AI release adds Managed OAuth-protected MCP and a SQLite-backed Durable Object chat session; their
+  Access-edge validation is documented in [`MCP-VALIDATION.md`](./MCP-VALIDATION.md). Vuetify
+  remains the only component/CSS framework, and its registration is checked against the templates.
 
 ## Follow-on pass 1
 

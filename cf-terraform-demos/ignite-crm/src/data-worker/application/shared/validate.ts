@@ -66,7 +66,7 @@ const ActorContextSchema = v.strictObject({
   email: v.pipe(v.string(), v.minLength(3), v.maxLength(254)),
   userId: IdSchema,
   requestId: v.pipe(v.string(), v.minLength(1), v.maxLength(128)),
-  channel: v.literal('api')
+  channel: v.picklist(['api', 'chat', 'mcp'])
 });
 
 /**

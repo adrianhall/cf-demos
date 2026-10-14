@@ -1,8 +1,8 @@
 /**
  * @file Application Worker entrypoint (`ignite-crm-application`): the public edge. Composes the API
  *   module with the real Access middleware and the `DATA_SERVICE` RPC binding. Static SPA assets
- *   are served by the platform before this code runs (`runWorkerFirst` covers only `/api/*`).
- *   `/mcp` is reserved for a later release and deliberately has no handler.
+ *   are served by the platform before this code runs (`runWorkerFirst` covers only `/api/*`). Chat
+ *   sessions are routed to the SQLite-backed `CrmChatAgent` Durable Object.
  */
 
 import { createLogger, resolveLoggerConfig } from '@adrianhall/cloudflare-toolkit/logging';

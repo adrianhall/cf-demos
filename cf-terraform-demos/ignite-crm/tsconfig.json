@@ -23,6 +23,7 @@
     "tests/contract",
     "tests/fakes",
     "tests/fixtures",
+    "tests/workers-aliases.ts",
     "tests/e2e",
     "playwright.config.ts",
     "scripts",

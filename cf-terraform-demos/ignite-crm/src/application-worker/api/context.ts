@@ -19,6 +19,22 @@ export interface ApiBindings {
    * Deployment environment name; absent in development.
    */
   readonly ENVIRONMENT?: string;
+  /**
+   * Durable Object namespace for chat sessions.
+   */
+  readonly CHAT_AGENT: DurableObjectNamespace;
+  /**
+   * Account-authenticated Workers AI binding.
+   */
+  readonly AI: Ai;
+  /**
+   * Chat model selected by deployment configuration.
+   */
+  readonly AI_CHAT_MODEL?: string;
+  /**
+   * Data Worker RPC service binding.
+   */
+  readonly DATA_SERVICE: Env['DATA_SERVICE'];
 }
 
 /**
