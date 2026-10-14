@@ -153,6 +153,14 @@ this rather than implying that a README or starter commit was created.
 Read tokens permit clone, fetch, and pull. Write tokens additionally permit push. A Git token is
 not an Access JWT and cannot grant access to any other Artifacts repository.
 
+**DISCUSSION**:
+
+This is not the final form for user-git - our intent is to prioritize website coding sessions and
+avoid data on users laptops.  As such, the repository short-lived tokens are the right model for
+this.  If day-to-day long-lived tokens are required, a git proxy with OAuth provided by Cloudflare
+Access will be required.  This has been added to the [01-github-features.md](./01-github-features.md)
+file.
+
 #### Rename or delete a repository
 
 - Rename changes only the Codeflare display name and description in D1. Artifacts repo names and
@@ -169,7 +177,8 @@ not an Access JWT and cannot grant access to any other Artifacts repository.
 ### 3.1 GitHub-like dashboard and repository UI
 
 The visual direction is GitHub-like in hierarchy and familiarity, not a pixel-for-pixel copy or use
-of GitHub branding.
+of GitHub branding.  Use Cloudflare branding (orange/blue) and a modern "vuetify" or material design
+look and feel instead.
 
 | Surface | Required behaviour |
 | --- | --- |
@@ -455,6 +464,8 @@ hand-written.
 ```text
 Entire Account → Developer Platform → Artifacts: Edit
 ```
+
+**DISCUSSION**: This permission will be added to the central (repo-root) .env.example and .env
 
 It retains the existing Workers Scripts, D1, Access, and zone/DNS permissions required by the shared
 Terraform lifecycle.
