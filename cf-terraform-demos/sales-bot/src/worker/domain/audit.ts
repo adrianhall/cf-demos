@@ -97,6 +97,10 @@ export interface AuditQuery {
    */
   resource?: string;
   /**
+   * Restrict to one correlation ID, linking safe logs and durable audit entries.
+   */
+  correlationId?: string;
+  /**
    * Largest number of entries to return.
    */
   limit: number;

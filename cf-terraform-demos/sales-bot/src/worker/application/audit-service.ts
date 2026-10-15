@@ -35,16 +35,37 @@ export class AuditService {
    *   the filter worked.
    * @throws {Error} When the repository rejects the read.
    */
-  public async listEvents(actor: Actor, action?: string): Promise<AuditEvent[]> {
+  public async listEvents(
+    actor: Actor,
+    filters: { action?: string; resource?: string; correlationId?: string }
+  ): Promise<AuditEvent[]> {
     if (!isAdministrator(actor)) {
       throw forbidden({ detail: 'Only an administrator may read the audit trail.' });
     }
-    if (action !== undefined && !isAuditAction(action)) {
+    if (filters.action !== undefined && !isAuditAction(filters.action)) {
       throw unprocessableContent({ detail: 'Unknown audit action filter.' });
+    }
+    if (
+      (filters.resource !== undefined && !this.isSafeFilter(filters.resource))
+      || (filters.correlationId !== undefined && !this.isSafeFilter(filters.correlationId))
+    ) {
+      throw unprocessableContent({ detail: 'Audit filters contain unsupported characters.' });
     }
     return this.audit.list({
       limit: AUDIT_PAGE_SIZE,
-      ...(action === undefined ? {} : { action })
+      ...(filters.action === undefined ? {} : { action: filters.action }),
+      ...(filters.resource === undefined ? {} : { resource: filters.resource }),
+      ...(filters.correlationId === undefined ? {} : { correlationId: filters.correlationId })
     });
+  }
+
+  /**
+   * Keep audit filters bounded and identifier-like: this endpoint is not a content search surface.
+   *
+   * @param value Candidate resource or correlation ID filter.
+   * @returns Whether the value is safely bounded.
+   */
+  private isSafeFilter(value: string): boolean {
+    return value.length > 0 && value.length <= 200 && /^[a-zA-Z0-9:._-]+$/u.test(value);
   }
 }

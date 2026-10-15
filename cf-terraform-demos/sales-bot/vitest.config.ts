@@ -22,6 +22,7 @@ export default defineConfig({
         'src/worker/domain/faq-validation.ts',
         'src/worker/domain/documentation.ts',
         'src/worker/application/conversation-service.ts',
+        'src/worker/application/dashboard-service.ts',
         'src/worker/application/faq-service.ts',
         'src/worker/application/index-job-service.ts',
         'src/worker/application/escalation-service.ts',

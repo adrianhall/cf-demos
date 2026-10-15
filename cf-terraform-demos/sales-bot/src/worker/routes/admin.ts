@@ -126,8 +126,10 @@ adminRouter.post('/index-jobs/run', async (context) => {
  */
 adminRouter.get('/audit', async (context) =>
   context.json({
-    events: await context
-      .get('AUDIT_SERVICE')
-      .listEvents(context.get('ACTOR'), context.req.query('action'))
+    events: await context.get('AUDIT_SERVICE').listEvents(context.get('ACTOR'), {
+      action: context.req.query('action'),
+      resource: context.req.query('resource'),
+      correlationId: context.req.query('correlationId')
+    })
   })
 );

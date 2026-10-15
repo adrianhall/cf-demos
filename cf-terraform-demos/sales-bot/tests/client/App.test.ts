@@ -78,6 +78,37 @@ describe('SalesBot shell', () => {
     expect(wrapper.get('#faq-product').text()).toContain('D1');
   });
 
+  it('offers a product-scoped dashboard to PMs with semantic metrics', async () => {
+    stubFetch({
+      '/api/me': { email: 'pm@example.com', role: 'pm' },
+      '/api/dashboard': {
+        metrics: {
+          openCount: 1,
+          byProduct: [{ productId: 'd1', openCount: 1 }],
+          averageQueueAgeMs: 60_000,
+          oldestQueueAgeMs: 60_000,
+          averageFirstAnswerMs: null,
+          averageResolutionMs: null,
+          reassignmentCount: 0,
+          rejectionCount: 0,
+          staleFaqCount: 0,
+          indexingBacklog: 0,
+          failedIndexJobs: 0
+        }
+      }
+    });
+    const wrapper = mount(App);
+    await flushPromises();
+    await wrapper
+      .findAll('.nav-link')
+      .find((link) => link.text() === 'Dashboard')
+      ?.trigger('click');
+    await flushPromises();
+    expect(wrapper.get('#dashboard-heading').text()).toBe('Web workflow health');
+    expect(wrapper.get('caption').text()).toBe('Open queue by product');
+    expect(wrapper.get('dl').text()).toContain('Open queue');
+  });
+
   it('shows the administrator freshness view only after it is opened', async () => {
     stubFetch({
       '/api/me': { email: 'admin@example.com', role: 'administrator' },

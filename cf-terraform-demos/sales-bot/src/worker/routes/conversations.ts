@@ -7,6 +7,7 @@ import {
 } from '@demos/worker-common';
 import type { AppBindings } from '../bindings';
 import { validateAskInput } from '../domain/conversation-validation';
+import { D1RateLimiter } from '../infrastructure/d1-rate-limiter';
 import { DurableConversationSessions } from '../infrastructure/durable-conversation-sessions';
 
 /**
@@ -60,6 +61,11 @@ conversationsRouter.get('/:id/events', async (context) =>
  * Posts one question over HTTP for clients that cannot keep a WebSocket open.
  */
 conversationsRouter.post('/:id/messages', async (context) => {
+  await new D1RateLimiter(context.env.DB).consume(
+    context.get('ACTOR').identityKey,
+    'message',
+    context.get('NOW')
+  );
   const conversation = await context.get('CONVERSATION_SERVICE').requireOwned(
     {
       actor: context.get('ACTOR'),

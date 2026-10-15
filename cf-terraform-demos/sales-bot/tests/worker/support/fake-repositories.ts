@@ -288,6 +288,10 @@ export class MemoryAuditRepository implements AuditRepository {
         .reverse()
         .filter((event) => query.action === undefined || event.action === query.action)
         .filter((event) => query.resource === undefined || event.resource === query.resource)
+        .filter(
+          (event) =>
+            query.correlationId === undefined || event.correlationId === query.correlationId
+        )
         .slice(0, query.limit)
     );
   }

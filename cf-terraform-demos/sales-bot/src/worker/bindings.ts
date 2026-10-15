@@ -2,6 +2,7 @@ import type { CloudflareToolkitVariables } from '@adrianhall/cloudflare-toolkit/
 import type { AnswerService } from './application/answer-service';
 import type { AuditService } from './application/audit-service';
 import type { ConversationService } from './application/conversation-service';
+import type { DashboardService } from './application/dashboard-service';
 import type { DocumentationService } from './application/documentation-service';
 import type { EscalationService } from './application/escalation-service';
 import type { FaqContext, FaqService } from './application/faq-service';
@@ -81,6 +82,10 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * Audit-trail reads.
    */
   AUDIT_SERVICE: AuditService;
+  /**
+   * D1-derived, caller-scoped operational dashboard use cases.
+   */
+  DASHBOARD_SERVICE: DashboardService;
 }
 
 /**

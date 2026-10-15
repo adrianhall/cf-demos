@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import type { Audience } from '../worker/domain/audience';
 import ChatPanel from './components/ChatPanel.vue';
+import DashboardPanel from './components/DashboardPanel.vue';
 import FaqEditor from './components/FaqEditor.vue';
 import FaqList from './components/FaqList.vue';
 import IndexFreshness from './components/IndexFreshness.vue';
@@ -11,7 +12,7 @@ import { useAdmin, useIdentity, useKnowledge, type FaqDraft } from './stores';
 /**
  * Sections the shell can show.
  */
-type Section = 'chat' | 'knowledge' | 'queue' | 'admin';
+type Section = 'chat' | 'knowledge' | 'queue' | 'dashboard' | 'admin';
 
 const identity = useIdentity();
 const knowledge = useKnowledge();
@@ -164,6 +165,15 @@ watch(section, (next) => {
       >
         Escalations
       </button>
+      <button
+        v-if="identity.managementVisible.value"
+        type="button"
+        class="nav-link"
+        :aria-current="section === 'dashboard' ? 'page' : undefined"
+        @click="show('dashboard')"
+      >
+        Dashboard
+      </button>
       <a href="/cdn-cgi/access/logout">Sign out</a>
     </nav>
     <p class="identity" aria-live="polite">
@@ -197,6 +207,8 @@ watch(section, (next) => {
     </section>
 
     <PmQueuePanel v-else-if="section === 'queue'" />
+
+    <DashboardPanel v-else-if="section === 'dashboard'" />
 
     <section v-else aria-labelledby="admin-heading">
       <p class="eyebrow">Administration</p>

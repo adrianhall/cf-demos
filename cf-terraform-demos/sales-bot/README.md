@@ -13,6 +13,12 @@ reassign escalations; answers and rejections become durable turns in the request
 conversation. Assignment history blocks direct and longer reassignment cycles. A PM may explicitly
 publish an answer as an FAQ, which creates the normal retryable index job.
 
+Phase 5 adds a D1-derived, product-scoped dashboard for queue volume and age, response and
+resolution latency, product distribution, reassignment/rejection counts, FAQ freshness, and index
+backlog. The administrator audit view supports action, resource, and correlation-ID filters.
+Retention defaults to 365 days for web conversations and 730 days for audit records in
+`retention_configuration`; the table makes the policy explicit before scheduled deletion is enabled.
+
 ## Prerequisites
 
 - Node.js 24+, pnpm 12+, Terraform 1.10+, and the `cf` CLI supplied by this workspace.

@@ -8,6 +8,7 @@ import { ActorResolver } from './application/actor-resolver';
 import { AnswerService } from './application/answer-service';
 import { AuditService } from './application/audit-service';
 import { ConversationService } from './application/conversation-service';
+import { DashboardService } from './application/dashboard-service';
 import { DocumentationService } from './application/documentation-service';
 import { EscalationService } from './application/escalation-service';
 import { FaqService } from './application/faq-service';
@@ -19,6 +20,7 @@ import type { AppBindings } from './bindings';
 import { ConversationSession } from './infrastructure/conversation-session';
 import { D1AuditRepository } from './infrastructure/d1-audit-repository';
 import { D1ConversationRepository } from './infrastructure/d1-conversation-repository';
+import { D1DashboardRepository } from './infrastructure/d1-dashboard-repository';
 import { D1DocumentationRepository } from './infrastructure/d1-documentation-repository';
 import { D1EscalationRepository } from './infrastructure/d1-escalation-repository';
 import { D1FaqRepository } from './infrastructure/d1-faq-repository';
@@ -30,6 +32,7 @@ import { createRetrieval, createSearchIndex } from './infrastructure/search-inde
 import { accessMiddleware } from './middleware/access';
 import { adminRouter } from './routes/admin';
 import { conversationsRouter } from './routes/conversations';
+import { dashboardRouter } from './routes/dashboard';
 import { escalationsRouter } from './routes/escalations';
 import { faqsRouter } from './routes/faqs';
 import { meRouter } from './routes/me';
@@ -132,12 +135,14 @@ app.use(async (context, next) => {
   );
   context.set('INDEX_JOB_SERVICE', new IndexJobService(indexJobs, faqs, searchIndex, audit));
   context.set('AUDIT_SERVICE', new AuditService(audit));
+  context.set('DASHBOARD_SERVICE', new DashboardService(new D1DashboardRepository(database)));
   await next();
 });
 
 app.route('/api/me', meRouter);
 app.route('/api/conversations', conversationsRouter);
 app.route('/api/escalations', escalationsRouter);
+app.route('/api/dashboard', dashboardRouter);
 app.route('/api/products', productsRouter);
 app.route('/api/faqs', faqsRouter);
 app.route('/api/admin', adminRouter);

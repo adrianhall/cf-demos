@@ -134,6 +134,10 @@ export class D1AuditRepository implements AuditRepository {
       conditions.push('resource = ?');
       parameters.push(query.resource);
     }
+    if (query.correlationId !== undefined) {
+      conditions.push('correlation_id = ?');
+      parameters.push(query.correlationId);
+    }
     parameters.push(query.limit);
 
     const where = conditions.length === 0 ? '' : `WHERE ${conditions.join(' AND ')} `;
