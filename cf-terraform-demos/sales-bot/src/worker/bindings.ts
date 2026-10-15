@@ -1,11 +1,15 @@
 import type { CloudflareToolkitVariables } from '@adrianhall/cloudflare-toolkit/hono';
+import type { AnswerService } from './application/answer-service';
 import type { AuditService } from './application/audit-service';
+import type { ConversationService } from './application/conversation-service';
 import type { DocumentationService } from './application/documentation-service';
 import type { FaqContext, FaqService } from './application/faq-service';
 import type { IdentityService } from './application/identity-service';
 import type { IndexJobService } from './application/index-job-service';
 import type { ProductService } from './application/product-service';
+import type { RetrievalService } from './application/retrieval-service';
 import type { Actor } from './domain/actor';
+import type { ConversationSession } from './infrastructure/conversation-session';
 import type { SearchIndexEnv } from './infrastructure/search-index-factory';
 
 /**
@@ -45,6 +49,18 @@ export interface AppVariables extends CloudflareToolkitVariables {
    */
   FAQ_SERVICE: FaqService;
   /**
+   * Conversation ownership, transcript replay, and idempotent question writes.
+   */
+  CONVERSATION_SERVICE: ConversationService;
+  /**
+   * Retrieval with authoritative D1 policy rechecks.
+   */
+  RETRIEVAL_SERVICE: RetrievalService;
+  /**
+   * Shared gateway-routed answer and escalation workflow.
+   */
+  ANSWER_SERVICE: AnswerService;
+  /**
    * Product-map use cases.
    */
   PRODUCT_SERVICE: ProductService;
@@ -76,7 +92,17 @@ export interface AppBindings {
    * optional here is what lets the indexing pipeline be built and tested before the instance
    * exists.
    */
-  Bindings: Env & { ENVIRONMENT?: string } & SearchIndexEnv;
+  Bindings: Omit<Env, 'CONVERSATION_SESSION'>
+    & SearchIndexEnv & {
+      /**
+       * Self-referential namespace coordinating one web conversation per Durable Object.
+       */
+      CONVERSATION_SESSION: DurableObjectNamespace<ConversationSession>;
+      /**
+       * Omitted locally, explicitly labelled in production.
+       */
+      ENVIRONMENT?: string;
+    };
   /**
    * Values set during request processing.
    */

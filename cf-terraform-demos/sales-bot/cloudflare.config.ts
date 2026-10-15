@@ -1,4 +1,4 @@
-import { bindings, defineConfig, defineWorker } from 'cf/config';
+import { bindings, defineConfig, defineWorker, exports } from 'cf/config';
 import { requireTerraformOutputs } from '@adrianhall/cloudflare-toolkit/vite';
 import { OUTPUT_KEYS, type TerraformOutputs } from './infra/outputs.ts';
 import * as entrypoint from './src/worker/index.ts' with { type: 'cf-worker' };
@@ -23,6 +23,10 @@ export default defineConfig({
       workersDev: false,
       previewUrls: false,
       domains: production ? [values.hostname] : [],
+      // `ConversationSession` is defined by this Worker, so cf owns its Durable Object namespace
+      // alongside the code that exports the class. Terraform owns D1 and the AI Gateway, but
+      // splitting this namespace between Terraform and cf would give one resource two owners.
+      exports: { ConversationSession: exports.durableObject({ storage: 'sqlite' }) },
       assets: { notFoundHandling: 'single-page-application', runWorkerFirst: ['/api/*'] },
       observability: {
         enabled: true,
@@ -32,6 +36,16 @@ export default defineConfig({
       },
       env: {
         DB: bindings.d1({ id: values.d1DatabaseId, name: values.d1DatabaseName }),
+        // Workers AI can only be reached by `GatewayInferenceClient`, which supplies the configured
+        // gateway on every call. The binding alone would allow direct inference, hence the invariant
+        // test that permits it in exactly that one module.
+        AI: bindings.ai(),
+        // Self-referential Durable Object binding: this Worker defines ConversationSession and also
+        // forwards authenticated WebSocket upgrades to it.
+        CONVERSATION_SESSION: bindings.durableObject({
+          worker: values.workerName,
+          exportName: 'ConversationSession'
+        }),
         ACCESS_AUD: bindings.text(values.accessAud),
         CLOUDFLARE_TEAM_DOMAIN: bindings.text(values.cloudflareTeamDomain),
         AI_GATEWAY_ID: bindings.text(values.aiGatewayId),

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import type { Audience } from '../worker/domain/audience';
+import ChatPanel from './components/ChatPanel.vue';
 import FaqEditor from './components/FaqEditor.vue';
 import FaqList from './components/FaqList.vue';
 import IndexFreshness from './components/IndexFreshness.vue';
@@ -9,7 +10,7 @@ import { useAdmin, useIdentity, useKnowledge, type FaqDraft } from './stores';
 /**
  * Sections the shell can show.
  */
-type Section = 'knowledge' | 'admin';
+type Section = 'chat' | 'knowledge' | 'admin';
 
 const identity = useIdentity();
 const knowledge = useKnowledge();
@@ -131,6 +132,14 @@ watch(section, (next) => {
       <button
         type="button"
         class="nav-link"
+        :aria-current="section === 'chat' ? 'page' : undefined"
+        @click="show('chat')"
+      >
+        Chat
+      </button>
+      <button
+        type="button"
+        class="nav-link"
         :aria-current="section === 'knowledge' ? 'page' : undefined"
         @click="show('knowledge')"
       >
@@ -154,7 +163,9 @@ watch(section, (next) => {
   <main id="main-content" tabindex="-1">
     <p v-if="identity.error.value" class="error" role="alert">{{ identity.error }}</p>
 
-    <section v-if="section === 'knowledge'" aria-labelledby="knowledge-heading">
+    <ChatPanel v-if="section === 'chat'" />
+
+    <section v-else-if="section === 'knowledge'" aria-labelledby="knowledge-heading">
       <p class="eyebrow">Authenticated sales workspace</p>
       <h1 id="knowledge-heading">Cloudflare product FAQs</h1>
       <p v-if="knowledge.error.value" class="error" role="alert">{{ knowledge.error }}</p>

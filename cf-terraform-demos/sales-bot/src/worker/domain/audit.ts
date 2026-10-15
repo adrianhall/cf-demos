@@ -13,7 +13,10 @@ export const AUDIT_ACTIONS = [
   'faq.expired',
   'documentation.imported',
   'documentation.indexed',
-  'documentation.index_failed'
+  'documentation.index_failed',
+  'conversation.created',
+  'conversation.answered',
+  'escalation.opened'
 ] as const;
 
 /**

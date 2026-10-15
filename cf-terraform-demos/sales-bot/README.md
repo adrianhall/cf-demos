@@ -1,10 +1,12 @@
 # SalesBot
 
 SalesBot is an authenticated Vue and Cloudflare Workers demonstration for internal Cloudflare sales.
-Phase 2 adds the FAQ/documentation knowledge base: the supplied product ownership map, audience- and
-expiry-aware FAQ revisions, PM scope checks with an administrator override, immutable audit events,
-a reviewed Cloudflare documentation manifest, retryable indexing jobs, and an administrator
-freshness view. Chat and escalation workflows are added in later phases.
+Phase 3 adds the web-chat answer workflow: one authoritative D1 transcript per verified requester, a
+`ConversationSession` Durable Object for ordered live WebSocket delivery and reconnect replay,
+D1-rechecked AI Search retrieval, citations, a mandatory AI Gateway model client, bounded prompts,
+cancellation, and an explicit product-manager escalation path. The supplied product ownership map,
+audience- and expiry-aware FAQ revisions, immutable audit events, reviewed documentation manifest,
+retryable indexing jobs, and administrator freshness view remain the knowledge base underneath it.
 
 ## Prerequisites
 
@@ -58,6 +60,33 @@ individual Markdown pages from `github.com/cloudflare/cloudflare-docs`, their pr
 revision, and SHA-256 content hash. Regenerate it only from a reviewed local checkout with
 `pnpm generate:manifest`; the Worker imports the committed manifest and never reads an arbitrary URL
 or filesystem path.
+
+### Chat and answer workflow
+
+`ConversationSession` is keyed by the D1 conversation identifier. It coordinates ordering,
+cancellation, hibernatable WebSockets, and reconnect replay, but is **not** a second source of
+truth: every question, answer, and escalation acknowledgement is persisted in D1 before the session
+broadcasts it. A WebSocket upgrade is forwarded as the original authenticated request because a live
+WebSocket cannot cross Durable Object RPC serialization and the Hibernation API completes the
+upgrade against that request. Before forwarding, `withVerifiedIdentity()` deletes every client copy
+of the identity, email, role, clearance, and correlation headers — including case variants — then
+sets values derived only from verified Access identity and D1. A direct HTTP request to the stream
+route receives `426 Upgrade Required`.
+
+The answer workflow retrieves AI Search candidates and rechecks every FAQ against D1 status, expiry,
+and the requester's current clearance before either model sees it. A deterministic evidence
+threshold escalates unsupported questions; a gateway-routed decision model may only narrow that to
+another escalation, never approve an answer without evidence. The answer model receives a bounded
+prompt and stores citations beside its answer. The audience filter runs again immediately before
+delivery, so a clearance or classification changed while generating cannot leak content. A requester
+can cancel an in-flight answer or explicitly ask a product manager; reconnects replay the
+authoritative transcript.
+
+`GatewayInferenceClient` is the only module allowed to use the Workers AI binding. Every call
+supplies the Terraform-managed authenticated, postpaid AI Gateway ID with content-free metadata
+(verified identity key, conversation ID, correlation ID, model contract version); there is no direct
+fallback. Provider errors are logged with identifiers and parameter lengths only, while the browser
+receives a safe RFC 9457 message.
 
 ### AI Search deployment capability
 

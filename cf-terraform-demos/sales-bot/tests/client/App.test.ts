@@ -95,7 +95,7 @@ describe('SalesBot shell', () => {
     await flushPromises();
     expect(wrapper.find('#freshness-heading').exists()).toBe(false);
 
-    await wrapper.findAll('.nav-link')[1]?.trigger('click');
+    await wrapper.findAll('.nav-link')[2]?.trigger('click');
     await flushPromises();
     expect(wrapper.get('#freshness-heading').text()).toBe('Index freshness');
     // Stated as a word as well as a count, so the state is never carried by colour alone.
