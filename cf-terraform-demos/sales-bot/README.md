@@ -21,9 +21,20 @@ Retention defaults to 365 days for web conversations and 730 days for audit reco
 
 ## Prerequisites
 
-- Node.js 24+, pnpm 12+, Terraform 1.10+, and the `cf` CLI supplied by this workspace.
-- Repository-root `.env`, created with `pnpm create-env`. The deploy token requires Workers, D1, AI
-  Gateway, Access, and DNS/custom hostname permissions for the configured account and zone.
+- Node.js 24+, pnpm 12+, Terraform 1.10+, and the workspace-provided `cf` CLI. Do not install or use
+  Wrangler for this demo.
+- Repository-root `.env`, created with `pnpm create-env`; do not create `.dev.vars` or a demo-local
+  `.env`. The deployment token needs least-privilege write access for Workers, Durable Objects, D1,
+  AI Gateway, AI Search, Zero Trust Access, and the configured zone's custom hostname/DNS APIs.
+- A Cloudflare account with Workers AI postpaid billing enabled. AI Search is an MVP requirement,
+  but the pinned Cloudflare Terraform provider currently fails while creating its upload-only
+  instance (provider issue: `vectorize_name` conversion mismatch). Do not deploy production RAG
+  traffic until that provider defect is fixed and the Terraform-owned binding is restored; the
+  Worker fails index jobs visibly and escalates retrieval failures rather than treating unsearchable
+  content as safe.
+- A Cloudflare Access team and an identity provider that can authenticate the approved internal
+  users. After deployment, an administrator must map real verified identities to the seeded
+  roles/products in D1; seed display names are not credentials.
 
 ## Commands
 
@@ -40,18 +51,38 @@ pnpm teardown       # delete Worker first, then Terraform resources
 ```
 
 Local Access emulation offers salesperson, PM, and administrator identities; it uses the same
-audience-aware policies as the deployed Worker. No `.dev.vars` file is used.
+audience-aware policies as the deployed Worker. No `.dev.vars` file is used. The Vite Cloudflare
+plugin persists local D1 and Durable Object state in `.cloudflare/state`; stop the server and remove
+that ignored directory when a fresh local demonstration is required.
+
+## Access and release operation
+
+The browser MVP is protected by the Terraform-managed self-hosted Access application. API and
+WebSocket paths use `redirect: false`, while the Worker independently validates the Access JWT's
+exact application audience and derives every actor from its verified identity. A signed-in user may
+create and continue only their own web conversations. PM, overseer, and administrator operations are
+also evaluated against the current D1 role and product scope. Email and Google Chat have no routes,
+bindings, or simulators in this release.
+
+`pnpm deploy` is intentionally non-interactive: it applies Terraform, writes ignored scalar outputs,
+applies D1 migrations, builds, then uploads the prebuilt Worker. Wait for Access login before
+opening the hostname. `pnpm teardown` deletes the Worker before Terraform destroys D1, AI Gateway,
+Access, and custom-hostname resources. Always run teardown after a smoke test; neither Terraform
+state, generated outputs, `.cloudflare`, nor coverage reports are committed.
 
 ## Infrastructure and trade-offs
 
 D1 is authoritative because the planned workflow needs relational integrity and transactions. The
 migration creates the full Phase 1 data-model foundation, but Phase 1 only reads the `identities`
-table. Terraform owns D1, the Access application/policy, Worker registration/custom hostname, and
-the AI Gateway. `cf` owns Worker code and bindings.
+table. Terraform owns D1, the Access application/policy, Worker registration/custom hostname, and AI
+Gateway. `cf` owns Worker code and deploy-time bindings.
 
 AI Gateway is pre-provisioned with `authentication = true` and
 `workers_ai_billing_mode = "postpaid"`. These explicit settings prevent anonymous gateway use and
-make Workers AI billing behavior deliberate before Phase 3 adds model traffic.
+make Workers AI billing behavior deliberate. AI Search is intentionally absent from this deployment
+while the pinned provider has a creation defect; local development uses an in-memory simulation and
+production fails indexing visibly, leaving work retryable in the administrator freshness view rather
+than claiming it is searchable.
 
 ## Knowledge-base policy
 
@@ -101,12 +132,10 @@ receives a safe RFC 9457 message.
 
 ### AI Search deployment capability
 
-Phase 2 deliberately models and tests the AI Search port and its retryable index-job lifecycle
-without provisioning an AI Search instance. The current Terraform provider exposes an AI Search
-resource, but instance availability and the final retrieval/index configuration are account and
-corpus decisions that Phase 3 must validate before creating real infrastructure. Local development
-uses a statically development-only in-memory index simulation. A production Worker without an
-`AI_SEARCH` binding fails jobs visibly, so the administrator freshness view reports pending/failed
-work rather than claiming FAQs are searchable. Once availability and schema are confirmed, Phase 3
-adds the Terraform-owned instance and typed `cf` binding; no application/domain policy needs to
-change.
+The application keeps the AI Search port, retryable index jobs, and an administrator freshness view,
+but the pinned Terraform provider cannot currently create the required upload-only instance. Local
+development therefore uses a statically development-only in-memory simulation. In production, a
+missing `AI_SEARCH` binding makes retrieval and indexing fail visibly: questions escalate rather
+than being answered without evidence, and jobs retain retry state instead of falsely appearing
+searchable. Restore a Terraform-owned upload-only instance and typed `cf` binding after the provider
+defect is fixed; do not configure a crawler, public endpoint, or MCP for the reviewed corpus.

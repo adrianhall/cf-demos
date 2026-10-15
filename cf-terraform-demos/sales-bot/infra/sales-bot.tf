@@ -29,7 +29,7 @@ resource "cloudflare_worker_version" "bootstrap" {
   account_id         = local.cloudflare_account_id
   worker_id          = cloudflare_worker.demo.id
   main_module        = "index.js"
-  compatibility_date = "2026-10-13"
+  compatibility_date = "2026-10-03"
   modules            = [{ name = "index.js", content_type = "application/javascript+module", content_base64 = base64encode("export default { fetch() { return new Response('Bootstrapping', { status: 503 }); } };") }]
   lifecycle { ignore_changes = all }
 }

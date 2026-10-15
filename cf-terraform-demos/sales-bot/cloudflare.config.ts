@@ -18,7 +18,7 @@ export default defineConfig({
     return {
       name: values.workerName,
       entrypoint,
-      compatibilityDate: '2026-10-13',
+      compatibilityDate: '2026-10-03',
       compatibilityFlags: ['nodejs_compat'],
       workersDev: false,
       previewUrls: false,

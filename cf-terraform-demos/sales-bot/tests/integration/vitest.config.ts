@@ -9,7 +9,7 @@ export default defineProject(async () => {
       cloudflareTest({
         main: path.resolve(import.meta.dirname, '../../src/worker/index.ts'),
         miniflare: {
-          compatibilityDate: '2026-10-13',
+          compatibilityDate: '2026-10-03',
           compatibilityFlags: ['nodejs_compat'],
           d1Databases: ['DB'],
           bindings: {

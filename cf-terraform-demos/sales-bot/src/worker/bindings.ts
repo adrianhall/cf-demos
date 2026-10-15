@@ -93,14 +93,12 @@ export interface AppVariables extends CloudflareToolkitVariables {
  */
 export interface AppBindings {
   /**
-   * Generated environment bindings, plus the optional production label and the optional AI Search
+   * Generated environment bindings, plus the optional production label and optional AI Search
    * instance.
    *
-   * `AI_SEARCH` comes from {@link SearchIndexEnv} rather than from the generated types because
-   * Terraform does not provision an instance yet; see
-   * `src/worker/infrastructure/ai-search-index.ts` for why that is deliberate. Declaring it
-   * optional here is what lets the indexing pipeline be built and tested before the instance
-   * exists.
+   * `AI_SEARCH` comes from {@link SearchIndexEnv} rather than generated types because the current
+   * Cloudflare provider cannot create the required upload-only instance. See `README.md` for the
+   * release prerequisite and the safe, fail-visible behaviour until that provider defect is fixed.
    */
   Bindings: Omit<Env, 'CONVERSATION_SESSION'>
     & SearchIndexEnv & {

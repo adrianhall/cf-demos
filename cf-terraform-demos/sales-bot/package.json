@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "run-s migrate:local start:dev",
-    "start:dev": "cf dev --persist-to .cloudflare/state",
+    "start:dev": "cf dev",
     "check": "run-s check:types check:format check:lint check:infra check:infra:fmt",
     "check:types": "run-s generate:types check:types:tsc",
     "check:types:tsc": "tsc --noEmit",
