@@ -73,6 +73,14 @@ describe('answer evidence decisions', () => {
     expect(() => validateAskInput({ question: '', idempotencyKey: '12345678' })).toThrow();
   });
 
+  it('recognizes escalation frames and rejects malformed frame payloads', () => {
+    expect(validateClientFrame({ type: 'escalate' })).toEqual({ type: 'escalate' });
+    expect(() => validateClientFrame({ type: 'cancel', reason: 'forged' })).toThrow();
+    expect(() => validateClientFrame({ type: 'unknown' })).toThrow();
+    expect(() => validateClientFrame([])).toThrow();
+    expect(() => validateAskInput({ question: 'Valid', idempotencyKey: 'not valid!' })).toThrow();
+  });
+
   it('keeps the prompt selection deterministic', () => {
     expect(
       boundEvidenceForPrompt([evidence(0.5), evidence(0.8)]).map((item) => item.score)

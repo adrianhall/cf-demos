@@ -110,6 +110,47 @@ describe('FaqService', () => {
     expect(allWithinClearance(visible, 'customer')).toBe(true);
   });
 
+  it('passes an optional product filter through while retaining audience checks', async () => {
+    const { service } = buildService();
+    await publish(service, 'd1', { audience: 'customer' });
+    await publish(service, 'workers-ai', {
+      audience: 'customer',
+      question: 'What is Workers AI?'
+    });
+
+    await expect(service.listFaqs(context('salesperson'), 'workers-ai')).resolves.toMatchObject([
+      { productId: 'workers-ai', question: 'What is Workers AI?' }
+    ]);
+  });
+
+  it('lets an administrator manage every visible FAQ while PMs see owned or scoped entries only', async () => {
+    const { service } = buildService();
+    const owned = await service.createFaq(
+      context('pm', { identityKey: 'owned-pm', productScopes: ['d1'] }),
+      {
+        question: 'Owned FAQ',
+        answer: 'An FAQ owned by this PM.',
+        productId: 'd1',
+        audience: 'customer'
+      }
+    );
+    await publish(service, 'workers-ai', { audience: 'customer', question: 'Scoped FAQ' });
+    await publish(service, 'stream', { audience: 'customer', question: 'Other FAQ' });
+
+    const pmFaqs = await service.listManageableFaqs(
+      context('pm', { identityKey: owned.ownerIdentityKey, productScopes: ['workers-ai'] })
+    );
+    expect(pmFaqs.map((faq) => faq.question).sort((a, b) => a.localeCompare(b))).toEqual([
+      'Owned FAQ',
+      'Scoped FAQ'
+    ]);
+
+    const administratorFaqs = await service.listManageableFaqs(context('administrator'));
+    expect(administratorFaqs.map((faq) => faq.question).sort((a, b) => a.localeCompare(b))).toEqual(
+      ['Other FAQ', 'Owned FAQ', 'Scoped FAQ']
+    );
+  });
+
   it('excludes an expired active FAQ before index cleanup runs', async () => {
     const { service } = buildService();
     await publish(service, 'd1', { expiresAt: '2026-10-15T11:59:59.999Z' });
