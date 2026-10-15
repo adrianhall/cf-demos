@@ -432,17 +432,34 @@ export class AnswerService {
     const product =
       conversation.productId === null ? null : await this.products.find(conversation.productId);
 
+    const initialTarget = escalationTargetFor(product);
     const escalation = await this.escalations.open({
       id: crypto.randomUUID(),
       conversationId: conversation.id,
       questionEventId: questionTurn.id,
       productId: conversation.productId,
       // An unlisted product still has to reach somebody; the product map's default target is who.
-      currentAssignee: escalationTargetFor(product),
+      currentAssignee: initialTarget,
       reason,
       status: 'open',
       openedAt: context.now.toISOString()
     });
+    // The initial automatic routing is history too: otherwise the first manual reassignment could
+    // bounce directly back to the seeded target without the cycle rule seeing it.
+    if ((await this.escalations.assignments(escalation.id)).length === 0) {
+      await this.escalations.assign(
+        { ...escalation, status: 'assigned' },
+        {
+          id: crypto.randomUUID(),
+          escalationId: escalation.id,
+          actorIdentityKey: null,
+          previousAssignee: null,
+          currentAssignee: initialTarget,
+          reason: 'product_map',
+          createdAt: context.now.toISOString()
+        }
+      );
+    }
 
     await this.conversations.updateClassification(
       conversation.id,

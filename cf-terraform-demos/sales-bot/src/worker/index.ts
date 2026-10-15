@@ -9,6 +9,7 @@ import { AnswerService } from './application/answer-service';
 import { AuditService } from './application/audit-service';
 import { ConversationService } from './application/conversation-service';
 import { DocumentationService } from './application/documentation-service';
+import { EscalationService } from './application/escalation-service';
 import { FaqService } from './application/faq-service';
 import { IdentityService } from './application/identity-service';
 import { IndexJobService } from './application/index-job-service';
@@ -29,6 +30,7 @@ import { createRetrieval, createSearchIndex } from './infrastructure/search-inde
 import { accessMiddleware } from './middleware/access';
 import { adminRouter } from './routes/admin';
 import { conversationsRouter } from './routes/conversations';
+import { escalationsRouter } from './routes/escalations';
 import { faqsRouter } from './routes/faqs';
 import { meRouter } from './routes/me';
 import { productsRouter } from './routes/products';
@@ -94,6 +96,16 @@ app.use(async (context, next) => {
   context.set('FAQ_SERVICE', new FaqService(faqs, indexJobs, audit));
   context.set('CONVERSATION_SERVICE', new ConversationService(conversations, audit));
   context.set(
+    'ESCALATION_SERVICE',
+    new EscalationService(
+      new D1EscalationRepository(database),
+      conversations,
+      faqs,
+      indexJobs,
+      audit
+    )
+  );
+  context.set(
     'RETRIEVAL_SERVICE',
     new RetrievalService(createRetrieval(context.env, import.meta.env.DEV), faqs)
   );
@@ -125,6 +137,7 @@ app.use(async (context, next) => {
 
 app.route('/api/me', meRouter);
 app.route('/api/conversations', conversationsRouter);
+app.route('/api/escalations', escalationsRouter);
 app.route('/api/products', productsRouter);
 app.route('/api/faqs', faqsRouter);
 app.route('/api/admin', adminRouter);

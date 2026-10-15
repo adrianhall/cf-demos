@@ -8,6 +8,11 @@ cancellation, and an explicit product-manager escalation path. The supplied prod
 audience- and expiry-aware FAQ revisions, immutable audit events, reviewed documentation manifest,
 retryable indexing jobs, and administrator freshness view remain the knowledge base underneath it.
 
+Phase 4 adds a PM escalation queue. Product-scoped PMs and administrators can answer, reject, or
+reassign escalations; answers and rejections become durable turns in the requester's original web
+conversation. Assignment history blocks direct and longer reassignment cycles. A PM may explicitly
+publish an answer as an FAQ, which creates the normal retryable index job.
+
 ## Prerequisites
 
 - Node.js 24+, pnpm 12+, Terraform 1.10+, and the `cf` CLI supplied by this workspace.

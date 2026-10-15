@@ -17,7 +17,13 @@ function stubFetch(routes: Record<string, unknown>): void {
     'fetch',
     vi.fn((input: string) => {
       const path = input.split('?')[0] ?? input;
-      const body = routes[path] ?? { faqs: [], products: [], sources: [], jobs: [] };
+      const body = routes[path] ?? {
+        faqs: [],
+        products: [],
+        sources: [],
+        jobs: [],
+        escalations: []
+      };
       return Promise.resolve(new Response(JSON.stringify(body)));
     })
   );

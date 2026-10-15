@@ -5,12 +5,13 @@ import ChatPanel from './components/ChatPanel.vue';
 import FaqEditor from './components/FaqEditor.vue';
 import FaqList from './components/FaqList.vue';
 import IndexFreshness from './components/IndexFreshness.vue';
+import PmQueuePanel from './components/PmQueuePanel.vue';
 import { useAdmin, useIdentity, useKnowledge, type FaqDraft } from './stores';
 
 /**
  * Sections the shell can show.
  */
-type Section = 'chat' | 'knowledge' | 'admin';
+type Section = 'chat' | 'knowledge' | 'queue' | 'admin';
 
 const identity = useIdentity();
 const knowledge = useKnowledge();
@@ -154,6 +155,15 @@ watch(section, (next) => {
       >
         Administration
       </button>
+      <button
+        v-if="identity.managementVisible.value"
+        type="button"
+        class="nav-link"
+        :aria-current="section === 'queue' ? 'page' : undefined"
+        @click="show('queue')"
+      >
+        Escalations
+      </button>
       <a href="/cdn-cgi/access/logout">Sign out</a>
     </nav>
     <p class="identity" aria-live="polite">
@@ -185,6 +195,8 @@ watch(section, (next) => {
         @archive="archive"
       />
     </section>
+
+    <PmQueuePanel v-else-if="section === 'queue'" />
 
     <section v-else aria-labelledby="admin-heading">
       <p class="eyebrow">Administration</p>

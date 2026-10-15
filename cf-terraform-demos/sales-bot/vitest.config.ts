@@ -23,7 +23,9 @@ export default defineConfig({
         'src/worker/domain/documentation.ts',
         'src/worker/application/conversation-service.ts',
         'src/worker/application/faq-service.ts',
-        'src/worker/application/index-job-service.ts'
+        'src/worker/application/index-job-service.ts',
+        'src/worker/application/escalation-service.ts',
+        'src/worker/domain/escalation.ts'
       ],
       thresholds: { lines: 80, functions: 80, statements: 80 }
     }

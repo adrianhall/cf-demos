@@ -3,6 +3,7 @@ import type { AnswerService } from './application/answer-service';
 import type { AuditService } from './application/audit-service';
 import type { ConversationService } from './application/conversation-service';
 import type { DocumentationService } from './application/documentation-service';
+import type { EscalationService } from './application/escalation-service';
 import type { FaqContext, FaqService } from './application/faq-service';
 import type { IdentityService } from './application/identity-service';
 import type { IndexJobService } from './application/index-job-service';
@@ -52,6 +53,10 @@ export interface AppVariables extends CloudflareToolkitVariables {
    * Conversation ownership, transcript replay, and idempotent question writes.
    */
   CONVERSATION_SERVICE: ConversationService;
+  /**
+   * PM escalation actions, delivery, and optional FAQ publication.
+   */
+  ESCALATION_SERVICE: EscalationService;
   /**
    * Retrieval with authoritative D1 policy rechecks.
    */

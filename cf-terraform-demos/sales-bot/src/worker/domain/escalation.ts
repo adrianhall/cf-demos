@@ -2,12 +2,6 @@ import type { EscalationReason } from './answer-decision';
 
 /**
  * Lifecycle of an escalation.
- *
- * Phase 3 only ever creates an escalation in `open`. The remaining states are declared now because
- * they are the specification's fixed list and the column already stores them; Phase 4 implements
- * the transitions between them. Declaring the full union here rather than a Phase 3 subset means
- * the transition code added later extends a type the repository already round-trips, instead of
- * widening one and having to revisit every `switch`.
  */
 export type EscalationStatus =
   | 'open'
@@ -31,18 +25,14 @@ export interface Escalation {
   conversationId: string;
   /**
    * The question turn that triggered this escalation.
-   *
-   * Unique in storage: one open escalation per triggering question, which is what makes a retried
-   * submission or a double-clicked escalate button produce one queue entry rather than two.
    */
   questionEventId: string;
   /**
-   * Product the question was classified as, or `null` when classification found none. A `null`
-   * product routes to the default escalation target.
+   * Product the question was classified as, or `null` when classification found none.
    */
   productId: string | null;
   /**
-   * Display name of the person currently responsible, resolved from the product map.
+   * Display name of the person currently responsible.
    */
   currentAssignee: string | null;
   /**
@@ -60,23 +50,71 @@ export interface Escalation {
 }
 
 /**
+ * One immutable routing decision in an escalation's lifetime.
+ */
+export interface EscalationAssignment {
+  /**
+   * Generated assignment identifier.
+   */
+  id: string;
+  /**
+   * Escalation receiving the assignment.
+   */
+  escalationId: string;
+  /**
+   * Verified identity that made the assignment, or `null` for automatic routing.
+   */
+  actorIdentityKey: string | null;
+  /**
+   * Assignee before this transition, or `null` for initial routing.
+   */
+  previousAssignee: string | null;
+  /**
+   * Newly responsible PM display name.
+   */
+  currentAssignee: string;
+  /**
+   * Why this routing decision occurred.
+   */
+  reason: string;
+  /**
+   * ISO-8601 instant the assignment was recorded.
+   */
+  createdAt: string;
+}
+
+/**
+ * True when a lifecycle state can transition to the requested state.
+ */
+export function canTransition(from: EscalationStatus, to: EscalationStatus): boolean {
+  return (
+    (from === 'open' && (to === 'assigned' || to === 'rejected'))
+    || (from === 'assigned' && (to === 'answered' || to === 'rejected'))
+    || (from === 'answered' && to === 'delivered')
+    || (from === 'delivered' && to === 'closed')
+  );
+}
+
+/**
  * Persistence port for escalations.
  */
 export interface EscalationRepository {
   /**
    * Open an escalation for a question, or return the one that already exists.
    *
-   * Idempotent by `questionEventId` rather than failing on a duplicate, because both callers that
-   * reach it — the workflow deciding evidence is insufficient, and a requester pressing escalate —
-   * can legitimately run twice for one question, and the correct outcome in both cases is one queue
-   * entry.
-   *
    * @param escalation Fully resolved escalation, including its generated identifier.
    * @returns The stored escalation, whether it was created now or already existed.
    * @throws {Error} When the underlying storage rejects the write.
    */
   open(escalation: Escalation): Promise<Escalation>;
-
+  /**
+   * Read one escalation.
+   *
+   * @param id Escalation identifier.
+   * @returns The escalation, or `null` when unknown.
+   * @throws {Error} When the underlying storage rejects the read.
+   */
+  find(id: string): Promise<Escalation | null>;
   /**
    * Read the escalation opened for a question, if any.
    *
@@ -85,4 +123,37 @@ export interface EscalationRepository {
    * @throws {Error} When the underlying storage rejects the read.
    */
   findByQuestion(questionEventId: string): Promise<Escalation | null>;
+  /**
+   * List queue entries matching product scope.
+   *
+   * @param productIds Permitted products; `null` permits all products.
+   * @returns Queue entries, oldest first.
+   * @throws {Error} When the underlying storage rejects the read.
+   */
+  list(productIds: string[] | null): Promise<Escalation[]>;
+  /**
+   * Read immutable assignment history.
+   *
+   * @param escalationId Escalation identifier.
+   * @returns Assignment history, oldest first.
+   * @throws {Error} When the underlying storage rejects the read.
+   */
+  assignments(escalationId: string): Promise<EscalationAssignment[]>;
+  /**
+   * Persist an assignment and state atomically.
+   *
+   * @param escalation Updated escalation.
+   * @param assignment Assignment history item.
+   * @returns A promise fulfilled once both facts are durable.
+   * @throws {Error} When the underlying storage rejects the write.
+   */
+  assign(escalation: Escalation, assignment: EscalationAssignment): Promise<void>;
+  /**
+   * Persist a legal lifecycle transition.
+   *
+   * @param escalation Updated escalation.
+   * @returns A promise fulfilled once the state is durable.
+   * @throws {Error} When the underlying storage rejects the write.
+   */
+  update(escalation: Escalation): Promise<void>;
 }

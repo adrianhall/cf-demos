@@ -16,7 +16,11 @@ export const AUDIT_ACTIONS = [
   'documentation.index_failed',
   'conversation.created',
   'conversation.answered',
-  'escalation.opened'
+  'escalation.opened',
+  'escalation.reassign_rejected',
+  'escalation.reassigned',
+  'escalation.answered',
+  'escalation.rejected'
 ] as const;
 
 /**
