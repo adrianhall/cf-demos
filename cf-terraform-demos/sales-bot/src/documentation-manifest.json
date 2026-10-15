@@ -1,0 +1,114 @@
+{
+  "repository": "github.com/cloudflare/cloudflare-docs",
+  "revision": "7bbbb67b7a",
+  "entries": [
+    {
+      "path": "src/content/docs/basin/index.mdx",
+      "productId": "basin",
+      "title": "Basin",
+      "contentHash": "1c40ae3138d4ce62b60f4a20e79482088802bd481253f4425a266cd5d395339c"
+    },
+    {
+      "path": "src/content/docs/stream/index.mdx",
+      "productId": "stream",
+      "title": "Cloudflare Stream",
+      "contentHash": "4d91badccca0cb411d58968eb2c57999fb84841bbe2d3503a2c50a5017edf61c"
+    },
+    {
+      "path": "src/content/docs/images/index.mdx",
+      "productId": "images",
+      "title": "Images",
+      "contentHash": "80848c615d2b48cf8aded84eb52982abc485a1568cda436b5f5a916dc7647db2"
+    },
+    {
+      "path": "src/content/docs/realtime/index.mdx",
+      "productId": "realtime-kit",
+      "title": "Cloudflare Realtime",
+      "contentHash": "d70398dea6b5203cabd2e221e4d23c8ac57b2aea96d983e4ebc93bc5d8634865"
+    },
+    {
+      "path": "src/content/docs/workers-ai/index.mdx",
+      "productId": "workers-ai",
+      "title": "Cloudflare Workers AI",
+      "contentHash": "480ebc9f3f69f8b46b2ec944b5c6f7facb3c841b3c29ca301c7cc379dfe0ec02"
+    },
+    {
+      "path": "src/content/docs/workers-ai/get-started/workers-wrangler.mdx",
+      "productId": "workers-ai",
+      "title": "Workers AI bindings",
+      "contentHash": "4d2445488a65e0e28277df46eb044701d47379965e8d2e076d65b1af99eb8fae"
+    },
+    {
+      "path": "src/content/docs/ai-gateway/index.mdx",
+      "productId": "ai-gateway",
+      "title": "Cloudflare AI Gateway",
+      "contentHash": "277f8eae6f4e193b113a132806c63c5bdca22a613ee2903edd0d27cffcc92644"
+    },
+    {
+      "path": "src/content/docs/ai-gateway/get-started.mdx",
+      "productId": "ai-gateway",
+      "title": "AI Gateway: getting started",
+      "contentHash": "52de88c7e2578c57ef21282b800d0f0a8f18423f4cc5dc0269fb3811eee3833d"
+    },
+    {
+      "path": "src/content/docs/ai-search/index.mdx",
+      "productId": "ai-search",
+      "title": "AI Search",
+      "contentHash": "a2c59709ddb3bd522e6e7e1109b32b5dd7bce9a807a0e7f561380b49a45567de"
+    },
+    {
+      "path": "src/content/docs/browser-run/index.mdx",
+      "productId": "browser-run",
+      "title": "Browser Run",
+      "contentHash": "a37a097c6b5573741dcc23440ab0c35c1a80210ecf86c885d507ab243a26e784"
+    },
+    {
+      "path": "src/content/docs/agents/index.mdx",
+      "productId": "agents",
+      "title": "Build agents on Cloudflare",
+      "contentHash": "fd2a94cbc0f1d699a0efd02832552ddd6ac2dc25af6a8a473262a22dd9aeef2a"
+    },
+    {
+      "path": "src/content/docs/email-service/index.mdx",
+      "productId": "email",
+      "title": "Cloudflare Email Service",
+      "contentHash": "1147a9561cfee3cfd651b990073d4bb2e604fa853a9852d20817633118c39a8c"
+    },
+    {
+      "path": "src/content/docs/durable-objects/index.mdx",
+      "productId": "durable-objects",
+      "title": "Cloudflare Durable Objects",
+      "contentHash": "9b9f18510be8b6aeca85ce4a631206a189dda54542be3ff8469dc54ce3e1ffab"
+    },
+    {
+      "path": "src/content/docs/d1/index.mdx",
+      "productId": "d1",
+      "title": "Cloudflare D1",
+      "contentHash": "48418d3a491f694dc6565b7239edf95f54feaf16925180be8102eb39b93f96c9"
+    },
+    {
+      "path": "src/content/docs/d1/get-started.mdx",
+      "productId": "d1",
+      "title": "D1: getting started",
+      "contentHash": "e855e1288499a59602e340f3832d3360d8a0dbd09de14439d1014955ff07c3aa"
+    },
+    {
+      "path": "src/content/docs/kv/index.mdx",
+      "productId": "kv",
+      "title": "Cloudflare Workers KV",
+      "contentHash": "6bfb6c3b6848c5604a4044383b5426b633ddc178aed311be0f4eefe6b996acc5"
+    },
+    {
+      "path": "src/content/docs/hyperdrive/index.mdx",
+      "productId": "hyperdrive",
+      "title": "Hyperdrive",
+      "contentHash": "a117749b3212273144a8dce46a0ebdf5533a0045b1eadf83f5cea32c192505a4"
+    },
+    {
+      "path": "src/content/docs/cloudflare-for-platforms/workers-for-platforms/index.mdx",
+      "productId": "workers-for-platforms",
+      "title": "Workers for Platforms",
+      "contentHash": "c693041a5040c329cbcc8197f7227be2d4302a768ef4e271e50b4ed71f20b972"
+    }
+  ]
+}

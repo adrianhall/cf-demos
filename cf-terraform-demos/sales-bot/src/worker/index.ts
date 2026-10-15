@@ -4,26 +4,97 @@ import {
   notFoundHandler,
   problemDetailsErrorHandler
 } from '@adrianhall/cloudflare-toolkit/hono';
+import { ActorResolver } from './application/actor-resolver';
+import { AuditService } from './application/audit-service';
+import { DocumentationService } from './application/documentation-service';
+import { FaqService } from './application/faq-service';
 import { IdentityService } from './application/identity-service';
+import { IndexJobService } from './application/index-job-service';
+import { ProductService } from './application/product-service';
 import type { AppBindings } from './bindings';
+import { D1AuditRepository } from './infrastructure/d1-audit-repository';
+import { D1DocumentationRepository } from './infrastructure/d1-documentation-repository';
+import { D1FaqRepository } from './infrastructure/d1-faq-repository';
 import { D1IdentityRepository } from './infrastructure/d1-identity-repository';
+import { D1IndexJobRepository } from './infrastructure/d1-index-job-repository';
+import { D1ProductRepository } from './infrastructure/d1-product-repository';
+import { createSearchIndex } from './infrastructure/search-index-factory';
 import { accessMiddleware } from './middleware/access';
+import { adminRouter } from './routes/admin';
+import { faqsRouter } from './routes/faqs';
 import { meRouter } from './routes/me';
+import { productsRouter } from './routes/products';
 
 /**
  * SalesBot Worker composition root.
  *
- * It wires D1 into the application service once, leaving routes responsible only for HTTP shaping.
+ * This is the only module that knows both the concrete D1 and AI Search adapters and the
+ * application services. Routes receive services ready-made and never construct a repository, which
+ * is what keeps the UI → API → application → infrastructure dependency direction one-way: nothing
+ * in `routes/` imports from `infrastructure/`.
  */
 const app = new Hono<AppBindings>();
 app.use(cloudflareLogger());
 app.get('/health', (context) => context.json({ status: 'ok' }));
 app.use(accessMiddleware);
+
+/**
+ * Build the request-scoped services and the authorization subject.
+ *
+ * The actor is resolved once per request rather than per route. Resolving it here means every route
+ * sees the same subject — the same role, clearance, and product scope evaluated against the same
+ * instant — so two checks within one request cannot disagree because the product map changed
+ * between them.
+ *
+ * `NOW` is captured once for the same reason. Validation, the 90-day expiry default, the expiry
+ * check on read, and the audit timestamp all read it, and a request in which those differ by
+ * milliseconds is a request whose behaviour is not reproducible in a test.
+ *
+ * @param context Hono request context supplying the `DB` binding and verified identity.
+ * @param next Middleware continuation invoked after the services are attached.
+ * @returns A promise fulfilled after the downstream middleware and selected route finish.
+ * @throws {NullError} When the Access middleware did not verify an identity.
+ * @throws {Error} When D1 cannot resolve the identity or its product scope.
+ */
 app.use(async (context, next) => {
-  context.set('IDENTITY_SERVICE', new IdentityService(new D1IdentityRepository(context.env.DB)));
+  const database = context.env.DB;
+  const faqs = new D1FaqRepository(database);
+  const products = new D1ProductRepository(database);
+  const audit = new D1AuditRepository(database);
+  const indexJobs = new D1IndexJobRepository(database);
+  const identities = new D1IdentityRepository(database);
+  const searchIndex = createSearchIndex(context.env, import.meta.env.DEV);
+
+  const now = new Date();
+  const actor = await new ActorResolver(identities, products).resolve(
+    context.get('Cloudflare_Access_Identity').email,
+    now
+  );
+  const correlationId = context.req.header('cf-ray') ?? crypto.randomUUID();
+
+  context.set('IDENTITY_SERVICE', new IdentityService(identities));
+  context.set('ACTOR', actor);
+  context.set('NOW', now);
+  context.set('CORRELATION_ID', correlationId);
+  context.set('FAQ_CONTEXT', { actor, correlationId, now });
+  context.set('FAQ_SERVICE', new FaqService(faqs, indexJobs, audit));
+  context.set('PRODUCT_SERVICE', new ProductService(products));
+  context.set(
+    'DOCUMENTATION_SERVICE',
+    new DocumentationService(new D1DocumentationRepository(database), audit)
+  );
+  context.set('INDEX_JOB_SERVICE', new IndexJobService(indexJobs, faqs, searchIndex, audit));
+  context.set('AUDIT_SERVICE', new AuditService(audit));
   await next();
 });
+
 app.route('/api/me', meRouter);
+app.route('/api/products', productsRouter);
+app.route('/api/faqs', faqsRouter);
+app.route('/api/admin', adminRouter);
+
+// `includeStack` is gated on `import.meta.env.DEV`, which Vite replaces with the literal `false`
+// in a production build, so a deployed Worker can never emit a stack trace to a client.
 app.onError(problemDetailsErrorHandler({ includeStack: import.meta.env.DEV }));
 app.notFound(notFoundHandler());
 

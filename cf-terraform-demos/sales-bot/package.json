@@ -10,6 +10,7 @@
     "check:types": "run-s generate:types check:types:tsc",
     "check:types:tsc": "tsc --noEmit",
     "generate:types": "cf workers types --mode development",
+    "generate:manifest": "node scripts/generate-manifest.ts",
     "check:format": "oxfmt --check .",
     "check:lint": "oxlint --type-aware --type-check .",
     "check:infra": "terraform -chdir=infra validate",
