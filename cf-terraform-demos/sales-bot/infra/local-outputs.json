@@ -1,0 +1,22 @@
+{
+  "ai_gateway_id": { "sensitive": false, "type": "string", "value": "sales-bot-local" },
+  "access_aud": {
+    "sensitive": false,
+    "type": "string",
+    "value": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "cloudflare_team_domain": {
+    "sensitive": false,
+    "type": "string",
+    "value": "local.cloudflareaccess.com"
+  },
+  "d1_database_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "00000000-0000-4000-8000-000000000010"
+  },
+  "d1_database_name": { "sensitive": false, "type": "string", "value": "sales-bot-db-local" },
+  "environment": { "sensitive": false, "type": "string", "value": "development" },
+  "hostname": { "sensitive": false, "type": "string", "value": "sales-bot.localhost" },
+  "worker_name": { "sensitive": false, "type": "string", "value": "sales-bot-local" }
+}
